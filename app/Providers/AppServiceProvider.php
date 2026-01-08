@@ -30,22 +30,27 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        if (env('APP_ENV') === 'production') {
-            // Force generated links to be HTTPS (Fixes Mixed Content & Logout)
-            \Illuminate\Support\Facades\URL::forceScheme('https');
+        // CHANGE THIS LINE: Use $this->app->environment()
+        // You can also add 'prod' or 'staging' if your PAAS uses those names
+        if ($this->app->environment(['production', 'prod', 'staging'])) {
+            
+            // 1. Force HTTPS Scheme
+            URL::forceScheme('https');
 
-            // TRICK Laravel into thinking the connection is Secure (Fixes 302 Loop & Upload 401)
+            // 2. Fix the Request Server variables for Proxies
             if(isset($this->app['request'])) {
                 $this->app['request']->server->set('HTTPS', 'on');
             }
 
-            // Force the asset URL if it's not already HTTPS
-            if (! Str::startsWith(config('app.asset_url'), 'https://')) {
-                config(['app.asset_url' => str_replace('http://', 'https://', config('app.asset_url'))]);
+            // 3. Update Configs dynamically
+            $urlConfig = config('app.url');
+            if ($urlConfig && ! Str::startsWith($urlConfig, 'https://')) {
+                config(['app.url' => str_replace('http://', 'https://', $urlConfig)]);
             }
-            // Force the app URL if it's not already HTTPS
-            if (! Str::startsWith(config('app.url'), 'https://')) {
-                config(['app.url' => str_replace('http://', 'https://', config('app.url'))]);
+
+            $assetConfig = config('app.asset_url');
+            if ($assetConfig && ! Str::startsWith($assetConfig, 'https://')) {
+                config(['app.asset_url' => str_replace('http://', 'https://', $assetConfig)]);
             }
         }
 
