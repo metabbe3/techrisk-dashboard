@@ -15,6 +15,7 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
+use Filament\Notifications\Notification;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -55,34 +56,45 @@ class InvestigationDocumentsRelationManager extends RelationManager
             ->headerActions([
                 Tables\Actions\CreateAction::make()
                     ->mutateFormDataUsing(function (array $data, EncryptionService $encryptionService): array {
-                        $fileInput = $data['file_path'] ?? null;
+                        try {
+                            $fileInput = $data['file_path'] ?? null;
 
-                        if (is_array($fileInput)) {
-                            $fileInput = reset($fileInput);
-                        }
+                            if (is_array($fileInput)) {
+                                $fileInput = reset($fileInput);
+                            }
 
-                        if ($fileInput instanceof UploadedFile) {
-                            $key = $encryptionService->generateKey();
-                            $salt = $encryptionService->generateSalt();
-                            $method = 'method' . rand(1, 3);
-                            $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
+                            if ($fileInput instanceof UploadedFile) {
+                                $key = $encryptionService->generateKey();
+                                $salt = $encryptionService->generateSalt();
+                                $method = 'method' . rand(1, 3);
+                                $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
 
-                            $this->encryptionData = [
-                                'key' => $key,
-                                'salt' => $salt,
-                                'method' => $method,
-                                'original_filename' => $fileInput->getClientOriginalName(),
-                            ];
+                                $this->encryptionData = [
+                                    'key' => $key,
+                                    'salt' => $salt,
+                                    'method' => $method,
+                                    'original_filename' => $fileInput->getClientOriginalName(),
+                                ];
 
-                            $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
-                            $directory = 'investigation-forms';
-                            $newFileName = $directory . '/' . Str::uuid() . '.encrypted';
+                                $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
+                                $directory = 'investigation-forms';
+                                $newFileName = $directory . '/' . Str::uuid() . '.encrypted';
 
-                            Storage::disk('public')->makeDirectory($directory);
-                            Storage::disk('public')->put($newFileName, $encryptedContent);
+                                Storage::disk('public')->makeDirectory($directory);
+                                Storage::disk('public')->put($newFileName, $encryptedContent);
 
-                            $data['file_path'] = $newFileName;
-                            $data['original_filename'] = $fileInput->getClientOriginalName();
+                                $data['file_path'] = $newFileName;
+                                $data['original_filename'] = $fileInput->getClientOriginalName();
+                            }
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('File upload failed')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                            throw \Illuminate\Validation\ValidationException::withMessages([
+                                'file_path' => 'File upload failed: ' . $e->getMessage(),
+                            ]);
                         }
 
                         return $data;
@@ -106,6 +118,10 @@ class InvestigationDocumentsRelationManager extends RelationManager
                             }
 
                             $this->encryptionData = [];
+                            Notification::make()
+                                ->title('Document uploaded successfully')
+                                ->success()
+                                ->send();
                         }
                     }),
             ])
@@ -150,51 +166,62 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     }),
                 Tables\Actions\EditAction::make()
                     ->mutateFormDataUsing(function (Tables\Actions\EditAction $action, array $data, EncryptionService $encryptionService): array {
-                        $fileInput = $data['file_path'] ?? null;
+                        try {
+                            $fileInput = $data['file_path'] ?? null;
 
-                        if (is_array($fileInput)) {
-                            $fileInput = reset($fileInput);
-                        }
-
-                        if ($fileInput instanceof UploadedFile) {
-                            $record = $action->getRecord();
-                            $this->encryptionData['old_filename'] = $record->original_filename;
-
-                            // Delete old file and encryption key
-                            if ($record->file_path && Storage::disk('public')->exists($record->file_path)) {
-                                Storage::disk('public')->delete($record->file_path);
+                            if (is_array($fileInput)) {
+                                $fileInput = reset($fileInput);
                             }
-                            $record->encryptionKey()->delete();
 
-                            // Encrypt new file
-                            $key = $encryptionService->generateKey();
-                            $salt = $encryptionService->generateSalt();
-                            $method = 'method' . rand(1, 3);
-                            $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
+                            if ($fileInput instanceof UploadedFile) {
+                                $record = $action->getRecord();
+                                $this->encryptionData['old_filename'] = $record->original_filename;
 
-                            $this->encryptionData = array_merge($this->encryptionData, [
-                                'key' => $key,
-                                'salt' => $salt,
-                                'method' => $method,
-                                'original_filename' => $fileInput->getClientOriginalName(),
+                                // Delete old file and encryption key
+                                if ($record->file_path && Storage::disk('public')->exists($record->file_path)) {
+                                    Storage::disk('public')->delete($record->file_path);
+                                }
+                                $record->encryptionKey()->delete();
+
+                                // Encrypt new file
+                                $key = $encryptionService->generateKey();
+                                $salt = $encryptionService->generateSalt();
+                                $method = 'method' . rand(1, 3);
+                                $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
+
+                                $this->encryptionData = array_merge($this->encryptionData, [
+                                    'key' => $key,
+                                    'salt' => $salt,
+                                    'method' => $method,
+                                    'original_filename' => $fileInput->getClientOriginalName(),
+                                ]);
+
+                                $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
+                                $directory = 'investigation-forms';
+                                $newFileName = $directory . '/' . Str::uuid() . '.encrypted';
+
+                                Storage::disk('public')->makeDirectory($directory);
+                                Storage::disk('public')->put($newFileName, $encryptedContent);
+
+                                $data['file_path'] = $newFileName;
+                                $data['original_filename'] = $fileInput->getClientOriginalName();
+
+                            } else {
+                                $record = $action->getRecord();
+                                if ($record) {
+                                    $data['file_path'] = $record->file_path;
+                                    $data['original_filename'] = $record->original_filename;
+                                }
+                            }
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('File upload failed')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                            throw \Illuminate\Validation\ValidationException::withMessages([
+                                'file_path' => 'File upload failed: ' . $e->getMessage(),
                             ]);
-
-                            $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
-                            $directory = 'investigation-forms';
-                            $newFileName = $directory . '/' . Str::uuid() . '.encrypted';
-
-                            Storage::disk('public')->makeDirectory($directory);
-                            Storage::disk('public')->put($newFileName, $encryptedContent);
-
-                            $data['file_path'] = $newFileName;
-                            $data['original_filename'] = $fileInput->getClientOriginalName();
-
-                        } else {
-                            $record = $action->getRecord();
-                            if ($record) {
-                                $data['file_path'] = $record->file_path;
-                                $data['original_filename'] = $record->original_filename;
-                            }
                         }
 
                         return $data;
@@ -221,6 +248,10 @@ class InvestigationDocumentsRelationManager extends RelationManager
                             }
 
                             $this->encryptionData = [];
+                            Notification::make()
+                                ->title('Document updated successfully')
+                                ->success()
+                                ->send();
                         }
                     }),
                 Tables\Actions\DeleteAction::make()

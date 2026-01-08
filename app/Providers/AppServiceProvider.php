@@ -12,6 +12,7 @@ use App\Observers\LabelObserver;
 use App\Observers\IncidentTypeObserver;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
+use Filament\Support\Facades\FilamentView;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -35,5 +36,10 @@ class AppServiceProvider extends ServiceProvider
         ActionImprovement::observe(ActionImprovementObserver::class);
         Label::observe(LabelObserver::class);
         IncidentType::observe(IncidentTypeObserver::class);
+
+        FilamentView::registerRenderHook(
+            'panels::body.end',
+            fn (): string => view('vendor.filament.hooks.upload-error-notifier')->render(),
+        );
     }
 }
