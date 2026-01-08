@@ -16,7 +16,9 @@ RUN apt-get update && apt-get install -y \
 # 3. Install PHP extensions
 # Added 'intl' (required for Filament) and 'zip' (required for Excel exports)
 RUN docker-php-ext-configure intl \
-    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip
+    && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip \
+    && pecl install redis \
+    && docker-php-ext-enable redis
 
 # 4. Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

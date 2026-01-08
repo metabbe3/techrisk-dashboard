@@ -11,6 +11,7 @@ services:
       - .:/var/www/html
     depends_on:
       - db
+      - redis
     environment:
       - "DB_HOST=db"
 
@@ -35,7 +36,17 @@ services:
     environment:
       MYSQL_DATABASE: ${DB_DATABASE}
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
     volumes:
       - ./storage/dbdata:/var/lib/mysql
     ports:
       - "33061:3306"
+
+  # Redis Service
+  redis:
+    image: redis:alpine
+    container_name: techrisk-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
