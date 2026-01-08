@@ -29,6 +29,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // 1. Force generated links to be HTTPS (Fixes Logout & Images)
+    \Illuminate\Support\Facades\URL::forceScheme('https');
+
+    // 2. TRICK Laravel into thinking the connection is Secure (Fixes 302 Loop & Upload 401)
+    if(isset($this->app['request'])) {
+        $this->app['request']->server->set('HTTPS', 'on');
+    }
         Incident::observe(IncidentObserver::class);
         ActionImprovement::observe(ActionImprovementObserver::class);
         Label::observe(LabelObserver::class);
