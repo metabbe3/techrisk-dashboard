@@ -36,3 +36,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 
 # 7. Set working directory
 WORKDIR /var/www/html
+
+# 8. Publish Livewire assets (ensure JS is available)
+RUN php artisan livewire:publish --assets --force
