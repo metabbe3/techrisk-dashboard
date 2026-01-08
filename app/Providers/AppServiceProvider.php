@@ -29,9 +29,6 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        if ($this->app->environment('production')) {
-            URL::forceScheme('https');
-        }
         Incident::observe(IncidentObserver::class);
         ActionImprovement::observe(ActionImprovementObserver::class);
         Label::observe(LabelObserver::class);

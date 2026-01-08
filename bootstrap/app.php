@@ -13,8 +13,6 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->prepend(\App\Http\Middleware\TrustProxies::class);
-        $middleware->prepend(\App\Http\Middleware\ForceHttps::class);
         $middleware->alias([
             'check.api.access' => \App\Http\Middleware\CheckApiAccess::class,
         ]);
