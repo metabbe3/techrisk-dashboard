@@ -9,8 +9,7 @@
     });
 
     // General Livewire errors
-    // Ensure Livewire is ready before calling its methods
-    Livewire.hook('element.init', () => {
+    document.addEventListener('livewire:init', () => {
         if (typeof Livewire.onError === 'function') {
             Livewire.onError((error) => {
                 new FilamentNotification()
