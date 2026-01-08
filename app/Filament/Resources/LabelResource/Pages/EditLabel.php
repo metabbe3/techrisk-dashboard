@@ -13,7 +13,12 @@ class EditLabel extends EditRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\DeleteAction::make(),
+            Actions\DeleteAction::make()->databaseTransaction(),
         ];
+    }
+
+    protected function useDatabaseTransactions(): bool
+    {
+        return true;
     }
 }

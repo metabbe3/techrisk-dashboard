@@ -198,12 +198,14 @@ class IncidentResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
+                    ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 Tables\Actions\ViewAction::make(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
+                        ->databaseTransaction()
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 ]),
             ]);

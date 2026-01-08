@@ -39,7 +39,7 @@ class AppServiceProvider extends ServiceProvider
 
         FilamentView::registerRenderHook(
             'panels::body.end',
-            fn (): string => view('vendor.filament.hooks.upload-error-notifier')->render(),
+            fn (): string => view('vendor.filament.hooks.global-error-handler')->render(),
         );
     }
 }

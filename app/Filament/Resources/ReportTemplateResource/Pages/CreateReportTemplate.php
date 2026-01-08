@@ -16,4 +16,9 @@ class CreateReportTemplate extends CreateRecord
 
         return $data;
     }
+
+    protected function useDatabaseTransactions(): bool
+    {
+        return true;
+    }
 }

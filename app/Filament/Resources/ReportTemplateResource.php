@@ -51,9 +51,10 @@ class ReportTemplateResource extends Resource
                 //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\EditAction::make()->databaseTransaction(),
+                Tables\Actions\DeleteAction::make()->databaseTransaction(),
                 Action::make('schedule')
+                    ->databaseTransaction()
                     ->form([
                         TextInput::make('email')->email()->required(),
                         Select::make('schedule')
@@ -73,7 +74,7 @@ class ReportTemplateResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                    Tables\Actions\DeleteBulkAction::make()->databaseTransaction(),
                 ]),
             ]);
     }

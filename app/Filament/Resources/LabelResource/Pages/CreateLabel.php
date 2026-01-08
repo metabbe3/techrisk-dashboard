@@ -9,4 +9,9 @@ use Filament\Resources\Pages\CreateRecord;
 class CreateLabel extends CreateRecord
 {
     protected static string $resource = LabelResource::class;
+
+    protected function useDatabaseTransactions(): bool
+    {
+        return true;
+    }
 }
