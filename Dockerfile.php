@@ -41,4 +41,4 @@ WORKDIR /var/www/html
 COPY . .
 
 # 8. Publish Livewire assets (ensure JS is available)
-RUN php artisan livewire:publish --assets --force
+RUN php artisan livewire:publish --assets
