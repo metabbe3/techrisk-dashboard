@@ -8,7 +8,9 @@ services:
       dockerfile: Dockerfile.php
     container_name: techrisk-app
     volumes:
-      - .:/var/www/html
+      - ./:/var/www/html
+    command: >
+      bash -c "php artisan storage:link --force && php-fpm"
     depends_on:
       - db
       - redis

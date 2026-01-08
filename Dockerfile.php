@@ -20,6 +20,9 @@ RUN docker-php-ext-configure intl \
     && pecl install redis \
     && docker-php-ext-enable redis
 
+# 3a. Add custom PHP configuration for uploads
+COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
+
 # 4. Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
