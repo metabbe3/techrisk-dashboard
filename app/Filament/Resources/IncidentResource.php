@@ -99,7 +99,7 @@ class IncidentResource extends Resource
                             'Confirmed loss' => 'Confirmed loss',
                             'Potential recovery' => 'Potential recovery',
                         ]),
-                        TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
+                        TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0),
                         TextInput::make('recovered_fund')->numeric()->prefix('Rp')->default(0)->required(),
                         TextInput::make('fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
                     ])->columns(4),
