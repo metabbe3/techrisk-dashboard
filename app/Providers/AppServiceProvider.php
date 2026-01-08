@@ -29,6 +29,9 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Force generated links to be HTTPS (Fixes Mixed Content & Logout)
+        \Illuminate\Support\Facades\URL::forceScheme('https');
+
         Incident::observe(IncidentObserver::class);
         ActionImprovement::observe(ActionImprovementObserver::class);
         Label::observe(LabelObserver::class);

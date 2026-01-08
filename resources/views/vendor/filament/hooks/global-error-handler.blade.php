@@ -3,21 +3,24 @@
     window.addEventListener('livewire:upload-error', (event) => {
         new FilamentNotification()
             .title('Upload failed')
-            .body('The file upload failed. Please try again.')
+            .body('The file upload failed. Please try again. If the problem persists, contact support.')
             .danger()
             .send();
     });
 
     // General Livewire errors
-    document.addEventListener('livewire:init', () => {
-        Livewire.onError((error) => {
-            new FilamentNotification()
-                .title('An error occurred')
-                .body(error.message || 'An unexpected error occurred. Please try again.')
-                .danger()
-                .send();
-            return false; // Stop default Livewire error handling
-        });
+    // Ensure Livewire is ready before calling its methods
+    Livewire.hook('element.init', () => {
+        if (typeof Livewire.onError === 'function') {
+            Livewire.onError((error) => {
+                new FilamentNotification()
+                    .title('An error occurred')
+                    .body(error.message || 'An unexpected error occurred. Please try again.')
+                    .danger()
+                    .send();
+                return false; // Stop default Livewire error handling
+            });
+        }
     });
 
     // General JavaScript errors
