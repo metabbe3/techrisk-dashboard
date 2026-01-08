@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  # PHP-FPM Service
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: techrisk-app
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - db
+    environment:
+      - "DB_HOST=db"
+
+  # Nginx Service
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile.nginx
+    container_name: techrisk-nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      - app
+
+  # MySQL Service
+  db:
+    image: mysql:8.0
+    container_name: techrisk-db
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./storage/dbdata:/var/lib/mysql
+    ports:
+      - "33061:3306"
