@@ -53,7 +53,7 @@ class MonthlyIncidentsChart extends ChartWidget
 
     protected function getType(): string
     {
-        return 'line';
+        return 'bar';
     }
 
     public function getColumnSpan(): int | string | array
