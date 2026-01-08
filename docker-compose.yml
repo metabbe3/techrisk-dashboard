@@ -10,7 +10,7 @@ services:
     volumes:
       - ./:/var/www/html
     command: >
-      bash -c "php artisan storage:link --force && php-fpm"
+      bash -c "chmod -R 777 storage && php artisan storage:link --force && php-fpm"
     depends_on:
       - db
       - redis

@@ -37,7 +37,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                 ->label('Document')
                 ->storeFiles(false)
                 ->downloadable()
-                ->maxSize(51200) // 50MB
+                ->maxSize(15360) // 15MB
                 ->required(fn(string $context): bool => $context === 'create'),
         ]);
     }
