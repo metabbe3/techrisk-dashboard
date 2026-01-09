@@ -17,26 +17,7 @@ class IncidentObserver
     {
         Cache::tags(['incidents'])->flush();
 
-        // Auto-tagging
-        $tags = [];
-        if ($incident->root_cause) {
-            $keywords = preg_split('/[\s,]+/', $incident->root_cause);
-            foreach ($keywords as $keyword) {
-                if (strlen($keyword) >= 4) {
-                    $tags[] = strtolower($keyword);
-                }
-            }
-        }
-        if ($incident->incident_type) {
-            $tags[] = strtolower($incident->incident_type);
-        }
-
-        $labelIds = [];
-        foreach ($tags as $tagName) {
-            $label = Label::firstOrCreate(['name' => $tagName]);
-            $labelIds[] = $label->id;
-        }
-        $incident->labels()->syncWithoutDetaching($labelIds);
+        $this->autoLabel($incident);
 
         // Calculate MTTR
         if ($incident->stop_bleeding_at) {
@@ -72,26 +53,8 @@ class IncidentObserver
     {
         Cache::tags(['incidents'])->flush();
 
-        if ($incident->isDirty('root_cause') || $incident->isDirty('incident_type')) {
-            $newTags = [];
-            if ($incident->root_cause) {
-                $keywords = preg_split('/[\s,]+/', $incident->root_cause);
-                foreach ($keywords as $keyword) {
-                    if (strlen($keyword) >= 4) {
-                        $newTags[] = strtolower($keyword);
-                    }
-                }
-            }
-            if ($incident->incident_type) {
-                $newTags[] = strtolower($incident->incident_type);
-            }
-
-            $labelIds = [];
-            foreach ($newTags as $tagName) {
-                $label = Label::firstOrCreate(['name' => $tagName]);
-                $labelIds[] = $label->id;
-            }
-            $incident->labels()->sync($labelIds);
+        if ($incident->isDirty('summary') || $incident->isDirty('root_cause')) {
+            $this->autoLabel($incident);
         }
 
         if ($incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at')) {
@@ -134,6 +97,32 @@ class IncidentObserver
             }
         }
     }
+
+    private function autoLabel(Incident $incident): void
+    {
+        // 1. Get all available labels from cache (or DB if not in cache)
+        $allLabels = Cache::remember('labels', 3600, function () { // Cache for 60 minutes
+            return Label::all();
+        });
+
+        // 2. Create a text block from summary and root_cause
+        $textBlock = strtolower($incident->summary . ' ' . $incident->root_cause);
+
+        // 3. Find matched labels
+        $matchedLabelIds = [];
+        foreach ($allLabels as $label) {
+            // Use word boundary regex for whole word matching
+            if (preg_match("/\b" . preg_quote(strtolower($label->name), '/') . "\b/", $textBlock)) {
+                $matchedLabelIds[] = $label->id;
+            }
+        }
+
+        // 4. Sync labels without detaching existing ones
+        if (!empty($matchedLabelIds)) {
+            $incident->labels()->syncWithoutDetaching($matchedLabelIds);
+        }
+    }
+
 
     /**
      * Handle the Incident "deleted" event.
