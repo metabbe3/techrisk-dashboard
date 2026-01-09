@@ -1,4 +1,4 @@
-FROM debian:buster-slim
+FROM debian:bullseye-slim
 
 # Install cron and mysql-client
 RUN apt-get update && apt-get install -y cron default-mysql-client gzip
