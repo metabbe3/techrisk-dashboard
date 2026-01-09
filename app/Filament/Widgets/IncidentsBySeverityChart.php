@@ -18,16 +18,15 @@ class IncidentsBySeverityChart extends ChartWidget
 
     protected function getData(): array
     {
-        $query = Incident::select('severity', DB::raw('count(*) as total'))
-            ->groupBy('severity');
+        $query = Incident::select('severity', DB::raw('count(*) as total'));
 
-        if ($this->start_date) {
-            $query->where('incident_date', '>=', $this->start_date);
+        if ($this->start_date && $this->end_date) {
+            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+        } else {
+            $query->whereYear('incident_date', now()->year);
         }
 
-        if ($this->end_date) {
-            $query->where('incident_date', '<=', $this->end_date);
-        }
+        $query->groupBy('severity');
 
         $data = $query->pluck('total', 'severity')->all();
 

@@ -18,16 +18,15 @@ class IncidentsByTypeChart extends ChartWidget
 
     protected function getData(): array
     {
-        $query = Incident::select('incident_type', \DB::raw('count(*) as total'))
-            ->groupBy('incident_type');
+        $query = Incident::select('incident_type', \DB::raw('count(*) as total'));
 
-        if ($this->start_date) {
-            $query->where('incident_date', '>=', $this->start_date);
+        if ($this->start_date && $this->end_date) {
+            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+        } else {
+            $query->whereYear('incident_date', now()->year);
         }
 
-        if ($this->end_date) {
-            $query->where('incident_date', '<=', $this->end_date);
-        }
+        $query->groupBy('incident_type');
 
         $data = $query->get();
 

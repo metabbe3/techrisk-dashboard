@@ -17,17 +17,15 @@ class MonthlyIncidentsChart extends ChartWidget
 
     protected function getData(): array
     {
-        $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
-            ->groupBy('month')
-            ->orderBy('month');
+        $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count');
 
-        if ($this->start_date) {
-            $query->where('incident_date', '>=', $this->start_date);
+        if ($this->start_date && $this->end_date) {
+            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+        } else {
+            $query->whereYear('incident_date', now()->year);
         }
 
-        if ($this->end_date) {
-            $query->where('incident_date', '<=', $this->end_date);
-        }
+        $query->groupBy('month')->orderBy('month');
 
         $data = $query->pluck('count', 'month')->all();
 

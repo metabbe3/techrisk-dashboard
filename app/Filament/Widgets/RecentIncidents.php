@@ -20,12 +20,16 @@ class RecentIncidents extends BaseWidget
 
     public function table(Table $table): Table
     {
+        $query = IncidentResource::getEloquentQuery();
+
+        if ($this->start_date && $this->end_date) {
+            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+        } else {
+            $query->whereYear('incident_date', now()->year);
+        }
+
         return $table
-            ->query(
-                IncidentResource::getEloquentQuery()
-                    ->when($this->start_date, fn ($query) => $query->where('incident_date', '>=', $this->start_date))
-                    ->when($this->end_date, fn ($query) => $query->where('incident_date', '<=', $this->end_date))
-            )
+            ->query($query)
             ->defaultPaginationPageOption(5)
             ->defaultSort('incident_date', 'desc')
             ->columns([

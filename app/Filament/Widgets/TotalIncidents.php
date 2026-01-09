@@ -16,18 +16,18 @@ class TotalIncidents extends BaseWidget
     protected function getStats(): array
     {
         $query = Incident::query();
+        $descriptionPeriod = 'this year';
 
-        if ($this->start_date) {
-            $query->where('incident_date', '>=', $this->start_date);
-        }
-
-        if ($this->end_date) {
-            $query->where('incident_date', '<=', $this->end_date);
+        if ($this->start_date && $this->end_date) {
+            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+            $descriptionPeriod = 'in the selected period';
+        } else {
+            $query->whereYear('incident_date', now()->year);
         }
 
         return [
             Stat::make('Total Incidents', $query->count())
-                ->description('Total incidents in the selected period')
+                ->description('Total incidents ' . $descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
                 ->color('success'),
         ];

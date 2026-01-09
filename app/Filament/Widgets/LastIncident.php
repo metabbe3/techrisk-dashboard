@@ -12,8 +12,8 @@ class LastIncident extends BaseWidget
 
     protected function getStats(): array
     {
-        $lastIncident = Incident::latest()->first();
-        $days = $lastIncident ? Carbon::now()->diffInDays($lastIncident->created_at) : 0;
+        $lastIncident = Incident::latest('incident_date')->first();
+        $days = $lastIncident ? Carbon::now()->diffInDays($lastIncident->incident_date) : 0;
 
         return [
             Stat::make('Last Incident', $days . ' days ago')
