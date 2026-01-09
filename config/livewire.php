@@ -184,5 +184,5 @@ return [
 
     'release_token' => 'a',
 
-    'asset_url' => 'https://techrisk.paas.dana.id',
+    'asset_url' => 'null',
 ];
