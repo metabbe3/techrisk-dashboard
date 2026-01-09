@@ -52,3 +52,20 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+
+  # Backup Service
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    container_name: techrisk-backup
+    restart: unless-stopped
+    volumes:
+      - ./backups:/backups
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      MYSQL_USER: ${DB_USERNAME}
+    depends_on:
+      - db

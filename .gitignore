@@ -49,3 +49,4 @@ $RECYCLE.BIN
 # Logs
 *.log
 !storage/*.log
+backups/

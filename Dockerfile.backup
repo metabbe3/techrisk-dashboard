@@ -1,0 +1,16 @@
+FROM debian:buster-slim
+
+# Install cron and mysql-client
+RUN apt-get update && apt-get install -y cron default-mysql-client gzip
+
+# Copy backup script
+COPY scripts/backup.sh /backup.sh
+
+# Add cron job
+RUN echo "0 2 * * * /usr/bin/bash /backup.sh" | crontab -
+
+# Create a log file for cron and give it the right permissions
+RUN touch /var/log/cron.log && chmod 0644 /var/log/cron.log
+
+# The command to run when the container starts
+CMD cron && tail -f /var/log/cron.log
