@@ -33,22 +33,24 @@ class SendActionImprovementReminders extends Command
 
         $actionImprovements = ActionImprovement::where('reminder', true)
             ->where('status', 'pending')
+            ->whereDate('due_date', '=', Carbon::now()->addDays(7)->toDateString())
             ->get();
 
         foreach ($actionImprovements as $actionImprovement) {
-            $dueDate = Carbon::parse($actionImprovement->due_date);
-            $now = Carbon::now();
-
-            if ($now->gt($dueDate)) { // Skip if due date is in the past
-                continue;
-            }
-
-            if ($now->diffInDays($dueDate) <= 3) {
-                foreach ($actionImprovement->pic_email as $picEmail) {
-                    Notification::route('mail', $picEmail)
-                        ->notify(new ActionImprovementReminder($actionImprovement));
+            // Notify PIC of Action Improvement
+            foreach ($actionImprovement->pic_email as $picEmail) {
+                $user = \App\Models\User::where('email', $picEmail)->first();
+                if ($user) {
+                    $user->notify(new ActionImprovementReminder($actionImprovement));
                     $this->info('Sent reminder for: ' . $actionImprovement->title . ' to ' . $picEmail);
                 }
+            }
+
+            // Notify PIC of Incident
+            $incident = $actionImprovement->incident;
+            if ($incident && $incident->pic) {
+                $incident->pic->notify(new ActionImprovementReminder($actionImprovement));
+                $this->info('Sent reminder for: ' . $actionImprovement->title . ' to incident PIC ' . $incident->pic->email);
             }
         }
 

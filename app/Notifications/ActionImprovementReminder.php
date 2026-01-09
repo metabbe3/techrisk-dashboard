@@ -29,7 +29,7 @@ class ActionImprovementReminder extends Notification
      */
     public function via(object $notifiable): array
     {
-        return ['mail'];
+        return ['mail', 'database'];
     }
 
     /**
@@ -54,14 +54,17 @@ class ActionImprovementReminder extends Notification
     }
 
     /**
-     * Get the array representation of the notification.
+     * Get the database representation of the notification.
      *
      * @return array<string, mixed>
      */
-    public function toArray(object $notifiable): array
+    public function toDatabase(object $notifiable): array
     {
         return [
-            //
+            'action_improvement_id' => $this->actionImprovement->id,
+            'title' => 'Action Improvement Reminder',
+            'message' => 'The action improvement "' . $this->actionImprovement->title . '" is due on ' . $this->actionImprovement->due_date,
+            'url' => route('filament.admin.resources.incidents.view', $this->actionImprovement->incident_id),
         ];
     }
 }

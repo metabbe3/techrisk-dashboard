@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\Incident;
 use App\Models\Label;
+use App\Notifications\AssignedAsPicNotification;
 use App\Notifications\IncidentUpdated;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -57,6 +58,10 @@ class IncidentObserver
      */
     public function updated(Incident $incident): void
     {
+        if ($incident->isDirty('pic_id') && $incident->pic_id) {
+            $incident->pic->notify(new AssignedAsPicNotification($incident));
+        }
+
         Cache::tags(['incidents'])->flush();
 
         if ($incident->isDirty('summary') || $incident->isDirty('root_cause')) {
