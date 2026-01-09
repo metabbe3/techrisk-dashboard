@@ -51,10 +51,15 @@ class LabelResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->databaseTransaction(),
+                Tables\Actions\DeleteAction::make()
+                    ->databaseTransaction()
+                    ->visible(fn (): bool => auth()->user()->can('manage labels')),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make()->databaseTransaction(),
+                    Tables\Actions\DeleteBulkAction::make()
+                        ->databaseTransaction()
+                        ->visible(fn (): bool => auth()->user()->can('manage labels')),
                 ]),
             ]);
     }
