@@ -169,7 +169,9 @@ class IncidentResource extends Resource
                         'week' => 'This Week',
                         'month' => 'This Month',
                         'year' => 'This Year',
+                        'all' => 'All Time',
                     ])
+                    ->default('year')
                     ->query(function (Builder $query, array $data) {
                         $value = $data['value'];
                         if ($value === 'week') {
@@ -181,6 +183,10 @@ class IncidentResource extends Resource
                         if ($value === 'year') {
                             return $query->whereBetween('incident_date', [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()]);
                         }
+                        if ($value === 'all') {
+                            return $query;
+                        }
+                        return $query;
                     }),
 
                 // 2. Custom Date Range Filter
@@ -206,6 +212,9 @@ class IncidentResource extends Resource
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 Tables\Actions\ViewAction::make(),
+                Tables\Actions\DeleteAction::make()
+                    ->databaseTransaction()
+                    ->visible(fn (): bool => auth()->user()->can('manage incidents')),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
