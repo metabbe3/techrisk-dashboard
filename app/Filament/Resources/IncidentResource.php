@@ -89,7 +89,7 @@ class IncidentResource extends Resource
                         DateTimePicker::make('incident_date')->label('Occurred Time')->required(),
                         DateTimePicker::make('discovered_at'),
                         DateTimePicker::make('stop_bleeding_at'),
-                        DateTimePicker::make('entry_date_tech_risk'),
+                        DateTimePicker::make('entry_date_tech_risk')->required(),
                     ])->columns(4),
                 
                 Section::make('Financial Impact')
@@ -122,6 +122,11 @@ class IncidentResource extends Resource
                         Textarea::make('summary')->columnSpanFull(),
                         Textarea::make('root_cause')->columnSpanFull(),
                         Textarea::make('remark')->columnSpanFull(),
+                        Select::make('labels')
+                            ->multiple()
+                            ->relationship('labels', 'name')
+                            ->preload()
+                            ->searchable(),
                     ])->columns(3),
             ]);
     }

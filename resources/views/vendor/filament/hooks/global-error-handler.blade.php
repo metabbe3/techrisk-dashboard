@@ -22,12 +22,12 @@
         }
     });
 
-    // General JavaScript errors
-    window.onerror = function (message, source, lineno, colno, error) {
-        new FilamentNotification()
-            .title('A JavaScript error occurred')
-            .body(message)
-            .danger()
-            .send();
-    };
+    // // General JavaScript errors
+    // window.onerror = function (message, source, lineno, colno, error) {
+    //     new FilamentNotification()
+    //         .title('A JavaScript error occurred')
+    //         .body(message)
+    //         .danger()
+    //         .send();
+    // };
 </script>
