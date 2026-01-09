@@ -108,7 +108,13 @@ class IncidentObserver
 
         if ($incident->wasChanged()) {
             if ($incident->pic) {
-                $incident->pic->notify(new IncidentUpdated($incident));
+                // Get the user who made the change (authenticated user)
+                $currentUser = auth()->user();
+
+                // Only send notification if the PIC is not the current user
+                if ($currentUser && $currentUser->id !== $incident->pic_id) {
+                    $incident->pic->notify(new IncidentUpdated($incident));
+                }
             }
         }
     }
