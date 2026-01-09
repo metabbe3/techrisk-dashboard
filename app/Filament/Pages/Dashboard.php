@@ -8,6 +8,11 @@ use App\Filament\Widgets\IncidentStatsOverview;
 use App\Filament\Widgets\MonthlyIncidentsChart;
 use App\Filament\Widgets\OpenIncidents;
 use App\Filament\Widgets\RecentIncidents;
+use App\Filament\Widgets\IncidentsByPicChart;
+use App\Filament\Widgets\FundLossTrendChart;
+use App\Filament\Widgets\MttrMtbfTrendChart;
+use App\Filament\Widgets\IncidentsByLabelChart;
+use App\Filament\Widgets\ActionImprovementsOverview;
 use Filament\Pages\Dashboard as BaseDashboard;
 
 class Dashboard extends BaseDashboard
@@ -26,6 +31,11 @@ class Dashboard extends BaseDashboard
             MonthlyIncidentsChart::class,
             OpenIncidents::class,
             RecentIncidents::class,
+            IncidentsByPicChart::class,
+            FundLossTrendChart::class,
+            MttrMtbfTrendChart::class,
+            IncidentsByLabelChart::class,
+            ActionImprovementsOverview::class,
         ];
     }
 }
