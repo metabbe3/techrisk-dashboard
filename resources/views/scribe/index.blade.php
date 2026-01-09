@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta content="IE=edge,chrome=1" http-equiv="X-UA-Compatible">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-    <title>Technical Risk Dashboard API Documentation</title>
+    <title>Laravel API Documentation</title>
 
     <link href="https://fonts.googleapis.com/css?family=Open+Sans&display=swap" rel="stylesheet">
 
@@ -26,13 +26,13 @@
             </style>
 
     <script>
-        var tryItOutBaseUrl = "http://127.0.0.1:8000";
+        var tryItOutBaseUrl = "https://localhost:8000";
         var useCsrf = Boolean();
         var csrfUrl = "/sanctum/csrf-cookie";
     </script>
-    <script src="{{ asset("/vendor/scribe/js/tryitout-5.3.0.js") }}"></script>
+    <script src="{{ asset("/vendor/scribe/js/tryitout-5.6.0.js") }}"></script>
 
-    <script src="{{ asset("/vendor/scribe/js/theme-default-5.3.0.js") }}"></script>
+    <script src="{{ asset("/vendor/scribe/js/theme-default-5.6.0.js") }}"></script>
 
 </head>
 
@@ -124,7 +124,7 @@
     </ul>
 
     <ul class="toc-footer" id="last-updated">
-        <li>Last updated: December 16, 2025</li>
+        <li>Last updated: January 9, 2026</li>
     </ul>
 </div>
 
@@ -133,7 +133,7 @@
     <div class="content">
         <h1 id="introduction">Introduction</h1>
 <aside>
-    <strong>Base URL</strong>: <code>http://127.0.0.1:8000</code>
+    <strong>Base URL</strong>: <code>https://localhost:8000</code>
 </aside>
 <pre><code>This documentation aims to provide all the information you need to work with our API.
 
@@ -141,7 +141,9 @@
 You can switch the language used with the tabs at the top right (or from the nav menu at the top left on mobile).&lt;/aside&gt;</code></pre>
 
         <h1 id="authenticating-requests">Authenticating requests</h1>
-<p>This API is not authenticated.</p>
+<p>To authenticate requests, include a <strong><code>Authorization</code></strong> header with the value <strong><code>"Bearer {YOUR_AUTH_KEY}"</code></strong>.</p>
+<p>All authenticated endpoints are marked with a <code>requires authentication</code> badge in the documentation below.</p>
+<p>You can retrieve your token by using the /login endpoint.</p>
 
         <h1 id="endpoints">Endpoints</h1>
 
@@ -150,6 +152,7 @@ You can switch the language used with the tabs at the top right (or from the nav
                                 <h2 id="endpoints-POSTapi-login">POST api/login</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -160,7 +163,8 @@ You can switch the language used with the tabs at the top right (or from the nav
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request POST \
-    "http://127.0.0.1:8000/api/login" \
+    "https://localhost:8000/api/login" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json" \
     --data "{
@@ -172,10 +176,11 @@ You can switch the language used with the tabs at the top right (or from the nav
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/login"
+    "https://localhost:8000/api/login"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -212,7 +217,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-POSTapi-login" data-method="POST"
       data-path="api/login"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -243,8 +248,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="POSTapi-login"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="POSTapi-login"
@@ -256,6 +274,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="POSTapi-login"
@@ -269,6 +288,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>email</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="email"                data-endpoint="POSTapi-login"
                value="gbailey@example.net"
@@ -279,6 +299,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>password</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="password"                data-endpoint="POSTapi-login"
@@ -292,6 +313,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-GETapi-v1-incidents">GET api/v1/incidents</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -302,17 +324,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request GET \
-    --get "http://127.0.0.1:8000/api/v1/incidents" \
+    --get "https://localhost:8000/api/v1/incidents" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/v1/incidents"
+    "https://localhost:8000/api/v1/incidents"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -359,7 +383,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-GETapi-v1-incidents" data-method="GET"
       data-path="api/v1/incidents"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -390,8 +414,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="GETapi-v1-incidents"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="GETapi-v1-incidents"
@@ -403,6 +440,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="GETapi-v1-incidents"
@@ -416,6 +454,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-POSTapi-v1-incidents">POST api/v1/incidents</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -426,21 +465,23 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request POST \
-    "http://127.0.0.1:8000/api/v1/incidents" \
+    "https://localhost:8000/api/v1/incidents" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json" \
     --data "{
     \"title\": \"b\",
     \"summary\": \"architecto\",
+    \"no\": \"n\",
     \"root_cause\": \"architecto\",
     \"severity\": \"architecto\",
-    \"incident_type_id\": \"architecto\",
+    \"incident_type\": \"Non-tech\",
     \"goc_upload\": true,
     \"teams_upload\": false,
-    \"discovered_at\": \"2025-12-16T04:16:38\",
-    \"stop_bleeding_at\": \"2025-12-16T04:16:38\",
-    \"incident_date\": \"2025-12-16T04:16:38\",
-    \"entry_date_tech_risk\": \"2025-12-16T04:16:38\",
+    \"discovered_at\": \"2026-01-09T13:04:47\",
+    \"stop_bleeding_at\": \"2026-01-09T13:04:47\",
+    \"incident_date\": \"2026-01-09T13:04:47\",
+    \"entry_date_tech_risk\": \"2026-01-09T13:04:47\",
     \"reported_by\": \"architecto\",
     \"involved_third_party\": \"architecto\",
     \"potential_fund_loss\": 4326.41688,
@@ -453,10 +494,11 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/v1/incidents"
+    "https://localhost:8000/api/v1/incidents"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -464,15 +506,16 @@ const headers = {
 let body = {
     "title": "b",
     "summary": "architecto",
+    "no": "n",
     "root_cause": "architecto",
     "severity": "architecto",
-    "incident_type_id": "architecto",
+    "incident_type": "Non-tech",
     "goc_upload": true,
     "teams_upload": false,
-    "discovered_at": "2025-12-16T04:16:38",
-    "stop_bleeding_at": "2025-12-16T04:16:38",
-    "incident_date": "2025-12-16T04:16:38",
-    "entry_date_tech_risk": "2025-12-16T04:16:38",
+    "discovered_at": "2026-01-09T13:04:47",
+    "stop_bleeding_at": "2026-01-09T13:04:47",
+    "incident_date": "2026-01-09T13:04:47",
+    "entry_date_tech_risk": "2026-01-09T13:04:47",
     "reported_by": "architecto",
     "involved_third_party": "architecto",
     "potential_fund_loss": 4326.41688,
@@ -508,7 +551,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-POSTapi-v1-incidents" data-method="POST"
       data-path="api/v1/incidents"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -539,8 +582,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="POSTapi-v1-incidents"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="POSTapi-v1-incidents"
@@ -552,6 +608,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="POSTapi-v1-incidents"
@@ -565,6 +622,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>title</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="title"                data-endpoint="POSTapi-v1-incidents"
                value="b"
@@ -576,6 +634,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>summary</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="summary"                data-endpoint="POSTapi-v1-incidents"
                value="architecto"
@@ -584,9 +643,22 @@ You can check the Dev Tools console for debugging information.</code></pre>
 <p>Example: <code>architecto</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
+            <b style="line-height: 2;"><code>no</code></b>&nbsp;&nbsp;
+<small>string</small>&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="no"                data-endpoint="POSTapi-v1-incidents"
+               value="n"
+               data-component="body">
+    <br>
+<p>Must not be greater than 255 characters. Example: <code>n</code></p>
+        </div>
+                <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>root_cause</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="root_cause"                data-endpoint="POSTapi-v1-incidents"
                value="architecto"
@@ -598,6 +670,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>severity</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="severity"                data-endpoint="POSTapi-v1-incidents"
                value="architecto"
@@ -606,20 +679,24 @@ You can check the Dev Tools console for debugging information.</code></pre>
 <p>Example: <code>architecto</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
-            <b style="line-height: 2;"><code>incident_type_id</code></b>&nbsp;&nbsp;
+            <b style="line-height: 2;"><code>incident_type</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
-                              name="incident_type_id"                data-endpoint="POSTapi-v1-incidents"
-               value="architecto"
+                              name="incident_type"                data-endpoint="POSTapi-v1-incidents"
+               value="Non-tech"
                data-component="body">
     <br>
-<p>The <code>id</code> of an existing record in the incident_types table. Example: <code>architecto</code></p>
+<p>Example: <code>Non-tech</code></p>
+Must be one of:
+<ul style="list-style-type: square;"><li><code>Tech</code></li> <li><code>Non-tech</code></li></ul>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>goc_upload</code></b>&nbsp;&nbsp;
 <small>boolean</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <label data-endpoint="POSTapi-v1-incidents" style="display: none">
             <input type="radio" name="goc_upload"
                    value="true"
@@ -641,6 +718,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>teams_upload</code></b>&nbsp;&nbsp;
 <small>boolean</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <label data-endpoint="POSTapi-v1-incidents" style="display: none">
             <input type="radio" name="teams_upload"
                    value="true"
@@ -662,50 +740,55 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>discovered_at</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="discovered_at"                data-endpoint="POSTapi-v1-incidents"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>stop_bleeding_at</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="stop_bleeding_at"                data-endpoint="POSTapi-v1-incidents"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>incident_date</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="incident_date"                data-endpoint="POSTapi-v1-incidents"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>entry_date_tech_risk</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="entry_date_tech_risk"                data-endpoint="POSTapi-v1-incidents"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>pic_id</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="pic_id"                data-endpoint="POSTapi-v1-incidents"
                value=""
@@ -717,6 +800,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reported_by</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="reported_by"                data-endpoint="POSTapi-v1-incidents"
                value="architecto"
@@ -728,6 +812,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>involved_third_party</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="involved_third_party"                data-endpoint="POSTapi-v1-incidents"
                value="architecto"
@@ -739,6 +824,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>potential_fund_loss</code></b>&nbsp;&nbsp;
 <small>number</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="potential_fund_loss"                data-endpoint="POSTapi-v1-incidents"
                value="4326.41688"
@@ -750,6 +836,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>fund_loss</code></b>&nbsp;&nbsp;
 <small>number</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="fund_loss"                data-endpoint="POSTapi-v1-incidents"
                value="4326.41688"
@@ -761,6 +848,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>people_caused</code></b>&nbsp;&nbsp;
 <small>object</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="people_caused"                data-endpoint="POSTapi-v1-incidents"
                value=""
@@ -772,6 +860,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>checker</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="checker"                data-endpoint="POSTapi-v1-incidents"
                value="architecto"
@@ -783,6 +872,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>maker</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="maker"                data-endpoint="POSTapi-v1-incidents"
                value="architecto"
@@ -795,6 +885,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-GETapi-v1-incidents--id-">GET api/v1/incidents/{id}</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -805,17 +896,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request GET \
-    --get "http://127.0.0.1:8000/api/v1/incidents/1" \
+    --get "https://localhost:8000/api/v1/incidents/1" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/v1/incidents/1"
+    "https://localhost:8000/api/v1/incidents/1"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -862,7 +955,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-GETapi-v1-incidents--id-" data-method="GET"
       data-path="api/v1/incidents/{id}"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -893,8 +986,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="GETapi-v1-incidents--id-"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="GETapi-v1-incidents--id-"
@@ -906,6 +1012,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="GETapi-v1-incidents--id-"
@@ -919,6 +1026,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="id"                data-endpoint="GETapi-v1-incidents--id-"
                value="1"
@@ -931,6 +1039,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-PUTapi-v1-incidents--id-">PUT api/v1/incidents/{id}</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -941,7 +1050,8 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request PUT \
-    "http://127.0.0.1:8000/api/v1/incidents/1" \
+    "https://localhost:8000/api/v1/incidents/1" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json" \
     --data "{
@@ -949,12 +1059,13 @@ You can check the Dev Tools console for debugging information.</code></pre>
     \"summary\": \"architecto\",
     \"root_cause\": \"architecto\",
     \"severity\": \"architecto\",
+    \"incident_type\": \"Tech\",
     \"goc_upload\": true,
-    \"teams_upload\": false,
-    \"discovered_at\": \"2025-12-16T04:16:38\",
-    \"stop_bleeding_at\": \"2025-12-16T04:16:38\",
-    \"incident_date\": \"2025-12-16T04:16:38\",
-    \"entry_date_tech_risk\": \"2025-12-16T04:16:38\",
+    \"teams_upload\": true,
+    \"discovered_at\": \"2026-01-09T13:04:47\",
+    \"stop_bleeding_at\": \"2026-01-09T13:04:47\",
+    \"incident_date\": \"2026-01-09T13:04:47\",
+    \"entry_date_tech_risk\": \"2026-01-09T13:04:47\",
     \"reported_by\": \"architecto\",
     \"involved_third_party\": \"architecto\",
     \"potential_fund_loss\": 4326.41688,
@@ -967,10 +1078,11 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/v1/incidents/1"
+    "https://localhost:8000/api/v1/incidents/1"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -980,12 +1092,13 @@ let body = {
     "summary": "architecto",
     "root_cause": "architecto",
     "severity": "architecto",
+    "incident_type": "Tech",
     "goc_upload": true,
-    "teams_upload": false,
-    "discovered_at": "2025-12-16T04:16:38",
-    "stop_bleeding_at": "2025-12-16T04:16:38",
-    "incident_date": "2025-12-16T04:16:38",
-    "entry_date_tech_risk": "2025-12-16T04:16:38",
+    "teams_upload": true,
+    "discovered_at": "2026-01-09T13:04:47",
+    "stop_bleeding_at": "2026-01-09T13:04:47",
+    "incident_date": "2026-01-09T13:04:47",
+    "entry_date_tech_risk": "2026-01-09T13:04:47",
     "reported_by": "architecto",
     "involved_third_party": "architecto",
     "potential_fund_loss": 4326.41688,
@@ -1021,7 +1134,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-PUTapi-v1-incidents--id-" data-method="PUT"
       data-path="api/v1/incidents/{id}"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -1056,8 +1169,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="PUTapi-v1-incidents--id-"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="PUTapi-v1-incidents--id-"
@@ -1069,6 +1195,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="PUTapi-v1-incidents--id-"
@@ -1082,6 +1209,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="id"                data-endpoint="PUTapi-v1-incidents--id-"
                value="1"
@@ -1094,6 +1222,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>title</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="title"                data-endpoint="PUTapi-v1-incidents--id-"
                value="b"
@@ -1105,6 +1234,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>summary</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="summary"                data-endpoint="PUTapi-v1-incidents--id-"
                value="architecto"
@@ -1113,9 +1243,22 @@ You can check the Dev Tools console for debugging information.</code></pre>
 <p>Example: <code>architecto</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
+            <b style="line-height: 2;"><code>no</code></b>&nbsp;&nbsp;
+<small>string</small>&nbsp;
+<i>optional</i> &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="no"                data-endpoint="PUTapi-v1-incidents--id-"
+               value=""
+               data-component="body">
+    <br>
+
+        </div>
+                <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>root_cause</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="root_cause"                data-endpoint="PUTapi-v1-incidents--id-"
                value="architecto"
@@ -1127,6 +1270,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>severity</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="severity"                data-endpoint="PUTapi-v1-incidents--id-"
                value="architecto"
@@ -1135,20 +1279,24 @@ You can check the Dev Tools console for debugging information.</code></pre>
 <p>Example: <code>architecto</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
-            <b style="line-height: 2;"><code>incident_type_id</code></b>&nbsp;&nbsp;
+            <b style="line-height: 2;"><code>incident_type</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
-                              name="incident_type_id"                data-endpoint="PUTapi-v1-incidents--id-"
-               value=""
+                              name="incident_type"                data-endpoint="PUTapi-v1-incidents--id-"
+               value="Tech"
                data-component="body">
     <br>
-<p>The <code>id</code> of an existing record in the incident_types table.</p>
+<p>Example: <code>Tech</code></p>
+Must be one of:
+<ul style="list-style-type: square;"><li><code>Tech</code></li> <li><code>Non-tech</code></li></ul>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>goc_upload</code></b>&nbsp;&nbsp;
 <small>boolean</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <label data-endpoint="PUTapi-v1-incidents--id-" style="display: none">
             <input type="radio" name="goc_upload"
                    value="true"
@@ -1170,6 +1318,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>teams_upload</code></b>&nbsp;&nbsp;
 <small>boolean</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <label data-endpoint="PUTapi-v1-incidents--id-" style="display: none">
             <input type="radio" name="teams_upload"
                    value="true"
@@ -1185,56 +1334,61 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <code>false</code>
         </label>
     <br>
-<p>Example: <code>false</code></p>
+<p>Example: <code>true</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>discovered_at</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="discovered_at"                data-endpoint="PUTapi-v1-incidents--id-"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>stop_bleeding_at</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="stop_bleeding_at"                data-endpoint="PUTapi-v1-incidents--id-"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>incident_date</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="incident_date"                data-endpoint="PUTapi-v1-incidents--id-"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>entry_date_tech_risk</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="entry_date_tech_risk"                data-endpoint="PUTapi-v1-incidents--id-"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>pic_id</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="pic_id"                data-endpoint="PUTapi-v1-incidents--id-"
                value=""
@@ -1246,6 +1400,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reported_by</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="reported_by"                data-endpoint="PUTapi-v1-incidents--id-"
                value="architecto"
@@ -1257,6 +1412,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>involved_third_party</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="involved_third_party"                data-endpoint="PUTapi-v1-incidents--id-"
                value="architecto"
@@ -1268,6 +1424,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>potential_fund_loss</code></b>&nbsp;&nbsp;
 <small>number</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="potential_fund_loss"                data-endpoint="PUTapi-v1-incidents--id-"
                value="4326.41688"
@@ -1279,6 +1436,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>fund_loss</code></b>&nbsp;&nbsp;
 <small>number</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="fund_loss"                data-endpoint="PUTapi-v1-incidents--id-"
                value="4326.41688"
@@ -1290,6 +1448,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>people_caused</code></b>&nbsp;&nbsp;
 <small>object</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="people_caused"                data-endpoint="PUTapi-v1-incidents--id-"
                value=""
@@ -1301,6 +1460,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>checker</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="checker"                data-endpoint="PUTapi-v1-incidents--id-"
                value="architecto"
@@ -1312,6 +1472,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>maker</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="maker"                data-endpoint="PUTapi-v1-incidents--id-"
                value="architecto"
@@ -1324,6 +1485,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-DELETEapi-v1-incidents--id-">DELETE api/v1/incidents/{id}</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -1334,17 +1496,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request DELETE \
-    "http://127.0.0.1:8000/api/v1/incidents/1" \
+    "https://localhost:8000/api/v1/incidents/1" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/v1/incidents/1"
+    "https://localhost:8000/api/v1/incidents/1"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -1375,7 +1539,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-DELETEapi-v1-incidents--id-" data-method="DELETE"
       data-path="api/v1/incidents/{id}"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -1406,8 +1570,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="DELETEapi-v1-incidents--id-"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="DELETEapi-v1-incidents--id-"
@@ -1419,6 +1596,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="DELETEapi-v1-incidents--id-"
@@ -1432,6 +1610,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="id"                data-endpoint="DELETEapi-v1-incidents--id-"
                value="1"
@@ -1444,6 +1623,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-GETapi-v1-labels">GET api/v1/labels</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -1454,17 +1634,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request GET \
-    --get "http://127.0.0.1:8000/api/v1/labels" \
+    --get "https://localhost:8000/api/v1/labels" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/v1/labels"
+    "https://localhost:8000/api/v1/labels"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -1511,7 +1693,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-GETapi-v1-labels" data-method="GET"
       data-path="api/v1/labels"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -1542,8 +1724,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="GETapi-v1-labels"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="GETapi-v1-labels"
@@ -1555,6 +1750,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="GETapi-v1-labels"
@@ -1568,6 +1764,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-GETapi-v1-incident-types">GET api/v1/incident-types</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -1578,17 +1775,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request GET \
-    --get "http://127.0.0.1:8000/api/v1/incident-types" \
+    --get "https://localhost:8000/api/v1/incident-types" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/v1/incident-types"
+    "https://localhost:8000/api/v1/incident-types"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -1635,7 +1834,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-GETapi-v1-incident-types" data-method="GET"
       data-path="api/v1/incident-types"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -1666,8 +1865,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="GETapi-v1-incident-types"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="GETapi-v1-incident-types"
@@ -1679,6 +1891,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="GETapi-v1-incident-types"
@@ -1692,6 +1905,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-GETapi-incidents--incident_id--action-improvements">GET api/incidents/{incident_id}/action-improvements</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -1702,17 +1916,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request GET \
-    --get "http://127.0.0.1:8000/api/incidents/1/action-improvements" \
+    --get "https://localhost:8000/api/incidents/1/action-improvements" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/incidents/1/action-improvements"
+    "https://localhost:8000/api/incidents/1/action-improvements"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -1759,7 +1975,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-GETapi-incidents--incident_id--action-improvements" data-method="GET"
       data-path="api/incidents/{incident_id}/action-improvements"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -1790,8 +2006,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="GETapi-incidents--incident_id--action-improvements"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="GETapi-incidents--incident_id--action-improvements"
@@ -1803,6 +2032,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="GETapi-incidents--incident_id--action-improvements"
@@ -1816,6 +2046,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>incident_id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="incident_id"                data-endpoint="GETapi-incidents--incident_id--action-improvements"
                value="1"
@@ -1828,6 +2059,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-POSTapi-incidents--incident_id--action-improvements">POST api/incidents/{incident_id}/action-improvements</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -1838,27 +2070,29 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request POST \
-    "http://127.0.0.1:8000/api/incidents/1/action-improvements" \
+    "https://localhost:8000/api/incidents/1/action-improvements" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json" \
     --data "{
     \"title\": \"b\",
     \"detail\": \"architecto\",
-    \"due_date\": \"2025-12-16T04:16:38\",
+    \"due_date\": \"2026-01-09T13:04:47\",
     \"pic_email\": [],
     \"reminder\": true,
     \"reminder_frequency\": \"architecto\",
-    \"status\": \"pending\"
+    \"status\": \"done\"
 }"
 </code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/incidents/1/action-improvements"
+    "https://localhost:8000/api/incidents/1/action-improvements"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -1866,11 +2100,11 @@ const headers = {
 let body = {
     "title": "b",
     "detail": "architecto",
-    "due_date": "2025-12-16T04:16:38",
+    "due_date": "2026-01-09T13:04:47",
     "pic_email": [],
     "reminder": true,
     "reminder_frequency": "architecto",
-    "status": "pending"
+    "status": "done"
 };
 
 fetch(url, {
@@ -1900,7 +2134,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-POSTapi-incidents--incident_id--action-improvements" data-method="POST"
       data-path="api/incidents/{incident_id}/action-improvements"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -1931,8 +2165,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="POSTapi-incidents--incident_id--action-improvements"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
@@ -1944,6 +2191,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
@@ -1957,6 +2205,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>incident_id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="incident_id"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
                value="1"
@@ -1969,6 +2218,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>title</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="title"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
                value="b"
@@ -1979,6 +2229,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>detail</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="detail"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
@@ -1991,16 +2242,18 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>due_date</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="due_date"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>pic_email</code></b>&nbsp;&nbsp;
 <small>object</small>&nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="pic_email"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
@@ -2013,6 +2266,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reminder</code></b>&nbsp;&nbsp;
 <small>boolean</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <label data-endpoint="POSTapi-incidents--incident_id--action-improvements" style="display: none">
             <input type="radio" name="reminder"
                    value="true"
@@ -2034,6 +2288,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reminder_frequency</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="reminder_frequency"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
                value="architecto"
@@ -2045,12 +2300,13 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>status</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="status"                data-endpoint="POSTapi-incidents--incident_id--action-improvements"
-               value="pending"
+               value="done"
                data-component="body">
     <br>
-<p>Example: <code>pending</code></p>
+<p>Example: <code>done</code></p>
 Must be one of:
 <ul style="list-style-type: square;"><li><code>pending</code></li> <li><code>done</code></li></ul>
         </div>
@@ -2059,6 +2315,7 @@ Must be one of:
                     <h2 id="endpoints-GETapi-action-improvements--action_improvement_id-">GET api/action-improvements/{action_improvement_id}</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -2069,17 +2326,19 @@ Must be one of:
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request GET \
-    --get "http://127.0.0.1:8000/api/action-improvements/16" \
+    --get "https://localhost:8000/api/action-improvements/16" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/action-improvements/16"
+    "https://localhost:8000/api/action-improvements/16"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -2126,7 +2385,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-GETapi-action-improvements--action_improvement_id-" data-method="GET"
       data-path="api/action-improvements/{action_improvement_id}"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -2157,8 +2416,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="GETapi-action-improvements--action_improvement_id-"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="GETapi-action-improvements--action_improvement_id-"
@@ -2170,6 +2442,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="GETapi-action-improvements--action_improvement_id-"
@@ -2183,6 +2456,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>action_improvement_id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="action_improvement_id"                data-endpoint="GETapi-action-improvements--action_improvement_id-"
                value="16"
@@ -2195,6 +2469,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <h2 id="endpoints-PUTapi-action-improvements--action_improvement_id-">PUT api/action-improvements/{action_improvement_id}</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -2205,26 +2480,28 @@ You can check the Dev Tools console for debugging information.</code></pre>
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request PUT \
-    "http://127.0.0.1:8000/api/action-improvements/16" \
+    "https://localhost:8000/api/action-improvements/16" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json" \
     --data "{
     \"title\": \"b\",
     \"detail\": \"architecto\",
-    \"due_date\": \"2025-12-16T04:16:38\",
+    \"due_date\": \"2026-01-09T13:04:47\",
     \"reminder\": true,
     \"reminder_frequency\": \"architecto\",
-    \"status\": \"pending\"
+    \"status\": \"done\"
 }"
 </code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/action-improvements/16"
+    "https://localhost:8000/api/action-improvements/16"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -2232,10 +2509,10 @@ const headers = {
 let body = {
     "title": "b",
     "detail": "architecto",
-    "due_date": "2025-12-16T04:16:38",
+    "due_date": "2026-01-09T13:04:47",
     "reminder": true,
     "reminder_frequency": "architecto",
-    "status": "pending"
+    "status": "done"
 };
 
 fetch(url, {
@@ -2265,7 +2542,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-PUTapi-action-improvements--action_improvement_id-" data-method="PUT"
       data-path="api/action-improvements/{action_improvement_id}"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -2296,8 +2573,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="PUTapi-action-improvements--action_improvement_id-"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
@@ -2309,6 +2599,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
@@ -2322,6 +2613,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>action_improvement_id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="action_improvement_id"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
                value="16"
@@ -2334,6 +2626,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>title</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="title"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
                value="b"
@@ -2345,6 +2638,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>detail</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="detail"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
                value="architecto"
@@ -2356,17 +2650,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>due_date</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="due_date"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>pic_email</code></b>&nbsp;&nbsp;
 <small>object</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="pic_email"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
                value=""
@@ -2378,6 +2674,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reminder</code></b>&nbsp;&nbsp;
 <small>boolean</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <label data-endpoint="PUTapi-action-improvements--action_improvement_id-" style="display: none">
             <input type="radio" name="reminder"
                    value="true"
@@ -2399,6 +2696,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reminder_frequency</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="reminder_frequency"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
                value="architecto"
@@ -2410,12 +2708,13 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>status</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="status"                data-endpoint="PUTapi-action-improvements--action_improvement_id-"
-               value="pending"
+               value="done"
                data-component="body">
     <br>
-<p>Example: <code>pending</code></p>
+<p>Example: <code>done</code></p>
 Must be one of:
 <ul style="list-style-type: square;"><li><code>pending</code></li> <li><code>done</code></li></ul>
         </div>
@@ -2424,6 +2723,7 @@ Must be one of:
                     <h2 id="endpoints-PATCHapi-action-improvements--action_improvement_id-">PATCH api/action-improvements/{action_improvement_id}</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -2434,26 +2734,28 @@ Must be one of:
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request PATCH \
-    "http://127.0.0.1:8000/api/action-improvements/16" \
+    "https://localhost:8000/api/action-improvements/16" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json" \
     --data "{
     \"title\": \"b\",
     \"detail\": \"architecto\",
-    \"due_date\": \"2025-12-16T04:16:38\",
+    \"due_date\": \"2026-01-09T13:04:47\",
     \"reminder\": true,
     \"reminder_frequency\": \"architecto\",
-    \"status\": \"done\"
+    \"status\": \"pending\"
 }"
 </code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/action-improvements/16"
+    "https://localhost:8000/api/action-improvements/16"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -2461,10 +2763,10 @@ const headers = {
 let body = {
     "title": "b",
     "detail": "architecto",
-    "due_date": "2025-12-16T04:16:38",
+    "due_date": "2026-01-09T13:04:47",
     "reminder": true,
     "reminder_frequency": "architecto",
-    "status": "done"
+    "status": "pending"
 };
 
 fetch(url, {
@@ -2494,7 +2796,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-PATCHapi-action-improvements--action_improvement_id-" data-method="PATCH"
       data-path="api/action-improvements/{action_improvement_id}"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -2525,8 +2827,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
@@ -2538,6 +2853,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                                 <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
@@ -2551,6 +2867,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>action_improvement_id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
  &nbsp;
+ &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="action_improvement_id"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
                value="16"
@@ -2563,6 +2880,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>title</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="title"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
                value="b"
@@ -2574,6 +2892,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>detail</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="detail"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
                value="architecto"
@@ -2585,17 +2904,19 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>due_date</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="due_date"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
-               value="2025-12-16T04:16:38"
+               value="2026-01-09T13:04:47"
                data-component="body">
     <br>
-<p>Must be a valid date. Example: <code>2025-12-16T04:16:38</code></p>
+<p>Must be a valid date. Example: <code>2026-01-09T13:04:47</code></p>
         </div>
                 <div style=" padding-left: 28px;  clear: unset;">
             <b style="line-height: 2;"><code>pic_email</code></b>&nbsp;&nbsp;
 <small>object</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="pic_email"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
                value=""
@@ -2607,6 +2928,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reminder</code></b>&nbsp;&nbsp;
 <small>boolean</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <label data-endpoint="PATCHapi-action-improvements--action_improvement_id-" style="display: none">
             <input type="radio" name="reminder"
                    value="true"
@@ -2628,6 +2950,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>reminder_frequency</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="reminder_frequency"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
                value="architecto"
@@ -2639,12 +2962,13 @@ You can check the Dev Tools console for debugging information.</code></pre>
             <b style="line-height: 2;"><code>status</code></b>&nbsp;&nbsp;
 <small>string</small>&nbsp;
 <i>optional</i> &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="status"                data-endpoint="PATCHapi-action-improvements--action_improvement_id-"
-               value="done"
+               value="pending"
                data-component="body">
     <br>
-<p>Example: <code>done</code></p>
+<p>Example: <code>pending</code></p>
 Must be one of:
 <ul style="list-style-type: square;"><li><code>pending</code></li> <li><code>done</code></li></ul>
         </div>
@@ -2653,6 +2977,7 @@ Must be one of:
                     <h2 id="endpoints-DELETEapi-action-improvements--action_improvement_id-">DELETE api/action-improvements/{action_improvement_id}</h2>
 
 <p>
+<small class="badge badge-darkred">requires authentication</small>
 </p>
 
 
@@ -2663,17 +2988,19 @@ Must be one of:
 
 <div class="bash-example">
     <pre><code class="language-bash">curl --request DELETE \
-    "http://127.0.0.1:8000/api/action-improvements/16" \
+    "https://localhost:8000/api/action-improvements/16" \
+    --header "Authorization: Bearer {YOUR_AUTH_KEY}" \
     --header "Content-Type: application/json" \
     --header "Accept: application/json"</code></pre></div>
 
 
 <div class="javascript-example">
     <pre><code class="language-javascript">const url = new URL(
-    "http://127.0.0.1:8000/api/action-improvements/16"
+    "https://localhost:8000/api/action-improvements/16"
 );
 
 const headers = {
+    "Authorization": "Bearer {YOUR_AUTH_KEY}",
     "Content-Type": "application/json",
     "Accept": "application/json",
 };
@@ -2704,7 +3031,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
 </span>
 <form id="form-DELETEapi-action-improvements--action_improvement_id-" data-method="DELETE"
       data-path="api/action-improvements/{action_improvement_id}"
-      data-authed="0"
+      data-authed="1"
       data-hasfiles="0"
       data-isarraybody="0"
       autocomplete="off"
@@ -2735,8 +3062,21 @@ You can check the Dev Tools console for debugging information.</code></pre>
         </p>
                 <h4 class="fancy-heading-panel"><b>Headers</b></h4>
                                 <div style="padding-left: 28px; clear: unset;">
+                <b style="line-height: 2;"><code>Authorization</code></b>&nbsp;&nbsp;
+&nbsp;
+ &nbsp;
+ &nbsp;
+                <input type="text" style="display: none"
+                              name="Authorization" class="auth-value"               data-endpoint="DELETEapi-action-improvements--action_improvement_id-"
+               value="Bearer {YOUR_AUTH_KEY}"
+               data-component="header">
+    <br>
+<p>Example: <code>Bearer {YOUR_AUTH_KEY}</code></p>
+            </div>
+                                <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>Content-Type</code></b>&nbsp;&nbsp;
 &nbsp;
+ &nbsp;
  &nbsp;
                 <input type="text" style="display: none"
                               name="Content-Type"                data-endpoint="DELETEapi-action-improvements--action_improvement_id-"
@@ -2749,6 +3089,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                 <b style="line-height: 2;"><code>Accept</code></b>&nbsp;&nbsp;
 &nbsp;
  &nbsp;
+ &nbsp;
                 <input type="text" style="display: none"
                               name="Accept"                data-endpoint="DELETEapi-action-improvements--action_improvement_id-"
                value="application/json"
@@ -2760,6 +3101,7 @@ You can check the Dev Tools console for debugging information.</code></pre>
                     <div style="padding-left: 28px; clear: unset;">
                 <b style="line-height: 2;"><code>action_improvement_id</code></b>&nbsp;&nbsp;
 <small>integer</small>&nbsp;
+ &nbsp;
  &nbsp;
                 <input type="number" style="display: none"
                step="any"               name="action_improvement_id"                data-endpoint="DELETEapi-action-improvements--action_improvement_id-"

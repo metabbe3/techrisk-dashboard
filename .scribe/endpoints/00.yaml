@@ -2,20 +2,22 @@ name: Endpoints
 description: ''
 endpoints:
   -
+    custom: []
     httpMethods:
       - POST
     uri: api/login
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters: []
@@ -24,6 +26,7 @@ endpoints:
     cleanQueryParameters: []
     bodyParameters:
       email:
+        custom: []
         name: email
         description: 'Must be a valid email address.'
         required: true
@@ -32,8 +35,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       password:
+        custom: []
         name: password
         description: ''
         required: true
@@ -42,33 +46,37 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
     cleanBodyParameters:
       email: gbailey@example.net
       password: architecto
     fileParameters: []
     responses: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - GET
     uri: api/v1/incidents
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters: []
@@ -80,6 +88,7 @@ endpoints:
     fileParameters: []
     responses:
       -
+        custom: []
         status: 401
         content: '{"message":"Unauthenticated."}'
         headers:
@@ -87,28 +96,31 @@ endpoints:
           content-type: application/json
           access-control-allow-origin: '*'
         description: null
-        custom: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - POST
     uri: api/v1/incidents
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters: []
@@ -117,6 +129,7 @@ endpoints:
     cleanQueryParameters: []
     bodyParameters:
       title:
+        custom: []
         name: title
         description: 'Must not be greater than 255 characters.'
         required: true
@@ -125,8 +138,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       summary:
+        custom: []
         name: summary
         description: ''
         required: true
@@ -135,8 +149,20 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
+        deprecated: false
+      'no':
         custom: []
+        name: 'no'
+        description: 'Must not be greater than 255 characters.'
+        required: true
+        example: 'n'
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
       root_cause:
+        custom: []
         name: root_cause
         description: ''
         required: false
@@ -145,8 +171,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       severity:
+        custom: []
         name: severity
         description: ''
         required: true
@@ -155,18 +182,22 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
+        deprecated: false
+      incident_type:
         custom: []
-      incident_type_id:
-        name: incident_type_id
-        description: 'The <code>id</code> of an existing record in the incident_types table.'
+        name: incident_type
+        description: ''
         required: true
-        example: architecto
+        example: Non-tech
         type: string
-        enumValues: []
+        enumValues:
+          - Tech
+          - Non-tech
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       goc_upload:
+        custom: []
         name: goc_upload
         description: ''
         required: false
@@ -175,8 +206,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       teams_upload:
+        custom: []
         name: teams_upload
         description: ''
         required: false
@@ -185,48 +217,53 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       discovered_at:
+        custom: []
         name: discovered_at
         description: 'Must be a valid date.'
         required: false
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       stop_bleeding_at:
+        custom: []
         name: stop_bleeding_at
         description: 'Must be a valid date.'
         required: false
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       incident_date:
+        custom: []
         name: incident_date
         description: 'Must be a valid date.'
         required: true
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       entry_date_tech_risk:
+        custom: []
         name: entry_date_tech_risk
         description: 'Must be a valid date.'
         required: true
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       pic_id:
+        custom: []
         name: pic_id
         description: 'The <code>id</code> of an existing record in the users table.'
         required: false
@@ -235,8 +272,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       reported_by:
+        custom: []
         name: reported_by
         description: ''
         required: false
@@ -245,8 +283,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       involved_third_party:
+        custom: []
         name: involved_third_party
         description: ''
         required: false
@@ -255,8 +294,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       potential_fund_loss:
+        custom: []
         name: potential_fund_loss
         description: ''
         required: false
@@ -265,8 +305,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       fund_loss:
+        custom: []
         name: fund_loss
         description: ''
         required: false
@@ -275,8 +316,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       people_caused:
+        custom: []
         name: people_caused
         description: ''
         required: false
@@ -285,8 +327,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       checker:
+        custom: []
         name: checker
         description: ''
         required: false
@@ -295,8 +338,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       maker:
+        custom: []
         name: maker
         description: ''
         required: false
@@ -305,19 +349,20 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
     cleanBodyParameters:
       title: b
       summary: architecto
+      'no': 'n'
       root_cause: architecto
       severity: architecto
-      incident_type_id: architecto
+      incident_type: Non-tech
       goc_upload: true
       teams_upload: false
-      discovered_at: '2025-12-16T04:16:38'
-      stop_bleeding_at: '2025-12-16T04:16:38'
-      incident_date: '2025-12-16T04:16:38'
-      entry_date_tech_risk: '2025-12-16T04:16:38'
+      discovered_at: '2026-01-09T13:04:47'
+      stop_bleeding_at: '2026-01-09T13:04:47'
+      incident_date: '2026-01-09T13:04:47'
+      entry_date_tech_risk: '2026-01-09T13:04:47'
       reported_by: architecto
       involved_third_party: architecto
       potential_fund_loss: 4326.41688
@@ -327,30 +372,35 @@ endpoints:
     fileParameters: []
     responses: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - GET
     uri: 'api/v1/incidents/{id}'
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters:
       id:
+        custom: []
         name: id
         description: 'The ID of the incident.'
         required: true
@@ -359,7 +409,7 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
     cleanUrlParameters:
       id: 1
     queryParameters: []
@@ -369,6 +419,7 @@ endpoints:
     fileParameters: []
     responses:
       -
+        custom: []
         status: 401
         content: '{"message":"Unauthenticated."}'
         headers:
@@ -376,33 +427,37 @@ endpoints:
           content-type: application/json
           access-control-allow-origin: '*'
         description: null
-        custom: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - PUT
       - PATCH
     uri: 'api/v1/incidents/{id}'
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters:
       id:
+        custom: []
         name: id
         description: 'The ID of the incident.'
         required: true
@@ -411,13 +466,14 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
     cleanUrlParameters:
       id: 1
     queryParameters: []
     cleanQueryParameters: []
     bodyParameters:
       title:
+        custom: []
         name: title
         description: 'Must not be greater than 255 characters.'
         required: false
@@ -426,8 +482,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       summary:
+        custom: []
         name: summary
         description: ''
         required: false
@@ -436,8 +493,20 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
+        deprecated: false
+      'no':
         custom: []
+        name: 'no'
+        description: ''
+        required: false
+        example: null
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
       root_cause:
+        custom: []
         name: root_cause
         description: ''
         required: false
@@ -446,8 +515,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       severity:
+        custom: []
         name: severity
         description: ''
         required: false
@@ -456,18 +526,22 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
+        deprecated: false
+      incident_type:
         custom: []
-      incident_type_id:
-        name: incident_type_id
-        description: 'The <code>id</code> of an existing record in the incident_types table.'
+        name: incident_type
+        description: ''
         required: false
-        example: null
+        example: Tech
         type: string
-        enumValues: []
+        enumValues:
+          - Tech
+          - Non-tech
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       goc_upload:
+        custom: []
         name: goc_upload
         description: ''
         required: false
@@ -476,58 +550,64 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       teams_upload:
+        custom: []
         name: teams_upload
         description: ''
         required: false
-        example: false
+        example: true
         type: boolean
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       discovered_at:
+        custom: []
         name: discovered_at
         description: 'Must be a valid date.'
         required: false
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       stop_bleeding_at:
+        custom: []
         name: stop_bleeding_at
         description: 'Must be a valid date.'
         required: false
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       incident_date:
+        custom: []
         name: incident_date
         description: 'Must be a valid date.'
         required: false
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       entry_date_tech_risk:
+        custom: []
         name: entry_date_tech_risk
         description: 'Must be a valid date.'
         required: false
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       pic_id:
+        custom: []
         name: pic_id
         description: 'The <code>id</code> of an existing record in the users table.'
         required: false
@@ -536,8 +616,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       reported_by:
+        custom: []
         name: reported_by
         description: ''
         required: false
@@ -546,8 +627,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       involved_third_party:
+        custom: []
         name: involved_third_party
         description: ''
         required: false
@@ -556,8 +638,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       potential_fund_loss:
+        custom: []
         name: potential_fund_loss
         description: ''
         required: false
@@ -566,8 +649,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       fund_loss:
+        custom: []
         name: fund_loss
         description: ''
         required: false
@@ -576,8 +660,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       people_caused:
+        custom: []
         name: people_caused
         description: ''
         required: false
@@ -586,8 +671,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       checker:
+        custom: []
         name: checker
         description: ''
         required: false
@@ -596,8 +682,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       maker:
+        custom: []
         name: maker
         description: ''
         required: false
@@ -606,18 +693,19 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
     cleanBodyParameters:
       title: b
       summary: architecto
       root_cause: architecto
       severity: architecto
+      incident_type: Tech
       goc_upload: true
-      teams_upload: false
-      discovered_at: '2025-12-16T04:16:38'
-      stop_bleeding_at: '2025-12-16T04:16:38'
-      incident_date: '2025-12-16T04:16:38'
-      entry_date_tech_risk: '2025-12-16T04:16:38'
+      teams_upload: true
+      discovered_at: '2026-01-09T13:04:47'
+      stop_bleeding_at: '2026-01-09T13:04:47'
+      incident_date: '2026-01-09T13:04:47'
+      entry_date_tech_risk: '2026-01-09T13:04:47'
       reported_by: architecto
       involved_third_party: architecto
       potential_fund_loss: 4326.41688
@@ -627,30 +715,35 @@ endpoints:
     fileParameters: []
     responses: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - DELETE
     uri: 'api/v1/incidents/{id}'
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters:
       id:
+        custom: []
         name: id
         description: 'The ID of the incident.'
         required: true
@@ -659,7 +752,7 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
     cleanUrlParameters:
       id: 1
     queryParameters: []
@@ -669,26 +762,30 @@ endpoints:
     fileParameters: []
     responses: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - GET
     uri: api/v1/labels
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters: []
@@ -700,6 +797,7 @@ endpoints:
     fileParameters: []
     responses:
       -
+        custom: []
         status: 401
         content: '{"message":"Unauthenticated."}'
         headers:
@@ -707,28 +805,31 @@ endpoints:
           content-type: application/json
           access-control-allow-origin: '*'
         description: null
-        custom: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - GET
     uri: api/v1/incident-types
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters: []
@@ -740,6 +841,7 @@ endpoints:
     fileParameters: []
     responses:
       -
+        custom: []
         status: 401
         content: '{"message":"Unauthenticated."}'
         headers:
@@ -747,32 +849,36 @@ endpoints:
           content-type: application/json
           access-control-allow-origin: '*'
         description: null
-        custom: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - GET
     uri: 'api/incidents/{incident_id}/action-improvements'
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters:
       incident_id:
+        custom: []
         name: incident_id
         description: 'The ID of the incident.'
         required: true
@@ -781,7 +887,7 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
     cleanUrlParameters:
       incident_id: 1
     queryParameters: []
@@ -791,6 +897,7 @@ endpoints:
     fileParameters: []
     responses:
       -
+        custom: []
         status: 401
         content: '{"message":"Unauthenticated."}'
         headers:
@@ -798,32 +905,36 @@ endpoints:
           content-type: application/json
           access-control-allow-origin: '*'
         description: null
-        custom: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
       - POST
     uri: 'api/incidents/{incident_id}/action-improvements'
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters:
       incident_id:
+        custom: []
         name: incident_id
         description: 'The ID of the incident.'
         required: true
@@ -832,13 +943,14 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
     cleanUrlParameters:
       incident_id: 1
     queryParameters: []
     cleanQueryParameters: []
     bodyParameters:
       title:
+        custom: []
         name: title
         description: 'Must not be greater than 255 characters.'
         required: true
@@ -847,8 +959,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       detail:
+        custom: []
         name: detail
         description: ''
         required: true
@@ -857,18 +970,20 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       due_date:
+        custom: []
         name: due_date
         description: 'Must be a valid date.'
         required: true
-        example: '2025-12-16T04:16:38'
+        example: '2026-01-09T13:04:47'
         type: string
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       pic_email:
+        custom: []
         name: pic_email
         description: ''
         required: true
@@ -877,8 +992,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       reminder:
+        custom: []
         name: reminder
         description: ''
         required: false
@@ -887,8 +1003,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
       reminder_frequency:
+        custom: []
         name: reminder_frequency
         description: ''
         required: false
@@ -897,300 +1014,9 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: true
-        custom: []
+        deprecated: false
       status:
-        name: status
-        description: ''
-        required: false
-        example: pending
-        type: string
-        enumValues:
-          - pending
-          - done
-        exampleWasSpecified: false
-        nullable: false
         custom: []
-    cleanBodyParameters:
-      title: b
-      detail: architecto
-      due_date: '2025-12-16T04:16:38'
-      pic_email: []
-      reminder: true
-      reminder_frequency: architecto
-      status: pending
-    fileParameters: []
-    responses: []
-    responseFields: []
-    auth: []
-    controller: null
-    method: null
-    route: null
-    custom: []
-  -
-    httpMethods:
-      - GET
-    uri: 'api/action-improvements/{action_improvement_id}'
-    metadata:
-      groupName: Endpoints
-      groupDescription: ''
-      subgroup: ''
-      subgroupDescription: ''
-      title: ''
-      description: ''
-      authenticated: false
-      deprecated: false
-      custom: []
-    headers:
-      Content-Type: application/json
-      Accept: application/json
-    urlParameters:
-      action_improvement_id:
-        name: action_improvement_id
-        description: 'The ID of the action improvement.'
-        required: true
-        example: 16
-        type: integer
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-    cleanUrlParameters:
-      action_improvement_id: 16
-    queryParameters: []
-    cleanQueryParameters: []
-    bodyParameters: []
-    cleanBodyParameters: []
-    fileParameters: []
-    responses:
-      -
-        status: 401
-        content: '{"message":"Unauthenticated."}'
-        headers:
-          cache-control: 'no-cache, private'
-          content-type: application/json
-          access-control-allow-origin: '*'
-        description: null
-        custom: []
-    responseFields: []
-    auth: []
-    controller: null
-    method: null
-    route: null
-    custom: []
-  -
-    httpMethods:
-      - PUT
-    uri: 'api/action-improvements/{action_improvement_id}'
-    metadata:
-      groupName: Endpoints
-      groupDescription: ''
-      subgroup: ''
-      subgroupDescription: ''
-      title: ''
-      description: ''
-      authenticated: false
-      deprecated: false
-      custom: []
-    headers:
-      Content-Type: application/json
-      Accept: application/json
-    urlParameters:
-      action_improvement_id:
-        name: action_improvement_id
-        description: 'The ID of the action improvement.'
-        required: true
-        example: 16
-        type: integer
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-    cleanUrlParameters:
-      action_improvement_id: 16
-    queryParameters: []
-    cleanQueryParameters: []
-    bodyParameters:
-      title:
-        name: title
-        description: 'Must not be greater than 255 characters.'
-        required: false
-        example: b
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      detail:
-        name: detail
-        description: ''
-        required: false
-        example: architecto
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      due_date:
-        name: due_date
-        description: 'Must be a valid date.'
-        required: false
-        example: '2025-12-16T04:16:38'
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      pic_email:
-        name: pic_email
-        description: ''
-        required: false
-        example: null
-        type: object
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      reminder:
-        name: reminder
-        description: ''
-        required: false
-        example: true
-        type: boolean
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      reminder_frequency:
-        name: reminder_frequency
-        description: ''
-        required: false
-        example: architecto
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: true
-        custom: []
-      status:
-        name: status
-        description: ''
-        required: false
-        example: pending
-        type: string
-        enumValues:
-          - pending
-          - done
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-    cleanBodyParameters:
-      title: b
-      detail: architecto
-      due_date: '2025-12-16T04:16:38'
-      reminder: true
-      reminder_frequency: architecto
-      status: pending
-    fileParameters: []
-    responses: []
-    responseFields: []
-    auth: []
-    controller: null
-    method: null
-    route: null
-    custom: []
-  -
-    httpMethods:
-      - PATCH
-    uri: 'api/action-improvements/{action_improvement_id}'
-    metadata:
-      groupName: Endpoints
-      groupDescription: ''
-      subgroup: ''
-      subgroupDescription: ''
-      title: ''
-      description: ''
-      authenticated: false
-      deprecated: false
-      custom: []
-    headers:
-      Content-Type: application/json
-      Accept: application/json
-    urlParameters:
-      action_improvement_id:
-        name: action_improvement_id
-        description: 'The ID of the action improvement.'
-        required: true
-        example: 16
-        type: integer
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-    cleanUrlParameters:
-      action_improvement_id: 16
-    queryParameters: []
-    cleanQueryParameters: []
-    bodyParameters:
-      title:
-        name: title
-        description: 'Must not be greater than 255 characters.'
-        required: false
-        example: b
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      detail:
-        name: detail
-        description: ''
-        required: false
-        example: architecto
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      due_date:
-        name: due_date
-        description: 'Must be a valid date.'
-        required: false
-        example: '2025-12-16T04:16:38'
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      pic_email:
-        name: pic_email
-        description: ''
-        required: false
-        example: null
-        type: object
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      reminder:
-        name: reminder
-        description: ''
-        required: false
-        example: true
-        type: boolean
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: false
-        custom: []
-      reminder_frequency:
-        name: reminder_frequency
-        description: ''
-        required: false
-        example: architecto
-        type: string
-        enumValues: []
-        exampleWasSpecified: false
-        nullable: true
-        custom: []
-      status:
         name: status
         description: ''
         required: false
@@ -1201,41 +1027,47 @@ endpoints:
           - done
         exampleWasSpecified: false
         nullable: false
-        custom: []
+        deprecated: false
     cleanBodyParameters:
       title: b
       detail: architecto
-      due_date: '2025-12-16T04:16:38'
+      due_date: '2026-01-09T13:04:47'
+      pic_email: []
       reminder: true
       reminder_frequency: architecto
       status: done
     fileParameters: []
     responses: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []
   -
+    custom: []
     httpMethods:
-      - DELETE
+      - GET
     uri: 'api/action-improvements/{action_improvement_id}'
     metadata:
+      custom: []
       groupName: Endpoints
       groupDescription: ''
       subgroup: ''
       subgroupDescription: ''
       title: ''
       description: ''
-      authenticated: false
+      authenticated: true
       deprecated: false
-      custom: []
     headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
       Content-Type: application/json
       Accept: application/json
     urlParameters:
       action_improvement_id:
+        custom: []
         name: action_improvement_id
         description: 'The ID of the action improvement.'
         required: true
@@ -1244,7 +1076,327 @@ endpoints:
         enumValues: []
         exampleWasSpecified: false
         nullable: false
+        deprecated: false
+    cleanUrlParameters:
+      action_improvement_id: 16
+    queryParameters: []
+    cleanQueryParameters: []
+    bodyParameters: []
+    cleanBodyParameters: []
+    fileParameters: []
+    responses:
+      -
         custom: []
+        status: 401
+        content: '{"message":"Unauthenticated."}'
+        headers:
+          cache-control: 'no-cache, private'
+          content-type: application/json
+          access-control-allow-origin: '*'
+        description: null
+    responseFields: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
+    controller: null
+    method: null
+    route: null
+  -
+    custom: []
+    httpMethods:
+      - PUT
+    uri: 'api/action-improvements/{action_improvement_id}'
+    metadata:
+      custom: []
+      groupName: Endpoints
+      groupDescription: ''
+      subgroup: ''
+      subgroupDescription: ''
+      title: ''
+      description: ''
+      authenticated: true
+      deprecated: false
+    headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
+      Content-Type: application/json
+      Accept: application/json
+    urlParameters:
+      action_improvement_id:
+        custom: []
+        name: action_improvement_id
+        description: 'The ID of the action improvement.'
+        required: true
+        example: 16
+        type: integer
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+    cleanUrlParameters:
+      action_improvement_id: 16
+    queryParameters: []
+    cleanQueryParameters: []
+    bodyParameters:
+      title:
+        custom: []
+        name: title
+        description: 'Must not be greater than 255 characters.'
+        required: false
+        example: b
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      detail:
+        custom: []
+        name: detail
+        description: ''
+        required: false
+        example: architecto
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      due_date:
+        custom: []
+        name: due_date
+        description: 'Must be a valid date.'
+        required: false
+        example: '2026-01-09T13:04:47'
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      pic_email:
+        custom: []
+        name: pic_email
+        description: ''
+        required: false
+        example: null
+        type: object
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      reminder:
+        custom: []
+        name: reminder
+        description: ''
+        required: false
+        example: true
+        type: boolean
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      reminder_frequency:
+        custom: []
+        name: reminder_frequency
+        description: ''
+        required: false
+        example: architecto
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: true
+        deprecated: false
+      status:
+        custom: []
+        name: status
+        description: ''
+        required: false
+        example: done
+        type: string
+        enumValues:
+          - pending
+          - done
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+    cleanBodyParameters:
+      title: b
+      detail: architecto
+      due_date: '2026-01-09T13:04:47'
+      reminder: true
+      reminder_frequency: architecto
+      status: done
+    fileParameters: []
+    responses: []
+    responseFields: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
+    controller: null
+    method: null
+    route: null
+  -
+    custom: []
+    httpMethods:
+      - PATCH
+    uri: 'api/action-improvements/{action_improvement_id}'
+    metadata:
+      custom: []
+      groupName: Endpoints
+      groupDescription: ''
+      subgroup: ''
+      subgroupDescription: ''
+      title: ''
+      description: ''
+      authenticated: true
+      deprecated: false
+    headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
+      Content-Type: application/json
+      Accept: application/json
+    urlParameters:
+      action_improvement_id:
+        custom: []
+        name: action_improvement_id
+        description: 'The ID of the action improvement.'
+        required: true
+        example: 16
+        type: integer
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+    cleanUrlParameters:
+      action_improvement_id: 16
+    queryParameters: []
+    cleanQueryParameters: []
+    bodyParameters:
+      title:
+        custom: []
+        name: title
+        description: 'Must not be greater than 255 characters.'
+        required: false
+        example: b
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      detail:
+        custom: []
+        name: detail
+        description: ''
+        required: false
+        example: architecto
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      due_date:
+        custom: []
+        name: due_date
+        description: 'Must be a valid date.'
+        required: false
+        example: '2026-01-09T13:04:47'
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      pic_email:
+        custom: []
+        name: pic_email
+        description: ''
+        required: false
+        example: null
+        type: object
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      reminder:
+        custom: []
+        name: reminder
+        description: ''
+        required: false
+        example: true
+        type: boolean
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+      reminder_frequency:
+        custom: []
+        name: reminder_frequency
+        description: ''
+        required: false
+        example: architecto
+        type: string
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: true
+        deprecated: false
+      status:
+        custom: []
+        name: status
+        description: ''
+        required: false
+        example: pending
+        type: string
+        enumValues:
+          - pending
+          - done
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
+    cleanBodyParameters:
+      title: b
+      detail: architecto
+      due_date: '2026-01-09T13:04:47'
+      reminder: true
+      reminder_frequency: architecto
+      status: pending
+    fileParameters: []
+    responses: []
+    responseFields: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
+    controller: null
+    method: null
+    route: null
+  -
+    custom: []
+    httpMethods:
+      - DELETE
+    uri: 'api/action-improvements/{action_improvement_id}'
+    metadata:
+      custom: []
+      groupName: Endpoints
+      groupDescription: ''
+      subgroup: ''
+      subgroupDescription: ''
+      title: ''
+      description: ''
+      authenticated: true
+      deprecated: false
+    headers:
+      Authorization: 'Bearer {YOUR_AUTH_KEY}'
+      Content-Type: application/json
+      Accept: application/json
+    urlParameters:
+      action_improvement_id:
+        custom: []
+        name: action_improvement_id
+        description: 'The ID of the action improvement.'
+        required: true
+        example: 16
+        type: integer
+        enumValues: []
+        exampleWasSpecified: false
+        nullable: false
+        deprecated: false
     cleanUrlParameters:
       action_improvement_id: 16
     queryParameters: []
@@ -1254,8 +1406,10 @@ endpoints:
     fileParameters: []
     responses: []
     responseFields: []
-    auth: []
+    auth:
+      - headers
+      - Authorization
+      - 6g43cv8PD1aE5beadkZfhV6
     controller: null
     method: null
     route: null
-    custom: []

@@ -9,6 +9,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\SoftDeletingScope;
+use Filament\Tables\Columns\TextColumn;
 
 class AuditsRelationManager extends RelationManager
 {
@@ -18,33 +19,31 @@ class AuditsRelationManager extends RelationManager
     {
         return $form
             ->schema([
-                Forms\Components\TextInput::make('audit')
-                    ->required()
-                    ->maxLength(255),
+                //
             ]);
     }
 
     public function table(Table $table): Table
     {
         return $table
-            ->recordTitleAttribute('audit')
             ->columns([
-                Tables\Columns\TextColumn::make('audit'),
+                TextColumn::make('user.name')->label('User'),
+                TextColumn::make('event')->label('Event'),
+                TextColumn::make('old_values')->label('Old Values')->formatStateUsing(fn ($state) => json_encode($state)),
+                TextColumn::make('new_values')->label('New Values')->formatStateUsing(fn ($state) => json_encode($state)),
+                TextColumn::make('created_at')->label('Date')->dateTime(),
             ])
             ->filters([
                 //
             ])
             ->headerActions([
-                Tables\Actions\CreateAction::make(),
+                //
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                //
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
+                //
             ]);
     }
 }
