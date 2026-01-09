@@ -24,19 +24,15 @@ class ActionImprovementsOverview extends BaseWidget
             $query->whereYear('created_at', now()->year);
         }
 
-        $openCount = (clone $query)->where('status', 'Open')->count();
-        $inProgressCount = (clone $query)->where('status', 'In Progress')->count();
-        $completedCount = (clone $query)->where('status', 'Completed')->count();
+        $pendingCount = (clone $query)->where('status', 'pending')->count();
+        $doneCount = (clone $query)->where('status', 'done')->count();
 
         return [
-            Stat::make('Open Action Improvements', $openCount)
-                ->description('Open actions ' . $descriptionPeriod)
+            Stat::make('Pending Action Improvements', $pendingCount)
+                ->description('Pending actions ' . $descriptionPeriod)
                 ->color('warning'),
-            Stat::make('In Progress Action Improvements', $inProgressCount)
-                ->description('In progress actions ' . $descriptionPeriod)
-                ->color('info'),
-            Stat::make('Completed Action Improvements', $completedCount)
-                ->description('Completed actions ' . $descriptionPeriod)
+            Stat::make('Done Action Improvements', $doneCount)
+                ->description('Done actions ' . $descriptionPeriod)
                 ->color('success'),
         ];
     }

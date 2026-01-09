@@ -29,8 +29,10 @@ class IncidentObserver
             ->orderBy('incident_date', 'desc')
             ->first();
 
-        if ($previousIncident) {
+        if ($previousIncident && $previousIncident->incident_date->year == $incident->incident_date->year) {
             $incident->mtbf = $previousIncident->incident_date->diffInDays($incident->incident_date);
+        } else {
+            $incident->mtbf = null;
         }
 
         $incident->saveQuietly();
@@ -41,7 +43,11 @@ class IncidentObserver
             ->first();
 
         if ($nextIncident) {
-            $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
+            if ($incident->incident_date->year == $nextIncident->incident_date->year) {
+                $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
+            } else {
+                $nextIncident->mtbf = null;
+            }
             $nextIncident->saveQuietly();
         }
     }
@@ -71,7 +77,7 @@ class IncidentObserver
                 ->orderBy('incident_date', 'desc')
                 ->first();
 
-            if ($previousIncident) {
+            if ($previousIncident && $previousIncident->incident_date->year == $incident->incident_date->year) {
                 $incident->mtbf = $previousIncident->incident_date->diffInDays($incident->incident_date);
             } else {
                 $incident->mtbf = null;
@@ -86,7 +92,11 @@ class IncidentObserver
                 ->first();
 
             if ($nextIncident) {
-                $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
+                if ($incident->incident_date->year == $nextIncident->incident_date->year) {
+                    $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
+                } else {
+                    $nextIncident->mtbf = null;
+                }
                 $nextIncident->saveQuietly();
             }
         }
