@@ -1,7 +1,10 @@
-# 1. CHANGE THIS to PHP 8.4 to match your composer.lock requirements
+# PHP 8.4 Dockerfile for Laravel 12 + Filament 3.x
 FROM php:8.4-fpm
 
-# 2. Install system dependencies
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     git \
     curl \
@@ -11,34 +14,69 @@ RUN apt-get update && apt-get install -y \
     zip \
     unzip \
     libzip-dev \
-    libicu-dev  
+    libicu-dev \
+    libjpeg-dev \
+    libfreetype6-dev \
+    libsodium-dev \
+    libgmp-dev \
+    supervisor \
+    && rm -rf /var/lib/apt/lists/*
 
-# 3. Install PHP extensions
-# Added 'intl' (required for Filament) and 'zip' (required for Excel exports)
-RUN docker-php-ext-configure intl \
+# Configure and install PHP extensions with GD
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd intl zip \
     && pecl install redis \
     && docker-php-ext-enable redis
 
-# 3a. Add custom PHP configuration for uploads
+# Add custom PHP configuration for uploads
 COPY uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 
-# 4. Install Composer
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-# 5. Fix "Dubious Ownership" Git error
-# This tells Git inside Docker to trust the mounted folder
+# Configure Git to avoid ownership issues
 RUN git config --global --add safe.directory /var/www/html
 
-# 6. Install Node.js 20 (Required for Filament assets)
+# Install Node.js 20.x (Required for Vite/Filament 3.x)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs
+    && apt-get install -y nodejs \
+    && npm install -g npm@latest
 
-# 7. Set working directory
+# Install supervisor for queue workers
+RUN mkdir -p /var/log/supervisor
+
+# Copy supervisor configuration
+COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Set working directory
 WORKDIR /var/www/html
 
-# Copy application source code
+# Copy application files
 COPY . .
 
-# 8. Publish Livewire assets (ensure JS is available)
+# Create bootstrap/cache directory before composer install
+RUN mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views \
+    && chmod -R 777 bootstrap/cache storage
+
+# Install dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction \
+    && npm install \
+    && npm run build
+
+# Create storage link and fix permissions
+RUN php artisan storage:link \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 775 storage bootstrap/cache public/storage
+
+# Publish Livewire assets
 RUN php artisan livewire:publish --assets
+
+# Clear and cache configs
+RUN php artisan config:clear \
+    && php artisan cache:clear \
+    && php artisan route:clear \
+    && php artisan view:clear
+
+EXPOSE 9000
+
+CMD ["php-fpm"]
