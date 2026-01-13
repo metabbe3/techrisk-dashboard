@@ -12,6 +12,7 @@ use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\BulkAction;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Eloquent\Model;
 
 class NotificationCenter extends Page implements HasTable
 {
@@ -34,7 +35,11 @@ class NotificationCenter extends Page implements HasTable
 
     public function getTableQuery(): Builder
     {
-        return Auth::user()->notifications()->getQuery()->latest();
+        // Use the DatabaseNotification model directly
+        return \Illuminate\Notifications\DatabaseNotification::query()
+            ->where('notifiable_id', Auth::id())
+            ->where('notifiable_type', get_class(Auth::user()))
+            ->latest();
     }
 
     public function table(Table $table): Table
