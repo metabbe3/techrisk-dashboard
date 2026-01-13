@@ -13,12 +13,7 @@
     <div x-data="{
         widgets: {{ Illuminate\Support\Js::from($availableWidgets) }},
         enabled: {{ Illuminate\Support\Js::from($enabledWidgets) }},
-        getOrder() {
-            return Object.entries(this.enabled)
-                .filter(function(item) { return item[1].enabled; })
-                .sort(function(a, b) { return a[1].sort_order - b[1].sort_order; })
-                .map(function(item) { return item[0]; });
-        },
+        dragging: null,
         toggle(widgetClass) {
             @this.toggleWidget(widgetClass);
         },
@@ -31,6 +26,22 @@
             if (confirm('Are you sure you want to reset to default widgets?')) {
                 @this.resetToDefaults();
             }
+        },
+        handleDragStart(widgetClass, event) {
+            this.dragging = widgetClass;
+            event.target.classList.add('dragging');
+            event.dataTransfer.effectAllowed = 'move';
+        },
+        handleDragEnd(event) {
+            this.dragging = null;
+            event.target.classList.remove('dragging');
+        },
+        handleDragOver(event) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'move';
+        },
+        handleDrop(event) {
+            event.preventDefault();
         }
     }" class="space-y-6" x-cloak>
 
@@ -60,18 +71,20 @@
         </div>
 
         <!-- Widget List (Draggable) -->
-        <div
-            class="space-y-2"
-            x-sortable
-            @end="saveOrder()"
-        >
+        <div class="space-y-2">
             <template x-for="(widget, key) in widgets" :key="key">
                 <div
-                    x-show="enabled[widget.class]?.enabled ?? true"
                     data-widget-item
                     :data-widget-class="widget.class"
-                    class="widget-item flex items-center gap-4 p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 cursor-move hover:border-primary-500 dark:hover:border-primary-500 transition-colors"
+                    class="widget-item flex items-center gap-4 p-4 rounded-lg border transition-all duration-200"
+                    :class="(enabled[widget.class]?.enabled ?? true)
+                        ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 cursor-move hover:border-primary-500 dark:hover:border-primary-500'
+                        : 'bg-gray-50 dark:bg-gray-900 border-gray-100 dark:border-gray-800 opacity-60'"
                     draggable="true"
+                    @dragstart="handleDragStart(widget.class, $event)"
+                    @dragend="handleDragEnd($event)"
+                    @dragover="handleDragOver($event)"
+                    @drop="handleDrop($event)"
                 >
                     <!-- Drag Handle -->
                     <div class="cursor-move text-gray-400 hover:text-gray-600">
@@ -81,8 +94,16 @@
                     </div>
 
                     <!-- Widget Icon -->
-                    <div class="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-500 dark:text-gray-400" x-cloak :class="widget.icon.replace('heroicon-', 'heroicon ')" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <div class="w-10 h-10 rounded-lg flex items-center justify-center"
+                         :class="(enabled[widget.class]?.enabled ?? true)
+                            ? 'bg-gray-100 dark:bg-gray-700'
+                            : 'bg-gray-200 dark:bg-gray-800'">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5"
+                             :class="(enabled[widget.class]?.enabled ?? true)
+                                ? 'text-gray-500 dark:text-gray-400'
+                                : 'text-gray-400 dark:text-gray-500'"
+                             x-cloak :class="widget.icon.replace('heroicon-', 'heroicon ')"
+                             fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
                             <path x-show="widget.icon.includes('chart-bar')" stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                             <path x-show="widget.icon.includes('check-circle')" stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                             <path x-show="widget.icon.includes('calendar')" stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -100,6 +121,9 @@
                     <div class="flex-1">
                         <h3 class="font-medium text-gray-900 dark:text-gray-100" x-text="widget.name"></h3>
                         <p class="text-sm text-gray-500 dark:text-gray-400" x-text="widget.description"></p>
+                        <p x-show="!(enabled[widget.class]?.enabled ?? true)" class="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                            (Disabled - won't show on dashboard)
+                        </p>
                     </div>
 
                     <!-- Toggle -->
@@ -131,58 +155,65 @@
                     <p class="font-medium mb-1">How to use:</p>
                     <ul class="list-disc list-inside space-y-1 text-blue-700 dark:text-blue-300">
                         <li><strong>Drag and drop</strong> widgets to reorder them</li>
-                        <li><strong>Toggle the switch</strong> to show/hide widgets</li>
-                        <li>Changes are saved automatically when you drag</li>
-                        <li>Click "Reset to Defaults" to restore original layout</li>
+                        <li><strong>Toggle the switch</strong> to show/hide widgets on dashboard</li>
+                        <li>Click <strong>"Save Order"</strong> to save your widget arrangement</li>
+                        <li>Click <strong>"Reset to Defaults"</strong> to restore original layout</li>
                     </ul>
                 </div>
             </div>
         </div>
     </div>
 
+    <style>
+        .widget-item.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+        .widget-item[draggable="true"] {
+            cursor: grab;
+        }
+        .widget-item[draggable="true"]:active {
+            cursor: grabbing;
+        }
+    </style>
+
     <script>
-        document.addEventListener('alpine:init', () => {
-            Alpine.directive('sortable', (el) => {
-                let draggedItem = null;
-                let placeholder = null;
+        document.addEventListener('DOMContentLoaded', function() {
+            const container = document.querySelector('.space-y-2');
+            let draggedItem = null;
 
-                el.addEventListener('dragstart', (e) => {
-                    draggedItem = e.target;
-                    e.target.style.opacity = '0.5';
-                });
-
-                el.addEventListener('dragend', (e) => {
-                    e.target.style.opacity = '1';
-                    draggedItem = null;
-                    if (placeholder) {
-                        placeholder.remove();
-                        placeholder = null;
-                    }
-                });
-
-                el.addEventListener('dragover', (e) => {
-                    e.preventDefault();
-                    const afterElement = getDragAfterElement(el, e.clientY);
-                    if (afterElement == null) {
-                        el.appendChild(draggedItem);
-                    } else {
-                        el.insertBefore(draggedItem, afterElement);
-                    }
-                });
-
-                function getDragAfterElement(container, y) {
-                    const draggableElements = [...container.querySelectorAll('[data-widget-item]:not(.dragging)')];
-
-                    return draggableElements.reduce((closest, child) => {
-                        const box = child.getBoundingClientRect();
-                        const offset = y - box.top - box.height / 2;
-                        if (offset < 0 && offset > closest.offset) {
-                            return { offset: offset, element: child };
-                        } else {
-                            return closest;
-                        }
-                    }, { offset: Number.NEGATIVE_INFINITY }).element;
+            container.addEventListener('dragstart', function(e) {
+                const widgetItem = e.target.closest('[data-widget-item]');
+                if (widgetItem) {
+                    draggedItem = widgetItem;
+                    widgetItem.classList.add('dragging');
                 }
+            });
+
+            container.addEventListener('dragend', function(e) {
+                const widgetItem = e.target.closest('[data-widget-item]');
+                if (widgetItem) {
+                    widgetItem.classList.remove('dragging');
+                    draggedItem = null;
+                }
+            });
+
+            container.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                const overItem = e.target.closest('[data-widget-item]');
+                if (overItem && overItem !== draggedItem) {
+                    const bounding = overItem.getBoundingClientRect();
+                    const offset = bounding.y + (bounding.height / 2);
+                    if (e.clientY - offset > 0) {
+                        overItem.after(draggedItem);
+                    } else {
+                        overItem.before(draggedItem);
+                    }
+                }
+            });
+
+            container.addEventListener('drop', function(e) {
+                e.preventDefault();
             });
         });
     </script>

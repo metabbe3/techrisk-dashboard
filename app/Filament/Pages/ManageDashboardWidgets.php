@@ -5,6 +5,7 @@ namespace App\Filament\Pages;
 use App\Models\UserDashboardPreference;
 use Filament\Forms\Components\TextInput;
 use Filament\Pages\Page;
+use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Auth;
 
 class ManageDashboardWidgets extends Page
@@ -83,7 +84,10 @@ class ManageDashboardWidgets extends Page
                 ->update(['sort_order' => $index]);
         }
 
-        $this->notify('success', 'Widget order saved!');
+        Notification::make()
+            ->success()
+            ->title('Widget order saved!')
+            ->send();
     }
 
     public function resetToDefaults(): void
@@ -91,15 +95,11 @@ class ManageDashboardWidgets extends Page
         $user = Auth::user();
         UserDashboardPreference::resetForUser($user);
 
-        $this->notify('success', 'Dashboard widgets reset to defaults!');
-        $this->js('window.location.reload()');
-    }
+        Notification::make()
+            ->success()
+            ->title('Dashboard widgets reset to defaults!')
+            ->send();
 
-    private function notify(string $type, string $message): void
-    {
-        $this->dispatchBrowserEvent('notify', [
-            'type' => $type,
-            'message' => $message,
-        ]);
+        $this->js('window.location.reload()');
     }
 }
