@@ -71,12 +71,6 @@ RUN php artisan storage:link \
 # Publish Livewire assets
 RUN php artisan livewire:publish --assets
 
-# Clear and cache configs
-RUN php artisan config:clear \
-    && php artisan cache:clear \
-    && php artisan route:clear \
-    && php artisan view:clear
-
 EXPOSE 9000
 
 CMD ["php-fpm"]
