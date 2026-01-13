@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\Auth;
 
 class ManageDashboardWidgets extends Page
 {
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-view-columns';
 
     protected static ?string $navigationLabel = 'Customize Dashboard';

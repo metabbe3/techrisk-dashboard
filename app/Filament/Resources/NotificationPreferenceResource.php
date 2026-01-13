@@ -18,6 +18,8 @@ class NotificationPreferenceResource extends Resource
 {
     protected static ?string $model = NotificationPreference::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-bell-alert';
 
     protected static ?string $navigationLabel = 'Notification Settings';
