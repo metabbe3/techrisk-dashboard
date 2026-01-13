@@ -9,7 +9,15 @@ class ReportTemplate extends Model
 {
     use HasFactory;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'name',
+        'user_id',
+        'filters',
+        'columns',
+        'metrics',
+        'email',
+        'schedule',
+    ];
 
     protected $casts = [
         'filters' => 'array',

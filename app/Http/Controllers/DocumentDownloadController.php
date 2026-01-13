@@ -12,11 +12,16 @@ class DocumentDownloadController extends Controller
 {
     public function download(InvestigationDocument $record)
     {
-        // Optional: Add authorization check here.
-        // For example, using a policy:
-        // if (auth()->user()->cannot('download', $record)) {
-        //     abort(403, 'Unauthorized');
-        // }
+        // Authorization check - only users with permission can download
+        if (!auth()->check() || (!auth()->user()->can('manage incidents') && !auth()->user()->can('view incidents'))) {
+            abort(403, 'You do not have permission to download this file.');
+        }
+
+        // Additional check: user can only download if they're the PIC or have admin rights
+        if (!auth()->user()->can('manage incidents') &&
+            $record->incident->pic_id !== auth()->id()) {
+            abort(403, 'You can only download documents from incidents you are assigned to.');
+        }
 
         if (!$record->file_path || !Storage::disk('public')->exists($record->file_path)) {
             abort(404, 'File not found.');

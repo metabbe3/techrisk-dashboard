@@ -14,8 +14,9 @@ class ActionImprovementObserver
     public function created(ActionImprovement $actionImprovement): void
     {
         if ($actionImprovement->pic_email) {
+            // Use queue for async email sending to improve performance
             foreach ($actionImprovement->pic_email as $email) {
-                Mail::to($email)->send(new ActionImprovementNotification($actionImprovement));
+                Mail::to($email)->queue(new ActionImprovementNotification($actionImprovement));
             }
         }
     }
@@ -27,8 +28,9 @@ class ActionImprovementObserver
     {
         if ($actionImprovement->isDirty('pic_email')) {
             if ($actionImprovement->pic_email) {
+                // Use queue for async email sending to improve performance
                 foreach ($actionImprovement->pic_email as $email) {
-                    Mail::to($email)->send(new ActionImprovementNotification($actionImprovement));
+                    Mail::to($email)->queue(new ActionImprovementNotification($actionImprovement));
                 }
             }
         }

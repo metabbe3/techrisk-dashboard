@@ -14,7 +14,12 @@ class StatusUpdate extends Model
      * Izinkan semua field untuk diisi melalui form (Mass Assignment).
      * Ini penting agar Filament bisa menyimpan data.
      */
-    protected $guarded = [];
+    protected $fillable = [
+        'incident_id',
+        'status',
+        'notes',
+        'update_date',
+    ];
 
     protected $casts = [
         'update_date' => 'datetime',

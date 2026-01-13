@@ -2,9 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory; // <-- DITAMBAHKAN
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;   // <-- DIPINDAHKAN KE ATAS
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class InvestigationDocument extends Model
 {
@@ -13,7 +14,13 @@ class InvestigationDocument extends Model
     /**
      * Izinkan semua field untuk diisi melalui form (Mass Assignment).
      */
-    protected $guarded = [];
+    protected $fillable = [
+        'incident_id',
+        'file_path',
+        'description',
+        'pic_status',
+        'original_filename',
+    ];
 
     /**
      * Mendefinisikan relasi bahwa dokumen ini dimiliki oleh sebuah insiden.
@@ -23,7 +30,7 @@ class InvestigationDocument extends Model
         return $this->belongsTo(Incident::class);
     }
 
-    public function encryptionKey()
+    public function encryptionKey(): HasOne
     {
         return $this->hasOne(EncryptionKey::class);
     }

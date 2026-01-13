@@ -8,6 +8,9 @@ use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Traits\ApiResponser;
 use Illuminate\Http\Request;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Validation\ValidationException;
+use Exception;
 
 class ActionImprovementController extends Controller
 {
@@ -15,52 +18,95 @@ class ActionImprovementController extends Controller
 
     public function index(Incident $incident)
     {
-        return $this->successResponse(ActionImprovementResource::collection($incident->actionImprovements), 'Action improvements retrieved successfully.');
+        try {
+            return $this->successResponse(
+                ActionImprovementResource::collection($incident->actionImprovements),
+                'Action improvements retrieved successfully.'
+            );
+        } catch (Exception $e) {
+            return $this->errorResponse('Failed to retrieve action improvements.', 500);
+        }
     }
 
     public function store(Request $request, Incident $incident)
     {
-        $request->validate([
-            'title' => 'required|string|max:255',
-            'detail' => 'required|string',
-            'due_date' => 'required|date',
-            'pic_email' => 'required|array',
-            'reminder' => 'boolean',
-            'reminder_frequency' => 'nullable|string',
-            'status' => 'string|in:pending,done',
-        ]);
+        try {
+            $validated = $request->validate([
+                'title' => 'required|string|max:255',
+                'detail' => 'required|string',
+                'due_date' => 'required|date',
+                'pic_email' => 'required|array',
+                'reminder' => 'boolean',
+                'reminder_frequency' => 'nullable|string',
+                'status' => 'string|in:pending,done',
+            ]);
 
-        $actionImprovement = $incident->actionImprovements()->create($request->all());
+            $actionImprovement = $incident->actionImprovements()->create($validated);
 
-        return $this->successResponse(new ActionImprovementResource($actionImprovement), 'Action improvement created successfully.', 201);
+            return $this->successResponse(
+                new ActionImprovementResource($actionImprovement),
+                'Action improvement created successfully.',
+                201
+            );
+        } catch (ValidationException $e) {
+            return $this->errorResponse($e->errors(), 422);
+        } catch (Exception $e) {
+            return $this->errorResponse('Failed to create action improvement.', 500);
+        }
     }
 
     public function show(ActionImprovement $actionImprovement)
     {
-        return $this->successResponse(new ActionImprovementResource($actionImprovement), 'Action improvement retrieved successfully.');
+        try {
+            return $this->successResponse(
+                new ActionImprovementResource($actionImprovement),
+                'Action improvement retrieved successfully.'
+            );
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Action improvement not found.', 404);
+        } catch (Exception $e) {
+            return $this->errorResponse('Failed to retrieve action improvement.', 500);
+        }
     }
 
     public function update(Request $request, ActionImprovement $actionImprovement)
     {
-        $request->validate([
-            'title' => 'string|max:255',
-            'detail' => 'string',
-            'due_date' => 'date',
-            'pic_email' => 'array',
-            'reminder' => 'boolean',
-            'reminder_frequency' => 'nullable|string',
-            'status' => 'string|in:pending,done',
-        ]);
+        try {
+            $validated = $request->validate([
+                'title' => 'string|max:255',
+                'detail' => 'string',
+                'due_date' => 'date',
+                'pic_email' => 'array',
+                'reminder' => 'boolean',
+                'reminder_frequency' => 'nullable|string',
+                'status' => 'string|in:pending,done',
+            ]);
 
-        $actionImprovement->update($request->all());
+            $actionImprovement->update($validated);
 
-        return $this->successResponse(new ActionImprovementResource($actionImprovement), 'Action improvement updated successfully.');
+            return $this->successResponse(
+                new ActionImprovementResource($actionImprovement),
+                'Action improvement updated successfully.'
+            );
+        } catch (ValidationException $e) {
+            return $this->errorResponse($e->errors(), 422);
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Action improvement not found.', 404);
+        } catch (Exception $e) {
+            return $this->errorResponse('Failed to update action improvement.', 500);
+        }
     }
 
     public function destroy(ActionImprovement $actionImprovement)
     {
-        $actionImprovement->delete();
+        try {
+            $actionImprovement->delete();
 
-        return $this->successResponse(null, 'Action improvement deleted successfully.', 204);
+            return $this->successResponse(null, 'Action improvement deleted successfully.', 204);
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Action improvement not found.', 404);
+        } catch (Exception $e) {
+            return $this->errorResponse('Failed to delete action improvement.', 500);
+        }
     }
 }

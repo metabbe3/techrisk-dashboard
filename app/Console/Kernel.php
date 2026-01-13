@@ -15,6 +15,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('reminders:send-action-improvements')->dailyAt('08:00');
 
+        // Clean up old notifications - runs daily at 2 AM
+        $schedule->command('notifications:clean')->dailyAt('02:00');
+
         $dailyTemplates = ReportTemplate::where('schedule', 'daily')->get();
         foreach ($dailyTemplates as $template) {
             $schedule->command('app:send-report', [$template->id])->daily();

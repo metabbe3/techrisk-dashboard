@@ -112,8 +112,8 @@ class IncidentResource extends Resource
                             'Finalization' => 'Finalization',
                             'Completed' => 'Completed',
                         ])->required()->default('Open'),
-                        Select::make('incident_type')->options(['Tech' => 'Tech', 'Non-tech' => 'Non-tech']),
-                        Select::make('incident_source')->options(['Internal' => 'Internal', 'External' => 'External']),
+                        Select::make('incident_type')->options(['Tech' => 'Tech', 'Non-tech' => 'Non-tech'])->required(),
+                        Select::make('incident_source')->options(['Internal' => 'Internal', 'External' => 'External'])->required(),
                         Select::make('pic_id')
                             ->label('Person In Charge')
                             ->relationship('pic', 'name')

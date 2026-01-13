@@ -113,13 +113,15 @@ class Reporting extends Page implements HasForms
                             ->afterStateUpdated(function ($state, callable $set) {
                                 if ($state) {
                                     $template = ReportTemplate::find($state);
-                                    $set('start_date', $template->filters['start_date']);
-                                    $set('end_date', $template->filters['end_date']);
-                                    $set('incident_types', $template->filters['incident_types']);
-                                    $set('statuses', $template->filters['statuses']);
-                                    $set('severities', $template->filters['severities']);
-                                    $set('columns', $template->columns);
-                                    $set('metrics', $template->metrics);
+                                    if ($template) {
+                                        $set('start_date', $template->filters['start_date'] ?? null);
+                                        $set('end_date', $template->filters['end_date'] ?? null);
+                                        $set('incident_types', $template->filters['incident_types'] ?? []);
+                                        $set('statuses', $template->filters['statuses'] ?? []);
+                                        $set('severities', $template->filters['severities'] ?? []);
+                                        $set('columns', $template->columns ?? []);
+                                        $set('metrics', $template->metrics ?? []);
+                                    }
                                 }
                             }),
                     ]),
@@ -130,10 +132,19 @@ class Reporting extends Page implements HasForms
                             DatePicker::make('end_date'),
                             Select::make('incident_types')
                                 ->multiple()
-                                ->options(IncidentType::all()->pluck('name', 'id')),
+                                ->options([
+                                    'Tech' => 'Tech',
+                                    'Non-tech' => 'Non-tech',
+                                ])
+                                ->reactive(),
                             Select::make('statuses')
                                 ->multiple()
-                                ->options(StatusUpdate::distinct()->pluck('status', 'status')),
+                                ->options([
+                                    'Open' => 'Open',
+                                    'In progress' => 'In progress',
+                                    'Finalization' => 'Finalization',
+                                    'Completed' => 'Completed',
+                                ]),
                             Select::make('severities')
                                 ->multiple()
                                 ->options([
@@ -217,7 +228,7 @@ class Reporting extends Page implements HasForms
         }
 
         if (!empty($data['incident_types'])) {
-            $query->whereIn('incident_type_id', $data['incident_types']);
+            $query->whereIn('incident_type', $data['incident_types']);
         }
 
         if (!empty($data['statuses'])) {
@@ -229,7 +240,21 @@ class Reporting extends Page implements HasForms
         if (!empty($data['severities'])) {
             $query->whereIn('severity', $data['severities']);
         }
-        
+
+        // Calculate metrics at database level before loading incidents
+        $metrics = [];
+        if (in_array('total_incidents', $data['metrics'] ?? [])) {
+            $metrics['total_incidents'] = (clone $query)->count();
+        }
+        if (in_array('avg_mttr', $data['metrics'] ?? [])) {
+            $metrics['avg_mttr'] = (clone $query)->avg('mttr');
+        }
+        if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
+            $metrics['avg_mtbf'] = (clone $query)->avg('mtbf');
+        }
+        $this->metrics = $metrics;
+
+        // Determine which relations need to be loaded
         $relations = [];
         if (!empty($data['columns'])) {
             foreach ($data['columns'] as $column) {
@@ -239,19 +264,8 @@ class Reporting extends Page implements HasForms
             }
         }
 
+        // Load incidents with eager loaded relations
         $this->incidents = $query->with(array_unique($relations))->get();
-
-        $metrics = [];
-        if (in_array('total_incidents', $data['metrics'])) {
-            $metrics['total_incidents'] = $this->incidents->count();
-        }
-        if (in_array('avg_mttr', $data['metrics'])) {
-            $metrics['avg_mttr'] = $this->incidents->avg('mttr');
-        }
-        if (in_array('avg_mtbf', $data['metrics'])) {
-            $metrics['avg_mtbf'] = $this->incidents->avg('mtbf');
-        }
-        $this->metrics = $metrics;
     }
 
     public function getColumnsFlattened(): array

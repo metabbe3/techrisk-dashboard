@@ -1,10 +1,5 @@
 <?php
 
-use Knuckles\Scribe\Extracting\Strategies;
-use Knuckles\Scribe\Config\Defaults;
-use Knuckles\Scribe\Config\AuthIn;
-use function Knuckles\Scribe\Config\{removeStrategies, configureStrategy};
-
 // Only the most common configs are shown. See the https://scribe.knuckles.wtf/laravel/reference/config for all.
 
 return [
@@ -205,40 +200,55 @@ return [
     // The strategies Scribe will use to extract information about your routes at each stage.
     // Use configureStrategy() to specify settings for a strategy in the list.
     // Use removeStrategies() to remove an included strategy.
-    'strategies' => [
-        'metadata' => [
-            ...Defaults::METADATA_STRATEGIES,
-        ],
-        'headers' => [
-            ...Defaults::HEADERS_STRATEGIES,
-            Strategies\StaticData::withSettings(data: [
-                'Content-Type' => 'application/json',
-                'Accept' => 'application/json',
-            ]),
-        ],
-        'urlParameters' => [
-            ...Defaults::URL_PARAMETERS_STRATEGIES,
-        ],
-        'queryParameters' => [
-            ...Defaults::QUERY_PARAMETERS_STRATEGIES,
-        ],
-        'bodyParameters' => [
-            ...Defaults::BODY_PARAMETERS_STRATEGIES,
-        ],
-        'responses' => configureStrategy(
-            Defaults::RESPONSES_STRATEGIES,
-            Strategies\Responses\ResponseCalls::withSettings(
-                only: ['GET *'],
-                // Recommended: disable debug mode in response calls to avoid error stack traces in responses
-                config: [
-                    'app.debug' => false,
-                ]
-            )
-        ),
-        'responseFields' => [
-            ...Defaults::RESPONSE_FIELDS_STRATEGIES,
-        ]
-    ],
+    // When Scribe is not installed (production with --no-dev), return empty arrays.
+    'strategies' => (function() {
+        if (!class_exists('Knuckles\\Scribe\\Config\\Defaults')) {
+            return [
+                'metadata' => [],
+                'headers' => [],
+                'urlParameters' => [],
+                'queryParameters' => [],
+                'bodyParameters' => [],
+                'responses' => [],
+                'responseFields' => [],
+            ];
+        }
+
+        // Scribe is installed, return the full strategies config
+        return [
+            'metadata' => [
+                ...\Knuckles\Scribe\Config\Defaults::METADATA_STRATEGIES,
+            ],
+            'headers' => [
+                ...\Knuckles\Scribe\Config\Defaults::HEADERS_STRATEGIES,
+                \Knuckles\Scribe\Extracting\Strategies\StaticData::withSettings(data: [
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'application/json',
+                ]),
+            ],
+            'urlParameters' => [
+                ...\Knuckles\Scribe\Config\Defaults::URL_PARAMETERS_STRATEGIES,
+            ],
+            'queryParameters' => [
+                ...\Knuckles\Scribe\Config\Defaults::QUERY_PARAMETERS_STRATEGIES,
+            ],
+            'bodyParameters' => [
+                ...\Knuckles\Scribe\Config\Defaults::BODY_PARAMETERS_STRATEGIES,
+            ],
+            'responses' => \Knuckles\Scribe\Config\configureStrategy(
+                \Knuckles\Scribe\Config\Defaults::RESPONSES_STRATEGIES,
+                \Knuckles\Scribe\Extracting\Strategies\Responses\ResponseCalls::withSettings(
+                    only: ['GET *'],
+                    config: [
+                        'app.debug' => false,
+                    ]
+                )
+            ),
+            'responseFields' => [
+                ...\Knuckles\Scribe\Config\Defaults::RESPONSE_FIELDS_STRATEGIES,
+            ],
+        ];
+    })(),
 
     // For response calls, API resource responses and transformer responses,
     // Scribe will try to start database transactions, so no changes are persisted to your database.

@@ -10,7 +10,16 @@ class DashboardWidget extends Model
 {
     use HasFactory;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'name',
+        'class_name',
+        'icon',
+        'type',
+        'chart_type',
+        'query',
+        'columns',
+        'user_id',
+    ];
 
     protected $casts = [
         'columns' => 'array',

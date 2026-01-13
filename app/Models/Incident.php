@@ -16,7 +16,47 @@ class Incident extends Model implements Auditable
     use HasFactory;
     use \OwenIt\Auditing\Auditable;
 
-    protected $guarded = []; // Allow mass assignment for all fields
+    protected $fillable = [
+        'no',
+        'title',
+        'summary',
+        'root_cause',
+        'remark',
+        'improvements',
+        'incident_date',
+        'entry_date_tech_risk',
+        'discovered_at',
+        'stop_bleeding_at',
+        'classification',
+        'severity',
+        'glitch_flag',
+        'incident_type',
+        'incident_source',
+        'incident_category',
+        'incident_status',
+        'fund_status',
+        'potential_fund_loss',
+        'recovered_fund',
+        'fund_loss',
+        'loss_taken_by',
+        'pic',
+        'pic_id',
+        'reported_by',
+        'third_party_client',
+        'evidence',
+        'evidence_link',
+        'risk_incident_form_cfm',
+        'action_improvement_tracking',
+        'goc_upload',
+        'teams_upload',
+        'doc_signed',
+        'investigation_pic_status',
+        'people_caused',
+        'checker',
+        'maker',
+        'mttr',
+        'mtbf',
+    ];
 
     protected $casts = [
         'goc_upload' => 'boolean',
@@ -35,12 +75,12 @@ class Incident extends Model implements Auditable
 
     public function statusUpdates(): HasMany
     {
-        return $this->hasMany(\App\Models\StatusUpdate::class)->latest(); // Always show the latest first
+        return $this->hasMany(StatusUpdate::class)->latest();
     }
 
     public function latestStatusUpdate(): HasOne
     {
-        return $this->hasOne(\App\Models\StatusUpdate::class)->latestOfMany();
+        return $this->hasOne(StatusUpdate::class)->latestOfMany();
     }
 
     public function investigationDocuments(): HasMany

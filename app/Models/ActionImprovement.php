@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ActionImprovement extends Model
 {
@@ -24,7 +25,7 @@ class ActionImprovement extends Model
         'pic_email' => 'array',
     ];
 
-    public function incident()
+    public function incident(): BelongsTo
     {
         return $this->belongsTo(Incident::class);
     }

@@ -37,6 +37,9 @@ class DashboardWidgetResource extends Resource
                 TextInput::make('name')
                     ->required()
                     ->maxLength(255),
+                TextInput::make('class_name')
+                    ->required()
+                    ->maxLength(255),
                 TextInput::make('icon'),
                 Select::make('type')
                     ->options([
@@ -55,7 +58,56 @@ class DashboardWidgetResource extends Resource
                     ->visible(fn ($get) => $get('type') === 'chart'),
                 Textarea::make('query')
                     ->required()
-                    ->columnSpanFull(),
+                    ->columnSpanFull()
+                    ->rules([
+                        function () {
+                            return function (string $attribute, $value, callable $fail) {
+                                if (empty($value)) {
+                                    return;
+                                }
+
+                                $query = strtolower(trim($value));
+
+                                // Must start with SELECT
+                                if (!str_starts_with($query, 'select')) {
+                                    $fail('The :attribute must be a SELECT query.');
+                                    return;
+                                }
+
+                                // Block dangerous keywords
+                                $dangerousKeywords = [
+                                    'drop ', 'delete ', 'insert ', 'update ',
+                                    'truncate ', 'alter ', 'create ', 'exec ',
+                                    'execute ', 'script ', 'javascript:',
+                                    '--', ';--', '/*', '*/', 'xp_', 'sp_'
+                                ];
+
+                                foreach ($dangerousKeywords as $keyword) {
+                                    if (str_contains($query, $keyword)) {
+                                        $fail('The :attribute contains dangerous keywords.');
+                                        return;
+                                    }
+                                }
+
+                                // Must be a SELECT query with aggregate function (for stat widget)
+                                if (!str_contains($query, 'count') &&
+                                    !str_contains($query, 'sum') &&
+                                    !str_contains($query, 'avg') &&
+                                    !str_contains($query, 'min') &&
+                                    !str_contains($query, 'max')) {
+                                    $fail('The :attribute must use an aggregate function (COUNT, SUM, AVG, MIN, MAX).');
+                                    return;
+                                }
+
+                                // Result column should be named 'value' for the widget to work
+                                if (!str_contains($query, ' as value') &&
+                                    !str_contains($query, ' as `value`')) {
+                                    $fail('The query result must be aliased as "value" (e.g., SELECT COUNT(*) as value FROM incidents).');
+                                    return;
+                                }
+                            };
+                        },
+                    ]),
                 TagsInput::make('columns')
                     ->columnSpanFull(),
             ]);

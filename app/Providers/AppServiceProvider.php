@@ -6,10 +6,12 @@ use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Models\Label;
 use App\Models\IncidentType;
+use App\Models\StatusUpdate;
 use App\Observers\ActionImprovementObserver;
 use App\Observers\IncidentObserver;
 use App\Observers\LabelObserver;
 use App\Observers\IncidentTypeObserver;
+use App\Observers\StatusUpdateObserver;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
 use Filament\Support\Facades\FilamentView;
@@ -56,6 +58,7 @@ class AppServiceProvider extends ServiceProvider
 
         Incident::observe(IncidentObserver::class);
         ActionImprovement::observe(ActionImprovementObserver::class);
+        StatusUpdate::observe(StatusUpdateObserver::class);
         Label::observe(LabelObserver::class);
         IncidentType::observe(IncidentTypeObserver::class);
 

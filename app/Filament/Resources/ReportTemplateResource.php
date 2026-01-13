@@ -16,6 +16,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\Action;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 
 class ReportTemplateResource extends Resource
 {
@@ -37,6 +38,18 @@ class ReportTemplateResource extends Resource
                 TextInput::make('name')
                     ->required()
                     ->maxLength(255),
+                Textarea::make('filters')
+                    ->required()
+                    ->rows(3)
+                    ->helperText('Enter filters as JSON'),
+                Textarea::make('columns')
+                    ->required()
+                    ->rows(3)
+                    ->helperText('Enter columns as JSON'),
+                Textarea::make('metrics')
+                    ->required()
+                    ->rows(3)
+                    ->helperText('Enter metrics as JSON'),
             ]);
     }
 

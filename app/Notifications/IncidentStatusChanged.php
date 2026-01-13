@@ -8,15 +8,19 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class AssignedAsPicNotification extends Notification implements ShouldQueue
+class IncidentStatusChanged extends Notification implements ShouldQueue
 {
     use Queueable;
 
     public $incident;
+    public $oldStatus;
+    public $newStatus;
 
-    public function __construct(Incident $incident)
+    public function __construct(Incident $incident, string $oldStatus, string $newStatus)
     {
         $this->incident = $incident;
+        $this->oldStatus = $oldStatus;
+        $this->newStatus = $newStatus;
     }
 
     public function via(object $notifiable): array
@@ -27,15 +31,14 @@ class AssignedAsPicNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('New Incident Assignment: ' . $this->incident->title)
+            ->subject('Incident Status Changed: ' . $this->incident->title)
             ->greeting('Hello ' . $notifiable->name . ',')
-            ->line('You have been assigned as the Person In Charge (PIC) for a new incident.')
+            ->line('The status of an incident has been updated:')
             ->line('**Incident:** ' . $this->incident->title)
-            ->line('**Severity:** ' . $this->incident->severity)
-            ->line('**Status:** ' . $this->incident->incident_status)
-            ->line('**Date:** ' . $this->incident->incident_date->format('Y-m-d H:i'))
+            ->line('**Old Status:** ' . $this->oldStatus)
+            ->line('**New Status:** ' . $this->newStatus)
             ->action('View Incident', url('/admin/incidents/' . $this->incident->id . '/edit'))
-            ->line('Please review and take appropriate action.');
+            ->line('Please review the updated status.');
     }
 
     public function toDatabase(object $notifiable): array
@@ -43,13 +46,14 @@ class AssignedAsPicNotification extends Notification implements ShouldQueue
         return [
             'format' => 'filament', // Required for bell icon display
             'incident_id' => $this->incident->id,
-            'title' => 'New Incident Assignment',
-            'message' => "You have been assigned as PIC for: {$this->incident->title}",
-            'severity' => $this->incident->severity,
+            'title' => 'Incident Status Changed',
+            'message' => "Status changed from \"{$this->oldStatus}\" to \"{$this->newStatus}\"",
+            'old_status' => $this->oldStatus,
+            'new_status' => $this->newStatus,
             'url' => url('/admin/incidents/' . $this->incident->id . '/edit'),
-            'icon' => 'heroicon-o-shield-exclamation',
-            'icon_color' => $this->incident->severity === 'P1' ? 'danger' : 'warning',
-            'type' => 'incident_assignment',
+            'icon' => 'heroicon-o-arrow-path',
+            'icon_color' => 'info',
+            'type' => 'incident_status_changed',
         ];
     }
 }

@@ -1,0 +1,72 @@
+# Git files
+.git
+.gitignore
+.gitattributes
+
+# Docker files
+docker-compose.yml
+Dockerfile*
+.dockerignore
+
+# Documentation
+README.md
+LICENSE
+
+# IDE files
+.idea
+.vscode
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build files
+node_modules
+vendor
+storage/dbdata
+storage/framework/cache
+storage/framework/sessions
+storage/framework/views
+bootstrap/cache
+
+# Environment
+.env
+.env.backup
+.env.production
+
+# Logs
+*.log
+storage/logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+.phpunit.cache
+phpunit.xml
+.phpunit.result.cache
+
+# Coverage
+.hpcoverage
+.hpcoverage.xml
+
+# Backup files
+*.bak
+*.backup
+backups/
+
+# Uploads (local development)
+public/uploads
+public/storage
+
+# Cache
+bootstrap/cache/packages/*
+bootstrap/cache/services.php
+hotcache
+
+# Node
+npm-debug.log
+yarn-error.log
+.pnp.*
+.yarn-integrity

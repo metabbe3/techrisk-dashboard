@@ -9,5 +9,7 @@ class IncidentType extends Model
 {
     use HasFactory;
 
-    protected $guarded = [];
+    protected $fillable = [
+        'name',
+    ];
 }

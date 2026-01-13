@@ -6,8 +6,10 @@ use App\Models\Incident;
 use App\Models\Label;
 use App\Notifications\AssignedAsPicNotification;
 use App\Notifications\IncidentUpdated;
+use App\Notifications\IncidentStatusChanged;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class IncidentObserver
 {
@@ -16,40 +18,14 @@ class IncidentObserver
      */
     public function created(Incident $incident): void
     {
-        Cache::tags(['incidents'])->flush();
-
+        $this->flushIncidentCache();
         $this->autoLabel($incident);
+        $this->calculateMetrics($incident);
+        $this->updateAdjacentIncidentMetrics($incident);
 
-        // Calculate MTTR
-        if ($incident->stop_bleeding_at) {
-            $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
-        }
-
-        // Calculate MTBF
-        $previousIncident = Incident::where('incident_date', '<', $incident->incident_date)
-            ->orderBy('incident_date', 'desc')
-            ->first();
-
-        if ($previousIncident && $previousIncident->incident_date->year == $incident->incident_date->year) {
-            $incident->mtbf = $previousIncident->incident_date->diffInDays($incident->incident_date);
-        } else {
-            $incident->mtbf = null;
-        }
-
-        $incident->saveQuietly();
-
-        // Recalculate MTBF for the next incident
-        $nextIncident = Incident::where('incident_date', '>', $incident->incident_date)
-            ->orderBy('incident_date', 'asc')
-            ->first();
-
-        if ($nextIncident) {
-            if ($incident->incident_date->year == $nextIncident->incident_date->year) {
-                $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
-            } else {
-                $nextIncident->mtbf = null;
-            }
-            $nextIncident->saveQuietly();
+        // Notify PIC if assigned during creation
+        if ($incident->pic_id) {
+            $incident->pic->notify(new AssignedAsPicNotification($incident));
         }
     }
 
@@ -58,99 +34,162 @@ class IncidentObserver
      */
     public function updated(Incident $incident): void
     {
+        // Track changes for notification
+        $changes = [];
+        $notifiableFields = [
+            'title' => 'Title',
+            'severity' => 'Severity',
+            'incident_status' => 'Status',
+            'incident_type' => 'Type',
+            'incident_source' => 'Source',
+            'summary' => 'Summary',
+            'root_cause' => 'Root Cause',
+            'fund_loss' => 'Fund Loss',
+        ];
+
+        foreach ($notifiableFields as $field => $label) {
+            if ($incident->isDirty($field)) {
+                $oldValue = $incident->getOriginal($field);
+                $newValue = $incident->$field;
+
+                // Format dates and special values
+                if ($oldValue instanceof Carbon) {
+                    $oldValue = $oldValue->format('Y-m-d H:i');
+                }
+                if ($newValue instanceof Carbon) {
+                    $newValue = $newValue->format('Y-m-d H:i');
+                }
+
+                $changes[$label] = [
+                    'from' => $oldValue,
+                    'to' => $newValue,
+                ];
+            }
+        }
+
+        // Handle PIC assignment change
         if ($incident->isDirty('pic_id') && $incident->pic_id) {
             $incident->pic->notify(new AssignedAsPicNotification($incident));
         }
 
-        Cache::tags(['incidents'])->flush();
+        $this->flushIncidentCache();
 
         if ($incident->isDirty('summary') || $incident->isDirty('root_cause')) {
             $this->autoLabel($incident);
         }
 
         if ($incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at')) {
-            // Recalculate MTTR
-            if ($incident->stop_bleeding_at) {
-                $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
-            } else {
-                $incident->mttr = null;
-            }
+            $this->calculateMetrics($incident);
+            $this->updateAdjacentIncidentMetrics($incident);
+        }
 
-            // Recalculate MTBF for this incident
-            $previousIncident = Incident::where('incident_date', '<', $incident->incident_date)
-                ->where('id', '!=', $incident->id)
-                ->orderBy('incident_date', 'desc')
-                ->first();
+        // Handle status change notification
+        if ($incident->isDirty('incident_status')) {
+            $oldStatus = $incident->getOriginal('incident_status');
+            $newStatus = $incident->incident_status;
 
-            if ($previousIncident && $previousIncident->incident_date->year == $incident->incident_date->year) {
-                $incident->mtbf = $previousIncident->incident_date->diffInDays($incident->incident_date);
-            } else {
-                $incident->mtbf = null;
-            }
-
-            $incident->saveQuietly();
-
-            // Recalculate MTBF for the next incident
-            $nextIncident = Incident::where('incident_date', '>', $incident->incident_date)
-                ->where('id', '!=', $incident->id)
-                ->orderBy('incident_date', 'asc')
-                ->first();
-
-            if ($nextIncident) {
-                if ($incident->incident_date->year == $nextIncident->incident_date->year) {
-                    $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
-                } else {
-                    $nextIncident->mtbf = null;
+            if ($incident->pic && $oldStatus && $newStatus) {
+                $currentUser = auth()->user();
+                if (!$currentUser || $currentUser->id !== $incident->pic_id) {
+                    $incident->pic->notify(new IncidentStatusChanged($incident, $oldStatus, $newStatus));
                 }
-                $nextIncident->saveQuietly();
             }
         }
 
-        if ($incident->wasChanged()) {
-            if ($incident->pic) {
-                // Get the user who made the change (authenticated user)
-                $currentUser = auth()->user();
-
-                // Only send notification if the PIC is not the current user
-                if ($currentUser && $currentUser->id !== $incident->pic_id) {
-                    $incident->pic->notify(new IncidentUpdated($incident));
-                }
+        // Send general update notification if there are meaningful changes
+        if ($incident->wasChanged() && !empty($changes) && $incident->pic) {
+            $currentUser = auth()->user();
+            if ($currentUser && $currentUser->id !== $incident->pic_id) {
+                $incident->pic->notify(new IncidentUpdated($incident, $changes));
             }
         }
     }
 
+    /**
+     * Calculate MTTR and MTBF for an incident.
+     * Optimized to use efficient queries.
+     */
+    private function calculateMetrics(Incident $incident): void
+    {
+        // Calculate MTTR
+        $incident->mttr = $incident->stop_bleeding_at
+            ? $incident->incident_date->diffInMinutes($incident->stop_bleeding_at)
+            : null;
+
+        // Calculate MTBF using optimized query with index
+        $year = $incident->incident_date->year;
+        $previousIncident = Incident::where('incident_date', '<', $incident->incident_date)
+            ->whereYear('incident_date', $year)
+            ->orderBy('incident_date', 'desc')
+            ->first();
+
+        $incident->mtbf = ($previousIncident && $previousIncident->incident_date->year === $year)
+            ? $previousIncident->incident_date->diffInDays($incident->incident_date)
+            : null;
+
+        $incident->saveQuietly();
+    }
+
+    /**
+     * Update MTBF for adjacent incidents when one is created/updated.
+     */
+    private function updateAdjacentIncidentMetrics(Incident $incident): void
+    {
+        $year = $incident->incident_date->year;
+
+        // Update next incident's MTBF
+        $nextIncident = Incident::where('incident_date', '>', $incident->incident_date)
+            ->whereYear('incident_date', $year)
+            ->orderBy('incident_date', 'asc')
+            ->first();
+
+        if ($nextIncident) {
+            $nextIncident->mtbf = ($incident->incident_date->year === $year)
+                ? $incident->incident_date->diffInDays($nextIncident->incident_date)
+                : null;
+            $nextIncident->saveQuietly();
+        }
+    }
+
+    /**
+     * Auto-label incident based on summary and root cause.
+     */
     private function autoLabel(Incident $incident): void
     {
-        // 1. Get all available labels from cache (or DB if not in cache)
-        $allLabels = Cache::remember('labels', 3600, function () { // Cache for 60 minutes
+        $allLabels = Cache::remember('labels', 3600, function () {
             return Label::all();
         });
 
-        // 2. Create a text block from summary and root_cause
         $textBlock = strtolower($incident->summary . ' ' . $incident->root_cause);
-
-        // 3. Find matched labels
         $matchedLabelIds = [];
+
         foreach ($allLabels as $label) {
-            // Use word boundary regex for whole word matching
             if (preg_match("/\b" . preg_quote(strtolower($label->name), '/') . "\b/", $textBlock)) {
                 $matchedLabelIds[] = $label->id;
             }
         }
 
-        // 4. Sync labels without detaching existing ones
         if (!empty($matchedLabelIds)) {
             $incident->labels()->syncWithoutDetaching($matchedLabelIds);
         }
     }
 
+    /**
+     * Flush incident cache with fine-grained keys.
+     */
+    private function flushIncidentCache(): void
+    {
+        Cache::forget('incidents.stats');
+        Cache::forget('labels');
+        Cache::tags(['incidents'])->flush();
+    }
 
     /**
      * Handle the Incident "deleted" event.
      */
     public function deleted(Incident $incident): void
     {
-        Cache::tags(['incidents'])->flush();
+        $this->flushIncidentCache();
     }
 
     /**
@@ -158,7 +197,7 @@ class IncidentObserver
      */
     public function restored(Incident $incident): void
     {
-        Cache::tags(['incidents'])->flush();
+        $this->flushIncidentCache();
     }
 
     /**
@@ -166,6 +205,6 @@ class IncidentObserver
      */
     public function forceDeleted(Incident $incident): void
     {
-        Cache::tags(['incidents'])->flush();
+        $this->flushIncidentCache();
     }
 }

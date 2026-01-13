@@ -8,63 +8,78 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class ActionImprovementReminder extends Notification
+class ActionImprovementReminder extends Notification implements ShouldQueue
 {
     use Queueable;
 
     public $actionImprovement;
 
-    /**
-     * Create a new notification instance.
-     */
     public function __construct(ActionImprovement $actionImprovement)
     {
         $this->actionImprovement = $actionImprovement;
     }
 
-    /**
-     * Get the notification's delivery channels.
-     *
-     * @return array<int, string>
-     */
     public function via(object $notifiable): array
     {
         return ['mail', 'database'];
     }
 
-    /**
-     * Get the mail representation of the notification.
-     */
     public function toMail(object $notifiable): MailMessage
     {
-        $url = url('/incidents/' . $this->actionImprovement->incident_id);
         $incident = $this->actionImprovement->incident;
+        $daysUntilDue = now()->diffInDays($this->actionImprovement->due_date, false);
+        $isOverdue = $daysUntilDue < 0;
 
-        return (new MailMessage)
-            ->subject('[Action Improvement] Reminder - ' . $incident->title)
-            ->line('This is a reminder for an action improvement on the following incident:')
-            ->line('Incident: ' . $incident->title)
-            ->line('Summary: ' . $incident->summary)
-            ->line('---')
-            ->line('Action Improvement: ' . $this->actionImprovement->title)
-            ->line('Detail: ' . $this->actionImprovement->detail)
-            ->line('Due Date: ' . $this->actionImprovement->due_date)
-            ->action('View Incident', $url)
-            ->line('Thank you for your attention to this matter.');
+        $mail = (new MailMessage)
+            ->subject($isOverdue
+                ? '[OVERDUE] Action Improvement Required'
+                : '[Reminder] Action Improvement Due Soon'
+            )
+            ->greeting('Hello ' . $notifiable->name . ',')
+            ->line($isOverdue
+                ? 'This action improvement is OVERDUE:'
+                : 'This is a reminder for an action improvement:'
+            )
+            ->line('**Incident:** ' . $incident->title)
+            ->line('**Action:** ' . $this->actionImprovement->title)
+            ->line('**Due Date:** ' . $this->actionImprovement->due_date->format('Y-m-d'))
+            ->line('**Status:** ' . ucfirst($this->actionImprovement->status));
+
+        if ($isOverdue) {
+            $mail->line('⚠️ **' . abs($daysUntilDue) . ' days overdue**');
+        } else {
+            $mail->line('⏰ **' . $daysUntilDue . ' days remaining**');
+        }
+
+        $mail->line('**Detail:** ' . $this->actionImprovement->detail)
+              ->action('View Incident', url('/admin/incidents/' . $incident->id . '/edit'))
+              ->line('Please take action as soon as possible.');
+
+        return $mail;
     }
 
-    /**
-     * Get the database representation of the notification.
-     *
-     * @return array<string, mixed>
-     */
     public function toDatabase(object $notifiable): array
     {
+        $daysUntilDue = now()->diffInDays($this->actionImprovement->due_date, false);
+        $isOverdue = $daysUntilDue < 0;
+
         return [
+            'format' => 'filament', // Required for bell icon display
             'action_improvement_id' => $this->actionImprovement->id,
-            'title' => 'Action Improvement Reminder',
-            'message' => 'The action improvement "' . $this->actionImprovement->title . '" is due on ' . $this->actionImprovement->due_date,
-            'url' => route('filament.admin.resources.incidents.view', $this->actionImprovement->incident_id),
+            'incident_id' => $this->actionImprovement->incident_id,
+            'title' => $isOverdue ? 'Action Improvement Overdue' : 'Action Improvement Reminder',
+            'message' => '"' . $this->actionImprovement->title . '" is ' .
+                ($isOverdue
+                    ? abs($daysUntilDue) . ' days overdue'
+                    : 'due in ' . $daysUntilDue . ' days'
+                ),
+            'due_date' => $this->actionImprovement->due_date->format('Y-m-d'),
+            'days_until_due' => $daysUntilDue,
+            'is_overdue' => $isOverdue,
+            'url' => url('/admin/incidents/' . $this->actionImprovement->incident_id . '/edit'),
+            'icon' => $isOverdue ? 'heroicon-o-exclamation-triangle' : 'heroicon-o-bell',
+            'icon_color' => $isOverdue ? 'danger' : 'warning',
+            'type' => $isOverdue ? 'action_improvement_overdue' : 'action_improvement_reminder',
         ];
     }
 }
