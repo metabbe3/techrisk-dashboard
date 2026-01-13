@@ -11,21 +11,20 @@
     </div>
 
     <div x-data="{
-        widgets: @json($availableWidgets),
-        enabled: @json($enabledWidgets),
+        widgets: {{ Illuminate\Support\Js::from($availableWidgets) }},
+        enabled: {{ Illuminate\Support\Js::from($enabledWidgets) }},
         getOrder() {
             return Object.entries(this.enabled)
-                .filter(([_, v]) => v.enabled)
-                .sort((a, b) => a[1].sort_order - b[1].sort_order)
-                .map(([k, _]) => k);
+                .filter(function(item) { return item[1].enabled; })
+                .sort(function(a, b) { return a[1].sort_order - b[1].sort_order; })
+                .map(function(item) { return item[0]; });
         },
         toggle(widgetClass) {
             @this.toggleWidget(widgetClass);
         },
         saveOrder() {
-            const newOrder = Array.from(
-                document.querySelectorAll('[data-widget-item]')
-            ).map(el => el.dataset.widgetClass);
+            const items = document.querySelectorAll('[data-widget-item]');
+            const newOrder = Array.from(items).map(function(el) { return el.dataset.widgetClass; });
             @this.saveOrder(newOrder);
         },
         reset() {
@@ -33,7 +32,7 @@
                 @this.resetToDefaults();
             }
         }
-    }" class="space-y-6">
+    }" class="space-y-6" x-cloak>
 
         <!-- Actions -->
         <div class="flex gap-3">
