@@ -111,22 +111,19 @@ class NotificationCenter extends Page implements HasTable
                 BulkAction::make('markAsRead')
                     ->label('Mark All as Read')
                     ->icon('heroicon-o-check-circle')
-                    ->action(fn (Collection $records) => $records->each->markAsRead())
-                    ->deselectRecordsAfterAction(),
+                    ->action(fn (Collection $records) => $records->each->markAsRead()),
 
                 BulkAction::make('markAsUnread')
                     ->label('Mark All as Unread')
                     ->icon('heroicon-o-envelope')
-                    ->action(fn (Collection $records) => $records->each->markAsUnread())
-                    ->deselectRecordsAfterAction(),
+                    ->action(fn (Collection $records) => $records->each->markAsUnread()),
 
                 BulkAction::make('delete')
                     ->label('Delete All')
                     ->icon('heroicon-o-trash')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->action(fn (Collection $records) => $records->each->delete())
-                    ->deselectRecordsAfterAction(),
+                    ->action(fn (Collection $records) => $records->each->delete()),
             ])
             ->defaultSort('created_at', 'desc')
             ->poll('30s');

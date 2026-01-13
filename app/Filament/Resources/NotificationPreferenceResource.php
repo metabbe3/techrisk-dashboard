@@ -102,26 +102,14 @@ class NotificationPreferenceResource extends Resource
                     ->sortable(),
                 TextColumn::make('email_enabled_count')
                     ->label('Email Types Enabled')
-                    ->counts([
-                        'email_incident_assignment',
-                        'email_incident_update',
-                        'email_incident_status_changed',
-                        'email_status_update',
-                        'email_action_improvement_reminder',
-                        'email_action_improvement_overdue',
-                    ])
-                    ->sortable(),
+                    ->sortable()
+                    ->badge()
+                    ->color('success'),
                 TextColumn::make('database_enabled_count')
                     ->label('In-App Types Enabled')
-                    ->counts([
-                        'database_incident_assignment',
-                        'database_incident_update',
-                        'database_incident_status_changed',
-                        'database_status_update',
-                        'database_action_improvement_reminder',
-                        'database_action_improvement_overdue',
-                    ])
-                    ->sortable(),
+                    ->sortable()
+                    ->badge()
+                    ->color('primary'),
             ])
             ->filters([
                 //

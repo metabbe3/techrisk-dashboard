@@ -78,4 +78,34 @@ class NotificationPreference extends Model
             []
         );
     }
+
+    /**
+     * Count enabled email notifications.
+     */
+    public function getEmailEnabledCountAttribute(): int
+    {
+        return (
+            ($this->email_incident_assignment ? 1 : 0) +
+            ($this->email_incident_update ? 1 : 0) +
+            ($this->email_incident_status_changed ? 1 : 0) +
+            ($this->email_status_update ? 1 : 0) +
+            ($this->email_action_improvement_reminder ? 1 : 0) +
+            ($this->email_action_improvement_overdue ? 1 : 0)
+        );
+    }
+
+    /**
+     * Count enabled database notifications.
+     */
+    public function getDatabaseEnabledCountAttribute(): int
+    {
+        return (
+            ($this->database_incident_assignment ? 1 : 0) +
+            ($this->database_incident_update ? 1 : 0) +
+            ($this->database_incident_status_changed ? 1 : 0) +
+            ($this->database_status_update ? 1 : 0) +
+            ($this->database_action_improvement_reminder ? 1 : 0) +
+            ($this->database_action_improvement_overdue ? 1 : 0)
+        );
+    }
 }
