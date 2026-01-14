@@ -78,8 +78,8 @@ class User extends Authenticatable implements FilamentUser
             return;
         }
 
-        // Create a proper notification wrapper that respects preferences
-        $modifiedNotification = new class($instance, $channels) {
+        // Create a proper notification wrapper that extends Notification base class
+        $modifiedNotification = new class($instance, $channels) extends \Illuminate\Notifications\Notification {
             protected $notification;
             protected $allowedChannels;
 
