@@ -51,8 +51,8 @@ class User extends Authenticatable implements FilamentUser
         $notificationType = $this->getNotificationType($instance);
 
         if (!$notificationType) {
-            // If unknown type, send by default
-            return parent::notify($instance);
+            // If unknown type, send by default - use Notification facade
+            return \Illuminate\Support\Facades\Notification::send($this, $instance);
         }
 
         // Check if user wants this type of notification
@@ -136,7 +136,8 @@ class User extends Authenticatable implements FilamentUser
             }
         };
 
-        return parent::notify($modifiedNotification);
+        // Use Notification facade instead of parent::notify()
+        return \Illuminate\Support\Facades\Notification::send($this, $modifiedNotification);
     }
 
     /**
