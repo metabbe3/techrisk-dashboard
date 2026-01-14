@@ -188,6 +188,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Middleware
+    |--------------------------------------------------------------------------
+    |
+    | You may add custom middleware for Livewire requests. These middleware
+    | will be applied to all Livewire component requests.
+    |
+    */
+
+    'middleware' => [
+        'web',
+        // 'auth',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Middleware Groups
     |--------------------------------------------------------------------------
     |
@@ -205,7 +220,6 @@ return [
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
-            // 'auth', // Uncomment if you want all Livewire components to require authentication
         ],
     ],
 ];
