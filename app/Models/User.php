@@ -78,13 +78,10 @@ class User extends Authenticatable implements FilamentUser
             return;
         }
 
-        // Override the via method on the notification instance
-        $originalVia = $instance->via($this);
-
-        // Create a modified notification that respects preferences
-        $modifiedNotification = new class($instance, $channels) extends \Illuminate\Notifications\Notification {
-            private $notification;
-            private $allowedChannels;
+        // Create a proper notification wrapper that respects preferences
+        $modifiedNotification = new class($instance, $channels) {
+            protected $notification;
+            protected $allowedChannels;
 
             public function __construct($notification, $allowedChannels)
             {
@@ -97,18 +94,49 @@ class User extends Authenticatable implements FilamentUser
                 return $this->allowedChannels;
             }
 
-            public function __call($method, $args)
+            public function toMail($notifiable)
             {
-                return $this->notification->$method(...$args);
+                return $this->notification->toMail($notifiable);
+            }
+
+            public function toDatabase($notifiable)
+            {
+                return $this->notification->toDatabase($notifiable);
+            }
+
+            public function toArray($notifiable)
+            {
+                if (method_exists($this->notification, 'toArray')) {
+                    return $this->notification->toArray($notifiable);
+                }
+                return [];
+            }
+
+            public function toBroadcast($notifiable)
+            {
+                if (method_exists($this->notification, 'toBroadcast')) {
+                    return $this->notification->toBroadcast($notifiable);
+                }
+                return [];
+            }
+
+            public function __call($method, $arguments)
+            {
+                return $this->notification->$method(...$arguments);
             }
 
             public function __get($name)
             {
                 return $this->notification->$name;
             }
+
+            public function __isset($name)
+            {
+                return isset($this->notification->$name);
+            }
         };
 
-        parent::notify($modifiedNotification);
+        return parent::notify($modifiedNotification);
     }
 
     /**
