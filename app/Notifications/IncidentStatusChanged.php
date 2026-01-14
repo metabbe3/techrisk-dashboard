@@ -56,6 +56,7 @@ class IncidentStatusChanged extends Notification implements ShouldQueue
             'icon' => 'heroicon-o-arrow-path',
             'icon_color' => 'info',
             'type' => 'incident_status_changed',
+            'format' => 'filament',
         ];
     }
 }

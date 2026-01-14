@@ -61,6 +61,7 @@ class ActionImprovementOverdue extends Notification implements ShouldQueue
             'icon' => 'heroicon-o-exclamation-circle',
             'icon_color' => 'danger',
             'type' => 'action_improvement_overdue',
+            'format' => 'filament',
         ];
     }
 }

@@ -54,6 +54,7 @@ class AssignedAsPicNotification extends Notification implements ShouldQueue
             'icon' => 'heroicon-o-shield-exclamation',
             'icon_color' => $this->incident->severity === 'P1' ? 'danger' : 'warning',
             'type' => 'incident_assignment',
+            'format' => 'filament',
         ];
     }
 }

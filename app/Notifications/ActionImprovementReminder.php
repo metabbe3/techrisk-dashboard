@@ -84,6 +84,7 @@ class ActionImprovementReminder extends Notification implements ShouldQueue
             'icon' => $isOverdue ? 'heroicon-o-exclamation-triangle' : 'heroicon-o-bell',
             'icon_color' => $isOverdue ? 'danger' : 'warning',
             'type' => $isOverdue ? 'action_improvement_overdue' : 'action_improvement_reminder',
+            'format' => 'filament',
         ];
     }
 }

@@ -60,6 +60,7 @@ class ActionImprovementDueSoon extends Notification implements ShouldQueue
             'icon' => 'heroicon-o-clock',
             'icon_color' => 'warning',
             'type' => 'action_improvement_due_soon',
+            'format' => 'filament',
         ];
     }
 }

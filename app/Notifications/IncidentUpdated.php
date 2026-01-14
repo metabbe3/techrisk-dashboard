@@ -69,6 +69,7 @@ class IncidentUpdated extends Notification implements ShouldQueue
             'url' => IncidentResource::getUrl('view', ['record' => $this->incident]),
             'icon' => 'heroicon-o-pencil',
             'type' => 'incident_update',
+            'format' => 'filament',
         ];
     }
 }

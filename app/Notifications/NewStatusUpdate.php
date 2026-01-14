@@ -58,6 +58,7 @@ class NewStatusUpdate extends Notification implements ShouldQueue
             'icon' => 'heroicon-o-chat-bubble-left-right',
             'icon_color' => 'success',
             'type' => 'new_status_update',
+            'format' => 'filament',
         ];
     }
 }
