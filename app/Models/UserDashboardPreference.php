@@ -90,14 +90,14 @@ class UserDashboardPreference extends Model
                 'name' => 'Incidents by PIC',
                 'description' => 'Chart showing incidents by person in charge',
                 'icon' => 'heroicon-o-user',
-                'default_span' => 4,
+                'default_span' => 6,
             ],
             'incidents_by_label' => [
                 'class' => \App\Filament\Widgets\IncidentsByLabelChart::class,
                 'name' => 'Incidents by Label',
                 'description' => 'Chart showing label distribution',
                 'icon' => 'heroicon-o-tag',
-                'default_span' => 4,
+                'default_span' => 6,
             ],
             'fund_loss_trend' => [
                 'class' => \App\Filament\Widgets\FundLossTrendChart::class,

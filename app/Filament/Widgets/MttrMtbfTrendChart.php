@@ -67,7 +67,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
     public function getColumnSpan(): int | string | array
     {
-        return 4;
+        return 6;
     }
 
     #[On('dashboardFiltersUpdated')]

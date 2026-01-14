@@ -43,19 +43,28 @@ class Dashboard extends BaseDashboard
         // Initialize default preferences for first-time users
         UserDashboardPreference::initializeDefaultsForUser($user);
 
-        // Return default widgets
+        // Return default widgets with organized layout
         return [
+            // Row 1: Key Metrics Stats
             IncidentStatsOverview::class,
             ActionImprovementsOverview::class,
-            MonthlyIncidentsChart::class,
-            IncidentsBySeverityChart::class,
-            IncidentsByTypeChart::class,
-            OpenIncidents::class,
-            RecentIncidents::class,
-            IncidentsByPicChart::class,
-            FundLossTrendChart::class,
-            MttrMtbfTrendChart::class,
-            IncidentsByLabelChart::class,
+
+            // Row 2: Charts (3 charts, 4 columns each = 12 columns total)
+            MonthlyIncidentsChart::class,          // 4 cols
+            IncidentsBySeverityChart::class,        // 4 cols
+            IncidentsByTypeChart::class,            // 4 cols
+
+            // Row 3: Incident Tables (2 tables, 6 columns each = 12 columns total)
+            OpenIncidents::class,                   // 6 cols
+            RecentIncidents::class,                 // 6 cols
+
+            // Row 4: Additional Charts
+            FundLossTrendChart::class,              // 6 cols
+            MttrMtbfTrendChart::class,              // 6 cols
+
+            // Row 5: More Analysis
+            IncidentsByPicChart::class,             // 6 cols
+            IncidentsByLabelChart::class,           // 6 cols
         ];
     }
 }
