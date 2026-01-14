@@ -185,4 +185,27 @@ return [
     'release_token' => 'a',
 
     'asset_url' => env('ASSET_URL'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Middleware Groups
+    |--------------------------------------------------------------------------
+    |
+    | You may define middleware groups that Livewire will use to handle
+    | web requests. These groups should correspond to middleware groups
+    | defined in your application's HTTP kernel.
+    |
+    */
+
+    'middleware_groups' => [
+        'web' => [
+            \Illuminate\Cookie\Middleware\EncryptCookies::class,
+            \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+            \Illuminate\Session\Middleware\StartSession::class,
+            \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+            \Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
+            \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            // 'auth', // Uncomment if you want all Livewire components to require authentication
+        ],
+    ],
 ];
