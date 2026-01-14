@@ -7,10 +7,11 @@ use Filament\Notifications\Livewire\DatabaseNotifications as BaseDatabaseNotific
 class DatabaseNotifications extends BaseDatabaseNotifications
 {
     /**
-     * Override to disable polling and prevent modal auto-close
+     * Set reasonable polling interval as fallback when broadcasting is not available
+     * With Reverb broadcasting enabled, this serves as a backup update mechanism
      */
     public function getPollingInterval(): ?string
     {
-        return null; // Disable polling completely
+        return '30s'; // Poll every 30 seconds as fallback
     }
 }

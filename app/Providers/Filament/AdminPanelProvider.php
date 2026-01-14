@@ -22,12 +22,6 @@ use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
 {
-    public function boot(): void
-    {
-        // Disable database notifications polling to prevent modal auto-close
-        \Filament\Notifications\Livewire\DatabaseNotifications::pollingInterval(null);
-    }
-
     public function panel(\Filament\Panel $panel): \Filament\Panel
     {
         return $panel
