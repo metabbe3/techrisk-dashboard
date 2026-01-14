@@ -4,6 +4,7 @@ namespace App\Providers\Filament;
 
 use App\Filament\Pages\Dashboard;
 use App\Filament\Pages\CustomProfilePage;
+use Filament\Notifications\Livewire\DatabaseNotifications;
 
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -24,13 +25,15 @@ class AdminPanelProvider extends PanelProvider
 {
     public function panel(\Filament\Panel $panel): \Filament\Panel
     {
+        // Disable polling on database notifications to prevent modal auto-close
+        DatabaseNotifications::pollingInterval(null);
+
         return $panel
             ->default()
             ->id('admin')
             ->brandName('Technical Risk Dashboard')
             ->sidebarCollapsibleOnDesktop()
             ->databaseNotifications()
-            ->databaseNotificationsPolling(null)
             ->globalSearch(true)
             ->path('admin')
             ->login()
