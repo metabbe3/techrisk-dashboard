@@ -78,20 +78,34 @@ class User extends Authenticatable implements FilamentUser
             return;
         }
 
+        // Get the original notification class for type preservation
+        $originalNotificationClass = get_class($instance);
+
         // Create a proper notification wrapper that extends Notification base class
-        $modifiedNotification = new class($instance, $channels) extends \Illuminate\Notifications\Notification {
+        $modifiedNotification = new class($instance, $channels, $originalNotificationClass) extends \Illuminate\Notifications\Notification {
             protected $notification;
             protected $allowedChannels;
+            protected $originalType;
 
-            public function __construct($notification, $allowedChannels)
+            public function __construct($notification, $allowedChannels, $originalType)
             {
                 $this->notification = $notification;
                 $this->allowedChannels = $allowedChannels;
+                $this->originalType = $originalType;
             }
 
             public function via($notifiable)
             {
                 return $this->allowedChannels;
+            }
+
+            /**
+             * Override to preserve the original notification class type
+             * This ensures Filament can properly identify and render the notification
+             */
+            public function databaseType()
+            {
+                return $this->originalType;
             }
 
             public function toMail($notifiable)
