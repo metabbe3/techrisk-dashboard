@@ -59,6 +59,25 @@ class IncidentsBySeverityChart extends ChartWidget
         return 4;
     }
 
+    protected function getOptions(): array
+    {
+        return [
+            'maintainAspectRatio' => false,
+            'plugins' => [
+                'legend' => [
+                    'position' => 'bottom',
+                    'labels' => [
+                        'boxWidth' => 12,
+                        'padding' => 8,
+                        'font' => [
+                            'size' => 11,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
     #[On('dashboardFiltersUpdated')]
     public function updateDashboardFilters(array $data): void
     {

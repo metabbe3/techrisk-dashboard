@@ -51,6 +51,18 @@ class IncidentsByPicChart extends ChartWidget
         return 6;
     }
 
+    protected function getOptions(): array
+    {
+        return [
+            'maintainAspectRatio' => false,
+            'plugins' => [
+                'legend' => [
+                    'display' => false,
+                ],
+            ],
+        ];
+    }
+
     #[On('dashboardFiltersUpdated')]
     public function updateDashboardFilters(array $data): void
     {
