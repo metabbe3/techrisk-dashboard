@@ -30,7 +30,7 @@ class AdminPanelProvider extends PanelProvider
             ->brandName('Technical Risk Dashboard')
             ->sidebarCollapsibleOnDesktop()
             ->databaseNotifications()
-            ->databaseNotificationsPolling('30s')
+            ->databaseNotificationsPolling(null)
             ->globalSearch(true)
             ->path('admin')
             ->login()
