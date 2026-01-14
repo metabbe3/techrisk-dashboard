@@ -23,6 +23,7 @@ class Incident extends Model implements Auditable
         'root_cause',
         'remark',
         'improvements',
+        'timeline',
         'incident_date',
         'entry_date_tech_risk',
         'discovered_at',

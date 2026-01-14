@@ -25,6 +25,9 @@ class ViewIncident extends ViewRecord
                             TextEntry::make('incidentType.name'),
                             TextEntry::make('summary')->columnSpanFull(),
                             TextEntry::make('root_cause')->columnSpanFull(),
+                            TextEntry::make('timeline')
+                                ->label('Incident Timeline and Chronology')
+                                ->columnSpanFull(),
                             TextEntry::make('mttr')->label('MTTR (minutes)'),
                             TextEntry::make('mtbf')->label('MTBF (days)'),
                         ])->columnSpan(2),

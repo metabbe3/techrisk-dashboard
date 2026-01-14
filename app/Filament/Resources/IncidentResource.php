@@ -120,15 +120,33 @@ class IncidentResource extends Resource
                             ->relationship('pic', 'name')
                             ->searchable()
                             ->preload(),
-                        Textarea::make('summary')->columnSpanFull(),
-                        Textarea::make('root_cause')->columnSpanFull(),
-                        Textarea::make('remark')->columnSpanFull(),
+                    ])->columns(4),
+
+                Section::make('Details & Timeline')
+                    ->schema([
+                        Textarea::make('summary')
+                            ->label('Summary')
+                            ->rows(6)
+                            ->columnSpanFull(),
+                        Textarea::make('root_cause')
+                            ->label('Root Cause')
+                            ->rows(6)
+                            ->columnSpanFull(),
+                        Textarea::make('timeline')
+                            ->label('Incident Timeline and Chronology')
+                            ->rows(10)
+                            ->helperText('Describe the sequence of events chronologically')
+                            ->columnSpanFull(),
+                        Textarea::make('remark')
+                            ->label('Remark')
+                            ->rows(4)
+                            ->columnSpanFull(),
                         Select::make('labels')
                             ->multiple()
                             ->relationship('labels', 'name')
                             ->preload()
                             ->searchable(),
-                    ])->columns(3),
+                    ])->columns(2),
             ]);
     }
 
