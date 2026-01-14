@@ -38,8 +38,9 @@ class TestNotification extends Command
         $this->info("Unread notifications before: {$beforeCount}");
 
         // Send notification directly via Notification facade (bypasses User::notify())
-        $notification = new AssignedAsPicNotification($incident);
-        Notification::send($user, $notification);
+        // and disable queue to test immediately
+        $notification = (new AssignedAsPicNotification($incident))->delay(null);
+        Notification::sendNow($user, $notification);
 
         // Count after
         $afterCount = $user->unreadNotifications()->count();
