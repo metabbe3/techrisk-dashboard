@@ -1,4 +1,19 @@
 <script>
+    // Configure Livewire to send credentials with requests
+    document.addEventListener('livewire:init', () => {
+        if (typeof Livewire === 'object' && Livewire.fetch) {
+            // Ensure credentials (cookies) are sent with Livewire requests
+            const originalFetch = window.fetch;
+            window.fetch = function(...args) {
+                if (args[0] && args[0].toString().includes('livewire/update')) {
+                    args[1] = args[1] || {};
+                    args[1].credentials = 'include';
+                }
+                return originalFetch.apply(this, args);
+            };
+        }
+    });
+
     // Livewire upload error
     window.addEventListener('livewire:upload-error', (event) => {
         new FilamentNotification()
