@@ -1,17 +1,11 @@
 <script>
     // Configure Livewire to send credentials with requests
     document.addEventListener('livewire:init', () => {
-        if (typeof Livewire === 'object' && Livewire.fetch) {
+        // Override Livewire's internal request function to include credentials
+        Livewire.hook('request', ({ options }) => {
             // Ensure credentials (cookies) are sent with Livewire requests
-            const originalFetch = window.fetch;
-            window.fetch = function(...args) {
-                if (args[0] && args[0].toString().includes('livewire/update')) {
-                    args[1] = args[1] || {};
-                    args[1].credentials = 'include';
-                }
-                return originalFetch.apply(this, args);
-            };
-        }
+            options.credentials = 'include';
+        });
     });
 
     // Livewire upload error
