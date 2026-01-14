@@ -14,8 +14,10 @@ use App\Observers\IncidentTypeObserver;
 use App\Observers\StatusUpdateObserver;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\Route;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Support\Str;
+use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -66,5 +68,14 @@ class AppServiceProvider extends ServiceProvider
             'panels::body.end',
             fn (): string => view('vendor.filament.hooks.global-error-handler')->render(),
         );
+
+        // Configure Livewire to use web middleware for session/auth
+        if (class_exists(Livewire::class)) {
+            Livewire::setUpdateRoute(function ($handle) {
+                return Route::post('/livewire/update', $handle)
+                    ->middleware('web')
+                    ->name('livewire.update');
+            });
+        }
     }
 }
