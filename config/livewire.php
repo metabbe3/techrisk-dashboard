@@ -198,7 +198,7 @@ return [
 
     'middleware' => [
         'web',
-        // 'auth',
+        'auth',
     ],
 
     /*
