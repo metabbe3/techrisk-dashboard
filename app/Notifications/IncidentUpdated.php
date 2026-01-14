@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Filament\Resources\IncidentResource;
 use App\Models\Incident;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,14 +13,10 @@ class IncidentUpdated extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $incident;
-    public $changes;
-
-    public function __construct(Incident $incident, array $changes = [])
-    {
-        $this->incident = $incident;
-        $this->changes = $changes;
-    }
+    public function __construct(
+        public readonly Incident $incident,
+        public readonly array $changes = []
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -43,22 +40,33 @@ class IncidentUpdated extends Notification implements ShouldQueue
             }
         }
 
-        $mail->action('View Incident', url('/admin/incidents/' . $this->incident->id . '/edit'))
+        $mail->action('View Incident', IncidentResource::getUrl('view', ['record' => $this->incident]))
               ->line('Please review the changes.');
 
         return $mail;
     }
 
+    /**
+     * Filament V3 reads these specific keys from the data array:
+     * - title: Displayed in bold in the notification list
+     * - body: The description text (changed from 'message' in V2)
+     * - url: The action URL when clicking the notification
+     * - icon: (optional) Filament icon class
+     */
     public function toDatabase(object $notifiable): array
     {
+        $changeCount = count($this->changes);
+        $bodyText = $changeCount > 0
+            ? "The incident \"{$this->incident->title}\" has {$changeCount} update" . ($changeCount > 1 ? 's' : '')
+            : "The incident \"{$this->incident->title}\" has been updated.";
+
         return [
-            'format' => 'filament', // Required for bell icon display
             'incident_id' => $this->incident->id,
             'title' => 'Incident Updated',
-            'message' => 'The incident "' . $this->incident->title . '" has been updated.',
+            'body' => $bodyText,
             'changes' => $this->changes,
             'severity' => $this->incident->severity,
-            'url' => url('/admin/incidents/' . $this->incident->id . '/edit'),
+            'url' => IncidentResource::getUrl('view', ['record' => $this->incident]),
             'icon' => 'heroicon-o-pencil',
             'type' => 'incident_update',
         ];

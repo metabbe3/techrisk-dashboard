@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Filament\Resources\IncidentResource;
 use App\Models\Incident;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,12 +13,9 @@ class AssignedAsPicNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $incident;
-
-    public function __construct(Incident $incident)
-    {
-        $this->incident = $incident;
-    }
+    public function __construct(
+        public readonly Incident $incident
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -34,19 +32,25 @@ class AssignedAsPicNotification extends Notification implements ShouldQueue
             ->line('**Severity:** ' . $this->incident->severity)
             ->line('**Status:** ' . $this->incident->incident_status)
             ->line('**Date:** ' . $this->incident->incident_date->format('Y-m-d H:i'))
-            ->action('View Incident', url('/admin/incidents/' . $this->incident->id . '/edit'))
+            ->action('View Incident', IncidentResource::getUrl('view', ['record' => $this->incident]))
             ->line('Please review and take appropriate action.');
     }
 
+    /**
+     * Filament V3 reads these specific keys from the data array:
+     * - title: Displayed in bold in the notification list
+     * - body: The description text (changed from 'message' in V2)
+     * - url: The action URL when clicking the notification
+     * - icon: (optional) Filament icon class
+     */
     public function toDatabase(object $notifiable): array
     {
         return [
-            'format' => 'filament', // Required for bell icon display
             'incident_id' => $this->incident->id,
             'title' => 'New Incident Assignment',
-            'message' => "You have been assigned as PIC for: {$this->incident->title}",
+            'body' => "You have been assigned as PIC for: {$this->incident->title}",
             'severity' => $this->incident->severity,
-            'url' => url('/admin/incidents/' . $this->incident->id . '/edit'),
+            'url' => IncidentResource::getUrl('view', ['record' => $this->incident]),
             'icon' => 'heroicon-o-shield-exclamation',
             'icon_color' => $this->incident->severity === 'P1' ? 'danger' : 'warning',
             'type' => 'incident_assignment',

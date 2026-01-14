@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Filament\Resources\IncidentResource;
 use App\Models\Incident;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,16 +13,11 @@ class IncidentStatusChanged extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $incident;
-    public $oldStatus;
-    public $newStatus;
-
-    public function __construct(Incident $incident, string $oldStatus, string $newStatus)
-    {
-        $this->incident = $incident;
-        $this->oldStatus = $oldStatus;
-        $this->newStatus = $newStatus;
-    }
+    public function __construct(
+        public readonly Incident $incident,
+        public readonly string $oldStatus,
+        public readonly string $newStatus
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -37,20 +33,26 @@ class IncidentStatusChanged extends Notification implements ShouldQueue
             ->line('**Incident:** ' . $this->incident->title)
             ->line('**Old Status:** ' . $this->oldStatus)
             ->line('**New Status:** ' . $this->newStatus)
-            ->action('View Incident', url('/admin/incidents/' . $this->incident->id . '/edit'))
+            ->action('View Incident', IncidentResource::getUrl('view', ['record' => $this->incident]))
             ->line('Please review the updated status.');
     }
 
+    /**
+     * Filament V3 reads these specific keys from the data array:
+     * - title: Displayed in bold in the notification list
+     * - body: The description text (changed from 'message' in V2)
+     * - url: The action URL when clicking the notification
+     * - icon: (optional) Filament icon class
+     */
     public function toDatabase(object $notifiable): array
     {
         return [
-            'format' => 'filament', // Required for bell icon display
             'incident_id' => $this->incident->id,
             'title' => 'Incident Status Changed',
-            'message' => "Status changed from \"{$this->oldStatus}\" to \"{$this->newStatus}\"",
+            'body' => "Status changed from \"{$this->oldStatus}\" to \"{$this->newStatus}\" for: {$this->incident->title}",
             'old_status' => $this->oldStatus,
             'new_status' => $this->newStatus,
-            'url' => url('/admin/incidents/' . $this->incident->id . '/edit'),
+            'url' => IncidentResource::getUrl('view', ['record' => $this->incident]),
             'icon' => 'heroicon-o-arrow-path',
             'icon_color' => 'info',
             'type' => 'incident_status_changed',

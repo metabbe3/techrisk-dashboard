@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Filament\Resources\IncidentResource;
 use App\Models\ActionImprovement;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,14 +13,10 @@ class ActionImprovementDueSoon extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $actionImprovement;
-    public $daysRemaining;
-
-    public function __construct(ActionImprovement $actionImprovement, int $daysRemaining)
-    {
-        $this->actionImprovement = $actionImprovement;
-        $this->daysRemaining = $daysRemaining;
-    }
+    public function __construct(
+        public readonly ActionImprovement $actionImprovement,
+        public readonly int $daysRemaining
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -39,21 +36,27 @@ class ActionImprovementDueSoon extends Notification implements ShouldQueue
             ->line('**Due Date:** ' . $this->actionImprovement->due_date->format('Y-m-d'))
             ->line('**Days Remaining:** ' . $this->daysRemaining)
             ->line('**Detail:** ' . $this->actionImprovement->detail)
-            ->action('View Incident', url('/admin/incidents/' . $incident->id . '/edit'))
+            ->action('View Incident', IncidentResource::getUrl('view', ['record' => $incident]))
             ->line('Please complete this action improvement before the due date.');
     }
 
+    /**
+     * Filament V3 reads these specific keys from the data array:
+     * - title: Displayed in bold in the notification list
+     * - body: The description text (changed from 'message' in V2)
+     * - url: The action URL when clicking the notification
+     * - icon: (optional) Filament icon class
+     */
     public function toDatabase(object $notifiable): array
     {
         return [
-            'format' => 'filament', // Required for bell icon display
             'action_improvement_id' => $this->actionImprovement->id,
             'incident_id' => $this->actionImprovement->incident_id,
             'title' => 'Action Improvement Due Soon',
-            'message' => '"' . $this->actionImprovement->title . '" is due in ' . $this->daysRemaining . ' days',
+            'body' => '"' . $this->actionImprovement->title . '" is due in ' . $this->daysRemaining . ' days',
             'due_date' => $this->actionImprovement->due_date->format('Y-m-d'),
             'days_remaining' => $this->daysRemaining,
-            'url' => url('/admin/incidents/' . $this->actionImprovement->incident_id . '/edit'),
+            'url' => IncidentResource::getUrl('view', ['record' => $this->actionImprovement->incident]),
             'icon' => 'heroicon-o-clock',
             'icon_color' => 'warning',
             'type' => 'action_improvement_due_soon',

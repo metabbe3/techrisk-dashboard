@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Filament\Resources\IncidentResource;
 use App\Models\ActionImprovement;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -12,12 +13,9 @@ class ActionImprovementReminder extends Notification implements ShouldQueue
 {
     use Queueable;
 
-    public $actionImprovement;
-
-    public function __construct(ActionImprovement $actionImprovement)
-    {
-        $this->actionImprovement = $actionImprovement;
-    }
+    public function __construct(
+        public readonly ActionImprovement $actionImprovement
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -52,23 +50,29 @@ class ActionImprovementReminder extends Notification implements ShouldQueue
         }
 
         $mail->line('**Detail:** ' . $this->actionImprovement->detail)
-              ->action('View Incident', url('/admin/incidents/' . $incident->id . '/edit'))
+              ->action('View Incident', IncidentResource::getUrl('view', ['record' => $incident]))
               ->line('Please take action as soon as possible.');
 
         return $mail;
     }
 
+    /**
+     * Filament V3 reads these specific keys from the data array:
+     * - title: Displayed in bold in the notification list
+     * - body: The description text (changed from 'message' in V2)
+     * - url: The action URL when clicking the notification
+     * - icon: (optional) Filament icon class
+     */
     public function toDatabase(object $notifiable): array
     {
         $daysUntilDue = now()->diffInDays($this->actionImprovement->due_date, false);
         $isOverdue = $daysUntilDue < 0;
 
         return [
-            'format' => 'filament', // Required for bell icon display
             'action_improvement_id' => $this->actionImprovement->id,
             'incident_id' => $this->actionImprovement->incident_id,
             'title' => $isOverdue ? 'Action Improvement Overdue' : 'Action Improvement Reminder',
-            'message' => '"' . $this->actionImprovement->title . '" is ' .
+            'body' => '"' . $this->actionImprovement->title . '" is ' .
                 ($isOverdue
                     ? abs($daysUntilDue) . ' days overdue'
                     : 'due in ' . $daysUntilDue . ' days'
@@ -76,7 +80,7 @@ class ActionImprovementReminder extends Notification implements ShouldQueue
             'due_date' => $this->actionImprovement->due_date->format('Y-m-d'),
             'days_until_due' => $daysUntilDue,
             'is_overdue' => $isOverdue,
-            'url' => url('/admin/incidents/' . $this->actionImprovement->incident_id . '/edit'),
+            'url' => IncidentResource::getUrl('view', ['record' => $this->actionImprovement->incident]),
             'icon' => $isOverdue ? 'heroicon-o-exclamation-triangle' : 'heroicon-o-bell',
             'icon_color' => $isOverdue ? 'danger' : 'warning',
             'type' => $isOverdue ? 'action_improvement_overdue' : 'action_improvement_reminder',
