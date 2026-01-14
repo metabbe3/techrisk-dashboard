@@ -72,6 +72,7 @@ class IncidentResource extends Resource
                             Select::make('classification')->options([
                                 'Incident' => 'Incident', 'Issue' => 'Issue',
                             ])->required(),
+                            TextInput::make('reported_by')->label('Reported By'),
                             TextInput::make('mttr')->label('MTTR (minutes)')->readOnly()->visible(fn ($context) => $context === 'edit'),
                             TextInput::make('mtbf')->label('MTBF (days)')->readOnly()->visible(fn ($context) => $context === 'edit'),
                         ])->columnSpan(2),
