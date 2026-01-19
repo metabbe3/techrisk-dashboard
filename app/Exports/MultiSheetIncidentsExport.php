@@ -41,7 +41,7 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         // 4. P4 Incidents
         $p4Query = $this->query->clone()->where('severity', 'P4');
         $sheets[] = new SingleIncidentSheetExport($p4Query, 'P4 Incidents', $this->headings, $this->columnNames);
-        
+
         // 5. Non-Tech Incidents
         $nonTechQuery = $this->query->clone()->where('incident_type', 'Non-tech');
         $sheets[] = new SingleIncidentSheetExport($nonTechQuery, 'Non-Tech Incidents', $this->headings, $this->columnNames);
@@ -49,6 +49,25 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         // 6. Fund Loss
         $fundLossQuery = $this->query->clone()->where('fund_loss', '>', 0);
         $sheets[] = new SingleIncidentSheetExport($fundLossQuery, 'Fund Loss', $this->headings, $this->columnNames);
+
+        // NEW: Issues tabs
+        // 7. All Issues
+        $issuesQuery = $this->query->clone()->where('classification', 'Issue');
+        $sheets[] = new SingleIncidentSheetExport($issuesQuery, 'All Issues', $this->headings, $this->columnNames);
+
+        // 8. Issues - MTTR
+        $issuesMttrQuery = $this->query->clone()
+            ->where('classification', 'Issue')
+            ->whereNotNull('mttr')
+            ->orderBy('mttr', 'desc');
+        $sheets[] = new SingleIncidentSheetExport($issuesMttrQuery, 'Issues - MTTR', $this->headings, $this->columnNames);
+
+        // 9. Issues - MTBF
+        $issuesMtbfQuery = $this->query->clone()
+            ->where('classification', 'Issue')
+            ->whereNotNull('mtbf')
+            ->orderBy('mtbf', 'desc');
+        $sheets[] = new SingleIncidentSheetExport($issuesMtbfQuery, 'Issues - MTBF', $this->headings, $this->columnNames);
 
         return $sheets;
     }

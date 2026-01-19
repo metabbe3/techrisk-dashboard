@@ -98,4 +98,9 @@ class Incident extends Model implements Auditable
     {
         return $this->hasMany(ActionImprovement::class);
     }
+
+    public function scopeIssues($query)
+    {
+        return $query->where('classification', 'Issue');
+    }
 }
