@@ -4,7 +4,6 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\IssueResource\Pages;
 use App\Models\Incident;
-use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -171,7 +170,7 @@ class IssueResource extends Resource
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
                     ->form([
-                        Forms\Components\Select::make('incident_status')
+                        Filament\Forms\Components\Select::make('incident_status')
                             ->label('Status')
                             ->options([
                                 'Open' => 'Open',
