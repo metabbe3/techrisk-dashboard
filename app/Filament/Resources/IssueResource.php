@@ -9,6 +9,7 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Filament\Forms;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
@@ -165,6 +166,28 @@ class IssueResource extends Resource
                     ->toggleable(),
             ])
             ->actions([
+                Tables\Actions\Action::make('update_status')
+                    ->label('Update Status')
+                    ->icon('heroicon-o-pencil-square')
+                    ->color('warning')
+                    ->form([
+                        Forms\Components\Select::make('incident_status')
+                            ->label('Status')
+                            ->options([
+                                'Open' => 'Open',
+                                'In progress' => 'In progress',
+                                'Finalization' => 'Finalization',
+                                'Completed' => 'Completed',
+                            ])
+                            ->required()
+                            ->default(fn (Incident $record) => $record->incident_status),
+                    ])
+                    ->action(function (Incident $record, array $data) {
+                        $record->update([
+                            'incident_status' => $data['incident_status'],
+                        ]);
+                    })
+                    ->visible(fn (): bool => auth()->user()->can('manage issues')),
                 Tables\Actions\EditAction::make()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage issues')),
@@ -177,6 +200,30 @@ class IssueResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
                         ->databaseTransaction()
+                        ->visible(fn (): bool => auth()->user()->can('manage issues')),
+                    Tables\Actions\BulkAction::make('update_bulk_status')
+                        ->label('Update Status')
+                        ->icon('heroicon-o-pencil-square')
+                        ->color('warning')
+                        ->form([
+                            Forms\Components\Select::make('incident_status')
+                                ->label('Status')
+                                ->options([
+                                    'Open' => 'Open',
+                                    'In progress' => 'In progress',
+                                    'Finalization' => 'Finalization',
+                                    'Completed' => 'Completed',
+                                ])
+                                ->required(),
+                        ])
+                        ->action(function (Illuminate\Support\Collection $records, array $data) {
+                            foreach ($records as $record) {
+                                $record->update([
+                                    'incident_status' => $data['incident_status'],
+                                ]);
+                            }
+                        })
+                        ->deselectRecordsAfterAction()
                         ->visible(fn (): bool => auth()->user()->can('manage issues')),
                 ]),
             ]);

@@ -32,7 +32,7 @@ class AdminPanelProvider extends PanelProvider
             ->databaseNotifications()
             ->globalSearch(true)
             ->path('admin')
-            ->login()
+            ->login(\Filament\Pages\Auth\Login::class)
             ->profile(CustomProfilePage::class)
             ->colors([
                 'primary' => Color::Blue,
