@@ -91,46 +91,6 @@ services:
       retries: 5
     command: redis-server --appendonly yes
 
-  # Laravel Reverb WebSocket Server for Real-time Broadcasting
-  reverb:
-    build:
-      context: .
-      dockerfile: Dockerfile.php
-    container_name: techrisk-reverb
-    restart: unless-stopped
-    command: php artisan reverb:start
-    ports:
-      - "8081:8081"
-    volumes:
-      - ./:/var/www/html
-      - ./storage/app:/var/www/html/storage/app
-      - ./storage/framework:/var/www/html/storage/framework
-      - ./storage/logs:/var/www/html/storage/logs
-    depends_on:
-      - redis
-    environment:
-      - "DB_HOST=db"
-      - "REDIS_HOST=redis"
-      - "CACHE_DRIVER=redis"
-      - "SESSION_DRIVER=redis"
-      - "QUEUE_CONNECTION=redis"
-      - "BROADCAST_CONNECTION=reverb"
-      - "REVERB_APP_ID=${REVERB_APP_ID:-local}"
-      - "REVERB_APP_KEY=${REVERB_APP_KEY:-local-key}"
-      - "REVERB_APP_SECRET=${REVERB_APP_SECRET:-local-secret}"
-      - "REVERB_HOST=0.0.0.0"
-      - "REVERB_PORT=8081"
-      - "REVERB_SCHEME=http"
-      - "LOG_CHANNEL=stack"
-      - "LOG_LEVEL=debug"
-    networks:
-      - techrisk-network
-    healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 8081 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-
   # Queue Worker Service
   worker:
     build:
