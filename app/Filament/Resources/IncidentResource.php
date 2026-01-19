@@ -161,6 +161,7 @@ class IncidentResource extends Resource
                 TextColumn::make('mtbf')->label('MTBF (days)')->sortable()->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) { 'P1' => 'danger', 'P2' => 'warning', 'P3' => 'info', 'P4', 'N', 'G' => 'success', default => 'gray', })->sortable(),
                 TextColumn::make('incident_status')->badge()->color(fn (string $state): string => match ($state) { 'Open' => 'warning', 'In progress' => 'info', 'Finalization' => 'primary', 'Completed' => 'success', default => 'gray', })->sortable(),
+                TextColumn::make('pic.name')->label('PIC')->sortable()->toggleable(),
                 TextColumn::make('incident_date')->dateTime()->sortable(),
                 TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->summarize(Sum::make()->money('IDR')->label('Total Potential')),
                 TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
