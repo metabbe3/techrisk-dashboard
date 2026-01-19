@@ -69,7 +69,7 @@ services:
   # Redis Service
   redis:
     image: redis:7-alpine
-    container_name: techrisk-redis # This is why your .env must say REDIS_HOST=techrisk-redis
+    container_name: techrisk-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
