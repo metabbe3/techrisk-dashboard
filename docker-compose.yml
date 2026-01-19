@@ -1,5 +1,5 @@
 services:
-  # PHP-FPM Service
+  # PHP-FPM Service (The App)
   app:
     build:
       context: .
@@ -16,14 +16,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_started
-    environment:
-      - "DB_HOST=db"
-      - "REDIS_HOST=redis"
-      - "CACHE_DRIVER=redis"
-      - "SESSION_DRIVER=redis"
-      - "QUEUE_CONNECTION=redis"
-      - "LOG_CHANNEL=stack"
-      - "LOG_LEVEL=debug"
+    env_file:
+      - .env  # This makes .env the master source
     networks:
       - techrisk-network
 
@@ -59,7 +53,6 @@ services:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-secret}
       MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
       MYSQL_USER: ${DB_USERNAME:-techrisk}
-      MYSQL_ALLOW_EMPTY_PASSWORD: 'no'
     volumes:
       - ./storage/dbdata:/var/lib/mysql
     ports:
@@ -76,7 +69,7 @@ services:
   # Redis Service
   redis:
     image: redis:7-alpine
-    container_name: techrisk-redis
+    container_name: techrisk-redis # This is why your .env must say REDIS_HOST=techrisk-redis
     restart: unless-stopped
     ports:
       - "6379:6379"
@@ -98,28 +91,17 @@ services:
       dockerfile: Dockerfile.php
     container_name: techrisk-worker
     restart: unless-stopped
-    command: php artisan queue:work --sleep=3 --tries=3 --timeout=90 --max-time=3600
+    command: php artisan queue:work --sleep=3 --tries=3
     volumes:
       - ./:/var/www/html
-      - ./storage/app:/var/www/html/storage/app
-      - ./storage/framework:/var/www/html/storage/framework
-      - ./storage/logs:/var/www/html/storage/logs
     depends_on:
-      - db
-      - redis
       - app
-    environment:
-      - "DB_HOST=db"
-      - "REDIS_HOST=redis"
-      - "CACHE_DRIVER=redis"
-      - "SESSION_DRIVER=redis"
-      - "QUEUE_CONNECTION=redis"
-      - "LOG_CHANNEL=stack"
-      - "LOG_LEVEL=debug"
+    env_file:
+      - .env
     networks:
       - techrisk-network
 
-  # Scheduler Service (for scheduled tasks)
+  # Scheduler Service
   scheduler:
     build:
       context: .
@@ -129,21 +111,10 @@ services:
     command: php artisan schedule:work
     volumes:
       - ./:/var/www/html
-      - ./storage/app:/var/www/html/storage/app
-      - ./storage/framework:/var/www/html/storage/framework
-      - ./storage/logs:/var/www/html/storage/logs
     depends_on:
-      - db
-      - redis
       - app
-    environment:
-      - "DB_HOST=db"
-      - "REDIS_HOST=redis"
-      - "CACHE_DRIVER=redis"
-      - "SESSION_DRIVER=redis"
-      - "QUEUE_CONNECTION=redis"
-      - "LOG_CHANNEL=stack"
-      - "LOG_LEVEL=debug"
+    env_file:
+      - .env
     networks:
       - techrisk-network
 
