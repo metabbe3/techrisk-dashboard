@@ -227,9 +227,10 @@ class IncidentResource extends Resource
                     })
             ])
             ->actions([
+                Tables\Actions\ViewAction::make(),
                 Tables\Actions\Action::make('update_status')
                     ->label('Update Status')
-                    ->icon('heroicon-o-pencil-square')
+                    ->icon('heroicon-o-arrow-path')
                     ->color('warning')
                     ->form([
                         Forms\Components\Select::make('incident_status')
@@ -252,7 +253,6 @@ class IncidentResource extends Resource
                 Tables\Actions\EditAction::make()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
-                Tables\Actions\ViewAction::make(),
                 Tables\Actions\DeleteAction::make()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
@@ -261,30 +261,6 @@ class IncidentResource extends Resource
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()
                         ->databaseTransaction()
-                        ->visible(fn (): bool => auth()->user()->can('manage incidents')),
-                    Tables\Actions\BulkAction::make('update_bulk_status')
-                        ->label('Update Status')
-                        ->icon('heroicon-o-pencil-square')
-                        ->color('warning')
-                        ->form([
-                            Forms\Components\Select::make('incident_status')
-                                ->label('Status')
-                                ->options([
-                                    'Open' => 'Open',
-                                    'In progress' => 'In progress',
-                                    'Finalization' => 'Finalization',
-                                    'Completed' => 'Completed',
-                                ])
-                                ->required(),
-                        ])
-                        ->action(function (Illuminate\Support\Collection $records, array $data) {
-                            foreach ($records as $record) {
-                                $record->update([
-                                    'incident_status' => $data['incident_status'],
-                                ]);
-                            }
-                        })
-                        ->deselectRecordsAfterAction()
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 ]),
             ]);
