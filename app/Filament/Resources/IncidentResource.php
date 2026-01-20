@@ -154,6 +154,7 @@ class IncidentResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
+            ->modifyQueryUsing(fn (Builder $query) => $query->where('classification', '!=', 'Issue'))
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')->searchable()->limit(30),
