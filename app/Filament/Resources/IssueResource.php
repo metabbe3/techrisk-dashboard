@@ -62,7 +62,8 @@ class IssueResource extends Resource
                             ->label('Issue Name')
                             ->required()
                             ->autofocus()
-                            ->columnSpanFull(),
+                            ->columnSpanFull()
+                            ->readOnly(fn ($context) => $context === 'edit'),
                         TextInput::make('no')
                             ->label('Issue ID')
                             ->default(function () {
@@ -111,13 +112,6 @@ class IssueResource extends Resource
                             ->label('End Date')
                             ->seconds(false)
                             ->columnSpan(1),
-                        DateTimePicker::make('entry_date_tech_risk')
-                            ->label('Tech Risk Entry Date')
-                            ->required()
-                            ->seconds(false)
-                            ->columnSpan(1)
-                            ->default(fn () => now()->format('Y-m-d'))
-                            ->hidden(),
                         TextInput::make('mttr')
                             ->label('MTTR (minutes)')
                             ->readOnly()
@@ -128,6 +122,13 @@ class IssueResource extends Resource
                             ->readOnly()
                             ->visible(fn ($context) => $context === 'edit')
                             ->columnSpan(1),
+                        DateTimePicker::make('entry_date_tech_risk')
+                            ->label('Tech Risk Entry Date')
+                            ->required()
+                            ->seconds(false)
+                            ->columnSpan(1)
+                            ->default(fn () => now()->format('Y-m-d'))
+                            ->hidden(),
                     ])->columns(2),
             ]);
     }
@@ -177,40 +178,6 @@ class IssueResource extends Resource
                     ->toggleable(),
             ])
             ->actions([
-                Tables\Actions\ViewAction::make(),
-                Tables\Actions\Action::make('update_status')
-                    ->label('Update Status')
-                    ->icon('heroicon-o-arrow-path')
-                    ->color('warning')
-                    ->form([
-                        Select::make('incident_status')
-                            ->label('Status')
-                            ->options([
-                                'Open' => 'Open',
-                                'In progress' => 'In progress',
-                                'Finalization' => 'Finalization',
-                                'Completed' => 'Completed',
-                            ])
-                            ->required()
-                            ->default(fn (Incident $record) => $record->incident_status),
-                        DateTimePicker::make('update_date')
-                            ->label('Update Date')
-                            ->seconds(false)
-                            ->default(fn (Incident $record) => $record->incident_date)
-                            ->required(),
-                        TextInput::make('remark')
-                            ->label('Notes')
-                            ->required()
-                            ->default(fn (Incident $record) => $record->remark),
-                    ])
-                    ->action(function (Incident $record, array $data) {
-                        $record->update([
-                            'incident_status' => $data['incident_status'],
-                            'incident_date' => $data['update_date'],
-                            'remark' => $data['remark'],
-                        ]);
-                    })
-                    ->visible(fn (): bool => auth()->user()->can('manage issues')),
                 Tables\Actions\EditAction::make()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage issues')),
@@ -233,7 +200,6 @@ class IssueResource extends Resource
             'index' => Pages\ListIssues::route('/'),
             'create' => Pages\CreateIssue::route('/create'),
             'edit' => Pages\EditIssue::route('/{record}/edit'),
-            'view' => Pages\ViewIssue::route('/{record}'),
         ];
     }
 }
