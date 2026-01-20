@@ -94,7 +94,7 @@ class IssueResource extends Resource
                             ->columnSpan(1),
                         Select::make('classification')
                             ->default('Issue')
-                            ->readOnly()
+                            ->disabled()
                             ->hidden()
                             ->dehydrated(true),
                         DateTimePicker::make('incident_date')
