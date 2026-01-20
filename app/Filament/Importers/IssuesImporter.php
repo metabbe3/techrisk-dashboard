@@ -76,8 +76,9 @@ class IssuesImporter extends Importer
         return 'Issue Name';
     }
 
-    public static function getCompletedNotificationBody(int $count): string
+    public static function getCompletedNotificationBody(Filament\Actions\Imports\Models\Import $import): string
     {
+        $count = $import->rows_successful ?: 0;
         return "Successfully imported {$count} issues.";
     }
 }
