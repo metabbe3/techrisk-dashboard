@@ -14,23 +14,24 @@ return [
     |
     */
 
-    'broadcasting' => [
-
-        'echo' => [
-            'broadcaster' => 'reverb',
-            'key' => env('VITE_REVERB_APP_KEY'),
-            'cluster' => null,
-            'wsHost' => env('VITE_REVERB_HOST', '127.0.0.1'),
-            'wsPort' => env('VITE_REVERB_PORT', 8081),
-            'wssPort' => env('VITE_REVERB_PORT', 8081),
-            'authEndpoint' => '/broadcasting/auth',
-            'disableStats' => true,
-            'encrypted' => false,
-            'forceTLS' => false,
-            'enabledTransports' => ['ws', 'wss'],
-        ],
-
-    ],
+    // NOTE: Broadcasting is disabled. Filament will use polling for notifications instead.
+    // 'broadcasting' => [
+    //
+    //     'echo' => [
+    //         'broadcaster' => 'reverb',
+    //         'key' => env('VITE_REVERB_APP_KEY'),
+    //         'cluster' => null,
+    //         'wsHost' => env('VITE_REVERB_HOST', '127.0.0.1'),
+    //         'wsPort' => env('VITE_REVERB_PORT', 8081),
+    //         'wssPort' => env('VITE_REVERB_PORT', 8081),
+    //         'authEndpoint' => '/broadcasting/auth',
+    //         'disableStats' => true,
+    //         'encrypted' => false,
+    //         'forceTLS' => false,
+    //         'enabledTransports' => ['ws', 'wss'],
+    //     ],
+    //
+    // ],
 
     /*
     |--------------------------------------------------------------------------
