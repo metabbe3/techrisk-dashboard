@@ -170,7 +170,7 @@ class IssueResource extends Resource
                     ->icon('heroicon-o-arrow-path')
                     ->color('warning')
                     ->form([
-                        Filament\Forms\Components\Select::make('incident_status')
+                        Select::make('incident_status')
                             ->label('Status')
                             ->options([
                                 'Open' => 'Open',
