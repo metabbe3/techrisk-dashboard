@@ -112,16 +112,6 @@ class IssueResource extends Resource
                             ->label('End Date')
                             ->seconds(false)
                             ->columnSpan(1),
-                        TextInput::make('mttr')
-                            ->label('MTTR (minutes)')
-                            ->readOnly()
-                            ->visible(fn ($context) => $context === 'edit')
-                            ->columnSpan(1),
-                        TextInput::make('mtbf')
-                            ->label('MTBF (days)')
-                            ->readOnly()
-                            ->visible(fn ($context) => $context === 'edit')
-                            ->columnSpan(1),
                         DateTimePicker::make('entry_date_tech_risk')
                             ->label('Tech Risk Entry Date')
                             ->required()
