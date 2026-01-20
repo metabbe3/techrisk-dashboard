@@ -35,7 +35,7 @@ class IssuesImporter extends Importer
         // Check if issue with same title exists (prevent duplicates from Notion bulk import)
         $name = $this->data['Name'] ?? null;
         if ($name) {
-            $cleanName = str_replace('Incident - ', '', $name);
+            $cleanName = str_replace('Summary of Incident - ', '', $name);
             $existing = Incident::where('classification', 'Issue')
                 ->where('title', $cleanName)
                 ->first();
@@ -57,7 +57,7 @@ class IssuesImporter extends Importer
         $incidentDate = $this->parseNotionDate($dateString);
 
         $data = [
-            'title' => str_replace('Incident - ', '', $this->data['Name']),
+            'title' => str_replace('Summary of Incident - ', '', $this->data['Name']),
             'incident_date' => $incidentDate,
             'entry_date_tech_risk' => $incidentDate->format('Y-m-d'),
             'severity' => $this->mapSeverityToCode($this->data['Root Cause Classification'] ?? 'G'),
