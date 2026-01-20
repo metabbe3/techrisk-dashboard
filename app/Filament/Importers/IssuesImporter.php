@@ -15,31 +15,28 @@ class IssuesImporter extends Importer
     public static function getColumns(): array
     {
         return [
-            ImportColumn::make('title')
-                ->label('Issue Name')
+            ImportColumn::make('Name')
+                ->label('Name')
                 ->requiredMapping()
                 ->rules(['required', 'string', 'max:255']),
-            ImportColumn::make('incident_date')
-                ->label('Start Date')
+            ImportColumn::make('Date of Incident')
+                ->label('Date of Incident')
                 ->requiredMapping()
-                ->rules(['required', 'date']),
-            ImportColumn::make('severity')
-                ->label('Incident Type')
+                ->rules(['required', 'string']),
+            ImportColumn::make('Root Cause Classification')
+                ->label('Root Cause Classification')
                 ->requiredMapping()
-                ->rules(['required', 'in:P1,P2,P3,P4,G,X1,X2,X3,X4']),
-            ImportColumn::make('stop_bleeding_at')
-                ->label('End Date')
-                ->rules(['nullable', 'date']),
+                ->rules(['nullable', 'string']),
         ];
     }
 
     public function resolveRecord(): ?Incident
     {
         // Check if issue with same title exists (prevent duplicates from Notion bulk import)
-        $title = $this->data['title'] ?? null;
-        if ($title) {
+        $name = $this->data['Name'] ?? null;
+        if ($name) {
             $existing = Incident::where('classification', 'Issue')
-                ->where('title', $title)
+                ->where('title', $name)
                 ->first();
 
             if ($existing) {
@@ -54,10 +51,14 @@ class IssuesImporter extends Importer
 
     public function fillRecord(): void
     {
+        // Parse date from "Month DD, YYYY" format (e.g., "January 12, 2026")
+        $dateString = $this->data['Date of Incident'] ?? '';
+        $incidentDate = $this->parseNotionDate($dateString);
+
         $data = [
-            'title' => $this->data['title'],
-            'incident_date' => Carbon::parse($this->data['incident_date']),
-            'severity' => $this->data['severity'],
+            'title' => $this->data['Name'],
+            'incident_date' => $incidentDate,
+            'severity' => $this->mapSeverityToCode($this->data['Root Cause Classification'] ?? 'G'),
             'classification' => 'Issue',
         ];
 
@@ -68,11 +69,34 @@ class IssuesImporter extends Importer
 
         $this->record->fill($data);
 
-        if (isset($this->data['stop_bleeding_at']) && !empty($this->data['stop_bleeding_at'])) {
-            $this->record->stop_bleeding_at = Carbon::parse($this->data['stop_bleeding_at']);
-        }
-
         // MTTR/MTBF will be auto-calculated by the IncidentObserver
+    }
+
+    private function parseNotionDate(string $dateString): Carbon
+    {
+        // Try parsing "Month DD, YYYY" format from Notion
+        try {
+            return Carbon::createFromFormat('F d, Y', $dateString)->startOfDay();
+        } catch (\Exception $e) {
+            // Fallback to regular parsing
+            return Carbon::parse($dateString);
+        }
+    }
+
+    private function mapSeverityToCode(string $classification): string
+    {
+        // Map Notion classifications to severity codes
+        $mapping = [
+            'Deployment Issues' => 'P1',
+            'Infrastructure Issue' => 'P1',
+            'Code Bug' => 'P2',
+            'Configuration Error' => 'P2',
+            'Data Issue' => 'P3',
+            'UI Issue' => 'P4',
+            'Internal Improving Issue' => 'G',
+        ];
+
+        return $mapping[$classification] ?? 'G'; // Default to G (General)
     }
 
     private function generateIssueId(): string
