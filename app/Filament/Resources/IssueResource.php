@@ -100,11 +100,24 @@ class IssueResource extends Resource
                             ->label('Start Date')
                             ->required()
                             ->seconds(false)
-                            ->columnSpan(1),
+                            ->columnSpan(1)
+                            ->live(true)
+                            ->afterStateUpdated(function ($state, callable $set) {
+                                if ($state) {
+                                    $set('entry_date_tech_risk', \Carbon\Carbon::parse($state)->format('Y-m-d'));
+                                }
+                            }),
                         DateTimePicker::make('stop_bleeding_at')
                             ->label('End Date')
                             ->seconds(false)
                             ->columnSpan(1),
+                        DateTimePicker::make('entry_date_tech_risk')
+                            ->label('Tech Risk Entry Date')
+                            ->required()
+                            ->seconds(false)
+                            ->columnSpan(1)
+                            ->default(fn () => now()->format('Y-m-d'))
+                            ->hidden(),
                         TextInput::make('mttr')
                             ->label('MTTR (minutes)')
                             ->readOnly()

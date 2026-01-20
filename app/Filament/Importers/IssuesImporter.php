@@ -58,6 +58,7 @@ class IssuesImporter extends Importer
         $data = [
             'title' => $this->data['Name'],
             'incident_date' => $incidentDate,
+            'entry_date_tech_risk' => $incidentDate->format('Y-m-d'),
             'severity' => $this->mapSeverityToCode($this->data['Root Cause Classification'] ?? 'G'),
             'classification' => 'Issue',
         ];
