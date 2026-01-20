@@ -78,17 +78,17 @@ class IssuesMetricSheetExport implements FromQuery, WithTitle, WithHeadings, Wit
 
                 $sheet->getStyle($fullDataRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
-                // Summary
+                // Summary - only show Average
                 $summaryStartRow = $lastDataRow + 2;
-                $metricLabel = $this->metricType === 'mttr' ? 'Avg MTTR' : 'Avg MTBF';
-                $sheet->setCellValue("A{$summaryStartRow}", $metricLabel);
-                $sheet->getStyle("A{$summaryStartRow}")->getFont()->setBold(true);
-                $sheet->getStyle("A{$summaryStartRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+                $metricLabel = $this->metricType === 'mttr' ? 'Average MTTR' : 'Average MTBF';
+                $metricValue = round($this->query->clone()->avg($this->metricType), 2);
 
-                $avgValue = round($this->query->clone()->avg($this->metricType), 2);
-                $summaryDataRow = $summaryStartRow + 1;
-                $sheet->setCellValue("A{$summaryDataRow}", $avgValue);
-                $sheet->getStyle("A{$summaryDataRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+                $sheet->setCellValue("A{$summaryStartRow}", $metricLabel);
+                $sheet->setCellValue("B{$summaryStartRow}", $metricValue);
+                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getFont()->setBold(true);
+                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFE2EFDA');
+                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }
