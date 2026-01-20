@@ -244,10 +244,22 @@ class IncidentResource extends Resource
                             ])
                             ->required()
                             ->default(fn (Incident $record) => $record->incident_status),
+                        Forms\Components\DateTimePicker::make('update_date')
+                            ->label('Update Date')
+                            ->seconds(false)
+                            ->default(fn (Incident $record) => $record->incident_date)
+                            ->required(),
+                        Forms\Components\Textarea::make('remark')
+                            ->label('Notes')
+                            ->required()
+                            ->rows(3)
+                            ->default(fn (Incident $record) => $record->remark),
                     ])
                     ->action(function (Incident $record, array $data) {
                         $record->update([
                             'incident_status' => $data['incident_status'],
+                            'incident_date' => $data['update_date'],
+                            'remark' => $data['remark'],
                         ]);
                     })
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
