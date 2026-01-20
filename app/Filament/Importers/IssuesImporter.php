@@ -75,4 +75,9 @@ class IssuesImporter extends Importer
     {
         return 'Issue Name';
     }
+
+    public static function getCompletedNotificationBody(int $count): string
+    {
+        return "Successfully imported {$count} issues.";
+    }
 }
