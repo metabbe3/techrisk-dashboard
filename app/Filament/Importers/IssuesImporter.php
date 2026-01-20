@@ -35,19 +35,38 @@ class IssuesImporter extends Importer
 
     public function resolveRecord(): ?Incident
     {
-        // Always create new records (don't update existing)
+        // Check if issue with same title exists (prevent duplicates from Notion bulk import)
+        $title = $this->data['title'] ?? null;
+        if ($title) {
+            $existing = Incident::where('classification', 'Issue')
+                ->where('title', $title)
+                ->first();
+
+            if ($existing) {
+                // Return existing record to update it instead of creating duplicate
+                return $existing;
+            }
+        }
+
+        // Create new record if not found
         return new Incident();
     }
 
     public function fillRecord(): void
     {
-        $this->record->fill([
+        $data = [
             'title' => $this->data['title'],
             'incident_date' => Carbon::parse($this->data['incident_date']),
             'severity' => $this->data['severity'],
             'classification' => 'Issue',
-            'no' => $this->generateIssueId(),
-        ]);
+        ];
+
+        // Only generate new ID for new records (not when updating existing)
+        if (!$this->record->exists) {
+            $data['no'] = $this->generateIssueId();
+        }
+
+        $this->record->fill($data);
 
         if (isset($this->data['stop_bleeding_at']) && !empty($this->data['stop_bleeding_at'])) {
             $this->record->stop_bleeding_at = Carbon::parse($this->data['stop_bleeding_at']);
