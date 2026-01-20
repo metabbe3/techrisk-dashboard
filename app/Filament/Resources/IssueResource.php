@@ -159,11 +159,13 @@ class IssueResource extends Resource
                 TextColumn::make('mttr')
                     ->label('MTTR (mins)')
                     ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: false),
+                    ->toggleable(isToggledHiddenByDefault: false)
+                    ->summarize(Average::make()->label('Avg MTTR')),
                 TextColumn::make('mtbf')
                     ->label('MTBF (days)')
                     ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: false),
+                    ->toggleable(isToggledHiddenByDefault: false)
+                    ->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('incident_date')
                     ->label('Start Date')
                     ->dateTime()
