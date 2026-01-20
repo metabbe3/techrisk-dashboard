@@ -84,7 +84,7 @@ class IssueResource extends Resource
                             ->readOnly()
                             ->columnSpan(1),
                         Select::make('severity')
-                            ->label('Incident Type')
+                            ->label('Severity')
                             ->options([
                                 'P1' => 'P1',
                                 'P2' => 'P2',
@@ -97,6 +97,13 @@ class IssueResource extends Resource
                                 'X4' => 'X4',
                             ])
                             ->required()
+                            ->columnSpan(1),
+                        Select::make('incident_type_id')
+                            ->label('Incident Type')
+                            ->relationship('incidentType', 'name')
+                            ->searchable()
+                            ->preload()
+                            ->default(fn () => \App\Models\IncidentType::first()?->id)
                             ->columnSpan(1),
                         Select::make('classification')
                             ->default('Issue')
@@ -147,7 +154,7 @@ class IssueResource extends Resource
                     ->sortable()
                     ->formatStateUsing(fn (string $state): string => str_replace('Summary of Incident - ', '', $state)),
                 TextColumn::make('severity')
-                    ->label('Type')
+                    ->label('Severity')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
                         'P1' => 'danger',
@@ -157,6 +164,10 @@ class IssueResource extends Resource
                         default => 'gray',
                     })
                     ->sortable(),
+                TextColumn::make('incidentType.name')
+                    ->label('Incident Type')
+                    ->sortable()
+                    ->toggleable(),
                 TextColumn::make('mttr')
                     ->label('MTTR (mins)')
                     ->sortable()

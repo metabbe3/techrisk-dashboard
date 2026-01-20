@@ -62,6 +62,7 @@ class IssuesImporter extends Importer
             'entry_date_tech_risk' => $incidentDate->format('Y-m-d'),
             'severity' => $this->mapSeverityToCode($this->data['Root Cause Classification'] ?? 'G'),
             'classification' => 'Issue',
+            'incident_type_id' => \App\Models\IncidentType::first()?->id,
         ];
 
         // Only generate new ID for new records (not when updating existing)

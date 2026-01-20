@@ -67,7 +67,7 @@ class IncidentResource extends Resource
                                 })
                                 ->readOnly(),
                             Select::make('severity')->options([
-                                'P1' => 'P1', 'P2' => 'P2', 'P3' => 'P3', 'P4' => 'P4', 'Non Incident' => 'Non Incident',
+                                'P1' => 'P1', 'P2' => 'P2', 'P3' => 'P3', 'P4' => 'P4', 'G' => 'G', 'X1' => 'X1', 'X2' => 'X2', 'X3' => 'X3', 'X4' => 'X4', 'Non Incident' => 'Non Incident',
                             ])->required(),
                             Select::make('classification')->options([
                                 'Incident' => 'Incident', 'Issue' => 'Issue',
@@ -113,7 +113,7 @@ class IncidentResource extends Resource
                             'Finalization' => 'Finalization',
                             'Completed' => 'Completed',
                         ])->required()->default('Open'),
-                        Select::make('incident_type')->options(['Tech' => 'Tech', 'Non-tech' => 'Non-tech'])->required(),
+                        Select::make('incident_type')->label('Area')->options(['Tech' => 'Tech', 'Non-tech' => 'Non-tech'])->required(),
                         Select::make('incident_source')->options(['Internal' => 'Internal', 'External' => 'External'])->required(),
                         Select::make('pic_id')
                             ->label('Person In Charge')
@@ -171,7 +171,7 @@ class IncidentResource extends Resource
                 
                 // Toggleable Hidden Columns
                 TextColumn::make('classification')->sortable()->toggleable(isToggledHiddenByDefault: true),
-                TextColumn::make('incident_type')->sortable()->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('incident_type')->label('Area')->sortable()->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('goc_upload')->boolean()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->groups([

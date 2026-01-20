@@ -34,6 +34,7 @@ class Incident extends Model implements Auditable
         'incident_type',
         'incident_source',
         'incident_category',
+        'incident_type_id',
         'incident_status',
         'fund_status',
         'potential_fund_loss',
@@ -72,6 +73,11 @@ class Incident extends Model implements Auditable
     public function pic(): BelongsTo
     {
         return $this->belongsTo(User::class, 'pic_id');
+    }
+
+    public function incidentType(): BelongsTo
+    {
+        return $this->belongsTo(IncidentType::class);
     }
 
     public function statusUpdates(): HasMany
