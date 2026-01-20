@@ -144,7 +144,8 @@ class IssueResource extends Resource
                 TextColumn::make('title')
                     ->label('Issue Name')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->formatStateUsing(fn (string $state): string => str_replace('Incident - ', '', $state)),
                 TextColumn::make('severity')
                     ->label('Type')
                     ->badge()
