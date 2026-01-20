@@ -4,6 +4,7 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\IssueResource\Pages;
 use App\Models\Incident;
+use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -14,9 +15,14 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Select;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\Summarizers\Average;
+use Filament\Tables\Columns\Summarizers\Count;
+use Filament\Tables\Filters\Filter;
+use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Filament\Resources\Components\Tab;
+use Carbon\Carbon;
 
 class IssueResource extends Resource
 {
@@ -133,7 +139,8 @@ class IssueResource extends Resource
                     ->label('ID')
                     ->searchable()
                     ->sortable()
-                    ->toggleable(),
+                    ->toggleable()
+                    ->summarize(Count::make()->label('Total Issues')),
                 TextColumn::make('title')
                     ->label('Issue Name')
                     ->searchable()
@@ -166,6 +173,52 @@ class IssueResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(),
+            ])
+            ->filters([
+                // Quick Period Filter
+                SelectFilter::make('quick_period')
+                    ->label('Quick Period')
+                    ->options([
+                        'week' => 'This Week',
+                        'month' => 'This Month',
+                        'year' => 'This Year',
+                        'all' => 'All Time',
+                    ])
+                    ->default('year')
+                    ->query(function (Builder $query, array $data) {
+                        $value = $data['value'];
+                        if ($value === 'week') {
+                            return $query->whereBetween('incident_date', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]);
+                        }
+                        if ($value === 'month') {
+                            return $query->whereBetween('incident_date', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()]);
+                        }
+                        if ($value === 'year') {
+                            return $query->whereBetween('incident_date', [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()]);
+                        }
+                        if ($value === 'all') {
+                            return $query;
+                        }
+                        return $query;
+                    }),
+
+                // Custom Date Range Filter
+                Filter::make('custom_date_range')
+                    ->form([
+                        Forms\Components\DatePicker::make('from')->label('From Date'),
+                        Forms\Components\DatePicker::make('until')->label('To Date'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when(
+                                $data['from'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('incident_date', '>=', $date),
+                            )
+                            ->when(
+                                $data['until'],
+                                fn (Builder $query, $date): Builder => $query->whereDate('incident_date', '<=', $date),
+                            );
+                    }),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()
