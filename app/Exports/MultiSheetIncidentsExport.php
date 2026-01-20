@@ -3,6 +3,7 @@
 namespace App\Exports;
 
 use App\Exports\Sheets\SingleIncidentSheetExport;
+use App\Exports\Sheets\IssuesMetricSheetExport;
 use App\Models\Incident;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 use Illuminate\Database\Eloquent\Builder;
@@ -55,19 +56,19 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $issuesQuery = $this->query->clone()->where('classification', 'Issue');
         $sheets[] = new SingleIncidentSheetExport($issuesQuery, 'All Issues', $this->headings, $this->columnNames);
 
-        // 8. Issues - MTTR
+        // 8. Issues - MTTR (simplified: Issue Name, Type, MTTR)
         $issuesMttrQuery = $this->query->clone()
             ->where('classification', 'Issue')
             ->whereNotNull('mttr')
             ->orderBy('mttr', 'desc');
-        $sheets[] = new SingleIncidentSheetExport($issuesMttrQuery, 'Issues - MTTR', $this->headings, $this->columnNames);
+        $sheets[] = new IssuesMetricSheetExport($issuesMttrQuery, 'Issues - MTTR', 'mttr');
 
-        // 9. Issues - MTBF
+        // 9. Issues - MTBF (simplified: Issue Name, Type, MTBF)
         $issuesMtbfQuery = $this->query->clone()
             ->where('classification', 'Issue')
             ->whereNotNull('mtbf')
             ->orderBy('mtbf', 'desc');
-        $sheets[] = new SingleIncidentSheetExport($issuesMtbfQuery, 'Issues - MTBF', $this->headings, $this->columnNames);
+        $sheets[] = new IssuesMetricSheetExport($issuesMtbfQuery, 'Issues - MTBF', 'mtbf');
 
         return $sheets;
     }
