@@ -5,6 +5,7 @@ namespace App\Filament\Importers;
 use App\Models\Incident;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
+use Filament\Actions\Imports\Models\Import;
 use Illuminate\Support\Carbon;
 
 class IssuesImporter extends Importer
@@ -76,7 +77,7 @@ class IssuesImporter extends Importer
         return 'Issue Name';
     }
 
-    public static function getCompletedNotificationBody(Filament\Actions\Imports\Models\Import $import): string
+    public static function getCompletedNotificationBody(Import $import): string
     {
         $count = $import->rows_successful ?: 0;
         return "Successfully imported {$count} issues.";
