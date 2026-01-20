@@ -78,17 +78,22 @@ class IssuesMetricSheetExport implements FromQuery, WithTitle, WithHeadings, Wit
 
                 $sheet->getStyle($fullDataRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
-                // Summary - only show Average
+                // Summary - Total Cases and Average
                 $summaryStartRow = $lastDataRow + 2;
                 $metricLabel = $this->metricType === 'mttr' ? 'Average MTTR' : 'Average MTBF';
                 $metricValue = round($this->query->clone()->avg($this->metricType), 2);
+                $totalCases = $this->query->clone()->count();
 
-                $sheet->setCellValue("A{$summaryStartRow}", $metricLabel);
-                $sheet->setCellValue("B{$summaryStartRow}", $metricValue);
-                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getFont()->setBold(true);
-                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFE2EFDA');
-                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
-                $sheet->getStyle("A{$summaryStartRow}:B{$summaryStartRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                $sheet->setCellValue("A{$summaryStartRow}", 'Total Cases');
+                $sheet->setCellValue("B{$summaryStartRow}", $totalCases);
+                $sheet->setCellValue("A" . ($summaryStartRow + 1), $metricLabel);
+                $sheet->setCellValue("B" . ($summaryStartRow + 1), $metricValue);
+
+                $summaryRange = "A{$summaryStartRow}:B" . ($summaryStartRow + 1);
+                $sheet->getStyle($summaryRange)->getFont()->setBold(true);
+                $sheet->getStyle($summaryRange)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFE2EFDA');
+                $sheet->getStyle($summaryRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
+                $sheet->getStyle($summaryRange)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
             },
         ];
     }
