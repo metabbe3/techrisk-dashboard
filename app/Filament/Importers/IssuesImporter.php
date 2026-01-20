@@ -38,7 +38,7 @@ class IssuesImporter extends Importer
         return new Incident();
     }
 
-    protected function fillRecord(): void
+    public function fillRecord(): void
     {
         $this->record->fill([
             'title' => $this->data['title'],
