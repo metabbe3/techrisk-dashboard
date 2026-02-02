@@ -91,7 +91,7 @@ services:
       dockerfile: Dockerfile.php
     container_name: techrisk-worker
     restart: unless-stopped
-    command: php artisan queue:work --sleep=3 --tries=3
+    command: php artisan queue:work --sleep=3 --tries=3 --queue=default,document-conversion
     volumes:
       - ./:/var/www/html
     depends_on:
