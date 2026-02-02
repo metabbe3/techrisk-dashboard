@@ -4,18 +4,15 @@ namespace App\Filament\Resources;
 
 use App\Filament\Resources\DashboardWidgetResource\Pages;
 use App\Models\DashboardWidget;
-use App\Models\User;
-use Filament\Forms;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TagsInput;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
-use Filament\Tables\Table;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TagsInput;
 use Filament\Tables\Columns\TextColumn;
-use Illuminate\Database\Eloquent\Builder;
+use Filament\Tables\Table;
 
 class DashboardWidgetResource extends Resource
 {
@@ -69,8 +66,9 @@ class DashboardWidgetResource extends Resource
                                 $query = strtolower(trim($value));
 
                                 // Must start with SELECT
-                                if (!str_starts_with($query, 'select')) {
+                                if (! str_starts_with($query, 'select')) {
                                     $fail('The :attribute must be a SELECT query.');
+
                                     return;
                                 }
 
@@ -79,30 +77,33 @@ class DashboardWidgetResource extends Resource
                                     'drop ', 'delete ', 'insert ', 'update ',
                                     'truncate ', 'alter ', 'create ', 'exec ',
                                     'execute ', 'script ', 'javascript:',
-                                    '--', ';--', '/*', '*/', 'xp_', 'sp_'
+                                    '--', ';--', '/*', '*/', 'xp_', 'sp_',
                                 ];
 
                                 foreach ($dangerousKeywords as $keyword) {
                                     if (str_contains($query, $keyword)) {
                                         $fail('The :attribute contains dangerous keywords.');
+
                                         return;
                                     }
                                 }
 
                                 // Must be a SELECT query with aggregate function (for stat widget)
-                                if (!str_contains($query, 'count') &&
-                                    !str_contains($query, 'sum') &&
-                                    !str_contains($query, 'avg') &&
-                                    !str_contains($query, 'min') &&
-                                    !str_contains($query, 'max')) {
+                                if (! str_contains($query, 'count') &&
+                                    ! str_contains($query, 'sum') &&
+                                    ! str_contains($query, 'avg') &&
+                                    ! str_contains($query, 'min') &&
+                                    ! str_contains($query, 'max')) {
                                     $fail('The :attribute must use an aggregate function (COUNT, SUM, AVG, MIN, MAX).');
+
                                     return;
                                 }
 
                                 // Result column should be named 'value' for the widget to work
-                                if (!str_contains($query, ' as value') &&
-                                    !str_contains($query, ' as `value`')) {
+                                if (! str_contains($query, ' as value') &&
+                                    ! str_contains($query, ' as `value`')) {
                                     $fail('The query result must be aliased as "value" (e.g., SELECT COUNT(*) as value FROM incidents).');
+
                                     return;
                                 }
                             };

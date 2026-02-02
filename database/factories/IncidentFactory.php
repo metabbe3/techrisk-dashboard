@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 /**
  * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\Incident>
  */
-
 class IncidentFactory extends Factory
 {
     /**
@@ -22,7 +21,7 @@ class IncidentFactory extends Factory
         $randomNumber = $this->faker->unique()->randomNumber(3, true); // Generates a 3-digit number
 
         return [
-            'no' => $year . '_IN_' . $severity . '_' . str_pad($randomNumber, 3, '0', STR_PAD_LEFT),
+            'no' => $year.'_IN_'.$severity.'_'.str_pad($randomNumber, 3, '0', STR_PAD_LEFT),
             'title' => $this->faker->sentence,
             'summary' => $this->faker->paragraph,
             'severity' => $this->faker->randomElement(['p1', 'p2', 'p3', 'p4']),

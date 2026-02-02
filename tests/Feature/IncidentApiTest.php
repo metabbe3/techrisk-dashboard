@@ -41,7 +41,7 @@ class IncidentApiTest extends TestCase
         $incidentType = IncidentType::factory()->create();
 
         $data = [
-            'no' => now()->format('Y') . '_IN_P1_' . $this->faker->unique()->randomNumber(3, true),
+            'no' => now()->format('Y').'_IN_P1_'.$this->faker->unique()->randomNumber(3, true),
             'title' => $this->faker->sentence,
             'summary' => $this->faker->paragraph,
             'severity' => 'p1',
@@ -60,7 +60,7 @@ class IncidentApiTest extends TestCase
     {
         $incident = Incident::factory()->create();
 
-        $response = $this->getJson('/api/v1/incidents/' . $incident->id);
+        $response = $this->getJson('/api/v1/incidents/'.$incident->id);
 
         $response->assertStatus(200);
         $response->assertJson(['data' => ['incident_name' => $incident->title]]);
@@ -74,7 +74,7 @@ class IncidentApiTest extends TestCase
             'title' => 'Updated Title',
         ];
 
-        $response = $this->putJson('/api/v1/incidents/' . $incident->id, $data);
+        $response = $this->putJson('/api/v1/incidents/'.$incident->id, $data);
 
         $response->assertStatus(200);
         $this->assertDatabaseHas('incidents', ['id' => $incident->id, 'title' => 'Updated Title']);
@@ -84,7 +84,7 @@ class IncidentApiTest extends TestCase
     {
         $incident = Incident::factory()->create();
 
-        $response = $this->deleteJson('/api/v1/incidents/' . $incident->id);
+        $response = $this->deleteJson('/api/v1/incidents/'.$incident->id);
 
         $response->assertStatus(204);
         $this->assertDatabaseMissing('incidents', ['id' => $incident->id]);

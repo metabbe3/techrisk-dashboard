@@ -31,22 +31,22 @@ class IncidentUpdated extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         $mail = (new MailMessage)
-            ->subject('Incident Updated: ' . $this->incident->title)
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->subject('Incident Updated: '.$this->incident->title)
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('The incident you are assigned as PIC has been updated.')
-            ->line('**Incident:** ' . $this->incident->title)
-            ->line('**Status:** ' . $this->incident->incident_status)
-            ->line('**Severity:** ' . $this->incident->severity);
+            ->line('**Incident:** '.$this->incident->title)
+            ->line('**Status:** '.$this->incident->incident_status)
+            ->line('**Severity:** '.$this->incident->severity);
 
-        if (!empty($this->changes)) {
+        if (! empty($this->changes)) {
             $mail->line('**Changes made:**');
             foreach ($this->changes as $field => $change) {
-                $mail->line("- {$field}: " . (!empty($change['from']) ? "'{$change['from']}' → " : '') . "'{$change['to']}'");
+                $mail->line("- {$field}: ".(! empty($change['from']) ? "'{$change['from']}' → " : '')."'{$change['to']}'");
             }
         }
 
         $mail->action('View Incident', IncidentResource::getUrl('view', ['record' => $this->incident]))
-              ->line('Please review the changes.');
+            ->line('Please review the changes.');
 
         return $mail;
     }
@@ -62,7 +62,7 @@ class IncidentUpdated extends Notification implements ShouldQueue
     {
         $changeCount = count($this->changes);
         $bodyText = $changeCount > 0
-            ? "The incident \"{$this->incident->title}\" has {$changeCount} update" . ($changeCount > 1 ? 's' : '')
+            ? "The incident \"{$this->incident->title}\" has {$changeCount} update".($changeCount > 1 ? 's' : '')
             : "The incident \"{$this->incident->title}\" has been updated.";
 
         return [

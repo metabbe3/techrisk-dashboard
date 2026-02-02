@@ -3,9 +3,9 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Incident;
+use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 use Livewire\Attributes\On;
 
 class FundLossTrendChart extends ChartWidget
@@ -13,14 +13,15 @@ class FundLossTrendChart extends ChartWidget
     protected static ?string $heading = 'Fund Loss Trend';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getData(): array
     {
         $query = Incident::select(
-                DB::raw('SUM(fund_loss) as total_fund_loss'),
-                DB::raw('MONTH(incident_date) as month')
-            )
+            DB::raw('SUM(fund_loss) as total_fund_loss'),
+            DB::raw('MONTH(incident_date) as month')
+        )
             ->groupBy('month');
 
         if ($this->start_date && $this->end_date) {
@@ -30,7 +31,7 @@ class FundLossTrendChart extends ChartWidget
         }
 
         $data = $query->pluck('total_fund_loss', 'month')->all();
-        
+
         $labels = [];
         $values = [];
         for ($i = 1; $i <= 12; $i++) {
@@ -56,7 +57,7 @@ class FundLossTrendChart extends ChartWidget
         return 'line';
     }
 
-    public function getColumnSpan(): int | string | array
+    public function getColumnSpan(): int|string|array
     {
         return 6;
     }

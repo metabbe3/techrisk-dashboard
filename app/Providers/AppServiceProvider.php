@@ -4,18 +4,18 @@ namespace App\Providers;
 
 use App\Models\ActionImprovement;
 use App\Models\Incident;
-use App\Models\Label;
 use App\Models\IncidentType;
+use App\Models\Label;
 use App\Models\StatusUpdate;
 use App\Observers\ActionImprovementObserver;
 use App\Observers\IncidentObserver;
-use App\Observers\LabelObserver;
 use App\Observers\IncidentTypeObserver;
+use App\Observers\LabelObserver;
 use App\Observers\StatusUpdateObserver;
-use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Facades\URL;
-use Illuminate\Support\Facades\Route;
 use Filament\Support\Facades\FilamentView;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
 
@@ -37,12 +37,12 @@ class AppServiceProvider extends ServiceProvider
         // CHANGE THIS LINE: Use $this->app->environment()
         // You can also add 'prod' or 'staging' if your PAAS uses those names
         if ($this->app->environment(['production', 'prod', 'staging'])) {
-            
+
             // 1. Force HTTPS Scheme
             URL::forceScheme('https');
 
             // 2. Fix the Request Server variables for Proxies
-            if(isset($this->app['request'])) {
+            if (isset($this->app['request'])) {
                 $this->app['request']->server->set('HTTPS', 'on');
             }
 

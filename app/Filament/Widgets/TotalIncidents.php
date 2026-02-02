@@ -2,15 +2,15 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Incident;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use App\Models\Incident;
-use Carbon\Carbon;
 use Livewire\Attributes\On;
 
 class TotalIncidents extends BaseWidget
 {
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getStats(): array
@@ -27,7 +27,7 @@ class TotalIncidents extends BaseWidget
 
         return [
             Stat::make('Total Incidents', $query->count())
-                ->description('Total incidents ' . $descriptionPeriod)
+                ->description('Total incidents '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
                 ->color('success'),
         ];

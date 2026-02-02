@@ -2,15 +2,15 @@
 
 namespace App\Filament\Widgets;
 
+use App\Models\Incident;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use App\Models\Incident;
-use App\Models\StatusUpdate;
 use Livewire\Attributes\On;
 
 class PotentialFundLoss extends BaseWidget
 {
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getStats(): array
@@ -30,8 +30,8 @@ class PotentialFundLoss extends BaseWidget
         $openCases = $query->sum('potential_fund_loss');
 
         return [
-            Stat::make('Potential Fund Loss', 'IDR ' . number_format($openCases, 2, ',', '.'))
-                ->description('Total potential fund loss from open cases ' . $descriptionPeriod)
+            Stat::make('Potential Fund Loss', 'IDR '.number_format($openCases, 2, ',', '.'))
+                ->description('Total potential fund loss from open cases '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-currency-dollar')
                 ->color('danger'),
         ];

@@ -33,14 +33,14 @@ class ActionImprovementDueSoon extends Notification implements ShouldQueue
         $incident = $this->actionImprovement->incident;
 
         return (new MailMessage)
-            ->subject('[Reminder] Action Improvement Due in ' . $this->daysRemaining . ' Days')
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->subject('[Reminder] Action Improvement Due in '.$this->daysRemaining.' Days')
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('You have an action improvement that will be due soon:')
-            ->line('**Incident:** ' . $incident->title)
-            ->line('**Action:** ' . $this->actionImprovement->title)
-            ->line('**Due Date:** ' . $this->actionImprovement->due_date->format('Y-m-d'))
-            ->line('**Days Remaining:** ' . $this->daysRemaining)
-            ->line('**Detail:** ' . $this->actionImprovement->detail)
+            ->line('**Incident:** '.$incident->title)
+            ->line('**Action:** '.$this->actionImprovement->title)
+            ->line('**Due Date:** '.$this->actionImprovement->due_date->format('Y-m-d'))
+            ->line('**Days Remaining:** '.$this->daysRemaining)
+            ->line('**Detail:** '.$this->actionImprovement->detail)
             ->action('View Incident', IncidentResource::getUrl('view', ['record' => $incident]))
             ->line('Please complete this action improvement before the due date.');
     }
@@ -58,7 +58,7 @@ class ActionImprovementDueSoon extends Notification implements ShouldQueue
             'action_improvement_id' => $this->actionImprovement->id,
             'incident_id' => $this->actionImprovement->incident_id,
             'title' => 'Action Improvement Due Soon',
-            'body' => '"' . $this->actionImprovement->title . '" is due in ' . $this->daysRemaining . ' days',
+            'body' => '"'.$this->actionImprovement->title.'" is due in '.$this->daysRemaining.' days',
             'due_date' => $this->actionImprovement->due_date->format('Y-m-d'),
             'days_remaining' => $this->daysRemaining,
             'url' => IncidentResource::getUrl('view', ['record' => $this->actionImprovement->incident]),

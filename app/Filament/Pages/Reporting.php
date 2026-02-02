@@ -4,25 +4,20 @@ namespace App\Filament\Pages;
 
 use App\Exports\IncidentsExport;
 use App\Models\Incident;
-use App\Models\IncidentType;
-use App\Models\StatusUpdate;
+use App\Models\ReportTemplate;
 use Carbon\Carbon;
+use Filament\Actions\Action;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
-use Illuminate\Support\Arr;
 use Maatwebsite\Excel\Facades\Excel;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Section;
-
-use App\Models\ReportTemplate;
-use Filament\Forms\Components\TextInput;
-
-use Filament\Actions\Action;
 
 class Reporting extends Page implements HasForms
 {
@@ -40,6 +35,7 @@ class Reporting extends Page implements HasForms
     public ?array $data = [];
 
     public $incidents = [];
+
     public $metrics = [];
 
     public function mount(): void
@@ -95,6 +91,7 @@ class Reporting extends Page implements HasForms
                 $columns[$key] = "$group: $label";
             }
         }
+
         return $columns;
     }
 
@@ -227,17 +224,17 @@ class Reporting extends Page implements HasForms
             $query->where('incident_date', '<=', Carbon::parse($data['end_date']));
         }
 
-        if (!empty($data['incident_types'])) {
+        if (! empty($data['incident_types'])) {
             $query->whereIn('incident_type', $data['incident_types']);
         }
 
-        if (!empty($data['statuses'])) {
+        if (! empty($data['statuses'])) {
             $query->whereHas('latestStatusUpdate', function ($q) use ($data) {
                 $q->whereIn('status', $data['statuses']);
             });
         }
 
-        if (!empty($data['severities'])) {
+        if (! empty($data['severities'])) {
             $query->whereIn('severity', $data['severities']);
         }
 
@@ -256,7 +253,7 @@ class Reporting extends Page implements HasForms
 
         // Determine which relations need to be loaded
         $relations = [];
-        if (!empty($data['columns'])) {
+        if (! empty($data['columns'])) {
             foreach ($data['columns'] as $column) {
                 if (str_contains($column, '.')) {
                     $relations[] = explode('.', $column)[0];

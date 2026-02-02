@@ -3,20 +3,20 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Filament\Models\Contracts\FilamentUser;
+use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
-use Filament\Models\Contracts\FilamentUser;
-use Filament\Panel;
-use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, HasRoles;
+    use HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     public function canAccessPanel(Panel $panel): bool
     {
@@ -50,7 +50,7 @@ class User extends Authenticatable implements FilamentUser
         // Determine notification type from instance
         $notificationType = $this->getNotificationType($instance);
 
-        if (!$notificationType) {
+        if (! $notificationType) {
             // If unknown type, send by default - use Notification facade
             return \Illuminate\Support\Facades\Notification::send($this, $instance);
         }
@@ -82,9 +82,12 @@ class User extends Authenticatable implements FilamentUser
         $originalNotificationClass = get_class($instance);
 
         // Create a proper notification wrapper that extends Notification base class
-        $modifiedNotification = new class($instance, $channels, $originalNotificationClass) extends \Illuminate\Notifications\Notification {
+        $modifiedNotification = new class($instance, $channels, $originalNotificationClass) extends \Illuminate\Notifications\Notification
+        {
             protected $notification;
+
             protected $allowedChannels;
+
             protected $originalType;
 
             public function __construct($notification, $allowedChannels, $originalType)
@@ -123,6 +126,7 @@ class User extends Authenticatable implements FilamentUser
                 if (method_exists($this->notification, 'toArray')) {
                     return $this->notification->toArray($notifiable);
                 }
+
                 return [];
             }
 
@@ -131,6 +135,7 @@ class User extends Authenticatable implements FilamentUser
                 if (method_exists($this->notification, 'toBroadcast')) {
                     return $this->notification->toBroadcast($notifiable);
                 }
+
                 return [];
             }
 

@@ -4,21 +4,22 @@ namespace App\Imports;
 
 use App\Models\Incident;
 use Carbon\Carbon;
+use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 use Maatwebsite\Excel\Concerns\ToModel;
 use Maatwebsite\Excel\Concerns\WithHeadingRow;
 use Maatwebsite\Excel\Concerns\WithValidation;
-use Maatwebsite\Excel\Concerns\SkipsEmptyRows;
 
-class IssuesImport implements ToModel, WithHeadingRow, WithValidation, SkipsEmptyRows
+class IssuesImport implements SkipsEmptyRows, ToModel, WithHeadingRow, WithValidation
 {
     private function generateIssueId(): string
     {
-        $baseId = date('Ymd') . '_IS_';
+        $baseId = date('Ymd').'_IS_';
         $uniqueId = '';
         do {
             $suffix = random_int(1000, 9999);
-            $uniqueId = $baseId . $suffix;
+            $uniqueId = $baseId.$suffix;
         } while (Incident::where('no', $uniqueId)->exists());
+
         return $uniqueId;
     }
 
@@ -33,7 +34,7 @@ class IssuesImport implements ToModel, WithHeadingRow, WithValidation, SkipsEmpt
         ]);
 
         // Optional fields
-        if (isset($row['stop_bleeding_at']) && !empty($row['stop_bleeding_at'])) {
+        if (isset($row['stop_bleeding_at']) && ! empty($row['stop_bleeding_at'])) {
             $issue->stop_bleeding_at = Carbon::parse($row['stop_bleeding_at']);
         }
 

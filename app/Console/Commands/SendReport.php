@@ -33,8 +33,9 @@ class SendReport extends Command
     {
         $template = ReportTemplate::find($this->argument('report_template_id'));
 
-        if (!$template) {
+        if (! $template) {
             $this->error('Report template not found.');
+
             return;
         }
 
@@ -49,17 +50,17 @@ class SendReport extends Command
             $query->where('incident_date', '<=', Carbon::parse($data['end_date']));
         }
 
-        if (!empty($data['incident_types'])) {
+        if (! empty($data['incident_types'])) {
             $query->whereIn('incident_type_id', $data['incident_types']);
         }
 
-        if (!empty($data['statuses'])) {
+        if (! empty($data['statuses'])) {
             $query->whereHas('latestStatusUpdate', function ($q) use ($data) {
                 $q->whereIn('status', $data['statuses']);
             });
         }
 
-        if (!empty($data['severities'])) {
+        if (! empty($data['severities'])) {
             $query->whereIn('severity', $data['severities']);
         }
 
@@ -76,17 +77,17 @@ class SendReport extends Command
             $metrics['avg_mtbf'] = $incidents->avg('mtbf');
         }
 
-        $allColumns = array_merge(...array_values((new \App\Filament\Pages\Reporting())->getColumns()));
+        $allColumns = array_merge(...array_values((new \App\Filament\Pages\Reporting)->getColumns()));
         $headings = array_intersect_key($allColumns, array_flip($template->columns));
 
         $export = new IncidentsExport($incidents, $metrics, $headings);
-        $filePath = 'reports/' . $template->name . '_' . time() . '.xlsx';
+        $filePath = 'reports/'.$template->name.'_'.time().'.xlsx';
         Excel::store($export, $filePath, 'local');
 
         Mail::raw('Here is your scheduled report.', function ($message) use ($template, $filePath) {
             $message->to($template->email)
-                ->subject('Scheduled Report: ' . $template->name)
-                ->attach(storage_path('app/' . $filePath));
+                ->subject('Scheduled Report: '.$template->name)
+                ->attach(storage_path('app/'.$filePath));
         });
 
         $this->info('Report sent successfully.');

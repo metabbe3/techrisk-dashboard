@@ -10,6 +10,7 @@ use Livewire\Attributes\On;
 class ActionImprovementsOverview extends BaseWidget
 {
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getStats(): array
@@ -29,10 +30,10 @@ class ActionImprovementsOverview extends BaseWidget
 
         return [
             Stat::make('Pending Action Improvements', $pendingCount)
-                ->description('Pending actions ' . $descriptionPeriod)
+                ->description('Pending actions '.$descriptionPeriod)
                 ->color('warning'),
             Stat::make('Done Action Improvements', $doneCount)
-                ->description('Done actions ' . $descriptionPeriod)
+                ->description('Done actions '.$descriptionPeriod)
                 ->color('success'),
         ];
     }

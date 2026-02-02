@@ -5,15 +5,14 @@ namespace App\Filament\Widgets;
 use App\Models\Incident;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 use Livewire\Attributes\On;
 
 class IncidentsBySeverityChart extends ChartWidget
 {
-
     protected static ?string $heading = 'Incidents by Severity';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getData(): array
@@ -41,7 +40,7 @@ class IncidentsBySeverityChart extends ChartWidget
                         '#FFCE56',
                         '#4BC0C0',
                         '#9966FF',
-                        '#FF9F40'
+                        '#FF9F40',
                     ],
                 ],
             ],
@@ -54,7 +53,7 @@ class IncidentsBySeverityChart extends ChartWidget
         return 'doughnut';
     }
 
-    public function getColumnSpan(): int | string | array
+    public function getColumnSpan(): int|string|array
     {
         return 4;
     }

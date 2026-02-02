@@ -2,12 +2,11 @@
 
 namespace App\Filament\Pages;
 
+use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Pages\Auth\EditProfile as BaseEditProfile;
-use Filament\Actions\Action;
 use Illuminate\Support\Facades\Hash;
-use App\Filament\Pages\Dashboard;
 
 class CustomProfilePage extends BaseEditProfile
 {

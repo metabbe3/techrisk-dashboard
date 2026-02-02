@@ -3,9 +3,9 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Incident;
+use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\DB;
-use Carbon\Carbon;
 use Livewire\Attributes\On;
 
 class MttrMtbfTrendChart extends ChartWidget
@@ -13,15 +13,16 @@ class MttrMtbfTrendChart extends ChartWidget
     protected static ?string $heading = 'MTTR/MTBF Trend';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getData(): array
     {
         $query = Incident::select(
-                DB::raw('AVG(mttr) as avg_mttr'),
-                DB::raw('AVG(mtbf) as avg_mtbf'),
-                DB::raw('MONTH(incident_date) as month')
-            )
+            DB::raw('AVG(mttr) as avg_mttr'),
+            DB::raw('AVG(mtbf) as avg_mtbf'),
+            DB::raw('MONTH(incident_date) as month')
+        )
             ->groupBy('month');
 
         if ($this->start_date && $this->end_date) {
@@ -31,7 +32,7 @@ class MttrMtbfTrendChart extends ChartWidget
         }
 
         $data = $query->get()->keyBy('month');
-        
+
         $labels = [];
         $mttr_values = [];
         $mtbf_values = [];
@@ -65,7 +66,7 @@ class MttrMtbfTrendChart extends ChartWidget
         return 'line';
     }
 
-    public function getColumnSpan(): int | string | array
+    public function getColumnSpan(): int|string|array
     {
         return 6;
     }

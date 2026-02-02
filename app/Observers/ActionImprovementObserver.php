@@ -2,8 +2,8 @@
 
 namespace App\Observers;
 
-use App\Models\ActionImprovement;
 use App\Mail\ActionImprovementNotification;
+use App\Models\ActionImprovement;
 use Illuminate\Support\Facades\Mail;
 
 class ActionImprovementObserver

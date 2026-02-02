@@ -3,16 +3,16 @@
 namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
-use Illuminate\Support\Facades\Auth;
-use Filament\Tables\Table;
-use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Contracts\HasTable;
-use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\BulkAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 
 class NotificationCenter extends Page implements HasTable
 {
@@ -58,7 +58,7 @@ class NotificationCenter extends Page implements HasTable
                 TextColumn::make('data.type')
                     ->label('Type')
                     ->badge()
-                    ->color(fn ($state): string => match($state) {
+                    ->color(fn ($state): string => match ($state) {
                         'incident_assignment' => 'danger',
                         'incident_update' => 'info',
                         'incident_status_changed' => 'warning',
@@ -105,7 +105,7 @@ class NotificationCenter extends Page implements HasTable
                     ->icon('heroicon-o-envelope')
                     ->requiresConfirmation()
                     ->action(fn ($record) => $record->markAsUnread())
-                    ->visible(fn ($record): bool => !is_null($record->read_at)),
+                    ->visible(fn ($record): bool => ! is_null($record->read_at)),
 
                 Action::make('delete')
                     ->label('Delete')

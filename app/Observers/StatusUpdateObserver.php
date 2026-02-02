@@ -22,7 +22,7 @@ class StatusUpdateObserver
             // Only notify if:
             // 1. There is a current user
             // 2. The PIC is different from the current user
-            if (!$currentUser || $currentUser->id !== $incident->pic_id) {
+            if (! $currentUser || $currentUser->id !== $incident->pic_id) {
                 $incident->pic->notify(new NewStatusUpdate($incident, $statusUpdate));
             }
         }

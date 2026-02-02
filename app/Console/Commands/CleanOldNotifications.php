@@ -59,7 +59,7 @@ class CleanOldNotifications extends Command
                     ['ID', 'Type', 'Read At', 'Created At'],
                     $readQuery->limit(10)->get()->map(function ($n) {
                         return [
-                            substr($n->id, 0, 8) . '...',
+                            substr($n->id, 0, 8).'...',
                             $n->type,
                             $n->read_at,
                             $n->created_at,
@@ -88,7 +88,7 @@ class CleanOldNotifications extends Command
                     ['ID', 'Type', 'Created At'],
                     $unreadQuery->limit(10)->get()->map(function ($n) {
                         return [
-                            substr($n->id, 0, 8) . '...',
+                            substr($n->id, 0, 8).'...',
                             $n->type,
                             $n->created_at,
                         ];

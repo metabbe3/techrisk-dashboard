@@ -4,13 +4,13 @@
 
 return [
     // The HTML <title> for the generated documentation.
-    'title' => config('app.name') . ' API Documentation',
+    'title' => config('app.name').' API Documentation',
 
     // A short description of your API. Will be included in the docs webpage, Postman collection and OpenAPI spec.
     'description' => '',
 
     // Text to place in the "Introduction" section, right after the `description`. Markdown and HTML are supported.
-    'intro_text' => <<<INTRO
+    'intro_text' => <<<'INTRO'
         This documentation aims to provide all the information you need to work with our API.
 
         <aside>As you scroll, you'll see code examples for working with the API in different programming languages in the dark area to the right (or as part of the content on mobile).
@@ -19,7 +19,7 @@ return [
 
     // The base URL displayed in the docs.
     // If you're using `laravel` type, you can set this to a dynamic string, like '{{ config("app.tenant_url") }}' to get a dynamic base URL.
-    'base_url' => config("app.url"),
+    'base_url' => config('app.url'),
 
     // Routes to include in the docs
     'routes' => [
@@ -77,7 +77,7 @@ return [
     ],
 
     'external' => [
-        'html_attributes' => []
+        'html_attributes' => [],
     ],
 
     'try_it_out' => [
@@ -201,8 +201,8 @@ return [
     // Use configureStrategy() to specify settings for a strategy in the list.
     // Use removeStrategies() to remove an included strategy.
     // When Scribe is not installed (production with --no-dev), return empty arrays.
-    'strategies' => (function() {
-        if (!class_exists('Knuckles\\Scribe\\Config\\Defaults')) {
+    'strategies' => (function () {
+        if (! class_exists('Knuckles\\Scribe\\Config\\Defaults')) {
             return [
                 'metadata' => [],
                 'headers' => [],

@@ -47,7 +47,7 @@ class IssuesImporter extends Importer
         }
 
         // Create new record if not found
-        return new Incident();
+        return new Incident;
     }
 
     public function fillRecord(): void
@@ -66,7 +66,7 @@ class IssuesImporter extends Importer
         ];
 
         // Only generate new ID for new records (not when updating existing)
-        if (!$this->record->exists) {
+        if (! $this->record->exists) {
             $data['no'] = $this->generateIssueId();
         }
 
@@ -104,12 +104,13 @@ class IssuesImporter extends Importer
 
     private function generateIssueId(): string
     {
-        $baseId = date('Ymd') . '_IS_';
+        $baseId = date('Ymd').'_IS_';
         $uniqueId = '';
         do {
             $suffix = random_int(1000, 9999);
-            $uniqueId = $baseId . $suffix;
+            $uniqueId = $baseId.$suffix;
         } while (Incident::where('no', $uniqueId)->exists());
+
         return $uniqueId;
     }
 
@@ -126,6 +127,7 @@ class IssuesImporter extends Importer
     public static function getCompletedNotificationBody(Import $import): string
     {
         $count = $import->rows_successful ?: 0;
+
         return "Successfully imported {$count} issues.";
     }
 }

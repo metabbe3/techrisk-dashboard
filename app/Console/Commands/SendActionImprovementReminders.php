@@ -5,9 +5,9 @@ namespace App\Console\Commands;
 use App\Models\ActionImprovement;
 use App\Notifications\ActionImprovementDueSoon;
 use App\Notifications\ActionImprovementOverdue;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Notification;
-use Carbon\Carbon;
 
 class SendActionImprovementReminders extends Command
 {

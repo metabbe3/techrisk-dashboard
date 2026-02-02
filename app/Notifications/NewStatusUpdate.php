@@ -32,13 +32,13 @@ class NewStatusUpdate extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('New Status Update: ' . $this->incident->title)
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->subject('New Status Update: '.$this->incident->title)
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('A new status update has been added to an incident:')
-            ->line('**Incident:** ' . $this->incident->title)
-            ->line('**Status:** ' . $this->statusUpdate->status)
-            ->line('**Notes:** ' . ($this->statusUpdate->notes ?: 'No notes provided'))
-            ->line('**Updated:** ' . $this->statusUpdate->created_at->format('Y-m-d H:i'))
+            ->line('**Incident:** '.$this->incident->title)
+            ->line('**Status:** '.$this->statusUpdate->status)
+            ->line('**Notes:** '.($this->statusUpdate->notes ?: 'No notes provided'))
+            ->line('**Updated:** '.$this->statusUpdate->created_at->format('Y-m-d H:i'))
             ->action('View Incident', IncidentResource::getUrl('view', ['record' => $this->incident]))
             ->line('Please review the latest update.');
     }

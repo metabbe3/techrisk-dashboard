@@ -3,20 +3,18 @@
 namespace App\Filament\Resources\IncidentResource\RelationManagers;
 
 use App\Models\Incident;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use OwenIt\Auditing\Models\Audit;
-use App\Models\EncryptionKey;
 use App\Services\EncryptionService;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
-use Filament\Notifications\Notification;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -39,7 +37,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                 ->storeFiles(false)
                 ->downloadable()
                 ->maxSize(15360) // 15MB
-                ->required(fn(string $context): bool => $context === 'create'),
+                ->required(fn (string $context): bool => $context === 'create'),
         ]);
     }
 
@@ -51,6 +49,15 @@ class InvestigationDocumentsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('description'),
                 Tables\Columns\TextColumn::make('original_filename')
                     ->label('Document'),
+                Tables\Columns\TextColumn::make('markdown_conversion_status')
+                    ->label('Markdown')
+                    ->badge()
+                    ->color(fn ($state): string => match ($state) {
+                        'completed' => 'success',
+                        'processing' => 'warning',
+                        'failed' => 'danger',
+                        default => 'gray',
+                    }),
                 Tables\Columns\TextColumn::make('created_at')->dateTime(),
             ])
             ->headerActions([
@@ -66,7 +73,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                             if ($fileInput instanceof UploadedFile) {
                                 $key = $encryptionService->generateKey();
                                 $salt = $encryptionService->generateSalt();
-                                $method = 'method' . rand(1, 3);
+                                $method = 'method'.rand(1, 3);
                                 $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
 
                                 $this->encryptionData = [
@@ -78,7 +85,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
 
                                 $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
                                 $directory = 'investigation-forms';
-                                $newFileName = $directory . '/' . Str::uuid() . '.encrypted';
+                                $newFileName = $directory.'/'.Str::uuid().'.encrypted';
 
                                 Storage::disk('public')->makeDirectory($directory);
                                 Storage::disk('public')->put($newFileName, $encryptedContent);
@@ -93,14 +100,14 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ->danger()
                                 ->send();
                             throw \Illuminate\Validation\ValidationException::withMessages([
-                                'file_path' => 'File upload failed: ' . $e->getMessage(),
+                                'file_path' => 'File upload failed: '.$e->getMessage(),
                             ]);
                         }
 
                         return $data;
                     })
                     ->after(function (Model $record) {
-                        if (!empty($this->encryptionData)) {
+                        if (! empty($this->encryptionData)) {
                             $record->encryptionKey()->create($this->encryptionData);
 
                             try {
@@ -114,27 +121,64 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                     ],
                                 ]);
                             } catch (\Exception $e) {
-                                Log::error('Error creating audit log: ' . $e->getMessage());
+                                Log::error('Error creating audit log: '.$e->getMessage());
                             }
+
+                            // Dispatch markdown conversion job
+                            \App\Jobs\ConvertDocumentToMarkdown::dispatch($record);
 
                             $this->encryptionData = [];
                             Notification::make()
                                 ->title('Document uploaded successfully')
+                                ->body('Document queued for Markdown conversion.')
                                 ->success()
                                 ->send();
                         }
                     }),
             ])
             ->actions([
+                Tables\Actions\Action::make('download_markdown')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->label('Download MD')
+                    ->color('success')
+                    ->visible(fn ($record): bool => $record->markdown_path !== null)
+                    ->action(function ($record) {
+                        if (! $record->markdown_path) {
+                            return null;
+                        }
+
+                        $markdown = Storage::disk('local')->get($record->markdown_path);
+                        $filename = pathinfo($record->original_filename, PATHINFO_FILENAME).'.md';
+
+                        return response()->streamDownload(
+                            function () use ($markdown) {
+                                echo $markdown;
+                            },
+                            $filename,
+                            ['Content-Type' => 'text/markdown; charset=utf-8']
+                        );
+                    }),
+                Tables\Actions\Action::make('reconvert')
+                    ->icon('heroicon-o-arrow-path')
+                    ->label('Reconvert')
+                    ->color('warning')
+                    ->action(function ($record) {
+                        $record->update(['markdown_conversion_status' => 'pending']);
+                        \App\Jobs\ConvertDocumentToMarkdown::dispatch($record);
+                        Notification::make()
+                            ->title('Document requeued for conversion')
+                            ->success()
+                            ->send();
+                    }),
                 Tables\Actions\Action::make('download')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->action(function ($record, EncryptionService $encryptionService): ?StreamedResponse {
-                        if (!$record->file_path || !Storage::disk('public')->exists($record->file_path)) {
+                        if (! $record->file_path || ! Storage::disk('public')->exists($record->file_path)) {
                             return null;
                         }
 
                         $encryptionKey = $record->encryptionKey;
-                        if (!$encryptionKey) {
+                        if (! $encryptionKey) {
                             return null;
                         }
 
@@ -156,11 +200,13 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ],
                             ]);
                         } catch (\Exception $e) {
-                            Log::error('Error creating audit log: ' . $e->getMessage());
+                            Log::error('Error creating audit log: '.$e->getMessage());
                         }
 
                         return response()->streamDownload(
-                            fn() => print($decryptedContent),
+                            function () use ($decryptedContent) {
+                                echo $decryptedContent;
+                            },
                             $record->original_filename
                         );
                     }),
@@ -186,7 +232,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 // Encrypt new file
                                 $key = $encryptionService->generateKey();
                                 $salt = $encryptionService->generateSalt();
-                                $method = 'method' . rand(1, 3);
+                                $method = 'method'.rand(1, 3);
                                 $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
 
                                 $this->encryptionData = array_merge($this->encryptionData, [
@@ -198,7 +244,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
 
                                 $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
                                 $directory = 'investigation-forms';
-                                $newFileName = $directory . '/' . Str::uuid() . '.encrypted';
+                                $newFileName = $directory.'/'.Str::uuid().'.encrypted';
 
                                 Storage::disk('public')->makeDirectory($directory);
                                 Storage::disk('public')->put($newFileName, $encryptedContent);
@@ -220,14 +266,14 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ->danger()
                                 ->send();
                             throw \Illuminate\Validation\ValidationException::withMessages([
-                                'file_path' => 'File upload failed: ' . $e->getMessage(),
+                                'file_path' => 'File upload failed: '.$e->getMessage(),
                             ]);
                         }
 
                         return $data;
                     })
                     ->after(function (Model $record) {
-                        if (!empty($this->encryptionData)) {
+                        if (! empty($this->encryptionData)) {
                             $record->encryptionKey()->create($this->encryptionData);
 
                             try {
@@ -244,7 +290,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                     ],
                                 ]);
                             } catch (\Exception $e) {
-                                Log::error('Error creating audit log: ' . $e->getMessage());
+                                Log::error('Error creating audit log: '.$e->getMessage());
                             }
 
                             $this->encryptionData = [];
@@ -272,7 +318,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ],
                             ]);
                         } catch (\Exception $e) {
-                            Log::error('Error creating audit log: ' . $e->getMessage());
+                            Log::error('Error creating audit log: '.$e->getMessage());
                         }
                     }),
             ]);

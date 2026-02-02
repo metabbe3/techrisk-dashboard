@@ -5,30 +5,29 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
 use App\Models\Incident;
+use Carbon\Carbon;
 use Filament\Forms;
+use Filament\Forms\Components\Checkbox;
+use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
-use Filament\Tables\Table;
-use Filament\Forms\Components\Grid;
-use Filament\Forms\Components\Section;
-use Filament\Forms\Components\TextInput;
-use Filament\Forms\Components\DateTimePicker;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\Checkbox;
 use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\Summarizers\Average;
 use Filament\Tables\Columns\Summarizers\Count;
 use Filament\Tables\Columns\Summarizers\Sum;
+use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Grouping\Group;
+use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
-use Filament\Tables\Grouping\Group;
-use Carbon\Carbon;
 
 class IncidentResource extends Resource
 {
@@ -57,12 +56,13 @@ class IncidentResource extends Resource
                             TextInput::make('no')->label('Incident ID')
                                 ->required()
                                 ->default(function () {
-                                    $baseId = date('Ymd') . '_IN_';
+                                    $baseId = date('Ymd').'_IN_';
                                     $uniqueId = '';
                                     do {
                                         $suffix = random_int(1000, 9999);
-                                        $uniqueId = $baseId . $suffix;
+                                        $uniqueId = $baseId.$suffix;
                                     } while (Incident::where('no', $uniqueId)->exists());
+
                                     return $uniqueId;
                                 })
                                 ->readOnly(),
@@ -92,7 +92,7 @@ class IncidentResource extends Resource
                         DateTimePicker::make('stop_bleeding_at'),
                         DateTimePicker::make('entry_date_tech_risk')->required(),
                     ])->columns(4),
-                
+
                 Section::make('Financial Impact')
                     ->schema([
                         Select::make('fund_status')->options([
@@ -160,15 +160,27 @@ class IncidentResource extends Resource
                 TextColumn::make('title')->searchable()->limit(30),
                 TextColumn::make('mttr')->label('MTTR (mins)')->sortable()->summarize(Average::make()->label('Avg MTTR')),
                 TextColumn::make('mtbf')->label('MTBF (days)')->sortable()->summarize(Average::make()->label('Avg MTBF')),
-                TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) { 'P1' => 'danger', 'P2' => 'warning', 'P3' => 'info', 'P4', 'N', 'G' => 'success', default => 'gray', })->sortable(),
-                TextColumn::make('incident_status')->badge()->color(fn (string $state): string => match ($state) { 'Open' => 'warning', 'In progress' => 'info', 'Finalization' => 'primary', 'Completed' => 'success', default => 'gray', })->sortable(),
+                TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
+                    'P1' => 'danger', 'P2' => 'warning', 'P3' => 'info', 'P4', 'N', 'G' => 'success', default => 'gray',
+                })->sortable(),
+                TextColumn::make('incident_status')->badge()->color(fn (string $state): string => match ($state) {
+                    'Open' => 'warning', 'In progress' => 'info', 'Finalization' => 'primary', 'Completed' => 'success', default => 'gray',
+                })->sortable(),
                 TextColumn::make('pic.name')->label('PIC')->sortable()->toggleable(),
                 TextColumn::make('incident_date')->dateTime()->sortable(),
                 TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->summarize(Sum::make()->money('IDR')->label('Total Potential')),
                 TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
                 TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->summarize(Sum::make()->money('IDR')->label('Total Loss')),
-                TextColumn::make('recovery_rate')->label('Recovery %')->state(function (Incident $record): string { if ($record->potential_fund_loss > 0) { $rate = ($record->recovered_fund / $record->potential_fund_loss) * 100; return number_format($rate, 1) . '%'; } return '-'; })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray')),
-                
+                TextColumn::make('recovery_rate')->label('Recovery %')->state(function (Incident $record): string {
+                    if ($record->potential_fund_loss > 0) {
+                        $rate = ($record->recovered_fund / $record->potential_fund_loss) * 100;
+
+                        return number_format($rate, 1).'%';
+                    }
+
+return '-';
+                })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray')),
+
                 // Toggleable Hidden Columns
                 TextColumn::make('classification')->sortable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('incident_type')->label('Area')->sortable()->toggleable(isToggledHiddenByDefault: true),
@@ -207,6 +219,7 @@ class IncidentResource extends Resource
                         if ($value === 'all') {
                             return $query;
                         }
+
                         return $query;
                     }),
 
@@ -226,7 +239,7 @@ class IncidentResource extends Resource
                                 $data['until'],
                                 fn (Builder $query, $date): Builder => $query->whereDate('incident_date', '<=', $date),
                             );
-                    })
+                    }),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
@@ -279,7 +292,7 @@ class IncidentResource extends Resource
                 ]),
             ]);
     }
-    
+
     public static function getRelations(): array
     {
         return [

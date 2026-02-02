@@ -2,8 +2,6 @@
 
 namespace App\Services;
 
-use Illuminate\Contracts\Encryption\DecryptException;
-use Illuminate\Contracts\Encryption\EncryptException;
 use Illuminate\Encryption\Encrypter;
 use Illuminate\Support\Str;
 
@@ -25,11 +23,11 @@ class EncryptionService
     {
         switch ($method) {
             case 'method1':
-                return hash('sha256', $key . $salt, true);
+                return hash('sha256', $key.$salt, true);
             case 'method2':
-                return hash('sha256', $salt . $key, true);
+                return hash('sha256', $salt.$key, true);
             case 'method3':
-                return hash('sha256', strrev($key) . $salt, true);
+                return hash('sha256', strrev($key).$salt, true);
             default:
                 throw new \InvalidArgumentException("Invalid method: {$method}");
         }
@@ -38,12 +36,14 @@ class EncryptionService
     public function encrypt(string $data, string $key): string
     {
         $encrypter = new Encrypter($key, self::CIPHER);
+
         return $encrypter->encrypt($data);
     }
 
     public function decrypt(string $encryptedData, string $key): string
     {
         $encrypter = new Encrypter($key, self::CIPHER);
+
         return $encrypter->decrypt($encryptedData);
     }
 }

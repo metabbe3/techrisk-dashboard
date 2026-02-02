@@ -2,19 +2,18 @@
 
 namespace App\Filament\Resources\IncidentResource\Pages;
 
-use App\Filament\Resources\IncidentResource;
 use App\Exports\IncidentTableExport;
 use App\Exports\MultiSheetIncidentsExport;
+use App\Filament\Resources\IncidentResource;
 use Filament\Actions;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Checkbox;
-use Filament\Resources\Pages\ListRecords;
+use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\Select;
 use Filament\Resources\Components\Tab;
-use Illuminate\Database\Eloquent\Builder;
+use Filament\Resources\Pages\ListRecords;
 use Illuminate\Contracts\View\View;
+use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Facades\Excel;
-use Illuminate\Support\Facades\Log;
 
 class ListIncidents extends ListRecords
 {
@@ -56,7 +55,7 @@ class ListIncidents extends ListRecords
                             ->label('Format')
                             ->options(['xlsx' => 'XLSX', 'csv' => 'CSV'])
                             ->required()
-                            ->visible(fn ($get) => !$get('export_all_tabs')),
+                            ->visible(fn ($get) => ! $get('export_all_tabs')),
                         CheckboxList::make('columns')
                             ->label('Columns to Export')
                             ->options($columnOptions)
@@ -74,12 +73,12 @@ class ListIncidents extends ListRecords
                     if ($data['export_all_tabs']) {
                         return Excel::download(
                             new MultiSheetIncidentsExport($query, $headings, $selectedColumns),
-                            'incidents-all-tabs-' . now()->format('Y-m-d') . '.xlsx'
+                            'incidents-all-tabs-'.now()->format('Y-m-d').'.xlsx'
                         );
                     }
 
                     $format = $data['format'];
-                    
+
                     $stats = [
                         'totalCases' => $query->count(),
                         'avgMttr' => round($query->avg('mttr'), 2),
@@ -88,12 +87,12 @@ class ListIncidents extends ListRecords
                         'totalFundLoss' => $query->sum('fund_loss'),
                         'totalRecoveredFund' => $query->sum('recovered_fund'),
                     ];
-                    
+
                     $incidents = $query->get();
 
                     return Excel::download(
                         new IncidentTableExport($incidents, $stats, $headings, $selectedColumns),
-                        'incidents-' . now()->format('Y-m-d') . '.' . $format
+                        'incidents-'.now()->format('Y-m-d').'.'.$format
                     );
                 }),
             Actions\CreateAction::make()
@@ -131,7 +130,7 @@ class ListIncidents extends ListRecords
             'totalFundLoss' => $query->sum('fund_loss'),
             'totalRecoveredFund' => $query->sum('recovered_fund'),
         ];
-        
+
         return view('livewire.incident-stats-footer', ['stats' => $stats]);
     }
 }

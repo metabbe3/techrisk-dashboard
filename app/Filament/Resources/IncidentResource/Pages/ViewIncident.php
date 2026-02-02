@@ -3,16 +3,33 @@
 namespace App\Filament\Resources\IncidentResource\Pages;
 
 use App\Filament\Resources\IncidentResource;
+use App\Services\Markdown\IncidentMarkdownExporter;
 use Filament\Actions;
-use Filament\Resources\Pages\ViewRecord;
-use Filament\Infolists\Infolist;
-use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\Grid;
+use Filament\Infolists\Components\Section;
+use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Infolist;
+use Filament\Resources\Pages\ViewRecord;
 
 class ViewIncident extends ViewRecord
 {
     protected static string $resource = IncidentResource::class;
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Actions\Action::make('export_markdown')
+                ->label('Export to Markdown')
+                ->icon('heroicon-o-document-arrow-down')
+                ->color('success')
+                ->tooltip('Export this incident as a Markdown file for AI analysis')
+                ->action(function (IncidentMarkdownExporter $exporter) {
+                    return $exporter->download($this->getRecord());
+                }),
+            Actions\EditAction::make()
+                ->visible(fn (): bool => auth()->user()->can('manage incidents')),
+        ];
+    }
 
     public function infolist(Infolist $infolist): Infolist
     {

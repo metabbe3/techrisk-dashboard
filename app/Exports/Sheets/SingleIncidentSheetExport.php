@@ -2,24 +2,27 @@
 
 namespace App\Exports\Sheets;
 
-use App\Models\Incident;
 use Maatwebsite\Excel\Concerns\FromQuery;
-use Maatwebsite\Excel\Concerns\WithTitle;
-use Maatwebsite\Excel\Concerns\WithHeadings;
-use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithMapping;
+use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Alignment;
 
-class SingleIncidentSheetExport implements FromQuery, WithTitle, WithHeadings, WithMapping, ShouldAutoSize, WithEvents
+class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents, WithHeadings, WithMapping, WithTitle
 {
     private $query;
+
     private $title;
+
     private $stats;
+
     private $headings;
+
     private $columnNames;
 
     public function __construct($query, string $title, array $headings, array $columnNames)
@@ -51,28 +54,28 @@ class SingleIncidentSheetExport implements FromQuery, WithTitle, WithHeadings, W
         foreach ($this->columnNames as $columnName) {
             $isBoolean = in_array($columnName, ['glitch_flag', 'risk_incident_form_cfm', 'goc_upload', 'teams_upload', 'doc_signed']);
             if ($columnName === 'recovery_rate') {
-                 if ($incident->potential_fund_loss > 0) {
+                if ($incident->potential_fund_loss > 0) {
                     $rate = ($incident->recovered_fund / $incident->potential_fund_loss) * 100;
-                    $row[] = number_format($rate, 1) . '%';
+                    $row[] = number_format($rate, 1).'%';
                 } else {
                     $row[] = '-';
                 }
             } elseif ($isBoolean) {
                 $row[] = $incident->{$columnName} ? 'Yes' : 'No';
-            }
-            else {
-                 $row[] = $incident->{$columnName};
+            } else {
+                $row[] = $incident->{$columnName};
             }
         }
+
         return $row;
     }
 
     public function registerEvents(): array
     {
         return [
-            AfterSheet::class => function(AfterSheet $event) {
+            AfterSheet::class => function (AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
-                
+
                 // Calculate stats for this specific sheet
                 $query = $this->query->clone();
                 $this->stats = [
@@ -83,20 +86,20 @@ class SingleIncidentSheetExport implements FromQuery, WithTitle, WithHeadings, W
                     'totalFundLoss' => $query->sum('fund_loss'),
                     'totalRecoveredFund' => $query->sum('recovered_fund'),
                 ];
-                
+
                 $lastDataRow = $sheet->getHighestRow();
                 $lastDataColumn = $sheet->getHighestDataColumn();
-                $fullDataRange = 'A1:' . $lastDataColumn . $lastDataRow;
-                
+                $fullDataRange = 'A1:'.$lastDataColumn.$lastDataRow;
+
                 $sheet->getStyle($fullDataRange)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-                $headerRange = 'A1:' . $lastDataColumn . '1';
+                $headerRange = 'A1:'.$lastDataColumn.'1';
                 $sheet->getStyle($headerRange)->getFont()->setBold(true);
                 $sheet->getStyle($headerRange)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFFFEB9C');
 
                 for ($row = 2; $row <= $lastDataRow; $row++) {
                     if ($row % 2 == 0) {
-                        $sheet->getStyle('A' . $row . ':' . $lastDataColumn . $row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFDDEBF7');
+                        $sheet->getStyle('A'.$row.':'.$lastDataColumn.$row)->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setARGB('FFDDEBF7');
                     }
                 }
 
@@ -118,9 +121,9 @@ class SingleIncidentSheetExport implements FromQuery, WithTitle, WithHeadings, W
                 $summaryDataRow = $summaryStartRow + 2;
                 $summaryData = [
                     $this->stats['totalCases'], $this->stats['avgMttr'], $this->stats['avgMtbf'],
-                    'Rp ' . number_format($this->stats['totalPotentialFundLoss'], 0, ',', '.'),
-                    'Rp ' . number_format($this->stats['totalFundLoss'], 0, ',', '.'),
-                    'Rp ' . number_format($this->stats['totalRecoveredFund'], 0, ',', '.'),
+                    'Rp '.number_format($this->stats['totalPotentialFundLoss'], 0, ',', '.'),
+                    'Rp '.number_format($this->stats['totalFundLoss'], 0, ',', '.'),
+                    'Rp '.number_format($this->stats['totalRecoveredFund'], 0, ',', '.'),
                 ];
                 $sheet->fromArray($summaryData, null, "A{$summaryDataRow}");
                 $summaryDataRange = "A{$summaryDataRow}:F{$summaryDataRow}";

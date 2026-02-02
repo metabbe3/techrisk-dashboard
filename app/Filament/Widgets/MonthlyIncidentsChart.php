@@ -2,17 +2,17 @@
 
 namespace App\Filament\Widgets;
 
-use Filament\Widgets\ChartWidget;
 use App\Models\Incident;
 use Carbon\Carbon;
+use Filament\Widgets\ChartWidget;
 use Livewire\Attributes\On;
 
 class MonthlyIncidentsChart extends ChartWidget
 {
-
     protected static ?string $heading = 'Monthly Incidents';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getData(): array
@@ -54,7 +54,7 @@ class MonthlyIncidentsChart extends ChartWidget
         return 'bar';
     }
 
-    public function getColumnSpan(): int | string | array
+    public function getColumnSpan(): int|string|array
     {
         return 4;
     }

@@ -56,6 +56,7 @@ class NotificationPreference extends Model
     public function getEmailPreference(string $type): bool
     {
         $key = "email_{$type}";
+
         return $this->getAttribute($key) ?? true;
     }
 
@@ -65,6 +66,7 @@ class NotificationPreference extends Model
     public function getDatabasePreference(string $type): bool
     {
         $key = "database_{$type}";
+
         return $this->getAttribute($key) ?? true;
     }
 
@@ -84,14 +86,13 @@ class NotificationPreference extends Model
      */
     public function getEmailEnabledCountAttribute(): int
     {
-        return (
+        return
             ($this->email_incident_assignment ? 1 : 0) +
             ($this->email_incident_update ? 1 : 0) +
             ($this->email_incident_status_changed ? 1 : 0) +
             ($this->email_status_update ? 1 : 0) +
             ($this->email_action_improvement_reminder ? 1 : 0) +
-            ($this->email_action_improvement_overdue ? 1 : 0)
-        );
+            ($this->email_action_improvement_overdue ? 1 : 0);
     }
 
     /**
@@ -99,13 +100,12 @@ class NotificationPreference extends Model
      */
     public function getDatabaseEnabledCountAttribute(): int
     {
-        return (
+        return
             ($this->database_incident_assignment ? 1 : 0) +
             ($this->database_incident_update ? 1 : 0) +
             ($this->database_incident_status_changed ? 1 : 0) +
             ($this->database_status_update ? 1 : 0) +
             ($this->database_action_improvement_reminder ? 1 : 0) +
-            ($this->database_action_improvement_overdue ? 1 : 0)
-        );
+            ($this->database_action_improvement_overdue ? 1 : 0);
     }
 }

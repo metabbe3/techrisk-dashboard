@@ -32,12 +32,12 @@ class IncidentStatusChanged extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Incident Status Changed: ' . $this->incident->title)
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->subject('Incident Status Changed: '.$this->incident->title)
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('The status of an incident has been updated:')
-            ->line('**Incident:** ' . $this->incident->title)
-            ->line('**Old Status:** ' . $this->oldStatus)
-            ->line('**New Status:** ' . $this->newStatus)
+            ->line('**Incident:** '.$this->incident->title)
+            ->line('**Old Status:** '.$this->oldStatus)
+            ->line('**New Status:** '.$this->newStatus)
             ->action('View Incident', IncidentResource::getUrl('view', ['record' => $this->incident]))
             ->line('Please review the updated status.');
     }

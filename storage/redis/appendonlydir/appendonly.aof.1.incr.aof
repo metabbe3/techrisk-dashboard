@@ -417,3 +417,13 @@ $4
 PXAT
 $13
 1768896877770
+*2
+$6
+SELECT
+$1
+1
+*2
+$3
+DEL
+$54
+laravel-database-laravel-cache-spatie.permission.cache

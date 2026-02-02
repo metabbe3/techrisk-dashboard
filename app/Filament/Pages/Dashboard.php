@@ -2,24 +2,24 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Widgets\ActionImprovementsOverview;
+use App\Filament\Widgets\FundLossTrendChart;
+use App\Filament\Widgets\IncidentsByLabelChart;
+use App\Filament\Widgets\IncidentsByPicChart;
 use App\Filament\Widgets\IncidentsBySeverityChart;
 use App\Filament\Widgets\IncidentsByTypeChart;
 use App\Filament\Widgets\IncidentStatsOverview;
 use App\Filament\Widgets\MonthlyIncidentsChart;
+use App\Filament\Widgets\MttrMtbfTrendChart;
 use App\Filament\Widgets\OpenIncidents;
 use App\Filament\Widgets\RecentIncidents;
-use App\Filament\Widgets\IncidentsByPicChart;
-use App\Filament\Widgets\FundLossTrendChart;
-use App\Filament\Widgets\MttrMtbfTrendChart;
-use App\Filament\Widgets\IncidentsByLabelChart;
-use App\Filament\Widgets\ActionImprovementsOverview;
 use App\Models\UserDashboardPreference;
 use Filament\Pages\Dashboard as BaseDashboard;
 use Illuminate\Support\Facades\Auth;
 
 class Dashboard extends BaseDashboard
 {
-    public function getColumns(): int | string | array
+    public function getColumns(): int|string|array
     {
         return 12;
     }
@@ -36,7 +36,7 @@ class Dashboard extends BaseDashboard
             ->toArray();
 
         // If user has preferences set, return those
-        if (!empty($userWidgets)) {
+        if (! empty($userWidgets)) {
             return $userWidgets;
         }
 

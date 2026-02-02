@@ -3,10 +3,10 @@
 namespace App\Exports\Sheets;
 
 use Maatwebsite\Excel\Concerns\FromCollection;
-use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithTitle;
 
-class MetricsSheet implements FromCollection, WithTitle, WithHeadings
+class MetricsSheet implements FromCollection, WithHeadings, WithTitle
 {
     private $metrics;
 
@@ -21,6 +21,7 @@ class MetricsSheet implements FromCollection, WithTitle, WithHeadings
         foreach ($this->metrics as $key => $value) {
             $data[] = ['Metric' => $key, 'Value' => $value];
         }
+
         return collect($data);
     }
 

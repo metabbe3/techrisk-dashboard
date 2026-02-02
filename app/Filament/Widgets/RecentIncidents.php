@@ -3,7 +3,6 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Resources\IncidentResource;
-use App\Models\Incident;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
@@ -11,11 +10,12 @@ use Livewire\Attributes\On;
 
 class RecentIncidents extends BaseWidget
 {
-    protected int | string | array $columnSpan = 6;
+    protected int|string|array $columnSpan = 6;
 
     protected static ?string $heading = 'Recent Incidents';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     public function table(Table $table): Table

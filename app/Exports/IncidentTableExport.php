@@ -3,20 +3,23 @@
 namespace App\Exports;
 
 use Maatwebsite\Excel\Concerns\FromCollection;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Events\AfterSheet;
-use Maatwebsite\Excel\Concerns\WithEvents;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
 use PhpOffice\PhpSpreadsheet\Style\Border;
-use PhpOffice\PhpSpreadsheet\Style\Fill;
-use PhpOffice\PhpSpreadsheet\Style\Alignment; // Added
+use PhpOffice\PhpSpreadsheet\Style\Fill; // Added
 
-class IncidentTableExport implements FromCollection, WithHeadings, WithMapping, WithEvents, ShouldAutoSize
+class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithMapping
 {
     protected $incidents;
+
     protected $stats;
+
     protected $headings;
+
     protected $columnNames;
 
     public function __construct($incidents, $stats, $headings, $columnNames)
@@ -43,32 +46,32 @@ class IncidentTableExport implements FromCollection, WithHeadings, WithMapping, 
         foreach ($this->columnNames as $columnName) {
             $isBoolean = in_array($columnName, ['glitch_flag', 'risk_incident_form_cfm', 'goc_upload', 'teams_upload', 'doc_signed']);
             if ($columnName === 'recovery_rate') {
-                 if ($incident->potential_fund_loss > 0) {
+                if ($incident->potential_fund_loss > 0) {
                     $rate = ($incident->recovered_fund / $incident->potential_fund_loss) * 100;
-                    $row[] = number_format($rate, 1) . '%';
+                    $row[] = number_format($rate, 1).'%';
                 } else {
                     $row[] = '-';
                 }
             } elseif ($isBoolean) {
                 $row[] = $incident->{$columnName} ? 'Yes' : 'No';
-            }
-            else {
-                 $row[] = $incident->{$columnName};
+            } else {
+                $row[] = $incident->{$columnName};
             }
         }
+
         return $row;
     }
 
     public function registerEvents(): array
     {
         return [
-            AfterSheet::class => function(AfterSheet $event) {
+            AfterSheet::class => function (AfterSheet $event) {
                 $sheet = $event->sheet->getDelegate();
                 $lastDataRow = $sheet->getHighestDataRow();
                 $lastDataColumn = $sheet->getHighestDataColumn();
-                
+
                 // 1. Style Header (Yellow)
-                $headerRange = 'A1:' . $lastDataColumn . '1';
+                $headerRange = 'A1:'.$lastDataColumn.'1';
                 $sheet->getStyle($headerRange)->getFont()->setBold(true);
                 $sheet->getStyle($headerRange)->getFill()
                     ->setFillType(Fill::FILL_SOLID)
@@ -77,7 +80,7 @@ class IncidentTableExport implements FromCollection, WithHeadings, WithMapping, 
 
                 // 2. Zebra Striping for Data Rows (Sky Blue) & Center Alignment
                 for ($row = 2; $row <= $lastDataRow; $row++) {
-                    $rowRange = 'A' . $row . ':' . $lastDataColumn . $row;
+                    $rowRange = 'A'.$row.':'.$lastDataColumn.$row;
                     if ($row % 2 == 0) { // Even rows
                         $sheet->getStyle($rowRange)->getFill()
                             ->setFillType(Fill::FILL_SOLID)
@@ -87,7 +90,7 @@ class IncidentTableExport implements FromCollection, WithHeadings, WithMapping, 
                 }
 
                 // 3. Add Borders to Main Table
-                $dataRange = 'A1:' . $lastDataColumn . $lastDataRow;
+                $dataRange = 'A1:'.$lastDataColumn.$lastDataRow;
                 $sheet->getStyle($dataRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
                 // --- 4. Summary Row Logic & Styling ---
@@ -109,9 +112,9 @@ class IncidentTableExport implements FromCollection, WithHeadings, WithMapping, 
                     $this->stats['totalCases'],
                     $this->stats['avgMttr'],
                     $this->stats['avgMtbf'],
-                    'Rp ' . number_format($this->stats['totalPotentialFundLoss'], 0, ',', '.'),
-                    'Rp ' . number_format($this->stats['totalFundLoss'], 0, ',', '.'),
-                    'Rp ' . number_format($this->stats['totalRecoveredFund'], 0, ',', '.'),
+                    'Rp '.number_format($this->stats['totalPotentialFundLoss'], 0, ',', '.'),
+                    'Rp '.number_format($this->stats['totalFundLoss'], 0, ',', '.'),
+                    'Rp '.number_format($this->stats['totalRecoveredFund'], 0, ',', '.'),
                 ];
                 $sheet->fromArray($summaryData, null, "A{$summaryDataRow}");
                 $summaryDataRange = "A{$summaryDataRow}:F{$summaryDataRow}";

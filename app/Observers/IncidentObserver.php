@@ -5,11 +5,10 @@ namespace App\Observers;
 use App\Models\Incident;
 use App\Models\Label;
 use App\Notifications\AssignedAsPicNotification;
-use App\Notifications\IncidentUpdated;
 use App\Notifications\IncidentStatusChanged;
+use App\Notifications\IncidentUpdated;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 class IncidentObserver
 {
@@ -90,14 +89,14 @@ class IncidentObserver
 
             if ($incident->pic && $oldStatus && $newStatus) {
                 $currentUser = auth()->user();
-                if (!$currentUser || $currentUser->id !== $incident->pic_id) {
+                if (! $currentUser || $currentUser->id !== $incident->pic_id) {
                     $incident->pic->notify(new IncidentStatusChanged($incident, $oldStatus, $newStatus));
                 }
             }
         }
 
         // Send general update notification if there are meaningful changes
-        if ($incident->wasChanged() && !empty($changes) && $incident->pic) {
+        if ($incident->wasChanged() && ! empty($changes) && $incident->pic) {
             $currentUser = auth()->user();
             if ($currentUser && $currentUser->id !== $incident->pic_id) {
                 $incident->pic->notify(new IncidentUpdated($incident, $changes));
@@ -160,16 +159,16 @@ class IncidentObserver
             return Label::all();
         });
 
-        $textBlock = strtolower($incident->summary . ' ' . $incident->root_cause);
+        $textBlock = strtolower($incident->summary.' '.$incident->root_cause);
         $matchedLabelIds = [];
 
         foreach ($allLabels as $label) {
-            if (preg_match("/\b" . preg_quote(strtolower($label->name), '/') . "\b/", $textBlock)) {
+            if (preg_match("/\b".preg_quote(strtolower($label->name), '/')."\b/", $textBlock)) {
                 $matchedLabelIds[] = $label->id;
             }
         }
 
-        if (!empty($matchedLabelIds)) {
+        if (! empty($matchedLabelIds)) {
             $incident->labels()->syncWithoutDetaching($matchedLabelIds);
         }
     }

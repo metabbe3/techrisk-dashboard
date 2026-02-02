@@ -2,14 +2,15 @@
 
 namespace App\Exports\Sheets;
 
+use Illuminate\Support\Arr;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
-use Illuminate\Support\Arr;
 
 class IncidentsSheet implements FromCollection, WithHeadings, WithTitle
 {
     private $incidents;
+
     private $headings;
 
     public function __construct($incidents, $headings)
@@ -29,6 +30,7 @@ class IncidentsSheet implements FromCollection, WithHeadings, WithTitle
                 }
                 $row[] = $value;
             }
+
             return $row;
         });
     }

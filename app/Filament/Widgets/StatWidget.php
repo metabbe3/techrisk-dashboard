@@ -9,12 +9,14 @@ use Illuminate\Support\Facades\DB;
 class StatWidget extends BaseWidget
 {
     public ?string $query = null;
+
     public ?string $label = null;
+
     public ?string $icon = null;
 
     protected function getStats(): array
     {
-        if (!$this->query) {
+        if (! $this->query) {
             return [];
         }
 

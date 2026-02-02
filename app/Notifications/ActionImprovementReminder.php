@@ -38,25 +38,25 @@ class ActionImprovementReminder extends Notification implements ShouldQueue
                 ? '[OVERDUE] Action Improvement Required'
                 : '[Reminder] Action Improvement Due Soon'
             )
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->greeting('Hello '.$notifiable->name.',')
             ->line($isOverdue
                 ? 'This action improvement is OVERDUE:'
                 : 'This is a reminder for an action improvement:'
             )
-            ->line('**Incident:** ' . $incident->title)
-            ->line('**Action:** ' . $this->actionImprovement->title)
-            ->line('**Due Date:** ' . $this->actionImprovement->due_date->format('Y-m-d'))
-            ->line('**Status:** ' . ucfirst($this->actionImprovement->status));
+            ->line('**Incident:** '.$incident->title)
+            ->line('**Action:** '.$this->actionImprovement->title)
+            ->line('**Due Date:** '.$this->actionImprovement->due_date->format('Y-m-d'))
+            ->line('**Status:** '.ucfirst($this->actionImprovement->status));
 
         if ($isOverdue) {
-            $mail->line('⚠️ **' . abs($daysUntilDue) . ' days overdue**');
+            $mail->line('⚠️ **'.abs($daysUntilDue).' days overdue**');
         } else {
-            $mail->line('⏰ **' . $daysUntilDue . ' days remaining**');
+            $mail->line('⏰ **'.$daysUntilDue.' days remaining**');
         }
 
-        $mail->line('**Detail:** ' . $this->actionImprovement->detail)
-              ->action('View Incident', IncidentResource::getUrl('view', ['record' => $incident]))
-              ->line('Please take action as soon as possible.');
+        $mail->line('**Detail:** '.$this->actionImprovement->detail)
+            ->action('View Incident', IncidentResource::getUrl('view', ['record' => $incident]))
+            ->line('Please take action as soon as possible.');
 
         return $mail;
     }
@@ -77,10 +77,10 @@ class ActionImprovementReminder extends Notification implements ShouldQueue
             'action_improvement_id' => $this->actionImprovement->id,
             'incident_id' => $this->actionImprovement->incident_id,
             'title' => $isOverdue ? 'Action Improvement Overdue' : 'Action Improvement Reminder',
-            'body' => '"' . $this->actionImprovement->title . '" is ' .
+            'body' => '"'.$this->actionImprovement->title.'" is '.
                 ($isOverdue
-                    ? abs($daysUntilDue) . ' days overdue'
-                    : 'due in ' . $daysUntilDue . ' days'
+                    ? abs($daysUntilDue).' days overdue'
+                    : 'due in '.$daysUntilDue.' days'
                 ),
             'due_date' => $this->actionImprovement->due_date->format('Y-m-d'),
             'days_until_due' => $daysUntilDue,

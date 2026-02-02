@@ -2,17 +2,14 @@
 
 namespace App\Filament\Resources\IncidentResource\RelationManagers;
 
-use Filament\Forms;
+use Filament\Forms\Components\DateTimePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
-use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\SoftDeletingScope;
-use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\DateTimePicker;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Table;
 
 class StatusUpdatesRelationManager extends RelationManager
 {
@@ -21,12 +18,11 @@ class StatusUpdatesRelationManager extends RelationManager
     public function form(Form $form): Form
     {
         return $form->schema([
-            Select::make('status')->options(['Open' => 'Open','Investigation' => 'Investigation','Monitoring' => 'Monitoring','Resolved' => 'Resolved','Closed' => 'Closed', 'Recovered' => 'Recovered'])->required(),
+            Select::make('status')->options(['Open' => 'Open', 'Investigation' => 'Investigation', 'Monitoring' => 'Monitoring', 'Resolved' => 'Resolved', 'Closed' => 'Closed', 'Recovered' => 'Recovered'])->required(),
             DateTimePicker::make('update_date')->default(now()),
             Textarea::make('notes')->required()->columnSpanFull(),
         ]);
     }
-
 
     public function table(Table $table): Table
     {

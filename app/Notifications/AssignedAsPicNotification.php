@@ -30,13 +30,13 @@ class AssignedAsPicNotification extends Notification implements ShouldQueue
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('New Incident Assignment: ' . $this->incident->title)
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->subject('New Incident Assignment: '.$this->incident->title)
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('You have been assigned as the Person In Charge (PIC) for a new incident.')
-            ->line('**Incident:** ' . $this->incident->title)
-            ->line('**Severity:** ' . $this->incident->severity)
-            ->line('**Status:** ' . $this->incident->incident_status)
-            ->line('**Date:** ' . $this->incident->incident_date->format('Y-m-d H:i'))
+            ->line('**Incident:** '.$this->incident->title)
+            ->line('**Severity:** '.$this->incident->severity)
+            ->line('**Status:** '.$this->incident->incident_status)
+            ->line('**Date:** '.$this->incident->incident_date->format('Y-m-d H:i'))
             ->action('View Incident', IncidentResource::getUrl('view', ['record' => $this->incident]))
             ->line('Please review and take appropriate action.');
     }

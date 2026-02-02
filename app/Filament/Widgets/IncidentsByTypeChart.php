@@ -3,17 +3,15 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Incident;
-use App\Models\IncidentType;
 use Filament\Widgets\ChartWidget;
-use Carbon\Carbon;
 use Livewire\Attributes\On;
 
 class IncidentsByTypeChart extends ChartWidget
 {
-
     protected static ?string $heading = 'Incidents by Type';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getData(): array
@@ -41,59 +39,46 @@ class IncidentsByTypeChart extends ChartWidget
         ];
     }
 
-            protected function getType(): string
+    protected function getType(): string
+    {
 
-            {
-
-                return 'pie';
-
-            }
-
-        
-
-    
-
-        public function getColumnSpan(): int | string | array
-
-        {
-
-            return 4;
-
-        }
-
-        protected function getOptions(): array
-        {
-            return [
-                'maintainAspectRatio' => false,
-                'plugins' => [
-                    'legend' => [
-                        'position' => 'bottom',
-                        'labels' => [
-                            'boxWidth' => 12,
-                            'padding' => 8,
-                            'font' => [
-                                'size' => 11,
-                            ],
-                        ],
-                    ],
-                ],
-            ];
-        }
-
-    
-
-        #[On('dashboardFiltersUpdated')]
-
-        public function updateDashboardFilters(array $data): void
-
-        {
-
-            $this->start_date = $data['start_date'];
-
-            $this->end_date = $data['end_date'];
-
-        }
+        return 'pie';
 
     }
 
-    
+    public function getColumnSpan(): int|string|array
+    {
+
+        return 4;
+
+    }
+
+    protected function getOptions(): array
+    {
+        return [
+            'maintainAspectRatio' => false,
+            'plugins' => [
+                'legend' => [
+                    'position' => 'bottom',
+                    'labels' => [
+                        'boxWidth' => 12,
+                        'padding' => 8,
+                        'font' => [
+                            'size' => 11,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+    }
+
+    #[On('dashboardFiltersUpdated')]
+    public function updateDashboardFilters(array $data): void
+    {
+
+        $this->start_date = $data['start_date'];
+
+        $this->end_date = $data['end_date'];
+
+    }
+}

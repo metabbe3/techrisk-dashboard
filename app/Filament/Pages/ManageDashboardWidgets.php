@@ -3,9 +3,8 @@
 namespace App\Filament\Pages;
 
 use App\Models\UserDashboardPreference;
-use Filament\Forms\Components\TextInput;
-use Filament\Pages\Page;
 use Filament\Notifications\Notification;
+use Filament\Pages\Page;
 use Illuminate\Support\Facades\Auth;
 
 class ManageDashboardWidgets extends Page
@@ -30,6 +29,7 @@ class ManageDashboardWidgets extends Page
     protected static string $view = 'filament.pages.manage-dashboard-widgets';
 
     public ?array $availableWidgets = null;
+
     public ?array $enabledWidgets = null;
 
     public function mount(): void
@@ -69,8 +69,8 @@ class ManageDashboardWidgets extends Page
             ->first();
 
         if ($preference) {
-            $preference->update(['is_enabled' => !$preference->is_enabled]);
-            $this->enabledWidgets[$widgetClass]['enabled'] = !$preference->is_enabled;
+            $preference->update(['is_enabled' => ! $preference->is_enabled]);
+            $this->enabledWidgets[$widgetClass]['enabled'] = ! $preference->is_enabled;
         }
 
         $this->js('window.location.reload()');

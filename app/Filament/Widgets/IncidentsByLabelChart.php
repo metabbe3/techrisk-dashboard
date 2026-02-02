@@ -2,10 +2,8 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\Incident;
 use App\Models\Label;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
 
 class IncidentsByLabelChart extends ChartWidget
@@ -13,6 +11,7 @@ class IncidentsByLabelChart extends ChartWidget
     protected static ?string $heading = 'Incidents by Label';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     protected function getData(): array
@@ -26,7 +25,7 @@ class IncidentsByLabelChart extends ChartWidget
                 }
             }])
             ->having('incidents_count', '>', 0);
-        
+
         $data = $query->pluck('incidents_count', 'name');
 
         return [
@@ -45,7 +44,7 @@ class IncidentsByLabelChart extends ChartWidget
         return 'pie';
     }
 
-    public function getColumnSpan(): int | string | array
+    public function getColumnSpan(): int|string|array
     {
         return 6;
     }

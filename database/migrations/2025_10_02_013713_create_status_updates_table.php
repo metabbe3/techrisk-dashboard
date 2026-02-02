@@ -12,12 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('status_updates', function (Blueprint $table) {
-        $table->id();
-        $table->foreignId('incident_id')->constrained()->onDelete('cascade');
-        $table->string('status');
-        $table->text('notes')->nullable();
-        $table->timestamps(); // The 'created_at' column will be our automatic update date!
-    });
+            $table->id();
+            $table->foreignId('incident_id')->constrained()->onDelete('cascade');
+            $table->string('status');
+            $table->text('notes')->nullable();
+            $table->timestamps(); // The 'created_at' column will be our automatic update date!
+        });
     }
 
     /**

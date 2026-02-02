@@ -7,17 +7,18 @@ use Illuminate\Support\Facades\DB;
 
 class ChartWidget extends BaseWidget
 {
-    protected int | string | array $columnSpan = [
+    protected int|string|array $columnSpan = [
         'md' => 3,
         'lg' => 6,
     ];
 
     public ?string $query = null;
+
     public ?string $chartType = 'bar';
 
     protected function getData(): array
     {
-        if (!$this->query) {
+        if (! $this->query) {
             return [];
         }
 
@@ -28,8 +29,8 @@ class ChartWidget extends BaseWidget
             return [];
         }
 
-        $labels = array_map(fn($item) => $item->label, $data);
-        $values = array_map(fn($item) => $item->value, $data);
+        $labels = array_map(fn ($item) => $item->label, $data);
+        $values = array_map(fn ($item) => $item->value, $data);
 
         return [
             'datasets' => [

@@ -34,14 +34,14 @@ class ActionImprovementOverdue extends Notification implements ShouldQueue
 
         return (new MailMessage)
             ->subject('[URGENT] Action Improvement OVERDUE')
-            ->greeting('Hello ' . $notifiable->name . ',')
+            ->greeting('Hello '.$notifiable->name.',')
             ->line('⚠️ An action improvement assigned to you is OVERDUE:')
-            ->line('**Incident:** ' . $incident->title)
-            ->line('**Action:** ' . $this->actionImprovement->title)
-            ->line('**Due Date:** ' . $this->actionImprovement->due_date->format('Y-m-d'))
-            ->line('**Days Overdue:** ' . $this->daysOverdue)
-            ->line('**Status:** ' . ucfirst($this->actionImprovement->status))
-            ->line('**Detail:** ' . $this->actionImprovement->detail)
+            ->line('**Incident:** '.$incident->title)
+            ->line('**Action:** '.$this->actionImprovement->title)
+            ->line('**Due Date:** '.$this->actionImprovement->due_date->format('Y-m-d'))
+            ->line('**Days Overdue:** '.$this->daysOverdue)
+            ->line('**Status:** '.ucfirst($this->actionImprovement->status))
+            ->line('**Detail:** '.$this->actionImprovement->detail)
             ->action('View Incident', IncidentResource::getUrl('view', ['record' => $incident]))
             ->line('Please complete this action improvement as soon as possible.');
     }
@@ -59,7 +59,7 @@ class ActionImprovementOverdue extends Notification implements ShouldQueue
             'action_improvement_id' => $this->actionImprovement->id,
             'incident_id' => $this->actionImprovement->incident_id,
             'title' => 'Action Improvement OVERDUE',
-            'body' => '"' . $this->actionImprovement->title . '" is ' . $this->daysOverdue . ' days overdue',
+            'body' => '"'.$this->actionImprovement->title.'" is '.$this->daysOverdue.' days overdue',
             'due_date' => $this->actionImprovement->due_date->format('Y-m-d'),
             'days_overdue' => $this->daysOverdue,
             'url' => IncidentResource::getUrl('view', ['record' => $this->actionImprovement->incident]),

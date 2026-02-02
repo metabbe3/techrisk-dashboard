@@ -5,14 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\IncidentApiResource;
 use App\Models\Incident;
-use App\Models\Label;
 use App\Models\IncidentType;
+use App\Models\Label;
 use App\Traits\ApiResponser;
+use Exception;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Validation\ValidationException;
-use Exception;
 
 class IncidentController extends Controller
 {
@@ -22,7 +22,7 @@ class IncidentController extends Controller
     {
         try {
             // Create a more efficient cache key that excludes pagination
-            $cacheKey = 'incidents.' . md5(json_encode([
+            $cacheKey = 'incidents.'.md5(json_encode([
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
                 'min_fund_loss' => $request->min_fund_loss,
@@ -85,6 +85,7 @@ class IncidentController extends Controller
             $labels = Cache::remember('labels', 60, function () {
                 return Label::all()->pluck('name');
             });
+
             return $this->successResponse($labels, 'Labels retrieved successfully.');
         } catch (Exception $e) {
             return $this->errorResponse('Failed to retrieve labels.', 500);
@@ -97,6 +98,7 @@ class IncidentController extends Controller
             $incidentTypes = Cache::remember('incident_types', 60, function () {
                 return IncidentType::all()->pluck('name');
             });
+
             return $this->successResponse($incidentTypes, 'Incident types retrieved successfully.');
         } catch (Exception $e) {
             return $this->errorResponse('Failed to retrieve incident types.', 500);
@@ -153,7 +155,7 @@ class IncidentController extends Controller
                     'statusUpdates',
                     'investigationDocuments',
                     'labels',
-                    'actionImprovements'
+                    'actionImprovements',
                 ])),
                 'Incident retrieved successfully.'
             );
@@ -170,7 +172,7 @@ class IncidentController extends Controller
             $validatedData = $request->validate([
                 'title' => 'string|max:255',
                 'summary' => 'string',
-                'no' => 'string|max:255|unique:incidents,no,' . $incident->id,
+                'no' => 'string|max:255|unique:incidents,no,'.$incident->id,
                 'root_cause' => 'nullable|string',
                 'severity' => 'string',
                 'incident_type' => 'in:Tech,Non-tech',

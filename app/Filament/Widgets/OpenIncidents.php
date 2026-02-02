@@ -3,20 +3,19 @@
 namespace App\Filament\Widgets;
 
 use App\Filament\Resources\IncidentResource;
-use App\Models\Incident;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Illuminate\Database\Eloquent\Builder;
 use Livewire\Attributes\On;
 
 class OpenIncidents extends BaseWidget
 {
-    protected int | string | array $columnSpan = 6;
+    protected int|string|array $columnSpan = 6;
 
     protected static ?string $heading = 'Open Incidents';
 
     public ?string $start_date = null;
+
     public ?string $end_date = null;
 
     public function table(Table $table): Table
