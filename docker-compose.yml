@@ -20,6 +20,7 @@ services:
       - .env  # This makes .env the master source
     networks:
       - techrisk-network
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php-fpm"]
 
   # Nginx Service
   nginx:
@@ -100,6 +101,7 @@ services:
       - .env
     networks:
       - techrisk-network
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php artisan queue:work --sleep=3 --tries=3 --queue=default,document-conversion"]
 
   # Scheduler Service
   scheduler:
@@ -117,6 +119,7 @@ services:
       - .env
     networks:
       - techrisk-network
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php artisan schedule:work"]
 
 networks:
   techrisk-network:
