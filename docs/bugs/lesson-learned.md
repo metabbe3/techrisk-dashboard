@@ -202,16 +202,112 @@ The "Issues - MTTR" and "Issues - MTBF" export tabs were showing severity values
 
 ---
 
+### [BUG-002] - Issues Export Tabs Empty (Using Wrong Query Source)
+
+**Date:** 2026-02-02
+**Discovered By:** User Report
+**Severity:** High
+**Status:** Resolved
+
+### Description
+The "Issues - MTTR", "Issues - MTBF", and "All Issues" export tabs were returning empty or incorrect results because they were using the filtered query from IncidentResource instead of a fresh query for Issues only.
+
+### Affected Component
+- [x] Filament Resource (Export functionality)
+- [ ] Model
+- [ ] Controller
+- [ ] API Endpoint
+- [ ] Database/Migration
+- [ ] Frontend/CSS
+- [ ] Queue/Job
+- [ ] Other: _____
+
+### Root Cause Analysis (5 Whys)
+1. Why did the bug occur?
+   - The Issues sheets in `MultiSheetIncidentsExport` were cloning `$this->query` which comes from IncidentResource.
+
+2. Why was this a problem?
+   - IncidentResource's query includes all filters/tabs the user has selected (e.g., "Completed Cases", date ranges, severity filters).
+
+3. Why did this cause empty Issues sheets?
+   - When users filtered IncidentResource (e.g., by severity or status), those filters were applied to Issues sheets too.
+   - For example: If user filtered to show "Completed Cases", the Issues sheets would try to find Issues within already-filtered Completed records, resulting in empty data.
+
+4. Why was the export designed this way?
+   - The export was added to IncidentResource, not IssueResource. The Issues sheets were an afterthought, added as filtered subsets of the main query.
+
+5. Root cause identified:
+   - **Incorrect query source for separate data domain** - Issues and Incidents are separate domains (classification = 'Issue' vs 'Incident'). Issues sheets should use a fresh query `Incident::where('classification', 'Issue')` instead of cloning the filtered IncidentResource query.
+
+### Impact
+- [x] User facing?
+- [ ] Data loss/corruption?
+- [x] Broken workflow?
+- [ ] Performance degradation?
+- [ ] Security vulnerability?
+- [ ] Other: _____
+
+**Impact Assessment:**
+- Issues export tabs (All Issues, Issues - MTTR, Issues - MTBF) returned empty or incomplete data
+- Users could not reliably export Issues data from IncidentResource
+- Workaround: Users had to go to IssueResource to export Issues separately
+- Severity: High - Core export functionality not working for Issues
+
+### Prevention Strategy
+
+#### 1. Process Changes
+- [x] Document this pattern in SOP - When exporting separate domains, use fresh queries
+- [ ] Add code review item: "Check if export filters affect different data domains"
+- [ ] Require testing multi-sheet exports with various filter combinations
+
+#### 2. Code Changes
+- [x] Fixed Issues sheets to use `Incident::where('classification', 'Issue')` instead of `$this->query->clone()`
+- [ ] Add test for export with active filters
+- [ ] Add test for export with different selected tabs
+
+#### 3. Documentation Updates
+- [ ] Update CLAUDE.md with query pattern for multi-domain exports
+- [x] Document this bug in lesson-learned.md
+
+### Action Items
+- [x] Fix Issues sheets to use fresh query - Done
+- [x] Run Laravel Pint - Done
+- [ ] Add integration test for multi-sheet export with filters - QA Team
+- [ ] Test export with various filter combinations - User
+
+### Verification
+- [x] Code fixed: `app/Exports/MultiSheetIncidentsExport.php:56-69`
+- [x] Laravel Pint applied
+- [ ] Test case added: `tests/Feature/MultiSheetExportTest.php` - Pending
+- [x] Code reviewed: Self-review completed
+- [ ] Deployment verified on: YYYY-MM-DD - Pending
+- [ ] No regression in existing tests - To be verified
+
+### References
+- Related Issue: User report via chat
+- Related Bug: BUG-001 (Related to same export functionality)
+- Related Files:
+  - `app/Exports/MultiSheetIncidentsExport.php`
+  - `app/Filament/Resources/IncidentResource/Pages/ListIncidents.php`
+  - `app/Filament/Resources/IssueResource.php`
+
+---
+
+**Reviewed By:** Claude (PM Agent)
+**Review Date:** 2026-02-02
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 1 |
+| Total Bugs | 2 |
 | Critical | 0 |
-| High | 1 |
+| High | 2 |
 | Medium | 0 |
 | Low | 0 |
-| Resolved | 1 |
+| Resolved | 2 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -219,7 +315,7 @@ The "Issues - MTTR" and "Issues - MTBF" export tabs were showing severity values
 |-----------|-------|
 | Model | 0 |
 | Controller | 0 |
-| Filament Resource | 1 |
+| Filament Resource | 2 |
 | API Endpoint | 0 |
 | Database/Migration | 0 |
 | Frontend/CSS | 0 |
