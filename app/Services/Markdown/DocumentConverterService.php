@@ -118,8 +118,14 @@ class DocumentConverterService
      */
     private function convertPdf(string $content): string
     {
+        // Ensure temp directory exists
+        $tempDir = storage_path('app/temp');
+        if (! file_exists($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
         // Save temporary file
-        $tempPath = storage_path('app/temp/'.uniqid().'.pdf');
+        $tempPath = $tempDir.'/'.uniqid().'.pdf';
         file_put_contents($tempPath, $content);
 
         try {
@@ -139,8 +145,14 @@ class DocumentConverterService
      */
     private function convertDocx(string $content): string
     {
+        // Ensure temp directory exists
+        $tempDir = storage_path('app/temp');
+        if (! file_exists($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
         // Save temporary file
-        $tempPath = storage_path('app/temp/'.uniqid().'.docx');
+        $tempPath = $tempDir.'/'.uniqid().'.docx';
         file_put_contents($tempPath, $content);
 
         try {
