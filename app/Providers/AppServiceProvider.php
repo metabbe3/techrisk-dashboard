@@ -12,6 +12,8 @@ use App\Observers\IncidentObserver;
 use App\Observers\IncidentTypeObserver;
 use App\Observers\LabelObserver;
 use App\Observers\StatusUpdateObserver;
+use App\Services\SensitiveDataFilter;
+use App\Services\TraceIdService;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
@@ -26,7 +28,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(TraceIdService::class);
+        $this->app->singleton(SensitiveDataFilter::class);
     }
 
     /**

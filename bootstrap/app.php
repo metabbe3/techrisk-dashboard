@@ -18,6 +18,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'check.api.access' => \App\Http\Middleware\CheckApiAccess::class,
         ]);
+
+        // Register API audit logger for all API routes
+        $middleware->api([
+            \App\Http\Middleware\ApiAuditLogger::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
