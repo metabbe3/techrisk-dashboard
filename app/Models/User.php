@@ -40,6 +40,14 @@ class User extends Authenticatable implements FilamentUser
     }
 
     /**
+     * Get the user's audit log settings.
+     */
+    public function auditLogSettings(): HasOne
+    {
+        return $this->hasOne(\App\Models\UserAuditLogSetting::class);
+    }
+
+    /**
      * Override notify to respect user preferences.
      */
     public function notify($instance)

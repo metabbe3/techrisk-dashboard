@@ -43,6 +43,38 @@ class UserResource extends Resource
                     ->multiple()
                     ->relationship('roles', 'name')
                     ->preload(),
+                Forms\Components\Section::make('Audit Log Access')
+                    ->description('Configure which years this user can view in API audit logs')
+                    ->schema([
+                        Forms\Components\Checkbox::make('audit_log_settings.can_view_all_logs')
+                            ->label('Can View All Logs')
+                            ->helperText('If enabled, user can see all audit logs regardless of year or endpoint')
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function ($component, $state, $record) {
+                                if ($record && $record->auditLogSettings) {
+                                    $component->state($record->auditLogSettings->can_view_all_logs);
+                                }
+                            })
+                            ->reactive()
+                            ->afterStateUpdated(function ($state, callable $set) {
+                                if ($state) {
+                                    $set('audit_log_settings.allowed_years', []);
+                                }
+                            }),
+                        Forms\Components\TagsInput::make('audit_log_settings.allowed_years')
+                            ->label('Allowed Years')
+                            ->helperText('Enter the years this user can access (e.g., 2025, 2026)')
+                            ->placeholder('Add year')
+                            ->dehydrated(false)
+                            ->afterStateHydrated(function ($component, $state, $record) {
+                                if ($record && $record->auditLogSettings) {
+                                    $component->state($record->auditLogSettings->allowed_years ?? []);
+                                }
+                            })
+                            ->visible(fn (callable $get) => ! $get('audit_log_settings.can_view_all_logs'))
+                            ->required(fn (callable $get) => ! $get('audit_log_settings.can_view_all_logs')),
+                    ])
+                    ->collapsible(),
             ]);
     }
 
