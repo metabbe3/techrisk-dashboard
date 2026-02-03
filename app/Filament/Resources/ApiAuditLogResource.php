@@ -263,7 +263,10 @@ class ApiAuditLogResource extends Resource
                 // No bulk actions - audit logs are read-only
             ])
             ->emptyStateHeading('No audit logs found')
-            ->emptyStateDescription('Ensure you have the proper permissions and year access configured.')
+            ->emptyStateDescription(fn () => auth()->user()->hasRole('admin')
+                ? 'No API activity has been recorded yet.'
+                : 'You have no API activity recorded yet, or it may be outside your configured year range.'
+            )
             ->paginated([25, 50, 100]);
     }
 
@@ -275,9 +278,9 @@ class ApiAuditLogResource extends Resource
         $user = auth()->user();
         $isAdmin = $user->hasRole('admin');
 
-        // Non-admins can only see incident-related endpoints
+        // Non-admins can only see their own audit logs
         if (! $isAdmin) {
-            $query->where('endpoint', 'like', '%incident%');
+            $query->where('user_id', $user->id);
         }
 
         // Apply year filtering if user doesn't have full access

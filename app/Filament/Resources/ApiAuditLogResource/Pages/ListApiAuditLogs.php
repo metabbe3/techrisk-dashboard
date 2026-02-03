@@ -30,11 +30,11 @@ class ListApiAuditLogs extends ListRecords
         $settings = UserAuditLogSetting::forUser($user);
 
         if ($user->hasRole('admin')) {
-            return 'Admin Access - Viewing all logs';
+            return 'Admin Access - Viewing all API logs';
         }
 
         $yearsText = $settings->getAllowedYearsStringAttribute();
 
-        return "Incident logs only - Accessible years: {$yearsText}";
+        return "Your API activity - Accessible years: {$yearsText}";
     }
 }
