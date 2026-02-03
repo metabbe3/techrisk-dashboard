@@ -1,5 +1,16 @@
-<x-guest-layout>
-    <div class="flex min-h-screen flex-col items-center justify-center bg-gray-100 px-4 py-12 sm:px-6 lg:px-8">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Request Dashboard Access - Tech Risk Dashboard</title>
+    @livewireStyles
+    <style>
+        body { font-family: ui-sans-serif, system-ui, sans-serif; }
+    </style>
+</head>
+<body class="bg-gray-100">
+    <div class="flex min-h-screen flex-col items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
         <div class="w-full max-w-2xl">
             @if($submitted)
                 <div class="rounded-lg bg-white p-8 shadow-md">
@@ -10,7 +21,7 @@
                         <h2 class="mt-6 text-2xl font-bold text-gray-900">Request Submitted</h2>
                         <p class="mt-4 text-gray-600">{{ $submittedMessage }}</p>
                         <div class="mt-8">
-                            <a href="{{ url('/') }}" class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2">
+                            <a href="{{ url('/') }}" class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">
                                 Return to Home
                             </a>
                         </div>
@@ -135,7 +146,7 @@
                             <a href="{{ url('/') }}" class="text-sm text-gray-600 hover:text-gray-900">Cancel</a>
                             <button
                                 type="submit"
-                                class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-6 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                                class="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-6 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700"
                             >
                                 Submit Request
                             </button>
@@ -149,4 +160,6 @@
             @endif
         </div>
     </div>
-</x-guest-layout>
+    @livewireScripts
+</body>
+</html>
