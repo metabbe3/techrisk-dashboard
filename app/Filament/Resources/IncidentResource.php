@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
 use App\Models\Incident;
+use App\Models\UserAuditLogSetting;
 use Carbon\Carbon;
 use Filament\Forms;
 use Filament\Forms\Components\Checkbox;
@@ -154,7 +155,7 @@ class IncidentResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->where('classification', '!=', 'Issue'))
+            ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')->searchable()->limit(30),
@@ -311,5 +312,34 @@ return '-';
             'edit' => Pages\EditIncident::route('/{record}/edit'),
             'view' => Pages\ViewIncident::route('/{record}'),
         ];
+    }
+
+    /**
+     * Apply access control based on user's year permissions.
+     * Admins see all years, non-admins see only their allowed years.
+     */
+    protected static function applyAccessControl(Builder $query): Builder
+    {
+        // Always exclude Issues from IncidentResource
+        $query = $query->where('classification', '!=', 'Issue');
+
+        $user = auth()->user();
+        if (! $user) {
+            return $query;
+        }
+
+        // Admins see all data
+        if ($user->hasRole('admin')) {
+            return $query;
+        }
+
+        // Non-admins: filter by allowed years
+        $settings = UserAuditLogSetting::forUser($user);
+
+        if (! $settings->can_view_all_logs && ! empty($settings->allowed_years)) {
+            $query->whereYear('incident_date', $settings->allowed_years);
+        }
+
+        return $query;
     }
 }

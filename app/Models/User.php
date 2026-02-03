@@ -20,7 +20,46 @@ class User extends Authenticatable implements FilamentUser
 
     public function canAccessPanel(Panel $panel): bool
     {
-        return $this->hasRole('admin');
+        // Check if user's access has expired
+        if ($this->isAccessExpired()) {
+            return false;
+        }
+
+        // Admins always have access
+        if ($this->hasRole('admin')) {
+            return true;
+        }
+
+        // Non-admins need 'access dashboard' permission
+        return $this->can('access dashboard');
+    }
+
+    /**
+     * Check if user's access has expired.
+     */
+    public function isAccessExpired(): bool
+    {
+        if (! $this->access_expiry) {
+            return false;
+        }
+
+        return $this->access_expiry->isPast();
+    }
+
+    /**
+     * Get the number of days until access expires.
+     */
+    public function daysUntilExpiry(): ?int
+    {
+        if (! $this->access_expiry) {
+            return null;
+        }
+
+        if ($this->access_expiry->isPast()) {
+            return 0;
+        }
+
+        return now()->diffInDays($this->access_expiry);
     }
 
     /**
@@ -195,6 +234,7 @@ class User extends Authenticatable implements FilamentUser
         'name',
         'email',
         'password',
+        'access_expiry',
     ];
 
     /**
@@ -216,6 +256,7 @@ class User extends Authenticatable implements FilamentUser
     {
         return [
             'email_verified_at' => 'datetime',
+            'access_expiry' => 'datetime',
             'password' => 'hashed',
         ];
     }

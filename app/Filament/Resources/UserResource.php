@@ -43,6 +43,37 @@ class UserResource extends Resource
                     ->multiple()
                     ->relationship('roles', 'name')
                     ->preload(),
+                Forms\Components\Section::make('Access Settings')
+                    ->description('Configure user access and expiry')
+                    ->schema([
+                        Forms\Components\DateTimePicker::make('access_expiry')
+                            ->label('Access Expires At')
+                            ->helperText('If set, user will not be able to access the dashboard after this date')
+                            ->seconds(false)
+                            ->native(false)
+                            ->displayFormat('M d, Y H:i')
+                            ->minDate(now()->subMonth())
+                            ->hint(function ($state) {
+                                if (! $state) {
+                                    return 'No expiry set - user has permanent access';
+                                }
+
+                                $expiry = \Carbon\Carbon::parse($state);
+                                if ($expiry->isPast()) {
+                                    return 'Access has expired';
+                                }
+
+                                $daysLeft = now()->diffInDays($expiry);
+                                if ($daysLeft <= 7) {
+                                    return "Expires in {$daysLeft} day(s) - almost expired!";
+                                }
+
+                                return "Expires in {$daysLeft} day(s)";
+                            })
+                            ->hintColor(fn ($state) => !$state ? 'success' : (\Carbon\Carbon::parse($state)->isPast() ? 'danger' : ((\Carbon\Carbon::parse($state)->diffInDays(now()) <= 7) ? 'warning' : 'info')))
+                            ->required(false),
+                    ])
+                    ->compact(),
                 Forms\Components\Section::make('Audit Log Access')
                     ->description('Configure which years this user can view in API audit logs')
                     ->schema([
@@ -88,6 +119,30 @@ class UserResource extends Resource
                     ->searchable(),
                 Tables\Columns\TextColumn::make('roles.name')
                     ->searchable(),
+                Tables\Columns\TextColumn::make('access_expiry')
+                    ->label('Access Expiry')
+                    ->dateTime('M d, Y')
+                    ->sortable()
+                    ->toggleable()
+                    ->badge()
+                    ->color(fn ($state) => !$state ? 'success' : (\Carbon\Carbon::parse($state)->isPast() ? 'danger' : 'gray'))
+                    ->formatStateUsing(function ($state) {
+                        if (!$state) {
+                            return 'Never';
+                        }
+
+                        $expiry = \Carbon\Carbon::parse($state);
+                        if ($expiry->isPast()) {
+                            return 'Expired';
+                        }
+
+                        $daysLeft = now()->diffInDays($expiry);
+                        if ($daysLeft <= 7) {
+                            return "In {$daysLeft}d";
+                        }
+
+                        return $expiry->format('M d, Y');
+                    }),
                 Tables\Columns\TextColumn::make('email_verified_at')
                     ->dateTime()
                     ->sortable(),
