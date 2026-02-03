@@ -36,8 +36,10 @@ class ProcessApiAuditLogJob implements ShouldQueue
         // Log to file (JSON format)
         Log::channel($channel)->info('api_audit', $logEntry);
 
-        // Store to database
-        $this->storeToDatabase($this->auditData);
+        // Store to database if enabled
+        if (config('api-audit.store_to_db', true)) {
+            $this->storeToDatabase($this->auditData);
+        }
     }
 
     public function failed(\Throwable $exception): void

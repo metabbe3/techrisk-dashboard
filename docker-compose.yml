@@ -92,7 +92,7 @@ services:
       dockerfile: Dockerfile.php
     container_name: techrisk-worker
     restart: unless-stopped
-    command: php artisan queue:work --sleep=3 --tries=3 --queue=default,document-conversion
+    command: php artisan queue:work --sleep=3 --tries=3 --queue=default,document-conversion,api-audit
     volumes:
       - ./:/var/www/html
     depends_on:
@@ -101,7 +101,7 @@ services:
       - .env
     networks:
       - techrisk-network
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php artisan queue:work --sleep=3 --tries=3 --queue=default,document-conversion"]
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php artisan queue:work --sleep=3 --tries=3 --queue=default,document-conversion,api-audit"]
 
   # Scheduler Service
   scheduler:
