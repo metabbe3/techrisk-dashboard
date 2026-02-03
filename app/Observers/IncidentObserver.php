@@ -175,12 +175,21 @@ class IncidentObserver
 
     /**
      * Flush incident cache with fine-grained keys.
+     * Note: Since we're using plain Cache::remember() without tags,
+     * we rely on the 60-minute TTL for automatic cache expiration.
+     * For immediate invalidation, individual cache keys can be forgotten
+     * if the cache key pattern is known.
      */
     private function flushIncidentCache(): void
     {
+        // Forget known static cache keys
         Cache::forget('incidents.stats');
         Cache::forget('labels');
-        Cache::tags(['incidents'])->flush();
+
+        // Dynamic cache keys (incidents.{hash}) will expire after 60-minute TTL
+        // For immediate invalidation of all incident caches, you would need
+        // to track active cache keys or use a cache versioning strategy.
+        // Given the TTL is relatively short (60 minutes), we rely on natural expiration.
     }
 
     /**

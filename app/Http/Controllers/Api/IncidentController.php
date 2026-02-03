@@ -33,7 +33,7 @@ class IncidentController extends Controller
                 'type' => $request->type,
             ]));
 
-            $query = Cache::tags(['incidents'])->remember($cacheKey, 60, function () use ($request) {
+            $query = Cache::remember($cacheKey, 60, function () use ($request) {
                 $query = Incident::with(['labels']);
 
                 if ($request->has('start_date') && $request->has('end_date')) {
@@ -75,6 +75,11 @@ class IncidentController extends Controller
                 'Incidents retrieved successfully.'
             );
         } catch (Exception $e) {
+            \Log::error('Failed to retrieve incidents: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request_params' => $request->all(),
+            ]);
+
             return $this->errorResponse('Failed to retrieve incidents.', 500);
         }
     }
@@ -88,6 +93,10 @@ class IncidentController extends Controller
 
             return $this->successResponse($labels, 'Labels retrieved successfully.');
         } catch (Exception $e) {
+            \Log::error('Failed to retrieve labels: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return $this->errorResponse('Failed to retrieve labels.', 500);
         }
     }
@@ -101,6 +110,10 @@ class IncidentController extends Controller
 
             return $this->successResponse($incidentTypes, 'Incident types retrieved successfully.');
         } catch (Exception $e) {
+            \Log::error('Failed to retrieve incident types: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             return $this->errorResponse('Failed to retrieve incident types.', 500);
         }
     }
@@ -142,6 +155,11 @@ class IncidentController extends Controller
         } catch (ValidationException $e) {
             return $this->errorResponse($e->errors(), 422);
         } catch (Exception $e) {
+            \Log::error('Failed to create incident: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'request_data' => $request->all(),
+            ]);
+
             return $this->errorResponse('Failed to create incident.', 500);
         }
     }
@@ -162,6 +180,11 @@ class IncidentController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
+            \Log::error('Failed to retrieve incident: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'incident_id' => $incident->id ?? 'unknown',
+            ]);
+
             return $this->errorResponse('Failed to retrieve incident.', 500);
         }
     }
@@ -204,6 +227,12 @@ class IncidentController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
+            \Log::error('Failed to update incident: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'incident_id' => $incident->id ?? 'unknown',
+                'request_data' => $request->all(),
+            ]);
+
             return $this->errorResponse('Failed to update incident.', 500);
         }
     }
@@ -217,6 +246,11 @@ class IncidentController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
+            \Log::error('Failed to delete incident: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'incident_id' => $incident->id ?? 'unknown',
+            ]);
+
             return $this->errorResponse('Failed to delete incident.', 500);
         }
     }
