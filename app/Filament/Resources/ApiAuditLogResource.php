@@ -29,7 +29,15 @@ class ApiAuditLogResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return auth()->user()->can('view audit logs');
+        $user = auth()->user();
+
+        // Admins can always view audit logs
+        if ($user->hasRole('admin')) {
+            return true;
+        }
+
+        // Non-admins need explicit permission
+        return $user->can('view audit logs');
     }
 
     public static function canCreate(): bool
