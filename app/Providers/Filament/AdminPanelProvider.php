@@ -2,6 +2,7 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\CustomProfilePage;
 use App\Filament\Pages\Dashboard;
 use Filament\Http\Middleware\Authenticate;
@@ -29,7 +30,7 @@ class AdminPanelProvider extends PanelProvider
             ->databaseNotifications()
             ->globalSearch(true)
             ->path('admin')
-            ->login(\Filament\Pages\Auth\Login::class)
+            ->login(Login::class)
             ->profile(CustomProfilePage::class)
             ->colors([
                 'primary' => Color::Blue,

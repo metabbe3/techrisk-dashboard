@@ -155,7 +155,7 @@
                 </div>
 
                 <div class="mt-6 text-center text-sm text-gray-500">
-                    <p>Already have an account? <a href="{{ route('login') }}" class="font-medium text-indigo-600 hover:text-indigo-500">Sign in here</a></p>
+                    <p>Already have an account? <a href="{{ url('/admin/login') }}" class="font-medium text-indigo-600 hover:text-indigo-500">Sign in here</a></p>
                 </div>
             @endif
         </div>
