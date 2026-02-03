@@ -74,12 +74,12 @@ class UserResource extends Resource
                             ->required(false),
                     ])
                     ->compact(),
-                Forms\Components\Section::make('Audit Log Access')
-                    ->description('Configure which years this user can view in API audit logs')
+                Forms\Components\Section::make('Data Access Control')
+                    ->description('Configure which years of data (Incidents & Audit Logs) this user can access')
                     ->schema([
                         Forms\Components\Checkbox::make('audit_log_settings.can_view_all_logs')
-                            ->label('Can View All Logs')
-                            ->helperText('If enabled, user can see all audit logs regardless of year or endpoint')
+                            ->label('Full Access (All Years)')
+                            ->helperText('If enabled, user can see ALL data regardless of year. Admins have this by default.')
                             ->dehydrated(false)
                             ->afterStateHydrated(function ($component, $state, $record) {
                                 if ($record && $record->auditLogSettings) {
@@ -93,9 +93,9 @@ class UserResource extends Resource
                                 }
                             }),
                         Forms\Components\TagsInput::make('audit_log_settings.allowed_years')
-                            ->label('Allowed Years')
-                            ->helperText('Enter the years this user can access (e.g., 2025, 2026)')
-                            ->placeholder('Add year')
+                            ->label('Allowed Data Years')
+                            ->helperText('User will only see incidents and audit logs from these years')
+                            ->placeholder('Add year (e.g., 2025, 2026)')
                             ->dehydrated(false)
                             ->afterStateHydrated(function ($component, $state, $record) {
                                 if ($record && $record->auditLogSettings) {
