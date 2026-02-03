@@ -19,25 +19,15 @@
     </x-filament-panels::form>
 
     {{ \Filament\Support\Facades\FilamentView::renderHook(\Filament\View\PanelsRenderHook::AUTH_LOGIN_FORM_AFTER, scopes: $this->getRenderHookScopes()) }}
-</x-filament-panels::page.simple>
 
-@push('scripts')
-<script>
-    document.addEventListener('DOMContentLoaded', function() {
-        const form = document.querySelector('form[wire\\:submit="authenticate"]');
-        if (form && form.parentElement) {
-            const requestAccessDiv = document.createElement('div');
-            requestAccessDiv.className = 'text-center mt-6';
-            requestAccessDiv.innerHTML = `
-                <p class="text-sm text-gray-600 dark:text-gray-400">
-                    Don't have an account?
-                    <a href="{{ route('request-access') }}" class="text-sm font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300">
-                        Request Access
-                    </a>
-                </p>
-            `;
-            form.parentElement.appendChild(requestAccessDiv);
-        }
-    });
-</script>
-@endpush
+    @if(config('filament.features.request_access_link', true))
+    <div class="text-center mt-6">
+        <p class="text-sm text-gray-600 dark:text-gray-400">
+            Don't have an account?
+            <a href="{{ route('request-access') }}" class="text-sm font-medium text-primary-600 hover:text-primary-500 dark:text-primary-400 dark:hover:text-primary-300 transition-colors">
+                Request Access
+            </a>
+        </p>
+    </div>
+    @endif
+</x-filament-panels::page.simple>

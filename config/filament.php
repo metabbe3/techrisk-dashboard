@@ -100,4 +100,17 @@ return [
 
     'system_route_prefix' => 'filament',
 
+    /*
+    |--------------------------------------------------------------------------
+    | Features
+    |--------------------------------------------------------------------------
+    |
+    | Feature flags for various Filament functionality.
+    |
+    */
+
+    'features' => [
+        'request_access_link' => true,
+    ],
+
 ];
