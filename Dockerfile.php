@@ -51,20 +51,17 @@ COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy composer files first for better caching
-COPY composer.json composer.lock ./
+# Copy application files FIRST (needed for artisan during composer scripts)
+COPY . .
 
 # Create bootstrap/cache directory before composer install
 RUN mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views \
     && chmod -R 777 bootstrap/cache storage
 
-# Install dependencies (will re-run if composer.json changes)
+# Install dependencies
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
-# Copy application files after composer install
-COPY . .
-
-# Install npm dependencies and build (will re-run if package.json changes)
+# Install npm dependencies and build
 RUN npm install \
     && npm run build
 
