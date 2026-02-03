@@ -24,7 +24,7 @@ class ListApiAuditLogs extends ListRecords
         return 'API Audit Logs';
     }
 
-    protected function getSubheading(): ?string
+    public function getSubheading(): ?string
     {
         $user = auth()->user();
         $settings = UserAuditLogSetting::forUser($user);
