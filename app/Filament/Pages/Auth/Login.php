@@ -8,11 +8,10 @@ use Filament\Pages\Auth\Login as BaseLogin;
 
 class Login extends BaseLogin
 {
-    // Only override the view to add Request Access link
-    // Keep all default form behavior from parent class
-    public function getView(): string
+    // Use default view, add Request Access link via JavaScript
+    public static function getAuthRoute(): string
     {
-        return 'filament.pages.auth.login';
+        return route('filament.admin.auth.login');
     }
 }
 
