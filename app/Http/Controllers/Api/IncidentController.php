@@ -174,6 +174,193 @@ class IncidentController extends Controller
         }
     }
 
+    public function showByNo(string $no)
+    {
+        try {
+            $incident = Incident::where('no', $no)->firstOrFail();
+
+            return $this->successResponse(
+                new IncidentApiResource($incident->load([
+                    'pic',
+                    'statusUpdates',
+                    'investigationDocuments',
+                    'labels',
+                    'actionImprovements',
+                ])),
+                'Incident retrieved successfully.'
+            );
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Incident not found.', 404);
+        } catch (Exception $e) {
+            \Log::error('Failed to retrieve incident: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'incident_no' => $no,
+            ]);
+
+            return $this->errorResponse('Failed to retrieve incident.', 500);
+        }
+    }
+
+    public function showMarkdown(string $no)
+    {
+        try {
+            $incident = Incident::where('no', $no)
+                ->with([
+                    'pic',
+                    'statusUpdates',
+                    'investigationDocuments',
+                    'labels',
+                    'actionImprovements',
+                ])
+                ->firstOrFail();
+
+            $markdown = $this->convertToMarkdown($incident);
+
+            return response($markdown, 200)
+                ->header('Content-Type', 'text/markdown');
+        } catch (ModelNotFoundException $e) {
+            return $this->errorResponse('Incident not found.', 404);
+        } catch (Exception $e) {
+            \Log::error('Failed to retrieve incident markdown: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+                'incident_no' => $no,
+            ]);
+
+            return $this->errorResponse('Failed to retrieve incident.', 500);
+        }
+    }
+
+    private function convertToMarkdown(Incident $incident): string
+    {
+        $md = [];
+
+        // Header
+        $md[] = "# {$incident->title}";
+        $md[] = "";
+        $md[] = "**Incident ID:** {$incident->no}";
+        $md[] = "";
+
+        // Basic Info
+        $md[] = "## Basic Information";
+        $md[] = "";
+        $md[] = "| Field | Value |";
+        $md[] = "|-------|-------|";
+        $md[] = "| **Severity** | {$incident->severity} |";
+        $md[] = "| **Type** | {$incident->incident_type} |";
+        $md[] = "| **Source** | {$incident->incident_source} |";
+        $md[] = "| **Incident Date** | {$incident->incident_date->format('Y-m-d')} |";
+        $md[] = "| **Discovered At** | " . ($incident->discovered_at?->format('Y-m-d H:i') ?? 'N/A') . " |";
+        $md[] = "| **Stop Bleeding At** | " . ($incident->stop_bleeding_at?->format('Y-m-d H:i') ?? 'N/A') . " |";
+        $md[] = "| **Entry Date** | {$incident->entry_date_tech_risk->format('Y-m-d')} |";
+        $md[] = "";
+
+        // Summary
+        $md[] = "## Summary";
+        $md[] = "";
+        $md[] = $incident->summary ?? 'No summary provided.';
+        $md[] = "";
+
+        // Root Cause
+        if ($incident->root_cause) {
+            $md[] = "## Root Cause";
+            $md[] = "";
+            $md[] = $incident->root_cause;
+            $md[] = "";
+        }
+
+        // Financial Impact
+        $md[] = "## Financial Impact";
+        $md[] = "";
+        $md[] = "- **Potential Fund Loss:** " . ($incident->potential_fund_loss ? number_format($incident->potential_fund_loss) : 'N/A');
+        $md[] = "- **Actual Fund Loss:** " . ($incident->fund_loss ? number_format($incident->fund_loss) : 'N/A');
+        $md[] = "";
+
+        // PIC
+        if ($incident->pic) {
+            $md[] = "## Person In Charge";
+            $md[] = "";
+            $md[] = "- **Name:** {$incident->pic->name}";
+            $md[] = "- **Email:** {$incident->pic->email}";
+            $md[] = "";
+        }
+
+        // Third Party
+        if ($incident->third_party_client) {
+            $md[] = "## Third Party";
+            $md[] = "";
+            $md[] = $incident->third_party_client;
+            $md[] = "";
+        }
+
+        // Labels/Tags
+        if ($incident->labels && $incident->labels->isNotEmpty()) {
+            $md[] = "## Labels";
+            $md[] = "";
+            foreach ($incident->labels as $label) {
+                $md[] = "- `{$label->name}`";
+            }
+            $md[] = "";
+        }
+
+        // Status Updates
+        if ($incident->statusUpdates && $incident->statusUpdates->isNotEmpty()) {
+            $md[] = "## Status Updates";
+            $md[] = "";
+            foreach ($incident->statusUpdates as $update) {
+                $md[] = "### {$update->updated_at->format('Y-m-d H:i')} - {$update->status}";
+                $md[] = "";
+                $md[] = $update->notes ?? 'No notes.';
+                $md[] = "";
+            }
+        }
+
+        // Action Improvements
+        if ($incident->actionImprovements && $incident->actionImprovements->isNotEmpty()) {
+            $md[] = "## Action Improvements";
+            $md[] = "";
+            foreach ($incident->actionImprovements as $action) {
+                $statusIcon = $action->status === 'done' ? '✅' : '🔄';
+                $md[] = "### {$statusIcon} {$action->title}";
+                $md[] = "";
+                $md[] = $action->detail;
+                $md[] = "";
+                // Safe date handling
+                $dueDate = $action->due_date;
+                if (is_string($dueDate)) {
+                    $md[] = "- **Due Date:** {$dueDate}";
+                } elseif ($dueDate && method_exists($dueDate, 'format')) {
+                    $md[] = "- **Due Date:** {$dueDate->format('Y-m-d')}";
+                } else {
+                    $md[] = "- **Due Date:** N/A";
+                }
+                $md[] = "- **Status:** {$action->status}";
+                if ($action->pic_email) {
+                    $md[] = "- **PIC:** " . implode(', ', $action->pic_email);
+                }
+                $md[] = "";
+            }
+        }
+
+        // Investigation Documents
+        if ($incident->investigationDocuments && $incident->investigationDocuments->isNotEmpty()) {
+            $md[] = "## Investigation Documents";
+            $md[] = "";
+            foreach ($incident->investigationDocuments as $doc) {
+                $md[] = "### {$doc->title}";
+                $md[] = "";
+                $md[] = $doc->content ?? 'No content.';
+                $md[] = "";
+            }
+        }
+
+        // Metadata
+        $md[] = "---";
+        $md[] = "";
+        $md[] = "*Reported by: " . ($incident->reported_by ?? 'N/A') . "*";
+
+        return implode("\n", $md);
+    }
+
     public function update(Request $request, Incident $incident)
     {
         try {

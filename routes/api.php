@@ -10,6 +10,8 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::middleware(['auth:sanctum', 'check.api.access'])->group(function () {
     Route::prefix('v1')->group(function () { // Add v1 prefix for versioning
         Route::apiResource('incidents', IncidentController::class);
+        Route::get('incidents-by-no/{no}', [IncidentController::class, 'showByNo']);
+        Route::get('incidents-by-no/{no}/markdown', [IncidentController::class, 'showMarkdown']);
         Route::get('labels', [IncidentController::class, 'getLabels']);
         Route::get('incident-types', [IncidentController::class, 'getIncidentTypes']);
     });

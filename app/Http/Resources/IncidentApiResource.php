@@ -15,6 +15,8 @@ class IncidentApiResource extends JsonResource
     public function toArray(Request $request): array
     {
         return [
+            'id' => $this->id,
+            'incident_no' => $this->no,
             'incident_name' => $this->title,
             'severity' => $this->severity,
             'date' => $this->incident_date,

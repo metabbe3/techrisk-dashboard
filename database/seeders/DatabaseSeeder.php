@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             LabelSeeder::class,
             RolesAndPermissionsSeeder::class,
             AdminUserSeeder::class,
+            DummyIncidentSeeder::class,
         ]);
     }
 }
