@@ -18,7 +18,8 @@ class ProcessApiAuditLogJob implements ShouldQueue
 
     public int $tries = 3;
     public int $timeout = 30;
-    public string $queue = 'api-audit';
+
+    // Queue is set via constructor ->onQueue()
 
     public function __construct(
         public readonly array $auditData

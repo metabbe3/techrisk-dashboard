@@ -21,54 +21,39 @@ class IncidentController extends Controller
     public function index(Request $request)
     {
         try {
-            // Create a more efficient cache key that excludes pagination
-            $cacheKey = 'incidents.'.md5(json_encode([
-                'start_date' => $request->start_date,
-                'end_date' => $request->end_date,
-                'min_fund_loss' => $request->min_fund_loss,
-                'max_fund_loss' => $request->max_fund_loss,
-                'min_potential_fund_loss' => $request->min_potential_fund_loss,
-                'max_potential_fund_loss' => $request->max_potential_fund_loss,
-                'tags' => $request->tags,
-                'type' => $request->type,
-            ]));
+            // Build the query - don't cache query builders
+            $query = Incident::with(['labels']);
 
-            $query = Cache::remember($cacheKey, 60, function () use ($request) {
-                $query = Incident::with(['labels']);
+            if ($request->has('start_date') && $request->has('end_date')) {
+                $query->whereBetween('incident_date', [$request->start_date, $request->end_date]);
+            }
 
-                if ($request->has('start_date') && $request->has('end_date')) {
-                    $query->whereBetween('incident_date', [$request->start_date, $request->end_date]);
-                }
+            if ($request->has('min_fund_loss')) {
+                $query->where('fund_loss', '>=', $request->min_fund_loss);
+            }
 
-                if ($request->has('min_fund_loss')) {
-                    $query->where('fund_loss', '>=', $request->min_fund_loss);
-                }
+            if ($request->has('max_fund_loss')) {
+                $query->where('fund_loss', '<=', $request->max_fund_loss);
+            }
 
-                if ($request->has('max_fund_loss')) {
-                    $query->where('fund_loss', '<=', $request->max_fund_loss);
-                }
+            if ($request->has('min_potential_fund_loss')) {
+                $query->where('potential_fund_loss', '>=', $request->min_potential_fund_loss);
+            }
 
-                if ($request->has('min_potential_fund_loss')) {
-                    $query->where('potential_fund_loss', '>=', $request->min_potential_fund_loss);
-                }
+            if ($request->has('max_potential_fund_loss')) {
+                $query->where('potential_fund_loss', '<=', $request->max_potential_fund_loss);
+            }
 
-                if ($request->has('max_potential_fund_loss')) {
-                    $query->where('potential_fund_loss', '<=', $request->max_potential_fund_loss);
-                }
+            if ($request->filled('tags')) {
+                $tags = explode(',', $request->input('tags'));
+                $query->whereHas('labels', function ($q) use ($tags) {
+                    $q->whereIn('name', $tags);
+                });
+            }
 
-                if ($request->filled('tags')) {
-                    $tags = explode(',', $request->input('tags'));
-                    $query->whereHas('labels', function ($q) use ($tags) {
-                        $q->whereIn('name', $tags);
-                    });
-                }
-
-                if ($request->filled('type')) {
-                    $query->where('incident_type', $request->input('type'));
-                }
-
-                return $query;
-            });
+            if ($request->filled('type')) {
+                $query->where('incident_type', $request->input('type'));
+            }
 
             return $this->successResponse(
                 IncidentApiResource::collection($query->paginate(15)),
