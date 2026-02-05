@@ -15,6 +15,8 @@ use App\Observers\StatusUpdateObserver;
 use App\Services\SensitiveDataFilter;
 use App\Services\TraceIdService;
 use Filament\Support\Facades\FilamentView;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
@@ -80,5 +82,18 @@ class AppServiceProvider extends ServiceProvider
                     ->name('livewire.update');
             });
         }
+
+        // Configure API rate limiters
+        RateLimiter::for('api', function ($request) {
+            return Limit::perMinute(100)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('api-expensive', function ($request) {
+            return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('api-ip', function ($request) {
+            return Limit::perMinute(200)->by($request->ip());
+        });
     }
 }

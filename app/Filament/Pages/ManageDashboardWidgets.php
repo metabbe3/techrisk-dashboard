@@ -3,13 +3,24 @@
 namespace App\Filament\Pages;
 
 use App\Models\UserDashboardPreference;
+use Filament\Forms\Concerns\InteractsWithForms;
+use Filament\Forms\Contracts\HasForms;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\ToggleColumn;
+use Filament\Tables\Concerns\InteractsWithTable;
+use Filament\Tables\Contracts\HasTable;
+use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
 
-class ManageDashboardWidgets extends Page
+class ManageDashboardWidgets extends Page implements HasForms, HasTable
 {
-    protected static bool $shouldRegisterNavigation = false;
+    use InteractsWithForms;
+    use InteractsWithTable;
+
+    protected static bool $shouldRegisterNavigation = true;
 
     protected static ?string $navigationIcon = 'heroicon-o-view-columns';
 
@@ -21,87 +32,60 @@ class ManageDashboardWidgets extends Page
 
     public ?string $heading = 'Customize Your Dashboard';
 
-    public static function canAccess(): bool
-    {
-        return Auth::check();
-    }
-
     protected static string $view = 'filament.pages.manage-dashboard-widgets';
-
-    public ?array $availableWidgets = null;
-
-    public ?array $enabledWidgets = null;
 
     public function mount(): void
     {
         $user = Auth::user();
 
-        $this->availableWidgets = UserDashboardPreference::getAvailableWidgets();
-
-        // Get user's current preferences
-        $preferences = UserDashboardPreference::where('user_id', $user->id)
-            ->orderBy('sort_order')
-            ->get();
-
-        // If user has no preferences, initialize defaults
-        if ($preferences->isEmpty()) {
+        // Initialize default preferences if user has none
+        $preferences = UserDashboardPreference::where('user_id', $user->id)->count();
+        if ($preferences === 0) {
             UserDashboardPreference::initializeDefaultsForUser($user);
-            $preferences = UserDashboardPreference::where('user_id', $user->id)
-                ->orderBy('sort_order')
-                ->get();
-        }
-
-        // Build enabled widgets array
-        $this->enabledWidgets = [];
-        foreach ($preferences as $pref) {
-            $this->enabledWidgets[$pref->widget_class] = [
-                'enabled' => $pref->is_enabled,
-                'sort_order' => $pref->sort_order,
-            ];
         }
     }
 
-    public function toggleWidget(string $widgetClass): void
+    public function table(Table $table): Table
     {
-        $user = Auth::user();
-        $preference = UserDashboardPreference::where('user_id', $user->id)
-            ->where('widget_class', $widgetClass)
-            ->first();
+        return $table
+            ->query(
+                UserDashboardPreference::where('user_id', Auth::id())
+                    ->orderBy('sort_order')
+            )
+            ->columns([
+                TextColumn::make('name')
+                    ->label('Widget')
+                    ->searchable()
+                    ->sortable()
+                    ->weight('medium')
+                    ->description(fn ($record): string => $record->description ?? ''),
+                ToggleColumn::make('is_enabled')
+                    ->label('Enabled')
+                    ->onColor('success')
+                    ->offColor('gray')
+                    ->sortable(),
+            ])
+            ->reorderable('sort_order')
+            ->defaultSort('sort_order')
+            ->headerActions([
+                Action::make('resetToDefaults')
+                    ->label('Reset to Defaults')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalHeading('Reset Dashboard Widgets')
+                    ->modalDescription('Are you sure you want to reset all dashboard widgets to their default settings? This will re-enable all widgets and reset their order.')
+                    ->modalSubmitActionLabel('Yes, Reset')
+                    ->action(function () {
+                        $user = Auth::user();
+                        UserDashboardPreference::resetForUser($user);
 
-        if ($preference) {
-            $preference->update(['is_enabled' => ! $preference->is_enabled]);
-            $this->enabledWidgets[$widgetClass]['enabled'] = ! $preference->is_enabled;
-        }
-
-        $this->js('window.location.reload()');
-    }
-
-    public function saveOrder(array $widgetClasses): void
-    {
-        $user = Auth::user();
-
-        foreach ($widgetClasses as $index => $widgetClass) {
-            UserDashboardPreference::where('user_id', $user->id)
-                ->where('widget_class', $widgetClass)
-                ->update(['sort_order' => $index]);
-        }
-
-        Notification::make()
-            ->success()
-            ->title('Widget order saved!')
-            ->send();
-    }
-
-    public function resetToDefaults(): void
-    {
-        $user = Auth::user();
-        UserDashboardPreference::resetForUser($user);
-
-        Notification::make()
-            ->success()
-            ->title('Dashboard widgets reset to defaults!')
-            ->send();
-
-        $this->js('window.location.reload()');
+                        Notification::make()
+                            ->success()
+                            ->title('Dashboard widgets reset to defaults!')
+                            ->send();
+                    }),
+            ])
+            ->paginated(false);
     }
 }

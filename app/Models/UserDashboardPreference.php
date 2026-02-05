@@ -32,6 +32,51 @@ class UserDashboardPreference extends Model
     }
 
     /**
+     * Get the widget name attribute from available widgets definition.
+     */
+    public function getNameAttribute(): string
+    {
+        $widgets = self::getAvailableWidgets();
+        foreach ($widgets as $key => $widget) {
+            if ($widget['class'] === $this->widget_class) {
+                return $widget['name'];
+            }
+        }
+
+        return class_basename($this->widget_class);
+    }
+
+    /**
+     * Get the widget description attribute from available widgets definition.
+     */
+    public function getDescriptionAttribute(): string
+    {
+        $widgets = self::getAvailableWidgets();
+        foreach ($widgets as $key => $widget) {
+            if ($widget['class'] === $this->widget_class) {
+                return $widget['description'];
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Get the widget icon attribute from available widgets definition.
+     */
+    public function getIconAttribute(): string
+    {
+        $widgets = self::getAvailableWidgets();
+        foreach ($widgets as $key => $widget) {
+            if ($widget['class'] === $this->widget_class) {
+                return $widget['icon'];
+            }
+        }
+
+        return 'heroicon-o-view-columns';
+    }
+
+    /**
      * Get enabled widgets for a user.
      * Returns ordered array of widget class names.
      */
