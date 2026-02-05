@@ -6,7 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/admin/login');
 
-// Access request form (public)
+// Access request form (public - uses standalone Livewire component)
 Route::get('/request-access', AccessRequestForm::class)->name('request-access');
 
 // Add this line

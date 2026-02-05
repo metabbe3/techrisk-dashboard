@@ -30,6 +30,7 @@ class AccessRequestForm extends Component
     public string $reason = '';
 
     public bool $submitted = false;
+
     public ?string $submittedMessage = null;
 
     public function mount(): void
@@ -55,6 +56,7 @@ class AccessRequestForm extends Component
 
         if ($existingRequest) {
             $this->addError('email', 'You already have a pending access request. Please wait for approval.');
+
             return;
         }
 
@@ -88,6 +90,7 @@ class AccessRequestForm extends Component
 
     public function render(): \Illuminate\View\View
     {
-        return view('livewire.access-request-form');
+        return view('livewire.access-request-form')
+            ->layout('layouts.public');
     }
 }
