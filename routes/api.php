@@ -17,7 +17,9 @@ Route::middleware(['auth:sanctum', 'check.api.access'])->group(function () {
         Route::get('incidents-by-no/{no}/markdown', [IncidentController::class, 'showMarkdown']);
     });
 
-    // Write operations (20 req/min)
+    // Write operations - DISABLED for security (API is read-only)
+    // Uncomment these routes if you need to enable write operations
+    /*
     Route::middleware('throttle:20,1')->group(function () {
         Route::prefix('v1')->group(function () {
             Route::post('incidents', [IncidentController::class, 'store']);
@@ -31,6 +33,7 @@ Route::middleware(['auth:sanctum', 'check.api.access'])->group(function () {
         Route::patch('/action-improvements/{action_improvement}', [ActionImprovementController::class, 'update']);
         Route::delete('/action-improvements/{action_improvement}', [ActionImprovementController::class, 'destroy']);
     });
+    */
 
     // Reference data (30 req/min) - already cached
     Route::prefix('v1')->middleware('throttle:30,1')->group(function () {
