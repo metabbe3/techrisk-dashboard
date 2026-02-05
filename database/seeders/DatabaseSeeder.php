@@ -12,12 +12,23 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Reference data and system configuration - SAFE for production
         $this->call([
             IncidentTypeSeeder::class,
             LabelSeeder::class,
             RolesAndPermissionsSeeder::class,
-            AdminUserSeeder::class,
-            DummyIncidentSeeder::class,
         ]);
+
+        // Admin user - USE WITH CAUTION in production
+        // Consider creating admin via CLI with secure credentials instead
+        $this->call([
+            AdminUserSeeder::class,
+        ]);
+
+        // Dummy incident data - NEVER run in production!
+        // Only run explicitly: php artisan db:seed --class=DummyIncidentSeeder
+        // if (app()->environment('local', 'testing')) {
+        //     $this->call([DummyIncidentSeeder::class]);
+        // }
     }
 }

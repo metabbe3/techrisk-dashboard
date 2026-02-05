@@ -14,9 +14,17 @@ class DummyIncidentSeeder extends Seeder
 {
     public function run(): void
     {
+        // SECURITY: Never run in production!
+        if (app()->environment('production')) {
+            $this->command->error('DummyIncidentSeeder CANNOT run in production environment!');
+            $this->command->warn('This seeder creates fake test data with dummy financial figures.');
+
+            return;
+        }
+
         // Get or create admin user for PIC
         $admin = User::where('email', 'admin@example.com')->first();
-        if (!$admin) {
+        if (! $admin) {
             $admin = User::create([
                 'name' => 'Admin User',
                 'email' => 'admin@example.com',
