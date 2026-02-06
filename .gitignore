@@ -11,7 +11,7 @@
 /composer.lock
 
 # Vite
-/public/build
+# /public/build  (Temporarily uncommented to commit production assets)
 
 # dotenv
 .env
