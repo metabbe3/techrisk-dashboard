@@ -16,12 +16,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        // Fix guard_name for all Spatie permission tables to match config('auth.defaults.guard') = 'web'
+        // Fix guard_name for Spatie permission tables.
+        // Only 'roles' and 'permissions' tables have guard_name column.
+        // The pivot tables (model_has_roles, model_has_permissions, role_has_permissions)
+        // do not have guard_name in Spatie Laravel Permission v6.x.
         DB::statement("UPDATE roles SET guard_name = 'web' WHERE guard_name != 'web'");
         DB::statement("UPDATE permissions SET guard_name = 'web' WHERE guard_name != 'web'");
-        DB::statement("UPDATE model_has_roles SET guard_name = 'web' WHERE guard_name != 'web'");
-        DB::statement("UPDATE model_has_permissions SET guard_name = 'web' WHERE guard_name != 'web'");
-        DB::statement("UPDATE role_has_permissions SET guard_name = 'web' WHERE guard_name != 'web'");
     }
 
     /**
