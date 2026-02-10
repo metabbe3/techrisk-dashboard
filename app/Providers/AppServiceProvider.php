@@ -72,7 +72,7 @@ class AppServiceProvider extends ServiceProvider
         FilamentView::registerRenderHook(
             'panels::body.end',
             fn (): string => view('vendor.filament.hooks.global-error-handler')->render(),
-        );
+        ); // Only applies to Filament admin pages, not public pages
 
         // Configure Livewire to use web middleware for session/auth
         if (class_exists(Livewire::class)) {

@@ -14,6 +14,7 @@ use App\Filament\Widgets\MttrMtbfTrendChart;
 use App\Filament\Widgets\OpenIncidents;
 use App\Filament\Widgets\RecentIncidents;
 use App\Models\UserDashboardPreference;
+use Filament\Actions\Action;
 use Filament\Pages\Dashboard as BaseDashboard;
 use Illuminate\Support\Facades\Auth;
 
@@ -22,6 +23,16 @@ class Dashboard extends BaseDashboard
     public function getColumns(): int|string|array
     {
         return 12;
+    }
+
+    protected function getHeaderActions(): array
+    {
+        return [
+            Action::make('customize_widgets')
+                ->label('Customize Widgets')
+                ->icon('heroicon-o-view-columns')
+                ->url(ManageDashboardWidgets::getUrl()),
+        ];
     }
 
     public function getWidgets(): array

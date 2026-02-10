@@ -214,54 +214,52 @@ class ApiAuditLogResource extends Resource
             ])
             ->actions([
                 Tables\Actions\ViewAction::make()
-                    ->form(fn (ApiAuditLog $record): array => [
-                        \Filament\Forms\Components\Section::make('Request Details')
+                    ->infolist(fn (ApiAuditLog $record): array => [
+                        \Filament\Infolists\Components\Section::make('Request Details')
                             ->schema([
-                                \Filament\Forms\Components\TextEntry::make('request_timestamp')
+                                \Filament\Infolists\Components\TextEntry::make('request_timestamp')
                                     ->dateTime(),
-                                \Filament\Forms\Components\TextEntry::make('method'),
-                                \Filament\Forms\Components\TextEntry::make('endpoint'),
-                                \Filament\Forms\Components\TextEntry::make('user_email')
+                                \Filament\Infolists\Components\TextEntry::make('method'),
+                                \Filament\Infolists\Components\TextEntry::make('endpoint'),
+                                \Filament\Infolists\Components\TextEntry::make('user_email')
                                     ->label('User'),
-                                \Filament\Forms\Components\TextEntry::make('ip_address'),
-                                \Filament\Forms\Components\TextEntry::make('user_agent')
+                                \Filament\Infolists\Components\TextEntry::make('ip_address'),
+                                \Filament\Infolists\Components\TextEntry::make('user_agent')
                                     ->limit(50),
                             ])->columns(2),
 
-                        \Filament\Forms\Components\Section::make('Response Details')
+                        \Filament\Infolists\Components\Section::make('Response Details')
                             ->schema([
-                                \Filament\Forms\Components\TextEntry::make('response_timestamp')
+                                \Filament\Infolists\Components\TextEntry::make('response_timestamp')
                                     ->dateTime(),
-                                \Filament\Forms\Components\TextEntry::make('response_status')
+                                \Filament\Infolists\Components\TextEntry::make('response_status')
                                     ->badge(),
-                                \Filament\Forms\Components\TextEntry::make('response_time_ms')
+                                \Filament\Infolists\Components\TextEntry::make('response_time_ms')
                                     ->label('Response Time (ms)'),
-                                \Filament\Forms\Components\TextEntry::make('response_size_bytes')
+                                \Filament\Infolists\Components\TextEntry::make('response_size_bytes')
                                     ->label('Response Size (bytes)'),
                             ])->columns(2),
 
-                        \Filament\Forms\Components\Section::make('Request Data')
+                        \Filament\Infolists\Components\Section::make('Request Data')
                             ->schema([
-                                \Filament\Forms\Components\KeyValueEntry::make('query_params')
+                                \Filament\Infolists\Components\TextEntry::make('query_params')
                                     ->label('Query Parameters')
-                                    ->visible(fn () => $record->query_params !== null),
-                                \Filament\Forms\Components\KeyValueEntry::make('request_body')
+                                    ->formatStateUsing(fn ($state) => is_array($state) && !empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : 'No query parameters'),
+                                \Filament\Infolists\Components\TextEntry::make('request_body')
                                     ->label('Request Body')
-                                    ->visible(fn () => $record->request_body !== null),
+                                    ->formatStateUsing(fn ($state) => is_array($state) && !empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'No request body (GET/HEAD request)' : 'Empty')),
                             ]),
 
-                        \Filament\Forms\Components\Section::make('Response Data')
+                        \Filament\Infolists\Components\Section::make('Response Data')
                             ->schema([
-                                \Filament\Forms\Components\TextareaEntry::make('response_data')
+                                \Filament\Infolists\Components\TextEntry::make('response_data')
                                     ->label('Response')
-                                    ->formatStateUsing(fn ($state) => is_array($state) ? json_encode($state, JSON_PRETTY_PRINT) : $state)
-                                    ->rows(10)
-                                    ->visible(fn () => auth()->user()->hasRole('admin') && $record->response_data !== null),
+                                    ->formatStateUsing(fn ($state) => is_array($state) && !empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'Not captured (successful responses are not logged)' : 'Empty')),
                             ])->collapsible(),
 
-                        \Filament\Forms\Components\Section::make('Error')
+                        \Filament\Infolists\Components\Section::make('Error')
                             ->schema([
-                                \Filament\Forms\Components\TextEntry::make('error_message')
+                                \Filament\Infolists\Components\TextEntry::make('error_message')
                                     ->markdown()
                                     ->visible(fn () => $record->error_message !== null),
                             ])->visible(fn () => $record->error_message !== null),

@@ -4,14 +4,20 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources;
 
+use App\Filament\Resources\AccessRequestResource\Pages\EditAccessRequest;
 use App\Filament\Resources\AccessRequestResource\Pages\ListAccessRequests;
 use App\Filament\Resources\AccessRequestResource\Pages\ViewAccessRequest;
 use App\Models\AccessRequest;
 use Filament\Forms;
+use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
@@ -41,7 +47,7 @@ class AccessRequestResource extends Resource
 
     public static function canEdit(Model $record): bool
     {
-        return false; // Use approve/reject actions instead
+        return auth()->user()->hasRole('admin');
     }
 
     public static function canDelete(Model $record): bool
@@ -53,49 +59,55 @@ class AccessRequestResource extends Resource
     {
         return $form
             ->schema([
-                Forms\Components\Section::make('Request Details')
-                    ->schema([
-                        Forms\Components\TextEntry::make('name')->label('Full Name'),
-                        Forms\Components\TextEntry::make('email')->label('Email'),
-                        Forms\Components\TextEntry::make('requested_duration_days')
-                            ->label('Requested Duration')
-                            ->formatStateUsing(fn ($state) => $state . ' days'),
-                        Forms\Components\TextEntry::make('requested_years')
-                            ->label('Requested Years')
-                            ->badge()
-                            ->formatStateUsing(fn ($state) => implode(', ', $state)),
-                        Forms\Components\TextareaEntry::make('reason')
-                            ->label('Reason')
-                            ->rows(4),
-                    ])->columns(2),
+                TextInput::make('name')
+                    ->label('Full Name')
+                    ->required()
+                    ->maxLength(255),
 
-                Forms\Components\Section::make('Status Information')
-                    ->schema([
-                        Forms\Components\TextEntry::make('status')
-                            ->badge()
-                            ->color(fn (string $state): string => match ($state) {
-                                'pending' => 'warning',
-                                'approved' => 'success',
-                                'rejected' => 'danger',
-                                default => 'gray',
-                            }),
-                        Forms\Components\TextEntry::make('approvedBy.name')
-                            ->label('Approved By')
-                            ->visible(fn ($record) => $record->approved_by !== null),
-                        Forms\Components\TextEntry::make('approved_at')
-                            ->dateTime()
-                            ->visible(fn ($record) => $record->approved_at !== null),
-                        Forms\Components\TextareaEntry::make('rejection_reason')
-                            ->label('Rejection Reason')
-                            ->visible(fn ($record) => $record->rejection_reason !== null)
-                            ->rows(2),
-                    ])->columns(2),
+                TextInput::make('email')
+                    ->label('Email')
+                    ->email()
+                    ->required()
+                    ->maxLength(255),
 
-                Forms\Components\Section::make('Actions')
-                    ->schema([
-                        Forms\Components\Placeholder::make('actions')
-                            ->content(fn ($record) => view('filament.resources.access-request-actions', ['record' => $record])),
-                    ])->visible(fn ($record) => $record->status === 'pending'),
+                Select::make('requested_duration_days')
+                    ->label('Access Duration')
+                    ->required()
+                    ->options([
+                        7 => '7 days',
+                        14 => '14 days',
+                        30 => '30 days',
+                        60 => '60 days',
+                        90 => '90 days',
+                        180 => '180 days',
+                        365 => '365 days',
+                    ]),
+
+                CheckboxList::make('requested_years')
+                    ->label('Years to Access')
+                    ->required()
+                    ->options(function () {
+                        $years = [];
+                        $currentYear = (int) date('Y');
+                        for ($i = $currentYear - 2; $i <= $currentYear + 1; $i++) {
+                            $years[$i] = (string) $i;
+                        }
+                        return $years;
+                    }),
+
+                Textarea::make('reason')
+                    ->label('Reason for Access Request')
+                    ->required()
+                    ->rows(3),
+
+                Select::make('status')
+                    ->label('Status')
+                    ->options([
+                        'pending' => 'Pending',
+                        'approved' => 'Approved',
+                        'rejected' => 'Rejected',
+                    ])
+                    ->required(),
             ]);
     }
 
@@ -123,7 +135,7 @@ class AccessRequestResource extends Resource
                 TextColumn::make('requested_years')
                     ->label('Years')
                     ->badge()
-                    ->formatStateUsing(fn ($state) => implode(', ', $state))
+                    ->formatStateUsing(fn ($state) => is_array($state) ? implode(', ', $state) : $state)
                     ->searchable(),
 
                 TextColumn::make('reason')
@@ -162,6 +174,7 @@ class AccessRequestResource extends Resource
             ])
             ->actions([
                 ViewAction::make(),
+                EditAction::make(),
                 Action::make('approve')
                     ->label('Approve')
                     ->icon('heroicon-o-check-circle')
@@ -214,6 +227,7 @@ class AccessRequestResource extends Resource
         return [
             'index' => ListAccessRequests::route('/'),
             'view' => ViewAccessRequest::route('/{record}'),
+            'edit' => EditAccessRequest::route('/{record}/edit'),
         ];
     }
 

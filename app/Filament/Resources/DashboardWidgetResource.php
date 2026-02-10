@@ -18,13 +18,15 @@ class DashboardWidgetResource extends Resource
 {
     protected static ?string $model = DashboardWidget::class;
 
+    protected static bool $shouldRegisterNavigation = false;
+
     protected static ?string $navigationIcon = 'heroicon-o-cog';
 
     protected static ?string $navigationGroup = 'Settings';
 
     public static function canViewAny(): bool
     {
-        return auth()->user()->can('view dashboard widgets');
+        return false; // Disable this broken feature
     }
 
     public static function form(Form $form): Form
