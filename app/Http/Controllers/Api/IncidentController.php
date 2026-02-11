@@ -14,10 +14,65 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
+/**
+ * @group Incidents
+ *
+ * APIs for managing and retrieving technical incidents and issues.
+ * All endpoints require authentication via Bearer token.
+ */
 class IncidentController extends Controller
 {
     use ApiResponser;
 
+    /**
+     * List incidents
+     *
+     * Retrieve a paginated list of incidents with optional filtering.
+     * Results are ordered by incident date (newest first) and include associated labels.
+     *
+     * @authenticated
+     *
+     * @queryParam start_date date Filter incidents from this date (inclusive). Example: 2024-01-01
+     * @queryParam end_date date Filter incidents until this date (inclusive). Example: 2024-12-31
+     * @queryParam min_fund_loss number Filter incidents with fund loss greater than or equal to this value. Example: 1000000
+     * @queryParam max_fund_loss number Filter incidents with fund loss less than or equal to this value. Example: 50000000
+     * @queryParam min_potential_fund_loss number Filter incidents with potential loss greater than or equal to this value. Example: 1000000
+     * @queryParam max_potential_fund_loss number Filter incidents with potential loss less than or equal to this value. Example: 100000000
+     * @queryParam tags string Filter by comma-separated label names. Example: payment,database,timeout
+     * @queryParam type string Filter by incident type. Must be "Tech" or "Non-tech". Example: Tech
+     * @queryParam page integer Page number for pagination. Default: 1. Example: 1
+     *
+     * @response {
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Incidents retrieved successfully.",
+     *   "data": {
+     *     "data": [
+     *       {
+     *         "id": 1,
+     *         "no": "20250115_IN_1234",
+     *         "title": "Payment Gateway Timeout",
+     *         "summary": "5-minute outage during peak hours...",
+     *         "severity": "P1",
+     *         "incident_type": "Tech",
+     *         "incident_date": "2025-01-15T10:30:00.000000Z",
+     *         "fund_loss": 5000000,
+     *         "labels": ["payment", "database"]
+     *       }
+     *     ],
+     *     "current_page": 1,
+     *     "per_page": 15,
+     *     "total": 42
+     *   }
+     * }
+     *
+     * @response 500 {
+     *   "code": 500,
+     *   "status": "Error",
+     *   "message": "Failed to retrieve incidents.",
+     *   "data": null
+     * }
+     */
     public function index(Request $request)
     {
         try {
@@ -69,6 +124,21 @@ class IncidentController extends Controller
         }
     }
 
+    /**
+     * Get all labels
+     *
+     * Retrieve a list of all available labels/tags used for categorizing incidents.
+     * Results are cached for 60 minutes.
+     *
+     * @authenticated
+     *
+     * @response {
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Labels retrieved successfully.",
+     *   "data": ["payment", "database", "timeout", "network", "server", "api"]
+     * }
+     */
     public function getLabels()
     {
         try {
@@ -86,6 +156,21 @@ class IncidentController extends Controller
         }
     }
 
+    /**
+     * Get all incident types
+     *
+     * Retrieve a list of all available incident types.
+     * Results are cached for 60 minutes.
+     *
+     * @authenticated
+     *
+     * @response {
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Incident types retrieved successfully.",
+     *   "data": ["Network Issue", "Server Error", "Database Timeout", "API Failure"]
+     * }
+     */
     public function getIncidentTypes()
     {
         try {
@@ -149,6 +234,68 @@ class IncidentController extends Controller
         }
     }
 
+    /**
+     * Get incident by ID
+     *
+     * Retrieve detailed information about a specific incident by its database ID.
+     * Includes all related data: PIC, status updates, investigation documents, labels, and action improvements.
+     *
+     * @authenticated
+     *
+     * @urlParam id integer required The ID of the incident. Example: 1
+     *
+     * @response {
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Incident retrieved successfully.",
+     *   "data": {
+     *     "id": 1,
+     *     "no": "20250115_IN_1234",
+     *     "title": "Payment Gateway Timeout",
+     *     "summary": "5-minute outage during peak hours...",
+     *     "root_cause": "Database connection pool exhausted due to high traffic",
+     *     "severity": "P1",
+     *     "incident_type": "Tech",
+     *     "incident_source": "Internal",
+     *     "incident_date": "2025-01-15T10:30:00.000000Z",
+     *     "fund_loss": 5000000,
+     *     "potential_fund_loss": 15000000,
+     *     "pic": {
+     *       "id": 5,
+     *       "name": "John Doe",
+     *       "email": "john.doe@company.com"
+     *     },
+     *     "labels": [
+     *       {"id": 1, "name": "payment"},
+     *       {"id": 2, "name": "database"}
+     *     ],
+     *     "status_updates": [
+     *       {
+     *         "id": 1,
+     *         "status": "In progress",
+     *         "notes": "Investigating database connection pool settings",
+     *         "updated_at": "2025-01-15T11:00:00.000000Z"
+     *       }
+     *     ],
+     *     "action_improvements": [
+     *       {
+     *         "id": 1,
+     *         "title": "Increase connection pool size",
+     *         "detail": "Configure pool to handle 2x peak traffic",
+     *         "status": "pending",
+     *         "due_date": "2025-01-20"
+     *       }
+     *     ]
+     *   }
+     * }
+     *
+     * @response 404 {
+     *   "code": 404,
+     *   "status": "Error",
+     *   "message": "Incident not found.",
+     *   "data": null
+     * }
+     */
     public function show(Incident $incident)
     {
         try {
@@ -174,6 +321,40 @@ class IncidentController extends Controller
         }
     }
 
+    /**
+     * Get incident by incident number
+     *
+     * Retrieve detailed information about a specific incident by its incident number (e.g., "20250115_IN_1234").
+     * Includes all related data: PIC, status updates, investigation documents, labels, and action improvements.
+     *
+     * @authenticated
+     *
+     * @urlParam no string required The incident number (format: YYYYMD_IN_XXXX or YYYYMD_IS_XXXX). Example: 20250115_IN_1234
+     *
+     * @response {
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Incident retrieved successfully.",
+     *   "data": {
+     *     "id": 1,
+     *     "no": "20250115_IN_1234",
+     *     "title": "Payment Gateway Timeout",
+     *     "summary": "5-minute outage during peak hours...",
+     *     "root_cause": "Database connection pool exhausted due to high traffic",
+     *     "severity": "P1",
+     *     "incident_type": "Tech",
+     *     "incident_date": "2025-01-15T10:30:00.000000Z",
+     *     "fund_loss": 5000000
+     *   }
+     * }
+     *
+     * @response 404 {
+     *   "code": 404,
+     *   "status": "Error",
+     *   "message": "Incident not found.",
+     *   "data": null
+     * }
+     */
     public function showByNo(string $no)
     {
         try {
@@ -201,6 +382,47 @@ class IncidentController extends Controller
         }
     }
 
+    /**
+     * Export incident as Markdown
+     *
+     * Retrieve an incident formatted as Markdown document.
+     * Includes all related data formatted in a readable Markdown structure.
+     * Useful for documentation, reporting, and AI ingestion.
+     *
+     * @authenticated
+     *
+     * @urlParam no string required The incident number. Example: 20250115_IN_1234
+     *
+     * @response {
+     *   "# Payment Gateway Timeout",
+     *   "",
+     *   "**Incident ID:** 20250115_IN_1234",
+     *   "",
+     *   "## Basic Information",
+     *   "",
+     *   "| Field | Value |",
+     *   "|-------|-------|",
+     *   "| **Severity** | P1 |",
+     *   "| **Type** | Tech |",
+     *   "| **Source** | Internal |",
+     *   "",
+     *   "## Summary",
+     *   "",
+     *   "5-minute outage during peak hours...",
+     *   "",
+     *   "## Root Cause",
+     *   "",
+     *   "Database connection pool exhausted due to high traffic",
+     *   ""
+     * }
+     *
+     * @response 404 {
+     *   "code": 404,
+     *   "status": "Error",
+     *   "message": "Incident not found.",
+     *   "data": null
+     * }
+     */
     public function showMarkdown(string $no)
     {
         try {
