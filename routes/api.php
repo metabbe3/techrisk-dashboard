@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ActionImprovementController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IncidentController;
+use App\Http\Controllers\Api\Ai\ExportController;
 use Illuminate\Support\Facades\Route;
 
 // Public login endpoint - strict limit to prevent brute force
@@ -45,5 +46,10 @@ Route::middleware(['auth:sanctum', 'check.api.access'])->group(function () {
     Route::middleware('throttle:60,1')->group(function () {
         Route::get('/incidents/{incident}/action-improvements', [ActionImprovementController::class, 'index']);
         Route::get('/action-improvements/{action_improvement}', [ActionImprovementController::class, 'show']);
+    });
+
+    // AI Export endpoints (60 req/min) - for bulk data ingestion
+    Route::prefix('v1/ai')->middleware('throttle:60,1')->group(function () {
+        Route::get('/export', [ExportController::class, 'export']);
     });
 });
