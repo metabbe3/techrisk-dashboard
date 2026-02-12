@@ -140,7 +140,7 @@ class WeeklyReport extends Page implements HasForms, HasTable
         return $weeks;
     }
 
-    // Table definition
+    // Table definition - use dummy query since we're providing custom data
     public function table(Table $table): Table
     {
         return $table
@@ -170,13 +170,8 @@ class WeeklyReport extends Page implements HasForms, HasTable
                     ->color('primary'),
             ])
             ->defaultSort('week', 'asc')
-            ->paginated([10, 25, 50, 100]);
-    }
-
-    // Override to return our custom data
-    public function getTableRecords(): EloquentCollection
-    {
-        return new EloquentCollection($this->getWeeklyData());
+            ->paginated([10, 25, 50, 100])
+            ->queryIncludesLocalSearchParameters(false); // Disable search since we're using custom data
     }
 
     // Reset table when year changes
@@ -184,4 +179,10 @@ class WeeklyReport extends Page implements HasForms, HasTable
     {
         $this->table->resetPage();
     }
+
+    // No longer needed - using table() method instead
+    // protected function getTableRecords(): EloquentCollection
+    // {
+    //     return new EloquentCollection($this->getWeeklyData());
+    // }
 }
