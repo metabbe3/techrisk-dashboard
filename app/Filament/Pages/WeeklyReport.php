@@ -179,9 +179,9 @@ class WeeklyReport extends Page implements HasForms, HasTable
         $this->table->resetPage();
     }
 
-    // No longer needed - using table() method instead
-    // protected function getTableRecords(): EloquentCollection
-    // {
-    //     return new EloquentCollection($this->getWeeklyData());
-    // }
+    // Override to return our custom weekly data instead of dummy query results
+    protected function getTableRecords(): EloquentCollection
+    {
+        return new EloquentCollection($this->getWeeklyData());
+    }
 }
