@@ -12,6 +12,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class WeeklyReport extends Page implements HasForms, HasTable
 {
@@ -173,9 +174,9 @@ class WeeklyReport extends Page implements HasForms, HasTable
     }
 
     // Override to return our custom data
-    public function getTableRecords(): \Illuminate\Support\Collection
+    public function getTableRecords(): EloquentCollection
     {
-        return collect($this->getWeeklyData());
+        return new EloquentCollection($this->getWeeklyData());
     }
 
     // Reset table when year changes
