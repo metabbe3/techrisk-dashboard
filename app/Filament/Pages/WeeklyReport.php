@@ -180,7 +180,7 @@ class WeeklyReport extends Page implements HasForms, HasTable
     }
 
     // Override to return our custom weekly data instead of dummy query results
-    protected function getTableRecords(): EloquentCollection
+    public function getTableRecords(): EloquentCollection
     {
         return new EloquentCollection($this->getWeeklyData());
     }
