@@ -2,7 +2,9 @@
 
 namespace App\Filament\Importers;
 
+use App\Helpers\StringHelper;
 use App\Models\Incident;
+use Filament\Actions\Imports\Exceptions\RowImportFailedException;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
 use Filament\Actions\Imports\Models\Import;
@@ -32,22 +34,31 @@ class IssuesImporter extends Importer
 
     public function resolveRecord(): ?Incident
     {
-        // Check if issue with same title exists (prevent duplicates from Notion bulk import)
         $name = $this->data['Name'] ?? null;
-        if ($name) {
-            $cleanName = str_replace('Summary of Incident - ', '', $name);
-            $existing = Incident::where('classification', 'Issue')
-                ->where('title', $cleanName)
-                ->first();
 
-            if ($existing) {
-                // Return existing record to update it instead of creating duplicate
-                return $existing;
-            }
+        if (!$name) {
+            return new Incident();
         }
 
-        // Create new record if not found
-        return new Incident;
+        // Normalize the incoming title for fuzzy comparison
+        $normalizedTitle = StringHelper::normalizeForComparison($name);
+
+        // Query all issues and filter using fuzzy matching
+        $existing = Incident::where('classification', 'Issue')
+            ->get()
+            ->first(fn (Incident $incident) =>
+                StringHelper::normalizeForComparison($incident->title) === $normalizedTitle
+            );
+
+        if ($existing) {
+            // Skip this row with a warning message instead of updating
+            throw new RowImportFailedException(
+                "Skipped: Issue '{$name}' already exists as '{$existing->title}' (ID: {$existing->no})"
+            );
+        }
+
+        // Create new record if no duplicate found
+        return new Incident();
     }
 
     public function fillRecord(): void
@@ -56,8 +67,12 @@ class IssuesImporter extends Importer
         $dateString = $this->data['Date of Incident'] ?? '';
         $incidentDate = $this->parseNotionDate($dateString);
 
+        // Use StringHelper to clean the title (removes Notion prefix, trims, etc.)
+        $rawName = $this->data['Name'] ?? '';
+        $cleanTitle = str_replace('Summary of Incident - ', '', $rawName);
+
         $data = [
-            'title' => str_replace('Summary of Incident - ', '', $this->data['Name']),
+            'title' => $cleanTitle,
             'incident_date' => $incidentDate,
             'entry_date_tech_risk' => $incidentDate->format('Y-m-d'),
             'severity' => $this->mapSeverityToCode($this->data['Root Cause Classification'] ?? 'G'),
@@ -65,8 +80,8 @@ class IssuesImporter extends Importer
             'incident_type_id' => \App\Models\IncidentType::first()?->id,
         ];
 
-        // Only generate new ID for new records (not when updating existing)
-        if (! $this->record->exists) {
+        // Only generate new ID for new records
+        if (!$this->record->exists) {
             $data['no'] = $this->generateIssueId();
         }
 
@@ -126,8 +141,15 @@ class IssuesImporter extends Importer
 
     public static function getCompletedNotificationBody(Import $import): string
     {
-        $count = $import->rows_successful ?: 0;
+        $successful = $import->rows_successful ?? 0;
+        $failed = $import->getFailedRowsCount() ?? 0;
 
-        return "Successfully imported {$count} issues.";
+        $message = "Successfully imported {$successful} issue(s).";
+
+        if ($failed > 0) {
+            $message .= " {$failed} row(s) skipped due to duplicates.";
+        }
+
+        return $message;
     }
 }
