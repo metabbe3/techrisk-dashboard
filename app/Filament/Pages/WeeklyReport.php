@@ -170,8 +170,7 @@ class WeeklyReport extends Page implements HasForms, HasTable
                     ->color('primary'),
             ])
             ->defaultSort('week', 'asc')
-            ->paginated([10, 25, 50, 100])
-            ->queryIncludesLocalSearchParameters(false); // Disable search since we're using custom data
+            ->paginated([10, 25, 50, 100]);
     }
 
     // Reset table when year changes
