@@ -173,9 +173,9 @@ class WeeklyReport extends Page implements HasForms, HasTable
     }
 
     // Override to return our custom data
-    public function getTableRecords(): array
+    public function getTableRecords(): \Illuminate\Support\Collection
     {
-        return $this->getWeeklyData();
+        return collect($this->getWeeklyData());
     }
 
     // Reset table when year changes
