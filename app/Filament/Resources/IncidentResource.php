@@ -147,7 +147,7 @@ class IncidentResource extends Resource
                             ->relationship('labels', 'name')
                             ->preload()
                             ->searchable(),
-                    ])->columns(2),
+                    ->columns(2),
             ]);
     }
 
