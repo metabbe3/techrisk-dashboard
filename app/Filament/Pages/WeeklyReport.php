@@ -16,6 +16,7 @@ use Filament\Tables\Table;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Pagination\LengthAwarePaginator as PaginationPaginator;
+use function Illuminate\Support\request;
 
 class WeeklyReport extends Page implements HasForms, HasTable
 {
@@ -195,8 +196,8 @@ class WeeklyReport extends Page implements HasForms, HasTable
     public function getTableRecords(): LengthAwarePaginator
     {
         $weeklyData = $this->getWeeklyData();
-        $perPage = $this->table->getRecordsPerPage() ?? 10;
-        $currentPage = $this->table->getPage() ?? 1;
+        $perPage = request()->get('perPage', 10);
+        $currentPage = request()->get('page', 1);
 
         $total = count($weeklyData);
         $items = array_slice($weeklyData, ($currentPage - 1) * $perPage, $perPage);
