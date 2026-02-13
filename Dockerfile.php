@@ -71,8 +71,9 @@ RUN php artisan storage:link \
     && chmod -R 775 storage bootstrap/cache public/storage
 
 # Publish Livewire assets
-RUN php artisan livewire:publish --assets \
-    && php artisan scribe:generate
+RUN php artisan livewire:publish --assets
+# Scribe generation disabled - command not registered in current setup
+# RUN php artisan scribe:generate
 
 # Configure PHP-FPM to listen on all interfaces (for Docker networking)
 RUN sed -i 's/listen = 127.0.0.1:9000/listen = 0.0.0.0:9000/' /usr/local/etc/php-fpm.d/www.conf
