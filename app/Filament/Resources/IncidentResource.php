@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
 use App\Models\Incident;
+use App\Models\UserAuditLogSetting;
 use Carbon\Carbon;
 use Filament\Forms;
 use Filament\Forms\Components\Checkbox;
@@ -154,11 +155,37 @@ class IncidentResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->where('classification', '!=', 'Issue'))
+            ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')->searchable()->limit(30),
-                TextColumn::make('mttr')->label('MTTR (mins)')->sortable()->summarize(Average::make()->label('Avg MTTR')),
+                TextColumn::make('mttr')->label('MTTR (mins)')->sortable()
+                    ->formatState(function ($state): string {
+                        if ($state === null) {
+                            return '-';
+                        }
+                        if ($state < 0) {
+                            // Fund loss - stored as negative days
+                            $days = abs($state);
+                            return $days . ' day' . ($days > 1 ? 's' : '');
+                        }
+                        // Regular incident - stored as minutes
+                        $minutes = $state;
+                        if ($minutes < 60) {
+                            return $minutes . ' min' . ($minutes > 1 ? 's' : '');
+                        }
+                        $hours = floor($minutes / 60);
+                        $mins = $minutes % 60;
+                        if ($hours >= 24) {
+                            $days = floor($hours / 24);
+                            $hours = $hours % 24;
+                            return "{$days}d {$hours}h {$mins}m";
+                        }
+                        return "{$hours}h {$mins}m";
+                    })
+                    ->summarize(Average::make()
+                        ->label('Avg MTTR')
+                        ->formatStateUsing(fn ($state) => $state !== null && $state >= 0 ? round($state, 2) . ' min' : '-')),
                 TextColumn::make('mtbf')->label('MTBF (days)')->sortable()->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
                     'P1' => 'danger', 'P2' => 'warning', 'P3' => 'info', 'P4', 'N', 'G' => 'success', default => 'gray',
@@ -178,7 +205,7 @@ class IncidentResource extends Resource
                         return number_format($rate, 1).'%';
                     }
 
-return '-';
+                    return '-';
                 })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray')),
 
                 // Toggleable Hidden Columns
@@ -311,5 +338,34 @@ return '-';
             'edit' => Pages\EditIncident::route('/{record}/edit'),
             'view' => Pages\ViewIncident::route('/{record}'),
         ];
+    }
+
+    /**
+     * Apply access control based on user's year permissions.
+     * Admins see all years, non-admins see only their allowed years.
+     */
+    protected static function applyAccessControl(Builder $query): Builder
+    {
+        // Always exclude Issues from IncidentResource
+        $query = $query->where('classification', '!=', 'Issue');
+
+        $user = auth()->user();
+        if (! $user) {
+            return $query;
+        }
+
+        // Admins see all data
+        if ($user->hasRole('admin')) {
+            return $query;
+        }
+
+        // Non-admins: filter by allowed years
+        $settings = UserAuditLogSetting::forUser($user);
+
+        if (! $settings->can_view_all_logs && ! empty($settings->allowed_years)) {
+            $query->whereYear('incident_date', $settings->allowed_years);
+        }
+
+        return $query;
     }
 }
