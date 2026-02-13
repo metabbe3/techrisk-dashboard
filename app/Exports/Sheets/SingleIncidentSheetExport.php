@@ -53,7 +53,33 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
         $row = [];
         foreach ($this->columnNames as $columnName) {
             $isBoolean = in_array($columnName, ['glitch_flag', 'risk_incident_form_cfm', 'goc_upload', 'teams_upload', 'doc_signed']);
-            if ($columnName === 'recovery_rate') {
+
+            if ($columnName === 'mttr') {
+                // Format MTTR: fund loss in days, regular in minutes/hours
+                if ($incident->mttr === null) {
+                    $row[] = '-';
+                } elseif ($incident->mttr < 0) {
+                    // Fund loss - stored as negative days
+                    $days = abs($incident->mttr);
+                    $row[] = $days . ' day' . ($days > 1 ? 's' : '');
+                } else {
+                    // Regular incident - stored as minutes
+                    $minutes = $incident->mttr;
+                    if ($minutes < 60) {
+                        $row[] = $minutes . ' min' . ($minutes > 1 ? 's' : '');
+                    } else {
+                        $hours = floor($minutes / 60);
+                        $mins = $minutes % 60;
+                        if ($hours >= 24) {
+                            $days = floor($hours / 24);
+                            $hours = $hours % 24;
+                            $row[] = "{$days}d {$hours}h {$mins}m";
+                        } else {
+                            $row[] = "{$hours}h {$mins}m";
+                        }
+                    }
+                }
+            } elseif ($columnName === 'recovery_rate') {
                 if ($incident->potential_fund_loss > 0) {
                     $rate = ($incident->recovered_fund / $incident->potential_fund_loss) * 100;
                     $row[] = number_format($rate, 1).'%';
@@ -78,9 +104,10 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
 
                 // Calculate stats for this specific sheet
                 $query = $this->query->clone();
+                $avgMttr = round($query->where('mttr', '>=', 0)->avg('mttr'), 2); // Exclude fund loss (negative values)
                 $this->stats = [
                     'totalCases' => $query->count(),
-                    'avgMttr' => round($query->avg('mttr'), 2),
+                    'avgMttr' => $avgMttr,
                     'avgMtbf' => round($query->avg('mtbf'), 2),
                     'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
                     'totalFundLoss' => $query->sum('fund_loss'),

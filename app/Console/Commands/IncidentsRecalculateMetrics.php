@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Incident;
+use Carbon\Carbon;
 use Illuminate\Console\Command;
 
 class IncidentsRecalculateMetrics extends Command
@@ -32,18 +33,30 @@ class IncidentsRecalculateMetrics extends Command
         $previousIncident = null;
 
         foreach ($incidents as $incident) {
+            $year = $incident->incident_date->year;
+
             // Calculate MTTR
             if ($incident->stop_bleeding_at) {
-                $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
+                if ($incident->hasFundLoss()) {
+                    // Fund loss incidents - store as DAYS (negative value)
+                    $days = $incident->incident_date->diffInDays($incident->stop_bleeding_at);
+                    $incident->mttr = -$days;
+                } else {
+                    // Regular incidents - store as MINUTES
+                    $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
+                }
             } else {
                 $incident->mttr = null;
             }
 
             // Calculate MTBF
-            if ($previousIncident) {
+            if ($previousIncident && $previousIncident->incident_date->year === $year) {
+                // Days from previous incident (same year)
                 $incident->mtbf = $previousIncident->incident_date->diffInDays($incident->incident_date);
             } else {
-                $incident->mtbf = null;
+                // First incident of the year - days from Jan 1st
+                $yearStart = Carbon::create($year, 1, 1, 0, 0, 0);
+                $incident->mtbf = $yearStart->diffInDays($incident->incident_date);
             }
 
             $incident->saveQuietly();

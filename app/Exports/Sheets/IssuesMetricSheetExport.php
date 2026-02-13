@@ -47,12 +47,40 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
 
     public function map($incident): array
     {
-        $metricValue = $this->metricType === 'mttr' ? $incident->mttr : $incident->mtbf;
+        if ($this->metricType === 'mttr') {
+            // Format MTTR: fund loss in days, regular in minutes/hours
+            if ($incident->mttr === null) {
+                $metricValue = '-';
+            } elseif ($incident->mttr < 0) {
+                // Fund loss - stored as negative days
+                $days = abs($incident->mttr);
+                $metricValue = $days . ' day' . ($days > 1 ? 's' : '');
+            } else {
+                // Regular incident - stored as minutes
+                $minutes = $incident->mttr;
+                if ($minutes < 60) {
+                    $metricValue = $minutes . ' min' . ($minutes > 1 ? 's' : '');
+                } else {
+                    $hours = floor($minutes / 60);
+                    $mins = $minutes % 60;
+                    if ($hours >= 24) {
+                        $days = floor($hours / 24);
+                        $hours = $hours % 24;
+                        $metricValue = "{$days}d {$hours}h {$mins}m";
+                    } else {
+                        $metricValue = "{$hours}h {$mins}m";
+                    }
+                }
+            }
+        } else {
+            // MTBF - always in days
+            $metricValue = $incident->mtbf ?? '-';
+        }
 
         return [
             str_replace('Summary of Incident - ', '', $incident->title),
             $incident->incidentType?->name ?? 'N/A',
-            $metricValue ?? '-',
+            $metricValue,
         ];
     }
 
@@ -82,9 +110,22 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
 
                 // Summary - Total Cases and Average
                 $summaryStartRow = $lastDataRow + 2;
-                $metricLabel = $this->metricType === 'mttr' ? 'Average MTTR' : 'Average MTBF';
-                $metricValue = round($this->query->clone()->avg($this->metricType), 2);
                 $totalCases = $this->query->clone()->count();
+
+                if ($this->metricType === 'mttr') {
+                    // Calculate MTTR average (exclude fund loss incidents from average as they skew it)
+                    $regularMttr = $this->query->clone()
+                        ->whereNotNull('mttr')
+                        ->where('mttr', '>=', 0) // Only regular incidents (positive minutes)
+                        ->avg('mttr');
+
+                    $metricLabel = 'Average MTTR (excl. fund loss)';
+                    $metricValue = $regularMttr !== null ? round($regularMttr, 2) : '-';
+                } else {
+                    // MTBF average - all incidents
+                    $metricLabel = 'Average MTBF';
+                    $metricValue = round($this->query->clone()->avg('mtbf'), 2);
+                }
 
                 $sheet->setCellValue("A{$summaryStartRow}", 'Total Cases');
                 $sheet->setCellValue("B{$summaryStartRow}", $totalCases);

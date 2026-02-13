@@ -106,14 +106,29 @@ class IncidentObserver
 
     /**
      * Calculate MTTR and MTBF for an incident.
-     * Optimized to use efficient queries.
+     *
+     * MTTR (Mean Time To Resolve):
+     *   - Fund loss incidents: stored in DAYS (legal/recovery processes take longer)
+     *   - Other incidents: stored in MINUTES
+     *   - Note: Fund loss MTTR is stored as negative value to indicate days
+     *
+     * MTBF (Mean Time Between Failures): Days from previous incident or Jan 1st
      */
     private function calculateMetrics(Incident $incident): void
     {
         // Calculate MTTR
-        $incident->mttr = $incident->stop_bleeding_at
-            ? $incident->incident_date->diffInMinutes($incident->stop_bleeding_at)
-            : null;
+        if ($incident->stop_bleeding_at) {
+            if ($incident->hasFundLoss()) {
+                // Fund loss incidents - store as DAYS (negative value indicates days)
+                $days = $incident->incident_date->diffInDays($incident->stop_bleeding_at);
+                $incident->mttr = -$days; // Negative to indicate days vs minutes
+            } else {
+                // Regular incidents - store as MINUTES
+                $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
+            }
+        } else {
+            $incident->mttr = null;
+        }
 
         // Calculate MTBF using optimized query with index
         $year = $incident->incident_date->year;
@@ -122,15 +137,20 @@ class IncidentObserver
             ->orderBy('incident_date', 'desc')
             ->first();
 
-        $incident->mtbf = ($previousIncident && $previousIncident->incident_date->year === $year)
-            ? $previousIncident->incident_date->diffInDays($incident->incident_date)
-            : null;
+        if ($previousIncident) {
+            // Days from previous incident
+            $incident->mtbf = $previousIncident->incident_date->diffInDays($incident->incident_date);
+        } else {
+            // First incident of the year - calculate from Jan 1st
+            $yearStart = Carbon::create($year, 1, 1, 0, 0, 0);
+            $incident->mtbf = $yearStart->diffInDays($incident->incident_date);
+        }
 
         $incident->saveQuietly();
     }
 
     /**
-     * Update MTBF for adjacent incidents when one is created/updated.
+     * Update MTBF and MTTR for adjacent incidents when one is created/updated.
      */
     private function updateAdjacentIncidentMetrics(Incident $incident): void
     {
@@ -143,9 +163,23 @@ class IncidentObserver
             ->first();
 
         if ($nextIncident) {
-            $nextIncident->mtbf = ($incident->incident_date->year === $year)
-                ? $incident->incident_date->diffInDays($nextIncident->incident_date)
-                : null;
+            // Update MTBF - days from this incident to next
+            $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
+
+            // Update MTTR
+            if ($nextIncident->stop_bleeding_at) {
+                if ($nextIncident->hasFundLoss()) {
+                    // Fund loss - store as DAYS (negative)
+                    $days = $nextIncident->incident_date->diffInDays($nextIncident->stop_bleeding_at);
+                    $nextIncident->mttr = -$days;
+                } else {
+                    // Regular - store as MINUTES
+                    $nextIncident->mttr = $nextIncident->incident_date->diffInMinutes($nextIncident->stop_bleeding_at);
+                }
+            } else {
+                $nextIncident->mttr = null;
+            }
+
             $nextIncident->saveQuietly();
         }
     }

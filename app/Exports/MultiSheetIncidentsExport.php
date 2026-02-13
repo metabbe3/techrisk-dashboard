@@ -27,8 +27,10 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
     {
         $sheets = [];
 
-        // Base query for Incidents only (exclude Issues)
-        $incidentsQuery = $this->query->clone()->where('classification', 'Incident');
+        // Base query for Incidents only (exclude Issues) - sorted by date for correct MTBF/MTTR context
+        $incidentsQuery = $this->query->clone()
+            ->where('classification', 'Incident')
+            ->orderBy('incident_date', 'asc');
 
         // 1. All Cases (Incidents only)
         $sheets[] = new SingleIncidentSheetExport($incidentsQuery->clone(), 'All Cases', $this->headings, $this->columnNames);
@@ -53,21 +55,24 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $fundLossQuery = $incidentsQuery->clone()->where('fund_loss', '>', 0);
         $sheets[] = new SingleIncidentSheetExport($fundLossQuery, 'Fund Loss', $this->headings, $this->columnNames);
 
-        // Issues tabs - Use fresh query (Issues only, separate from Incidents)
+        // Issues tabs - Use fresh query for Issues only (separate from Incidents) - sorted by date
+        // Note: These tabs always show ALL Issues (not filtered), because metrics need chronological order
         // 7. All Issues
-        $issuesQuery = Incident::where('classification', 'Issue');
+        $issuesQuery = Incident::where('classification', 'Issue')
+            ->orderBy('incident_date', 'asc');
         $sheets[] = new SingleIncidentSheetExport($issuesQuery, 'All Issues', $this->headings, $this->columnNames);
 
-        // 8. Issues - MTTR (Issue Name, Type, MTTR)
+        // 8. Issues - MTTR (Issue Name, Type, MTTR) - Sorted by date ASC for correct MTTR
         $issuesMttrQuery = Incident::where('classification', 'Issue')
             ->whereNotNull('mttr')
-            ->orderBy('mttr', 'desc');
+            ->where('mttr', '>=', 0) // Only regular incidents (positive minutes)
+            ->orderBy('incident_date', 'asc');
         $sheets[] = new IssuesMetricSheetExport($issuesMttrQuery, 'Issues - MTTR', 'mttr');
 
-        // 9. Issues - MTBF (Issue Name, Type, MTBF)
+        // 9. Issues - MTBF (Issue Name, Type, MTBF) - Sorted by date ASC for correct MTBF
         $issuesMtbfQuery = Incident::where('classification', 'Issue')
             ->whereNotNull('mtbf')
-            ->orderBy('mtbf', 'desc');
+            ->orderBy('incident_date', 'asc');
         $sheets[] = new IssuesMetricSheetExport($issuesMtbfQuery, 'Issues - MTBF', 'mtbf');
 
         return $sheets;

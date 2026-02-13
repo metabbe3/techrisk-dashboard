@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Models\Incident;
 use Filament\Forms\Components\Select;
+use Illuminate\Support\Facades\Auth;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
@@ -12,7 +13,9 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
+use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Pagination\LengthAwarePaginator as PaginationPaginator;
 
 class WeeklyReport extends Page implements HasForms, HasTable
 {
@@ -29,6 +32,15 @@ class WeeklyReport extends Page implements HasForms, HasTable
     protected static string $view = 'filament.pages.weekly-report';
 
     protected static bool $isDiscovered = true;
+
+    /**
+     * Determine if the user can access this page.
+     * Allows both admin and regular users with 'access dashboard' permission.
+     */
+    public static function canAccess(): bool
+    {
+        return Auth::check() && Auth::user()->can('access dashboard');
+    }
 
     // Filter state
     public ?int $selectedYear = null;
@@ -179,9 +191,21 @@ class WeeklyReport extends Page implements HasForms, HasTable
         $this->table->resetPage();
     }
 
-    // Override to return our custom weekly data instead of dummy query results
-    public function getTableRecords(): EloquentCollection
+    // Override to return our custom weekly data as a paginator
+    public function getTableRecords(): LengthAwarePaginator
     {
-        return new EloquentCollection($this->getWeeklyData());
+        $weeklyData = $this->getWeeklyData();
+        $perPage = $this->table->getRecordsPerPage() ?? 10;
+        $currentPage = $this->table->getPage() ?? 1;
+
+        $total = count($weeklyData);
+        $items = array_slice($weeklyData, ($currentPage - 1) * $perPage, $perPage);
+
+        return new PaginationPaginator(
+            $items,
+            $total,
+            $perPage,
+            $currentPage
+        );
     }
 }

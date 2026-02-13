@@ -71,6 +71,42 @@ class Incident extends Model implements Auditable
         'people_caused' => 'array',
     ];
 
+    /**
+     * Get formatted MTTR with appropriate unit.
+     * - Fund loss incidents: negative value stored as days, display as "X days"
+     * - Regular incidents: positive value stored as minutes, display as "X mins" or "Xh Xm"
+     */
+    public function getMttrFormattedAttribute(): string
+    {
+        if ($this->mttr === null) {
+            return '-';
+        }
+
+        if ($this->mttr < 0) {
+            // Fund loss incident - stored as negative days
+            $days = abs($this->mttr);
+            return $days . ' day' . ($days > 1 ? 's' : '');
+        }
+
+        // Regular incident - stored as minutes
+        $minutes = $this->mttr;
+
+        if ($minutes < 60) {
+            return $minutes . ' min' . ($minutes > 1 ? 's' : '');
+        }
+
+        $hours = floor($minutes / 60);
+        $mins = $minutes % 60;
+
+        if ($hours >= 24) {
+            $days = floor($hours / 24);
+            $hours = $hours % 24;
+            return "{$days}d {$hours}h {$mins}m";
+        }
+
+        return "{$hours}h {$mins}m";
+    }
+
     public function pic(): BelongsTo
     {
         return $this->belongsTo(User::class, 'pic_id');
@@ -109,5 +145,15 @@ class Incident extends Model implements Auditable
     public function scopeIssues($query)
     {
         return $query->where('classification', 'Issue');
+    }
+
+    /**
+     * Check if this incident has fund loss.
+     * Fund loss incidents are excluded from MTTR calculation
+     * as they involve legal processes that take much longer.
+     */
+    public function hasFundLoss(): bool
+    {
+        return $this->fund_loss !== null && $this->fund_loss > 0;
     }
 }

@@ -79,6 +79,9 @@ class ListIncidents extends ListRecords
 
                     $format = $data['format'];
 
+                    // For MTBF/MTTR metrics to be meaningful, sort by incident date
+                    $query->orderBy('incident_date', 'asc');
+
                     $stats = [
                         'totalCases' => $query->count(),
                         'avgMttr' => round($query->avg('mttr'), 2),

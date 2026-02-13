@@ -159,7 +159,35 @@ class IncidentResource extends Resource
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')->searchable()->limit(30),
-                TextColumn::make('mttr')->label('MTTR (mins)')->sortable()->summarize(Average::make()->label('Avg MTTR')),
+                TextColumn::make('mttr')
+                    ->label('MTTR')
+                    ->sortable()
+                    ->formatState(function ($state): string {
+                        if ($state === null) {
+                            return '-';
+                        }
+                        if ($state < 0) {
+                            // Fund loss - stored as negative days
+                            $days = abs($state);
+                            return $days . ' day' . ($days > 1 ? 's' : '');
+                        }
+                        // Regular incident - stored as minutes
+                        $minutes = $state;
+                        if ($minutes < 60) {
+                            return $minutes . ' min' . ($minutes > 1 ? 's' : '');
+                        }
+                        $hours = floor($minutes / 60);
+                        $mins = $minutes % 60;
+                        if ($hours >= 24) {
+                            $days = floor($hours / 24);
+                            $hours = $hours % 24;
+                            return "{$days}d {$hours}h {$mins}m";
+                        }
+                        return "{$hours}h {$mins}m";
+                    })
+                    ->summarize(Average::make()
+                        ->label('Avg MTTR')
+                        ->formatStateUsing(fn ($state) => $state !== null && $state >= 0 ? round($state, 2) . ' min' : '-'))),
                 TextColumn::make('mtbf')->label('MTBF (days)')->sortable()->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
                     'P1' => 'danger', 'P2' => 'warning', 'P3' => 'info', 'P4', 'N', 'G' => 'success', default => 'gray',
