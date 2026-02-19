@@ -67,8 +67,8 @@ class IncidentStatsOverview extends BaseWidget
         }
 
         return [
-            Stat::make('Total Incidents', $totalIncidents)
-                ->description('Total incidents '.$descriptionPeriod)
+            Stat::make('Total Issues', $totalIncidents)
+                ->description('Total issues (Incidents + Issues) '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-chart-bar')
                 ->color('primary'),
             Stat::make('Last Incident', $lastIncidentDiff)
