@@ -140,8 +140,8 @@ class IssueResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->defaultSort('severity', 'asc')
             ->modifyQueryUsing(fn (Builder $query) => $query->where('classification', 'Issue')->with('incidentType'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->orderBy('severity', 'asc'))
             ->columns([
                 TextColumn::make('no')
                     ->label('ID')

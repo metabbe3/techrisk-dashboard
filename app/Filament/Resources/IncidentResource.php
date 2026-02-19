@@ -156,6 +156,7 @@ class IncidentResource extends Resource
         return $table
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType']))
+            ->defaultSort('incident_date', 'desc')
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')->searchable()->limit(30),
@@ -216,9 +217,14 @@ class IncidentResource extends Resource
                         'mttr_desc' => 'MTTR (Highest First)',
                         'loss_desc' => 'Fund Loss (Highest First)',
                     ])
-                    ->default('date_status')
                     ->query(function (Builder $query, array $data) {
-                        $value = $data['value'] ?? 'date_status';
+                        $value = $data['value'] ?? null;
+
+                        // If no filter value selected, don't apply any custom sorting
+                        // Let the defaultSort() and column sorting handle it
+                        if ($value === null) {
+                            return $query;
+                        }
 
                         return match ($value) {
                             'date_desc' => $query->orderBy('incident_date', 'desc'),
@@ -234,8 +240,7 @@ class IncidentResource extends Resource
                             'pic_date' => $query->orderBy('pic_id')->orderBy('incident_date', 'desc'),
                             'mttr_desc' => $query->orderBy('mttr', 'desc')->orderBy('incident_date', 'desc'),
                             'loss_desc' => $query->orderBy('fund_loss', 'desc')->orderBy('incident_date', 'desc'),
-                            default => $query->orderBy('incident_date', 'desc')
-                                ->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')"),
+                            default => $query,
                         };
                     }),
 
