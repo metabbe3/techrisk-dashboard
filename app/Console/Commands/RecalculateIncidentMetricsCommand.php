@@ -71,6 +71,7 @@ class RecalculateIncidentMetricsCommand extends Command
             if ($this->option('debug') && $debugCount <= 10) {
                 $year = $incident->incident_date->year;
                 $previousIncident = Incident::whereYear('incident_date', $year)
+                    ->where('classification', $incident->classification) // Same classification only
                     ->where(function ($query) use ($incident) {
                         $query->where('incident_date', '<', $incident->incident_date)
                             ->orWhere(function ($query) use ($incident) {
@@ -83,16 +84,16 @@ class RecalculateIncidentMetricsCommand extends Command
                     ->first();
 
                 $this->newLine();
-                $this->line("  [DEBUG #{$debugCount}] {$incident->no} - {$incident->incident_date->format('Y-m-d H:i:s')}");
+                $this->line("  [DEBUG #{$debugCount}] {$incident->no} ({$incident->classification}) - {$incident->incident_date->format('Y-m-d H:i:s')}");
                 if ($previousIncident) {
                     $hoursDiff = abs($incident->incident_date->diffInHours($previousIncident->incident_date));
-                    $this->line("    Previous: {$previousIncident->no} - {$previousIncident->incident_date->format('Y-m-d H:i:s')}");
+                    $this->line("    Previous: {$previousIncident->no} ({$previousIncident->classification}) - {$previousIncident->incident_date->format('Y-m-d H:i:s')}");
                     $this->line("    Hours diff: {$hoursDiff}h");
                     $this->line("    MTBF = intdiv({$hoursDiff}, 24) = {$incident->mtbf}");
                 } else {
                     $yearStart = Carbon::create($year, 1, 1)->startOfDay();
                     $hoursDiff = abs($incident->incident_date->diffInHours($yearStart));
-                    $this->line("    First incident of year {$year}");
+                    $this->line("    First {$incident->classification} of year {$year}");
                     $this->line("    Hours from Jan 1: {$hoursDiff}h");
                     $this->line("    MTBF = intdiv({$hoursDiff}, 24) = {$incident->mtbf}");
                 }
@@ -176,12 +177,13 @@ class RecalculateIncidentMetricsCommand extends Command
     {
         $year = $incident->incident_date->year;
 
-        // Find previous incident in the same year
+        // Find previous incident in the same year AND same classification (Incident vs Issue)
         // The previous incident is the one that comes immediately before the current incident
         // when incidents are sorted by (incident_date, id).
         // We find this by looking for incidents with (date < current_date) OR (date = current_date AND id < current_id)
         // and taking the maximum such incident by (date, id).
         $previousIncident = Incident::whereYear('incident_date', $year)
+            ->where('classification', $incident->classification) // Same classification only
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {

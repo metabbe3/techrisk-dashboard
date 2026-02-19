@@ -137,8 +137,9 @@ class IncidentObserver
         // Calculate MTBF using optimized query with index
         $year = $incident->incident_date->year;
         // Find the incident that comes immediately before the current incident
-        // when sorted by (incident_date, id)
+        // when sorted by (incident_date, id), AND has the same classification (Incident vs Issue)
         $previousIncident = Incident::whereYear('incident_date', $year)
+            ->where('classification', $incident->classification) // Same classification only
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -175,8 +176,9 @@ class IncidentObserver
 
         // Update next incident's MTBF
         // Find the incident that comes immediately after the current incident
-        // when sorted by (incident_date, id)
+        // when sorted by (incident_date, id), AND has the same classification (Incident vs Issue)
         $nextIncident = Incident::whereYear('incident_date', $year)
+            ->where('classification', $incident->classification) // Same classification only
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
