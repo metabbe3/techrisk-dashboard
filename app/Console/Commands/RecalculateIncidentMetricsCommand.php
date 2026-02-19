@@ -125,8 +125,8 @@ class RecalculateIncidentMetricsCommand extends Command
         if ($calculateByDays) {
             // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
             // Add 1 to include both start and end days in the count
-            $days = $incident->incident_date->startOfDay()
-                ->diffInDays($incident->stop_bleeding_at->startOfDay()) + 1;
+            $days = abs($incident->incident_date->startOfDay()
+                ->diffInDays($incident->stop_bleeding_at->startOfDay())) + 1;
             $incident->mttr = -$days; // Negative to indicate days vs minutes
         } else {
             // "Non fundLoss" - store as MINUTES
@@ -160,13 +160,13 @@ class RecalculateIncidentMetricsCommand extends Command
 
         if ($previousIncident) {
             // Days from previous incident (simple calendar date difference, ignoring time)
-            $incident->mtbf = $incident->incident_date->startOfDay()
-                ->diffInDays($previousIncident->incident_date->startOfDay()) + 1;
+            $incident->mtbf = abs($incident->incident_date->startOfDay()
+                ->diffInDays($previousIncident->incident_date->startOfDay())) + 1;
         } else {
             // First incident of the year - calculate from Jan 1st (simple calendar date difference)
             $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf = $incident->incident_date->startOfDay()
-                ->diffInDays($yearStart) + 1;
+            $incident->mtbf = abs($incident->incident_date->startOfDay()
+                ->diffInDays($yearStart)) + 1;
         }
     }
 }
