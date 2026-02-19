@@ -57,7 +57,9 @@ class IncidentsBySeverityChart extends Widget
 
         $results = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Incident::select('severity', DB::raw('count(*) as total'))
-                ->where('classification', 'Incident'); // Only count Incidents, not Issues
+                ->where('classification', 'Incident') // Only count Incidents, not Issues
+                ->where(fn ($query) => $query->whereNull('fund_status')
+                    ->orWhere('fund_status', '!=', 'Potential recovery')); // Exclude Potential recovery
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
