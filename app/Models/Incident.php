@@ -70,6 +70,7 @@ class Incident extends Model implements Auditable
         'mtbf_non_fund_loss',
         'mtbf_potential_recovery',
         'mtbf_non_incident',
+        'mtbf_all',
     ];
 
     protected $casts = [

@@ -21,6 +21,7 @@ class IncidentObserver
         $this->autoLabel($incident);
         $this->calculateMetrics($incident);
         $this->calculateCategoryMtbf($incident);
+        $this->calculateMtbfAll($incident);
         $this->updateAdjacentIncidentMetrics($incident);
 
         // Notify PIC if assigned during creation
@@ -81,6 +82,7 @@ class IncidentObserver
         if ($incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at')) {
             $this->calculateMetrics($incident);
             $this->calculateCategoryMtbf($incident);
+            $this->calculateMtbfAll($incident);
             $this->updateAdjacentIncidentMetrics($incident);
         }
 
@@ -89,6 +91,7 @@ class IncidentObserver
             $incident->isDirty('incident_type') || $incident->isDirty('fund_status') ||
             $incident->isDirty('recovered_fund')) {
             $this->calculateCategoryMtbf($incident);
+            $this->calculateMtbfAll($incident);
         }
 
         // Handle status change notification
@@ -293,6 +296,40 @@ class IncidentObserver
         } else {
             $yearStart = Carbon::create($year, 1, 1)->startOfDay();
             $incident->mtbf_recovered = abs($incident->incident_date->startOfDay()
+                ->diffInDays($yearStart));
+        }
+    }
+
+    /**
+     * Calculate MTBF for ALL incidents + issues combined (ignoring classification).
+     * This is used for the Issue menu which shows both Incidents and Issues.
+     */
+    private function calculateMtbfAll(Incident $incident): void
+    {
+        $year = $incident->incident_date->year;
+
+        // Find previous incident/issue in the same year, IGNORING classification
+        // This combines both Incidents and Issues for MTBF calculation
+        // EXCLUDE "Non Incident" severity from overall calculation
+        $previousRecord = Incident::whereYear('incident_date', $year)
+            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
+            ->where(function ($query) use ($incident) {
+                $query->where('incident_date', '<', $incident->incident_date)
+                    ->orWhere(function ($query) use ($incident) {
+                        $query->where('incident_date', '=', $incident->incident_date)
+                            ->where('id', '<', $incident->id);
+                    });
+            })
+            ->orderBy('incident_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if ($previousRecord) {
+            $incident->mtbf_all = abs($incident->incident_date->startOfDay()
+                ->diffInDays($previousRecord->incident_date->startOfDay()));
+        } else {
+            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+            $incident->mtbf_all = abs($incident->incident_date->startOfDay()
                 ->diffInDays($yearStart));
         }
     }

@@ -140,7 +140,7 @@ class IssueResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->where('classification', 'Issue')->with('incidentType'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('incidentType'))
             ->modifyQueryUsing(fn (Builder $query) => $query->orderBy('severity', 'asc'))
             ->columns([
                 TextColumn::make('no')
@@ -148,9 +148,9 @@ class IssueResource extends Resource
                     ->searchable()
                     ->sortable()
                     ->toggleable()
-                    ->summarize(Count::make()->label('Total Issues')),
+                    ->summarize(Count::make()->label('Total')),
                 TextColumn::make('title')
-                    ->label('Issue Name')
+                    ->label('Title')
                     ->searchable()
                     ->sortable()
                     ->formatStateUsing(fn (string $state): string => str_replace('Summary of Incident - ', '', $state)),
@@ -165,6 +165,15 @@ class IssueResource extends Resource
                         default => 'gray',
                     })
                     ->sortable(),
+                TextColumn::make('classification')
+                    ->label('Type')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'Incident' => 'danger',
+                        'Issue' => 'warning',
+                        default => 'gray',
+                    })
+                    ->sortable(),
                 TextColumn::make('incidentType.name')
                     ->label('Incident Type')
                     ->sortable()
@@ -174,8 +183,8 @@ class IssueResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false)
                     ->summarize(Average::make()->label('Avg MTTR')),
-                TextColumn::make('mtbf')
-                    ->label('MTBF (days)')
+                TextColumn::make('mtbf_all')
+                    ->label('MTBF (All)')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false)
                     ->summarize(Average::make()->label('Avg MTBF')),
