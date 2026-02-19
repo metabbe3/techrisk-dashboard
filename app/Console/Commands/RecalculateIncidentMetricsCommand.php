@@ -163,8 +163,10 @@ class RecalculateIncidentMetricsCommand extends Command
             $incident->mtbf = abs($incident->incident_date->startOfDay()
                 ->diffInDays($previousIncident->incident_date->startOfDay()));
         } else {
-            // First incident of the year - MTBF is 0
-            $incident->mtbf = 0;
+            // First incident of the year - calculate from Jan 1st (without +1)
+            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+            $incident->mtbf = abs($incident->incident_date->startOfDay()
+                ->diffInDays($yearStart));
         }
     }
 }
