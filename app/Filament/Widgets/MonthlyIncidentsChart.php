@@ -20,14 +20,15 @@ class MonthlyIncidentsChart extends ChartWidget
 
     protected function getData(): array
     {
-        $cacheKey = 'monthly_incidents_' . md5(json_encode([
+        $cacheKey = 'monthly_incidents_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
-            $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count');
+            $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
+                ->where('classification', 'Incident');
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
