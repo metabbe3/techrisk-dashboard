@@ -6,6 +6,7 @@ use App\Filament\Resources\IssueResource\Pages;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Forms;
+use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
@@ -139,7 +140,8 @@ class IssueResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->where('classification', 'Issue'))
+            ->defaultSort('severity', 'asc')
+            ->modifyQueryUsing(fn (Builder $query) => $query->where('classification', 'Issue')->with('incidentType'))
             ->columns([
                 TextColumn::make('no')
                     ->label('ID')

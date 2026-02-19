@@ -91,6 +91,11 @@ class ExportController extends Controller
      */
     public function export(Request $request)
     {
+        // Authorization check - user must have permission to access API
+        if (! auth()->check() || ! auth()->user()->can('access api')) {
+            return $this->errorResponse('You do not have permission to access this endpoint.', 403);
+        }
+
         $validator = Validator::make($request->all(), [
             'limit' => 'nullable|integer|min:1|max:1000',
             'offset' => 'nullable|integer|min:0',

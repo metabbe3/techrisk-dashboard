@@ -23,7 +23,7 @@ class IncidentObserver
         $this->updateAdjacentIncidentMetrics($incident);
 
         // Notify PIC if assigned during creation
-        if ($incident->pic_id) {
+        if ($incident->pic_id && $incident->pic) {
             $incident->pic->notify(new AssignedAsPicNotification($incident));
         }
     }
@@ -67,7 +67,7 @@ class IncidentObserver
         }
 
         // Handle PIC assignment change
-        if ($incident->isDirty('pic_id') && $incident->pic_id) {
+        if ($incident->isDirty('pic_id') && $incident->pic_id && $incident->pic) {
             $incident->pic->notify(new AssignedAsPicNotification($incident));
         }
 
@@ -87,10 +87,11 @@ class IncidentObserver
             $oldStatus = $incident->getOriginal('incident_status');
             $newStatus = $incident->incident_status;
 
-            if ($incident->pic && $oldStatus && $newStatus) {
+            $pic = $incident->pic; // Store reference once to avoid race condition
+            if ($pic && $oldStatus && $newStatus) {
                 $currentUser = auth()->user();
                 if (! $currentUser || $currentUser->id !== $incident->pic_id) {
-                    $incident->pic->notify(new IncidentStatusChanged($incident, $oldStatus, $newStatus));
+                    $pic->notify(new IncidentStatusChanged($incident, $oldStatus, $newStatus));
                 }
             }
         }
@@ -98,8 +99,9 @@ class IncidentObserver
         // Send general update notification if there are meaningful changes
         if ($incident->wasChanged() && ! empty($changes) && $incident->pic) {
             $currentUser = auth()->user();
+            $pic = $incident->pic; // Store reference once to avoid race condition
             if ($currentUser && $currentUser->id !== $incident->pic_id) {
-                $incident->pic->notify(new IncidentUpdated($incident, $changes));
+                $pic->notify(new IncidentUpdated($incident, $changes));
             }
         }
     }
@@ -108,22 +110,23 @@ class IncidentObserver
      * Calculate MTTR and MTBF for an incident.
      *
      * MTTR (Mean Time To Resolve):
-     *   - Fund loss incidents: stored in DAYS (legal/recovery processes take longer)
-     *   - Other incidents: stored in MINUTES
-     *   - Note: Fund loss MTTR is stored as negative value to indicate days
+     *   - Fund status "Confirmed loss" or "Potential recovery": stored in DAYS (date-only)
+     *   - Fund status "Non fundLoss": stored in MINUTES
+     *   - Note: Day-based MTTR is stored as negative value to indicate days vs minutes
      *
-     * MTBF (Mean Time Between Failures): Days from previous incident or Jan 1st
+     * MTBF (Mean Time Between Failures): Days from previous incident or Jan 1st (date-only)
      */
     private function calculateMetrics(Incident $incident): void
     {
         // Calculate MTTR
         if ($incident->stop_bleeding_at) {
-            if ($incident->hasFundLoss()) {
-                // Fund loss incidents - store as DAYS (negative value indicates days)
-                $days = $incident->incident_date->diffInDays($incident->stop_bleeding_at);
+            if ($incident->shouldCalculateMttrByDays()) {
+                // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
+                $days = $incident->incident_date->startOfDay()
+                    ->diffInDays($incident->stop_bleeding_at->startOfDay());
                 $incident->mttr = -$days; // Negative to indicate days vs minutes
             } else {
-                // Regular incidents - store as MINUTES
+                // "Non fundLoss" - store as MINUTES
                 $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
             }
         } else {
@@ -138,12 +141,13 @@ class IncidentObserver
             ->first();
 
         if ($previousIncident) {
-            // Days from previous incident
-            $incident->mtbf = $previousIncident->incident_date->diffInDays($incident->incident_date);
+            // Days from previous incident (date-only, ignoring time)
+            $incident->mtbf = $previousIncident->incident_date->startOfDay()
+                ->diffInDays($incident->incident_date->startOfDay());
         } else {
-            // First incident of the year - calculate from Jan 1st
-            $yearStart = Carbon::create($year, 1, 1, 0, 0, 0);
-            $incident->mtbf = $yearStart->diffInDays($incident->incident_date);
+            // First incident of the year - calculate from Jan 1st (date-only)
+            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+            $incident->mtbf = $yearStart->diffInDays($incident->incident_date->startOfDay());
         }
 
         $incident->saveQuietly();
@@ -163,17 +167,19 @@ class IncidentObserver
             ->first();
 
         if ($nextIncident) {
-            // Update MTBF - days from this incident to next
-            $nextIncident->mtbf = $incident->incident_date->diffInDays($nextIncident->incident_date);
+            // Update MTBF - days from this incident to next (date-only, ignoring time)
+            $nextIncident->mtbf = $incident->incident_date->startOfDay()
+                ->diffInDays($nextIncident->incident_date->startOfDay());
 
             // Update MTTR
             if ($nextIncident->stop_bleeding_at) {
-                if ($nextIncident->hasFundLoss()) {
-                    // Fund loss - store as DAYS (negative)
-                    $days = $nextIncident->incident_date->diffInDays($nextIncident->stop_bleeding_at);
+                if ($nextIncident->shouldCalculateMttrByDays()) {
+                    // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
+                    $days = $nextIncident->incident_date->startOfDay()
+                        ->diffInDays($nextIncident->stop_bleeding_at->startOfDay());
                     $nextIncident->mttr = -$days;
                 } else {
-                    // Regular - store as MINUTES
+                    // "Non fundLoss" - store as MINUTES
                     $nextIncident->mttr = $nextIncident->incident_date->diffInMinutes($nextIncident->stop_bleeding_at);
                 }
             } else {

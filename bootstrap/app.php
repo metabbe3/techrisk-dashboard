@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(\App\Http\Middleware\TrustProxies::class);
         $middleware->alias([
             'check.api.access' => \App\Http\Middleware\CheckApiAccess::class,
+            'check.api.token.access' => \App\Http\Middleware\CheckApiTokenAccess::class,
         ]);
 
         // Register API audit logger for all API routes

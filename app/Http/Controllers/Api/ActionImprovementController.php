@@ -10,6 +10,7 @@ use App\Traits\ApiResponser;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -56,6 +57,11 @@ class ActionImprovementController extends Controller
                 'Action improvements retrieved successfully.'
             );
         } catch (Exception $e) {
+            Log::error('Failed to retrieve action improvements', [
+                'incident_id' => $incident->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return $this->errorResponse('Failed to retrieve action improvements.', 500);
         }
     }
@@ -112,6 +118,11 @@ class ActionImprovementController extends Controller
         } catch (ValidationException $e) {
             return $this->errorResponse($e->errors(), 422);
         } catch (Exception $e) {
+            Log::error('Failed to create action improvement', [
+                'incident_id' => $incident->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return $this->errorResponse('Failed to create action improvement.', 500);
         }
     }
@@ -154,8 +165,16 @@ class ActionImprovementController extends Controller
                 'Action improvement retrieved successfully.'
             );
         } catch (ModelNotFoundException $e) {
+            Log::warning('Action improvement not found', [
+                'action_improvement_id' => $actionImprovement->id ?? null,
+            ]);
             return $this->errorResponse('Action improvement not found.', 404);
         } catch (Exception $e) {
+            Log::error('Failed to retrieve action improvement', [
+                'action_improvement_id' => $actionImprovement->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return $this->errorResponse('Failed to retrieve action improvement.', 500);
         }
     }
@@ -209,8 +228,16 @@ class ActionImprovementController extends Controller
         } catch (ValidationException $e) {
             return $this->errorResponse($e->errors(), 422);
         } catch (ModelNotFoundException $e) {
+            Log::warning('Action improvement not found for update', [
+                'action_improvement_id' => $actionImprovement->id ?? null,
+            ]);
             return $this->errorResponse('Action improvement not found.', 404);
         } catch (Exception $e) {
+            Log::error('Failed to update action improvement', [
+                'action_improvement_id' => $actionImprovement->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return $this->errorResponse('Failed to update action improvement.', 500);
         }
     }
@@ -245,8 +272,16 @@ class ActionImprovementController extends Controller
 
             return $this->successResponse(null, 'Action improvement deleted successfully.', 204);
         } catch (ModelNotFoundException $e) {
+            Log::warning('Action improvement not found for deletion', [
+                'action_improvement_id' => $actionImprovement->id ?? null,
+            ]);
             return $this->errorResponse('Action improvement not found.', 404);
         } catch (Exception $e) {
+            Log::error('Failed to delete action improvement', [
+                'action_improvement_id' => $actionImprovement->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return $this->errorResponse('Failed to delete action improvement.', 500);
         }
     }

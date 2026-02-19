@@ -1,0 +1,157 @@
+<?php
+
+namespace App\Console\Commands;
+
+use App\Models\Incident;
+use Carbon\Carbon;
+use Illuminate\Console\Command;
+
+class RecalculateIncidentMetricsCommand extends Command
+{
+    /**
+     * The name and signature of the console command.
+     *
+     * @var string
+     */
+    protected $signature = 'incidents:recalculate-metrics
+        {--year= : Only recalculate for specific year}
+        {--force : Force recalculation even if values exist}
+        {--dry-run : Show what would be changed without making changes}';
+
+    /**
+     * The console command description.
+     *
+     * @var string
+     */
+    protected $description = 'Recalculate MTTR and MTBF for all incidents';
+
+    /**
+     * Execute the console command.
+     */
+    public function handle(): int
+    {
+        $this->info('Recalculating incident metrics (MTTR & MTBF)...');
+
+        // Build query
+        $query = Incident::query();
+
+        if ($year = $this->option('year')) {
+            $query->whereYear('incident_date', $year);
+            $this->info("Filtering by year: {$year}");
+        }
+
+        $incidents = $query->orderBy('incident_date')->get();
+
+        if ($incidents->isEmpty()) {
+            $this->warn('No incidents found.');
+            return self::SUCCESS;
+        }
+
+        $this->info("Processing {$incidents->count()} incidents...");
+
+        $mttrUpdated = 0;
+        $mtbfUpdated = 0;
+        $bar = $this->output->createProgressBar($incidents->count());
+
+        foreach ($incidents as $incident) {
+            $oldMttr = $incident->mttr;
+            $oldMtbfbf = $incident->mtbf;
+
+            // Calculate MTTR
+            $this->calculateMttr($incident);
+
+            // Calculate MTBF
+            $this->calculateMtbfbf($incident);
+
+            // Check if values changed
+            $mttrChanged = $oldMttr != $incident->mttr;
+            $mtbfChanged = $oldMtbfbf != $incident->mtbf;
+
+            if ($mttrChanged) {
+                $mttrUpdated++;
+            }
+            if ($mtbfChanged) {
+                $mtbfUpdated++;
+            }
+
+            if ($mttrChanged || $mtbfChanged) {
+                if ($this->option('dry-run')) {
+                    $this->newLine();
+                    $this->line("  [DRY RUN] {$incident->no}:");
+                    if ($mttrChanged) {
+                        $this->line("    MTTR: {$oldMttr} -> {$incident->mttr}");
+                    }
+                    if ($mtbfChanged) {
+                        $this->line("    MTBF: {$oldMtbfbf} -> {$incident->mtbf}");
+                    }
+                } else {
+                    $incident->saveQuietly();
+                }
+            }
+
+            $bar->advance();
+        }
+
+        $bar->finish();
+        $this->newLine(2);
+
+        if ($this->option('dry-run')) {
+            $this->warn('DRY RUN MODE - No changes were saved.');
+            $this->info("Would update MTTR for {$mttrUpdated} incidents.");
+            $this->info("Would update MTBF for {$mtbfUpdated} incidents.");
+        } else {
+            $this->info("Successfully updated MTTR for {$mttrUpdated} incidents.");
+            $this->info("Successfully updated MTBF for {$mtbfUpdated} incidents.");
+        }
+
+        return self::SUCCESS;
+    }
+
+    /**
+     * Calculate MTTR for an incident.
+     */
+    private function calculateMttr(Incident $incident): void
+    {
+        if (!$incident->stop_bleeding_at) {
+            $incident->mttr = null;
+            return;
+        }
+
+        // Check if should calculate by days based on fund_status
+        $calculateByDays = in_array($incident->fund_status, ['Confirmed loss', 'Potential recovery']);
+
+        if ($calculateByDays) {
+            // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
+            $days = $incident->incident_date->startOfDay()
+                ->diffInDays($incident->stop_bleeding_at->startOfDay());
+            $incident->mttr = -$days; // Negative to indicate days vs minutes
+        } else {
+            // "Non fundLoss" - store as MINUTES
+            $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
+        }
+    }
+
+    /**
+     * Calculate MTBF for an incident.
+     */
+    private function calculateMtbfbf(Incident $incident): void
+    {
+        $year = $incident->incident_date->year;
+
+        // Find previous incident in the same year
+        $previousIncident = Incident::where('incident_date', '<', $incident->incident_date)
+            ->whereYear('incident_date', $year)
+            ->orderBy('incident_date', 'desc')
+            ->first();
+
+        if ($previousIncident) {
+            // Days from previous incident (date-only, ignoring time)
+            $incident->mtbf = $previousIncident->incident_date->startOfDay()
+                ->diffInDays($incident->incident_date->startOfDay());
+        } else {
+            // First incident of the year - calculate from Jan 1st (date-only)
+            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+            $incident->mtbf = $yearStart->diffInDays($incident->incident_date->startOfDay());
+        }
+    }
+}

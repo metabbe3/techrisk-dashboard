@@ -4,11 +4,14 @@ namespace App\Filament\Widgets;
 
 use App\Models\Incident;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\On;
 
 class IncidentsByTypeChart extends ChartWidget
 {
     protected static ?string $heading = 'Incidents by Type';
+
+    protected int|string|array $columnSpan = 4;
 
     public ?string $start_date = null;
 
@@ -16,17 +19,25 @@ class IncidentsByTypeChart extends ChartWidget
 
     protected function getData(): array
     {
-        $query = Incident::select('incident_type', \DB::raw('count(*) as total'));
+        $cacheKey = 'incidents_by_type_' . md5(json_encode([
+            'start_date' => $this->start_date,
+            'end_date' => $this->end_date,
+            'year' => now()->year,
+        ]));
 
-        if ($this->start_date && $this->end_date) {
-            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
-        } else {
-            $query->whereYear('incident_date', now()->year);
-        }
+        $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+            $query = Incident::select('incident_type', \DB::raw('count(*) as total'));
 
-        $query->groupBy('incident_type');
+            if ($this->start_date && $this->end_date) {
+                $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+            } else {
+                $query->whereYear('incident_date', now()->year);
+            }
 
-        $data = $query->get();
+            $query->groupBy('incident_type');
+
+            return $query->get();
+        });
 
         return [
             'datasets' => [
@@ -41,9 +52,7 @@ class IncidentsByTypeChart extends ChartWidget
 
     protected function getType(): string
     {
-
-        return 'pie';
-
+        return 'bar'; // Changed from 'pie' to 'bar' for consistent height
     }
 
     public function getColumnSpan(): int|string|array
@@ -57,15 +66,22 @@ class IncidentsByTypeChart extends ChartWidget
     {
         return [
             'maintainAspectRatio' => false,
+            'indexAxis' => 'y', // Horizontal bar for better space usage
             'plugins' => [
                 'legend' => [
-                    'position' => 'bottom',
-                    'labels' => [
-                        'boxWidth' => 12,
-                        'padding' => 8,
-                        'font' => [
-                            'size' => 11,
-                        ],
+                    'display' => false, // Hide legend for cleaner look
+                ],
+            ],
+            'scales' => [
+                'x' => [
+                    'beginAtZero' => true,
+                    'grid' => [
+                        'display' => true,
+                    ],
+                ],
+                'y' => [
+                    'grid' => [
+                        'display' => false,
                     ],
                 ],
             ],

@@ -33,6 +33,7 @@ class RolesAndPermissionsSeeder extends Seeder
         Permission::firstOrCreate(['name' => 'view labels']);
         Permission::firstOrCreate(['name' => 'view audit logs']);
         Permission::firstOrCreate(['name' => 'access dashboard']);
+        Permission::firstOrCreate(['name' => 'manage api tokens']);
 
         // create roles and assign created permissions
         $role = Role::firstOrCreate(['name' => 'user']);

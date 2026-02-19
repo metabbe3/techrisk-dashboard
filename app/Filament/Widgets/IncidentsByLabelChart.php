@@ -4,11 +4,14 @@ namespace App\Filament\Widgets;
 
 use App\Models\Label;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\On;
 
 class IncidentsByLabelChart extends ChartWidget
 {
     protected static ?string $heading = 'Incidents by Label';
+
+    protected int|string|array $columnSpan = 6;
 
     public ?string $start_date = null;
 
@@ -16,17 +19,25 @@ class IncidentsByLabelChart extends ChartWidget
 
     protected function getData(): array
     {
-        $query = Label::query()
-            ->withCount(['incidents' => function ($query) {
-                if ($this->start_date && $this->end_date) {
-                    $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
-                } else {
-                    $query->whereYear('incident_date', now()->year);
-                }
-            }])
-            ->having('incidents_count', '>', 0);
+        $cacheKey = 'incidents_by_label_' . md5(json_encode([
+            'start_date' => $this->start_date,
+            'end_date' => $this->end_date,
+            'year' => now()->year,
+        ]));
 
-        $data = $query->pluck('incidents_count', 'name');
+        $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+            $query = Label::query()
+                ->withCount(['incidents' => function ($query) {
+                    if ($this->start_date && $this->end_date) {
+                        $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+                    } else {
+                        $query->whereYear('incident_date', now()->year);
+                    }
+                }])
+                ->having('incidents_count', '>', 0);
+
+            return $query->pluck('incidents_count', 'name');
+        });
 
         return [
             'datasets' => [
@@ -41,7 +52,7 @@ class IncidentsByLabelChart extends ChartWidget
 
     protected function getType(): string
     {
-        return 'pie';
+        return 'bar'; // Changed from 'pie' to 'bar' for consistent height
     }
 
     public function getColumnSpan(): int|string|array
@@ -53,15 +64,22 @@ class IncidentsByLabelChart extends ChartWidget
     {
         return [
             'maintainAspectRatio' => false,
+            'indexAxis' => 'y', // Horizontal bar for better space usage
             'plugins' => [
                 'legend' => [
-                    'position' => 'bottom',
-                    'labels' => [
-                        'boxWidth' => 12,
-                        'padding' => 8,
-                        'font' => [
-                            'size' => 11,
-                        ],
+                    'display' => false, // Hide legend for cleaner look
+                ],
+            ],
+            'scales' => [
+                'x' => [
+                    'beginAtZero' => true,
+                    'grid' => [
+                        'display' => true,
+                    ],
+                ],
+                'y' => [
+                    'grid' => [
+                        'display' => false,
                     ],
                 ],
             ],

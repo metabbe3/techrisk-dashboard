@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Traits\ApiResponser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 /**
  * @group Authentication
@@ -62,8 +63,18 @@ class AuthController extends Controller
             $user = Auth::user();
             $token = $user->createToken('api-token')->plainTextToken;
 
+            Log::info('User logged in successfully', [
+                'user_id' => $user->id,
+                'email' => $user->email,
+            ]);
+
             return $this->successResponse(['token' => $token], 'Login successful.');
         }
+
+        Log::warning('Failed login attempt', [
+            'email' => $request->email,
+            'ip' => $request->ip(),
+        ]);
 
         return $this->errorResponse('Invalid credentials.', 401);
     }

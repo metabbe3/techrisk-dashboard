@@ -19,7 +19,10 @@ return new class extends Migration
 
         // Update severity enum to include X1, X2, X3, X4
         // Note: MySQL doesn't support enum modification directly, need to recreate
-        DB::statement("ALTER TABLE incidents MODIFY COLUMN severity ENUM('P1', 'P2', 'P3', 'P4', 'G', 'X1', 'X2', 'X3', 'X4', 'Non Incident') DEFAULT 'P1'");
+        // SQLite doesn't support ENUM, so we skip this for SQLite (it treats enums as TEXT)
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE incidents MODIFY COLUMN severity ENUM('P1', 'P2', 'P3', 'P4', 'G', 'X1', 'X2', 'X3', 'X4', 'Non Incident') DEFAULT 'P1'");
+        }
     }
 
     /**
@@ -33,6 +36,9 @@ return new class extends Migration
         });
 
         // Revert severity enum
-        DB::statement("ALTER TABLE incidents MODIFY COLUMN severity ENUM('P1', 'P2', 'P3', 'P4', 'Non Incident') DEFAULT 'P1'");
+        // SQLite doesn't support ENUM, so we skip this for SQLite
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement("ALTER TABLE incidents MODIFY COLUMN severity ENUM('P1', 'P2', 'P3', 'P4', 'Non Incident') DEFAULT 'P1'");
+        }
     }
 };

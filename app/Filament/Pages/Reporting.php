@@ -17,6 +17,7 @@ use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Pages\Page;
+use Filament\Notifications\Notification;
 use Maatwebsite\Excel\Facades\Excel;
 
 class Reporting extends Page implements HasForms
@@ -105,7 +106,7 @@ class Reporting extends Page implements HasForms
                         Select::make('template_id')
                             ->label('Load Template')
                             ->options(ReportTemplate::pluck('name', 'id'))
-                            ->reactive()
+                            ->live()
                             ->searchable()
                             ->afterStateUpdated(function ($state, callable $set) {
                                 if ($state) {
@@ -133,7 +134,7 @@ class Reporting extends Page implements HasForms
                                     'Tech' => 'Tech',
                                     'Non-tech' => 'Non-tech',
                                 ])
-                                ->reactive(),
+                                ->live(),
                             Select::make('statuses')
                                 ->multiple()
                                 ->options([

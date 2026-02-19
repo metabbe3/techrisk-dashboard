@@ -16,7 +16,7 @@ class StatusUpdateObserver
         $incident = $statusUpdate->incident;
 
         // Notify the PIC if they are not the one who created the status update
-        if ($incident && $incident->pic_id) {
+        if ($incident && $incident->pic_id && $incident->pic) {
             $currentUser = Auth::user();
 
             // Only notify if:

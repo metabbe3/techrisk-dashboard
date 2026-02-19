@@ -20,7 +20,8 @@ class RecentIncidents extends BaseWidget
 
     public function table(Table $table): Table
     {
-        $query = IncidentResource::getEloquentQuery();
+        $query = IncidentResource::getEloquentQuery()
+            ->with(['latestStatusUpdate', 'pic', 'incidentType']);
 
         if ($this->start_date && $this->end_date) {
             $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
@@ -35,12 +36,12 @@ class RecentIncidents extends BaseWidget
             ->columns([
                 Tables\Columns\TextColumn::make('incident_date')->dateTime(),
                 Tables\Columns\TextColumn::make('title'),
-                Tables\Columns\TextColumn::make('severity')->badge()->formatStateUsing(fn (string $state): string => strtoupper($state))->color(fn (string $state): string => match ($state) {
-                    'p1', 'X1' => 'danger',
-                    'p2', 'X2' => 'warning',
-                    'p3', 'X3' => 'info',
-                    'p4', 'X4' => 'success',
-                    'Non Incident' => 'secondary',
+                Tables\Columns\TextColumn::make('severity')->badge()->formatStateUsing(fn (string $state): string => strtoupper($state))->color(fn (string $state): string => match (strtoupper($state)) {
+                    'P1', 'X1' => 'danger',
+                    'P2', 'X2' => 'warning',
+                    'P3', 'X3' => 'info',
+                    'P4', 'X4' => 'success',
+                    'NON INCIDENT' => 'secondary',
                     default => 'secondary',
                 }),
                 Tables\Columns\TextColumn::make('latestStatusUpdate.status')->label('Latest Status')->badge()

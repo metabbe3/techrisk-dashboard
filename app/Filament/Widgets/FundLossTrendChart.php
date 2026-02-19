@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
 
@@ -12,25 +13,35 @@ class FundLossTrendChart extends ChartWidget
 {
     protected static ?string $heading = 'Fund Loss Trend';
 
+    protected int|string|array $columnSpan = 6;
+
     public ?string $start_date = null;
 
     public ?string $end_date = null;
 
     protected function getData(): array
     {
-        $query = Incident::select(
-            DB::raw('SUM(fund_loss) as total_fund_loss'),
-            DB::raw('MONTH(incident_date) as month')
-        )
-            ->groupBy('month');
+        $cacheKey = 'fund_loss_trend_' . md5(json_encode([
+            'start_date' => $this->start_date,
+            'end_date' => $this->end_date,
+            'year' => now()->year,
+        ]));
 
-        if ($this->start_date && $this->end_date) {
-            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
-        } else {
-            $query->whereYear('incident_date', now()->year);
-        }
+        $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+            $query = Incident::select(
+                DB::raw('SUM(fund_loss) as total_fund_loss'),
+                DB::raw('MONTH(incident_date) as month')
+            )
+                ->groupBy('month');
 
-        $data = $query->pluck('total_fund_loss', 'month')->all();
+            if ($this->start_date && $this->end_date) {
+                $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+            } else {
+                $query->whereYear('incident_date', now()->year);
+            }
+
+            return $query->pluck('total_fund_loss', 'month')->all();
+        });
 
         $labels = [];
         $values = [];

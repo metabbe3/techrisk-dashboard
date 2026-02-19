@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1'); // 5 login attempts per minute
 
-Route::middleware(['auth:sanctum', 'check.api.access'])->group(function () {
+Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access'])->group(function () {
     // API v1 - Read operations (100 req/min)
     Route::prefix('v1')->middleware('throttle:100,1')->group(function () {
         Route::apiResource('incidents', IncidentController::class)->only(['index', 'show']);

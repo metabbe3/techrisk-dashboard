@@ -3,7 +3,9 @@
 namespace App\Filament\Widgets;
 
 use Filament\Widgets\ChartWidget as BaseWidget;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class ChartWidget extends BaseWidget
 {
@@ -22,10 +24,18 @@ class ChartWidget extends BaseWidget
             return [];
         }
 
+        $cacheKey = 'chart_widget_' . md5($this->query);
+
         try {
-            $data = DB::select($this->query);
+            $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+                return DB::select($this->query);
+            });
         } catch (\Exception $e) {
-            // You can log the error here
+            Log::error('ChartWidget query failed', [
+                'query' => $this->query,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return [];
         }
 

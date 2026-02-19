@@ -50,7 +50,7 @@ class ListIncidents extends ListRecords
                     return [
                         Checkbox::make('export_all_tabs')
                             ->label('Export all tabs as separate sheets (XLSX only)')
-                            ->reactive(),
+                            ->live(),
                         Select::make('format')
                             ->label('Format')
                             ->options(['xlsx' => 'XLSX', 'csv' => 'CSV'])

@@ -47,7 +47,7 @@ class DashboardWidgetResource extends Resource
                         'table' => 'Table',
                     ])
                     ->required()
-                    ->reactive(),
+                    ->live(),
                 Select::make('chart_type')
                     ->options([
                         'bar' => 'Bar',

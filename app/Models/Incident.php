@@ -85,11 +85,18 @@ class Incident extends Model implements Auditable
         if ($this->mttr < 0) {
             // Fund loss incident - stored as negative days
             $days = abs($this->mttr);
+            if ($days > 36500) { // More than 100 years
+                return 'N/A';
+            }
             return $days . ' day' . ($days > 1 ? 's' : '');
         }
 
         // Regular incident - stored as minutes
         $minutes = $this->mttr;
+
+        if ($minutes > 52560000) { // More than 100 years in minutes
+            return 'N/A';
+        }
 
         if ($minutes < 60) {
             return $minutes . ' min' . ($minutes > 1 ? 's' : '');
@@ -155,5 +162,15 @@ class Incident extends Model implements Auditable
     public function hasFundLoss(): bool
     {
         return $this->fund_loss !== null && $this->fund_loss > 0;
+    }
+
+    /**
+     * Check if MTTR should be calculated by days (based on fund_status).
+     * Returns true for "Confirmed loss" or "Potential recovery".
+     * Returns false for "Non fundLoss" (calculates by minutes).
+     */
+    public function shouldCalculateMttrByDays(): bool
+    {
+        return in_array($this->fund_status, ['Confirmed loss', 'Potential recovery']);
     }
 }

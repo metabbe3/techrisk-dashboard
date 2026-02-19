@@ -154,15 +154,21 @@ class IncidentResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->defaultSort('incident_date', 'desc')
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType']))
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')->searchable()->limit(30),
                 TextColumn::make('mttr')->label('MTTR (mins)')->sortable()->summarize(Average::make()->label('Avg MTTR')),
                 TextColumn::make('mtbf')->label('MTBF (days)')->sortable()->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
-                    'P1' => 'danger', 'P2' => 'warning', 'P3' => 'info', 'P4', 'N', 'G' => 'success', default => 'gray',
+                    'P1' => 'danger',
+                    'P2' => 'warning',
+                    'P3' => 'info',
+                    'P4' => 'success',
+                    'N' => 'success',
+                    'G' => 'success',
+                    default => 'gray',
                 })->sortable(),
                 TextColumn::make('incident_status')->badge()->color(fn (string $state): string => match ($state) {
                     'Open' => 'warning', 'In progress' => 'info', 'Finalization' => 'primary', 'Completed' => 'success', default => 'gray',
@@ -173,13 +179,13 @@ class IncidentResource extends Resource
                 TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
                 TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->summarize(Sum::make()->money('IDR')->label('Total Loss')),
                 TextColumn::make('recovery_rate')->label('Recovery %')->state(function (Incident $record): string {
-                    if ($record->potential_fund_loss > 0) {
+                    if ($record->potential_fund_loss && $record->potential_fund_loss > 0) {
                         $rate = ($record->recovered_fund / $record->potential_fund_loss) * 100;
 
                         return number_format($rate, 1).'%';
                     }
 
-                    return '-';
+                    return '0%';
                 })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray')),
 
                 // Toggleable Hidden Columns
@@ -196,6 +202,43 @@ class IncidentResource extends Resource
                     ->collapsible(),
             ])
             ->filters([
+                // Multi-Column Sort Filter
+                SelectFilter::make('multi_column_sort')
+                    ->label('Sort By')
+                    ->options([
+                        'date_desc' => 'Date (Newest First)',
+                        'date_asc' => 'Date (Oldest First)',
+                        'date_status' => 'Date → Status (Open First)',
+                        'status_date' => 'Status → Date (Open First)',
+                        'status_severity' => 'Status → Severity (P1 First)',
+                        'severity_date' => 'Severity → Date (P1 First)',
+                        'pic_date' => 'PIC → Date',
+                        'mttr_desc' => 'MTTR (Highest First)',
+                        'loss_desc' => 'Fund Loss (Highest First)',
+                    ])
+                    ->default('date_status')
+                    ->query(function (Builder $query, array $data) {
+                        $value = $data['value'] ?? 'date_status';
+
+                        return match ($value) {
+                            'date_desc' => $query->orderBy('incident_date', 'desc'),
+                            'date_asc' => $query->orderBy('incident_date', 'asc'),
+                            'date_status' => $query->orderBy('incident_date', 'desc')
+                                ->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')"),
+                            'status_date' => $query->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')")
+                                ->orderBy('incident_date', 'desc'),
+                            'status_severity' => $query->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')")
+                                ->orderByRaw("FIELD(severity, 'P1', 'P2', 'P3', 'P4', 'G', 'X1', 'X2', 'X3', 'X4', 'Non Incident')"),
+                            'severity_date' => $query->orderByRaw("FIELD(severity, 'P1', 'P2', 'P3', 'P4', 'G', 'X1', 'X2', 'X3', 'X4', 'Non Incident')")
+                                ->orderBy('incident_date', 'desc'),
+                            'pic_date' => $query->orderBy('pic_id')->orderBy('incident_date', 'desc'),
+                            'mttr_desc' => $query->orderBy('mttr', 'desc')->orderBy('incident_date', 'desc'),
+                            'loss_desc' => $query->orderBy('fund_loss', 'desc')->orderBy('incident_date', 'desc'),
+                            default => $query->orderBy('incident_date', 'desc')
+                                ->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')"),
+                        };
+                    }),
+
                 // 1. Quick Filter for Presets
                 SelectFilter::make('quick_period')
                     ->label('Quick Period')

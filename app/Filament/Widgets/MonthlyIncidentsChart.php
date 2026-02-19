@@ -5,11 +5,14 @@ namespace App\Filament\Widgets;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\On;
 
 class MonthlyIncidentsChart extends ChartWidget
 {
     protected static ?string $heading = 'Monthly Incidents';
+
+    protected int|string|array $columnSpan = 4;
 
     public ?string $start_date = null;
 
@@ -17,17 +20,25 @@ class MonthlyIncidentsChart extends ChartWidget
 
     protected function getData(): array
     {
-        $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count');
+        $cacheKey = 'monthly_incidents_' . md5(json_encode([
+            'start_date' => $this->start_date,
+            'end_date' => $this->end_date,
+            'year' => now()->year,
+        ]));
 
-        if ($this->start_date && $this->end_date) {
-            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
-        } else {
-            $query->whereYear('incident_date', now()->year);
-        }
+        $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+            $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count');
 
-        $query->groupBy('month')->orderBy('month');
+            if ($this->start_date && $this->end_date) {
+                $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+            } else {
+                $query->whereYear('incident_date', now()->year);
+            }
 
-        $data = $query->pluck('count', 'month')->all();
+            $query->groupBy('month')->orderBy('month');
+
+            return $query->pluck('count', 'month')->all();
+        });
 
         $labels = [];
         $values = [];
@@ -67,6 +78,22 @@ class MonthlyIncidentsChart extends ChartWidget
                 'legend' => [
                     'display' => false,
                 ],
+            ],
+            'scales' => [
+                'x' => [
+                    'grid' => [
+                        'display' => false,
+                    ],
+                ],
+                'y' => [
+                    'beginAtZero' => true,
+                    'grid' => [
+                        'display' => true,
+                    ],
+                ],
+            ],
+            'layout' => [
+                'padding' => 10,
             ],
         ];
     }

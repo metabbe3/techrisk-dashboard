@@ -211,6 +211,7 @@ class IncidentController extends Controller
                 'potential_fund_loss' => 'nullable|numeric',
                 'fund_loss' => 'nullable|numeric',
                 'people_caused' => 'nullable|array',
+                'people_caused.*' => 'nullable|string|max:255',
                 'checker' => 'nullable|string',
                 'maker' => 'nullable|string',
             ]);
@@ -473,7 +474,7 @@ class IncidentController extends Controller
         $md[] = "| **Incident Date** | {$incident->incident_date->format('Y-m-d')} |";
         $md[] = "| **Discovered At** | " . ($incident->discovered_at?->format('Y-m-d H:i') ?? 'N/A') . " |";
         $md[] = "| **Stop Bleeding At** | " . ($incident->stop_bleeding_at?->format('Y-m-d H:i') ?? 'N/A') . " |";
-        $md[] = "| **Entry Date** | {$incident->entry_date_tech_risk->format('Y-m-d')} |";
+        $md[] = "| **Entry Date** | " . ($incident->entry_date_tech_risk?->format('Y-m-d') ?? 'N/A') . " |";
         $md[] = "";
 
         // Summary
@@ -557,7 +558,8 @@ class IncidentController extends Controller
                 }
                 $md[] = "- **Status:** {$action->status}";
                 if ($action->pic_email) {
-                    $md[] = "- **PIC:** " . implode(', ', $action->pic_email);
+                    $picEmails = is_array($action->pic_email) ? $action->pic_email : [$action->pic_email];
+                    $md[] = "- **PIC:** " . implode(', ', $picEmails);
                 }
                 $md[] = "";
             }
@@ -606,6 +608,7 @@ class IncidentController extends Controller
                 'potential_fund_loss' => 'nullable|numeric',
                 'fund_loss' => 'nullable|numeric',
                 'people_caused' => 'nullable|array',
+                'people_caused.*' => 'nullable|string|max:255',
                 'checker' => 'nullable|string',
                 'maker' => 'nullable|string',
             ]);

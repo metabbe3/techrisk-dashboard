@@ -13,12 +13,7 @@ class ActionImprovementObserver
      */
     public function created(ActionImprovement $actionImprovement): void
     {
-        if ($actionImprovement->pic_email) {
-            // Use queue for async email sending to improve performance
-            foreach ($actionImprovement->pic_email as $email) {
-                Mail::to($email)->queue(new ActionImprovementNotification($actionImprovement));
-            }
-        }
+        $this->sendActionImprovementNotifications($actionImprovement);
     }
 
     /**
@@ -27,9 +22,18 @@ class ActionImprovementObserver
     public function updated(ActionImprovement $actionImprovement): void
     {
         if ($actionImprovement->isDirty('pic_email')) {
-            if ($actionImprovement->pic_email) {
-                // Use queue for async email sending to improve performance
-                foreach ($actionImprovement->pic_email as $email) {
+            $this->sendActionImprovementNotifications($actionImprovement);
+        }
+    }
+
+    /**
+     * Send notifications to PIC emails for an action improvement.
+     */
+    private function sendActionImprovementNotifications(ActionImprovement $actionImprovement): void
+    {
+        if ($actionImprovement->pic_email && is_array($actionImprovement->pic_email)) {
+            foreach ($actionImprovement->pic_email as $email) {
+                if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
                     Mail::to($email)->queue(new ActionImprovementNotification($actionImprovement));
                 }
             }

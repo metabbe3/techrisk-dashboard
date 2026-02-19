@@ -22,6 +22,7 @@ class AuditsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(fn ($query) => $query->with('user'))
             ->columns([
                 TextColumn::make('user.name')->label('User'),
                 TextColumn::make('event')->label('Event'),

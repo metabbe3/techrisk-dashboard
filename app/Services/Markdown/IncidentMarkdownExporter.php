@@ -65,7 +65,7 @@ class IncidentMarkdownExporter
      */
     public function generateFilename(Incident $incident): string
     {
-        $safeTitle = MarkdownFormatter::sanitizeFilename($incident->title);
+        $safeTitle = MarkdownFormatter::sanitizeFilename($incident->summary ?? 'incident');
         $date = $incident->incident_date?->format('Y-m-d') ?? 'unknown';
 
         return "{$incident->no}_{$date}_{$safeTitle}.md";
