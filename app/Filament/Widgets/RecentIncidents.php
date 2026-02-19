@@ -21,6 +21,7 @@ class RecentIncidents extends BaseWidget
     public function table(Table $table): Table
     {
         $query = IncidentResource::getEloquentQuery()
+            ->where('classification', 'Incident')
             ->with(['latestStatusUpdate', 'pic', 'incidentType']);
 
         if ($this->start_date && $this->end_date) {

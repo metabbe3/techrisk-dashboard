@@ -21,6 +21,7 @@ class OpenIncidents extends BaseWidget
     public function table(Table $table): Table
     {
         $query = IncidentResource::getEloquentQuery()
+            ->where('classification', 'Incident')
             ->whereIn('incident_status', ['Open', 'In progress', 'Finalization']);
 
         if ($this->start_date && $this->end_date) {
