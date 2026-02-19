@@ -20,6 +20,7 @@ class IncidentObserver
         $this->flushIncidentCache();
         $this->autoLabel($incident);
         $this->calculateMetrics($incident);
+        $this->calculateCategoryMtbf($incident);
         $this->updateAdjacentIncidentMetrics($incident);
 
         // Notify PIC if assigned during creation
@@ -79,7 +80,15 @@ class IncidentObserver
 
         if ($incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at')) {
             $this->calculateMetrics($incident);
+            $this->calculateCategoryMtbf($incident);
             $this->updateAdjacentIncidentMetrics($incident);
+        }
+
+        // Recalculate category MTBF when category fields change
+        if ($incident->isDirty('incident_status') || $incident->isDirty('severity') ||
+            $incident->isDirty('incident_type') || $incident->isDirty('fund_status') ||
+            $incident->isDirty('recovered_fund')) {
+            $this->calculateCategoryMtbf($incident);
         }
 
         // Handle status change notification
@@ -210,6 +219,76 @@ class IncidentObserver
             }
 
             $nextIncident->saveQuietly();
+        }
+    }
+
+    /**
+     * Calculate MTBF for all category types.
+     * Each category MTBF is calculated independently (only looks at incidents in that category).
+     */
+    private function calculateCategoryMtbf(Incident $incident): void
+    {
+        $year = $incident->incident_date->year;
+
+        // Define categories and their conditions
+        // Note: 'recovered' uses a closure for complex condition
+        $categories = [
+            'completed' => ['incident_status' => 'Completed'],
+            'p4' => ['severity' => 'P4'],
+            'non_tech' => ['incident_type' => 'Non-tech'],
+            'fund_loss' => ['fund_status' => 'Confirmed loss'],
+            'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
+            'potential_recovery' => ['fund_status' => 'Potential recovery'],
+        ];
+
+        // Process each category
+        foreach ($categories as $key => $condition) {
+            $previousIncident = Incident::whereYear('incident_date', $year)
+                ->where('classification', $incident->classification)
+                ->where($condition)
+                ->where(function ($query) use ($incident) {
+                    $query->where('incident_date', '<', $incident->incident_date)
+                        ->orWhere(function ($query) use ($incident) {
+                            $query->where('incident_date', '=', $incident->incident_date)
+                                ->where('id', '<', $incident->id);
+                        });
+                })
+                ->orderBy('incident_date', 'desc')
+                ->orderBy('id', 'desc')
+                ->first();
+
+            if ($previousIncident) {
+                $incident->{"mtbf_{$key}"} = abs($incident->incident_date->startOfDay()
+                    ->diffInDays($previousIncident->incident_date->startOfDay()));
+            } else {
+                $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+                $incident->{"mtbf_{$key}"} = abs($incident->incident_date->startOfDay()
+                    ->diffInDays($yearStart));
+            }
+        }
+
+        // Special handling for 'recovered' category (recovered_fund > 0)
+        $previousRecovered = Incident::whereYear('incident_date', $year)
+            ->where('classification', $incident->classification)
+            ->where('recovered_fund', '>', 0)
+            ->where(function ($query) use ($incident) {
+                $query->where('incident_date', '<', $incident->incident_date)
+                    ->orWhere(function ($query) use ($incident) {
+                        $query->where('incident_date', '=', $incident->incident_date)
+                            ->where('id', '<', $incident->id);
+                    });
+            })
+            ->orderBy('incident_date', 'desc')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if ($previousRecovered) {
+            $incident->mtbf_recovered = abs($incident->incident_date->startOfDay()
+                ->diffInDays($previousRecovered->incident_date->startOfDay()));
+        } else {
+            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+            $incident->mtbf_recovered = abs($incident->incident_date->startOfDay()
+                ->diffInDays($yearStart));
         }
     }
 

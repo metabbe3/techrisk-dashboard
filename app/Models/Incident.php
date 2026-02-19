@@ -59,6 +59,13 @@ class Incident extends Model implements Auditable
         'maker',
         'mttr',
         'mtbf',
+        'mtbf_completed',
+        'mtbf_recovered',
+        'mtbf_p4',
+        'mtbf_non_tech',
+        'mtbf_fund_loss',
+        'mtbf_non_fund_loss',
+        'mtbf_potential_recovery',
     ];
 
     protected $casts = [
