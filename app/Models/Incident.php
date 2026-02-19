@@ -127,16 +127,20 @@ class Incident extends Model implements Auditable
     }
 
     /**
-     * Get the appropriate MTBF value based on incident category.
+     * Get the appropriate MTBF value based on incident category and active tab.
      * This dynamically returns the correct MTBF column based on which category
-     * the incident belongs to, allowing the frontend to display "MTBF" with the
-     * correct value for each filtered view.
-     *
-     * Note: "Non Incident" uses the default mtbf for "All Cases" view.
-     * The "Non Incident" tab uses mtbf_non_incident column directly.
+     * the incident belongs to and which tab is currently active.
      */
     public function getMtbfDisplayAttribute(): int
     {
+        // Get the active tab from the request
+        $activeTab = request()->query('tableActiveTab', 'All Cases');
+
+        // If "Non Incident" tab is active, show mtbf_non_incident for Non Incident records
+        if ($activeTab === 'Non Incident' && $this->severity === 'Non Incident') {
+            return $this->mtbf_non_incident ?? $this->mtbf ?? 0;
+        }
+
         // Priority order for determining which MTBF to show
         // Fund status has highest priority
 
@@ -173,7 +177,7 @@ class Incident extends Model implements Auditable
             return $this->mtbf_non_tech ?? $this->mtbf ?? 0;
         }
 
-        // Default to overall MTBF (used by "All Cases" and "Non Incident")
+        // Default to overall MTBF
         return $this->mtbf ?? 0;
     }
 
