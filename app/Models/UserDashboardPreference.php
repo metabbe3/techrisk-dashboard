@@ -95,6 +95,20 @@ class UserDashboardPreference extends Model
     public static function getAvailableWidgets(): array
     {
         return [
+            'total_incidents_only' => [
+                'class' => \App\Filament\Widgets\TotalIncidentsOnly::class,
+                'name' => 'Total Incidents',
+                'description' => 'Total count of Incidents only (excludes Issues)',
+                'icon' => 'heroicon-o-chart-bar',
+                'default_span' => 6,
+            ],
+            'total_issues' => [
+                'class' => \App\Filament\Widgets\TotalIncidents::class,
+                'name' => 'Total Issues',
+                'description' => 'Total count of all records (Incidents + Issues)',
+                'icon' => 'heroicon-o-chart-bar',
+                'default_span' => 6,
+            ],
             'incident_stats_overview' => [
                 'class' => \App\Filament\Widgets\IncidentStatsOverview::class,
                 'name' => 'Incident Stats Overview',
