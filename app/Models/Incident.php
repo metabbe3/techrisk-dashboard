@@ -138,8 +138,13 @@ class Incident extends Model implements Auditable
         // Get the active tab from the request (Filament uses 'tableActiveTab' query parameter)
         $activeTab = request()->query('tableActiveTab', 'All Cases');
 
-        // Special tabs: Fund Loss, Potential Recovery, Non Fund Loss, Non Incident
-        // These tabs should prioritize their specific MTBF values
+        // "All Cases" tab uses the default mtbf column directly
+        // (mtbf is calculated excluding Non Incident)
+        if ($activeTab === 'All Cases') {
+            return $this->mtbf ?? 0;
+        }
+
+        // Special tabs use their specific MTBF columns
         if ($activeTab === 'Fund Loss' || $this->fund_status === 'Confirmed loss') {
             return $this->mtbf_fund_loss ?? $this->mtbf ?? 0;
         }
@@ -156,40 +161,20 @@ class Incident extends Model implements Auditable
             return $this->mtbf_non_incident ?? $this->mtbf ?? 0;
         }
 
-        // For "All Cases" and other tabs, check severity FIRST, then fund status
-        // Priority: Severity > Fund Status > Other categories
-
-        // Check if this is P4
-        if ($this->severity === 'P4') {
-            return $this->mtbf_p4 ?? $this->mtbf ?? 0;
-        }
-
-        // Check if this is non-tech
-        if ($this->incident_type === 'Non-tech') {
-            return $this->mtbf_non_tech ?? $this->mtbf ?? 0;
-        }
-
-        // Check if this is a completed case
-        if ($this->incident_status === 'Completed') {
+        if ($activeTab === 'Completed Cases' || $this->incident_status === 'Completed') {
             return $this->mtbf_completed ?? $this->mtbf ?? 0;
         }
 
-        // Check if this is a recovered case (has recovered_fund > 0)
-        if ($this->recovered_fund > 0) {
+        if ($activeTab === 'Recovered Cases' || $this->recovered_fund > 0) {
             return $this->mtbf_recovered ?? $this->mtbf ?? 0;
         }
 
-        // Then check fund status (for All Cases where severity doesn't match)
-        if ($this->fund_status === 'Confirmed loss') {
-            return $this->mtbf_fund_loss ?? $this->mtbf ?? 0;
+        if ($activeTab === 'P4 Incidents' || $this->severity === 'P4') {
+            return $this->mtbf_p4 ?? $this->mtbf ?? 0;
         }
 
-        if ($this->fund_status === 'Non fundLoss') {
-            return $this->mtbf_non_fund_loss ?? $this->mtbf ?? 0;
-        }
-
-        if ($this->fund_status === 'Potential recovery') {
-            return $this->mtbf_potential_recovery ?? $this->mtbf ?? 0;
+        if ($activeTab === 'Non-Tech Incidents' || $this->incident_type === 'Non-tech') {
+            return $this->mtbf_non_tech ?? $this->mtbf ?? 0;
         }
 
         // Default to overall MTBF
