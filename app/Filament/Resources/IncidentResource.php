@@ -216,12 +216,34 @@ class IncidentResource extends Resource
                         'date_asc' => 'Date (Oldest First)',
                         'date_status' => 'Date → Status (Open First)',
                         'status_date' => 'Status → Date (Open First)',
+                        'status_date_asc' => 'Status → Date (Oldest First)',
                         'status_severity' => 'Status → Severity (P1 First)',
                         'severity_date' => 'Severity → Date (P1 First)',
                         'pic_date' => 'PIC → Date',
                         'mttr_desc' => 'MTTR (Highest First)',
                         'loss_desc' => 'Fund Loss (Highest First)',
                     ])
+                    ->indicateUsing(function (array $data): ?string {
+                        $value = $data['value'] ?? null;
+                        if ($value === null) {
+                            return null;
+                        }
+
+                        $labels = [
+                            'date_desc' => 'Sort: Date (Newest)',
+                            'date_asc' => 'Sort: Date (Oldest)',
+                            'date_status' => 'Sort: Date → Status',
+                            'status_date' => 'Sort: Status → Date (Newest)',
+                            'status_date_asc' => 'Sort: Status → Date (Oldest)',
+                            'status_severity' => 'Sort: Status → Severity',
+                            'severity_date' => 'Sort: Severity → Date',
+                            'pic_date' => 'Sort: PIC → Date',
+                            'mttr_desc' => 'Sort: MTTR',
+                            'loss_desc' => 'Sort: Fund Loss',
+                        ];
+
+                        return $labels[$value] ?? "Sort: {$value}";
+                    })
                     ->query(function (Builder $query, array $data) {
                         $value = $data['value'] ?? null;
 
@@ -238,6 +260,8 @@ class IncidentResource extends Resource
                                 ->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')"),
                             'status_date' => $query->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')")
                                 ->orderBy('incident_date', 'desc'),
+                            'status_date_asc' => $query->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')")
+                                ->orderBy('incident_date', 'asc'),
                             'status_severity' => $query->orderByRaw("FIELD(incident_status, 'Open', 'In progress', 'Finalization', 'Completed')")
                                 ->orderByRaw("FIELD(severity, 'P1', 'P2', 'P3', 'P4', 'G', 'X1', 'X2', 'X3', 'X4', 'Non Incident')"),
                             'severity_date' => $query->orderByRaw("FIELD(severity, 'P1', 'P2', 'P3', 'P4', 'G', 'X1', 'X2', 'X3', 'X4', 'Non Incident')")
