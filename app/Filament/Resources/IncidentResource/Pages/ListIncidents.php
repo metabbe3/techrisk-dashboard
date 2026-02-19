@@ -132,7 +132,11 @@ class ListIncidents extends ListRecords
             'Non-Tech Incidents' => Tab::make()
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_type', 'Non-tech')),
             'Fund Loss' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_loss', '>', 0)),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Confirmed loss')),
+            'Potential Recovery' => Tab::make()
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Potential recovery')),
+            'Non Fund Loss' => Tab::make()
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Non fundLoss')),
         ];
     }
 
