@@ -187,8 +187,10 @@ class RecalculateIncidentMetricsCommand extends Command
         // when incidents are sorted by (incident_date, id).
         // We find this by looking for incidents with (date < current_date) OR (date = current_date AND id < current_id)
         // and taking the maximum such incident by (date, id).
+        // EXCLUDE "Non Incident" severity from overall MTBF calculation
         $previousIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification) // Same classification only
+            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -228,6 +230,7 @@ class RecalculateIncidentMetricsCommand extends Command
             'fund_loss' => ['fund_status' => 'Confirmed loss'],
             'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
             'potential_recovery' => ['fund_status' => 'Potential recovery'],
+            'non_incident' => ['severity' => 'Non Incident'],
         ];
 
         // Process each category

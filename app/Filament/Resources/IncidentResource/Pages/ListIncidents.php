@@ -137,6 +137,8 @@ class ListIncidents extends ListRecords
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Potential recovery')),
             'Non Fund Loss' => Tab::make()
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Non fundLoss')),
+            'Non Incident' => Tab::make()
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('severity', 'Non Incident')),
         ];
     }
 

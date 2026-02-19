@@ -147,8 +147,10 @@ class IncidentObserver
         $year = $incident->incident_date->year;
         // Find the incident that comes immediately before the current incident
         // when sorted by (incident_date, id), AND has the same classification (Incident vs Issue)
+        // EXCLUDE "Non Incident" severity from overall MTBF calculation
         $previousIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification) // Same classification only
+            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -184,8 +186,10 @@ class IncidentObserver
         // Update next incident's MTBF
         // Find the incident that comes immediately after the current incident
         // when sorted by (incident_date, id), AND has the same classification (Incident vs Issue)
+        // EXCLUDE "Non Incident" severity from overall MTBF calculation
         $nextIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification) // Same classification only
+            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -239,6 +243,7 @@ class IncidentObserver
             'fund_loss' => ['fund_status' => 'Confirmed loss'],
             'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
             'potential_recovery' => ['fund_status' => 'Potential recovery'],
+            'non_incident' => ['severity' => 'Non Incident'],
         ];
 
         // Process each category

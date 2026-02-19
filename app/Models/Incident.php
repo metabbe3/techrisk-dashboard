@@ -69,6 +69,7 @@ class Incident extends Model implements Auditable
         'mtbf_fund_loss',
         'mtbf_non_fund_loss',
         'mtbf_potential_recovery',
+        'mtbf_non_incident',
     ];
 
     protected $casts = [
@@ -133,9 +134,14 @@ class Incident extends Model implements Auditable
     public function getMtbfDisplayAttribute(): int
     {
         // Priority order for determining which MTBF to show
-        // Fund status has highest priority since it's a key filter
+        // "Non Incident" has HIGHEST priority since it's excluded from overall MTBF
 
-        // Check fund status FIRST (highest priority)
+        // Check if this is a Non Incident FIRST (highest priority)
+        if ($this->severity === 'Non Incident') {
+            return $this->mtbf_non_incident ?? $this->mtbf ?? 0;
+        }
+
+        // Check fund status
         if ($this->fund_status === 'Confirmed loss') {
             return $this->mtbf_fund_loss ?? $this->mtbf ?? 0;
         }
