@@ -34,7 +34,6 @@ class IncidentStatsOverview extends BaseWidget
         }
 
         // Perform calculations on the filtered query
-        $totalIncidents = $query->clone()->count();
         $fundLossTotal = $query->clone()->where('incident_status', 'Completed')->sum('fund_loss');
         $recoveredTotal = $query->clone()->where('recovered_fund', '>', 0)->sum('recovered_fund');
         $mttr = $query->clone()->whereNotNull('mttr')->average('mttr');
@@ -67,10 +66,6 @@ class IncidentStatsOverview extends BaseWidget
         }
 
         return [
-            Stat::make('Total Issues', $totalIncidents)
-                ->description('Total issues (Incidents + Issues) '.$descriptionPeriod)
-                ->descriptionIcon('heroicon-m-chart-bar')
-                ->color('primary'),
             Stat::make('Last Incident', $lastIncidentDiff)
                 ->description('Days since the very last incident')
                 ->descriptionIcon('heroicon-m-clock')
