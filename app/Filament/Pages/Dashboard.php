@@ -13,6 +13,8 @@ use App\Filament\Widgets\MonthlyIncidentsChart;
 use App\Filament\Widgets\MttrMtbfTrendChart;
 use App\Filament\Widgets\OpenIncidents;
 use App\Filament\Widgets\RecentIncidents;
+use App\Filament\Widgets\TotalIncidents;
+use App\Filament\Widgets\TotalIncidentsOnly;
 use App\Models\UserDashboardPreference;
 use Filament\Actions\Action;
 use Filament\Pages\Dashboard as BaseDashboard;
@@ -56,7 +58,11 @@ class Dashboard extends BaseDashboard
 
         // Return default widgets with organized layout
         return [
-            // Row 1: Key Metrics Stats
+            // Row 1: Total Count Stats
+            TotalIncidentsOnly::class,              // Total Incidents only
+            TotalIncidents::class,                  // Total Issues (Incidents + Issues)
+
+            // Row 2: Key Metrics Stats
             IncidentStatsOverview::class,
             ActionImprovementsOverview::class,
 

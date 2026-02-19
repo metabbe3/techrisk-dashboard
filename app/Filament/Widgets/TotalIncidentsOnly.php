@@ -7,7 +7,7 @@ use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Livewire\Attributes\On;
 
-class TotalIncidents extends BaseWidget
+class TotalIncidentsOnly extends BaseWidget
 {
     public ?string $start_date = null;
 
@@ -15,7 +15,7 @@ class TotalIncidents extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Incident::query();
+        $query = Incident::query()->where('classification', 'Incident');
         $descriptionPeriod = 'this year';
 
         if ($this->start_date && $this->end_date) {
@@ -26,10 +26,10 @@ class TotalIncidents extends BaseWidget
         }
 
         return [
-            Stat::make('Total Issues', $query->count())
-                ->description('Total issues (Incidents + Issues) '.$descriptionPeriod)
-                ->descriptionIcon('heroicon-m-arrow-trending-up')
-                ->color('success'),
+            Stat::make('Total Incidents', $query->count())
+                ->description('Total incidents (Incidents only) '.$descriptionPeriod)
+                ->descriptionIcon('heroicon-m-chart-bar')
+                ->color('primary'),
         ];
     }
 
