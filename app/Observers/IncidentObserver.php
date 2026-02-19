@@ -152,16 +152,14 @@ class IncidentObserver
             ->first();
 
         if ($previousIncident) {
-            // MTBF = full 24-hour periods between incidents
-            $hoursDiff = abs($incident->incident_date
-                ->diffInHours($previousIncident->incident_date));
-            $incident->mtbf = intdiv($hoursDiff, 24);
+            // MTBF = calendar day difference (ignoring time)
+            $incident->mtbf = abs($incident->incident_date->startOfDay()
+                ->diffInDays($previousIncident->incident_date->startOfDay()));
         } else {
             // First incident of the year - calculate from Jan 1st
             $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $hoursDiff = abs($incident->incident_date
-                ->diffInHours($yearStart));
-            $incident->mtbf = intdiv($hoursDiff, 24);
+            $incident->mtbf = abs($incident->incident_date->startOfDay()
+                ->diffInDays($yearStart));
         }
 
         $incident->saveQuietly();
@@ -191,10 +189,9 @@ class IncidentObserver
             ->first();
 
         if ($nextIncident) {
-            // Update MTBF - full 24-hour periods from this incident to next
-            $hoursDiff = abs($nextIncident->incident_date
-                ->diffInHours($incident->incident_date));
-            $nextIncident->mtbf = intdiv($hoursDiff, 24);
+            // Update MTBF - calendar day difference from this incident to next
+            $nextIncident->mtbf = abs($nextIncident->incident_date->startOfDay()
+                ->diffInDays($incident->incident_date->startOfDay()));
 
             // Update MTTR
             if ($nextIncident->stop_bleeding_at) {

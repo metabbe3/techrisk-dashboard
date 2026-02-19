@@ -86,16 +86,18 @@ class RecalculateIncidentMetricsCommand extends Command
                 $this->newLine();
                 $this->line("  [DEBUG #{$debugCount}] {$incident->no} ({$incident->classification}) - {$incident->incident_date->format('Y-m-d H:i:s')}");
                 if ($previousIncident) {
-                    $hoursDiff = abs($incident->incident_date->diffInHours($previousIncident->incident_date));
+                    $daysDiff = abs($incident->incident_date->startOfDay()
+                        ->diffInDays($previousIncident->incident_date->startOfDay()));
                     $this->line("    Previous: {$previousIncident->no} ({$previousIncident->classification}) - {$previousIncident->incident_date->format('Y-m-d H:i:s')}");
-                    $this->line("    Hours diff: {$hoursDiff}h");
-                    $this->line("    MTBF = intdiv({$hoursDiff}, 24) = {$incident->mtbf}");
+                    $this->line("    Calendar day diff: {$daysDiff} days");
+                    $this->line("    MTBF = {$daysDiff}");
                 } else {
                     $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-                    $hoursDiff = abs($incident->incident_date->diffInHours($yearStart));
+                    $daysDiff = abs($incident->incident_date->startOfDay()
+                        ->diffInDays($yearStart));
                     $this->line("    First {$incident->classification} of year {$year}");
-                    $this->line("    Hours from Jan 1: {$hoursDiff}h");
-                    $this->line("    MTBF = intdiv({$hoursDiff}, 24) = {$incident->mtbf}");
+                    $this->line("    Days from Jan 1: {$daysDiff} days");
+                    $this->line("    MTBF = {$daysDiff}");
                 }
                 $this->line("    Old MTBF: {$oldMtbfbf} -> New MTBF: {$incident->mtbf}");
             }
@@ -196,16 +198,14 @@ class RecalculateIncidentMetricsCommand extends Command
             ->first();
 
         if ($previousIncident) {
-            // MTBF = full 24-hour periods between incidents
-            $hoursDiff = abs($incident->incident_date
-                ->diffInHours($previousIncident->incident_date));
-            $incident->mtbf = intdiv($hoursDiff, 24);
+            // MTBF = calendar day difference (ignoring time)
+            $incident->mtbf = abs($incident->incident_date->startOfDay()
+                ->diffInDays($previousIncident->incident_date->startOfDay()));
         } else {
             // First incident of the year - calculate from Jan 1st
             $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $hoursDiff = abs($incident->incident_date
-                ->diffInHours($yearStart));
-            $incident->mtbf = intdiv($hoursDiff, 24);
+            $incident->mtbf = abs($incident->incident_date->startOfDay()
+                ->diffInDays($yearStart));
         }
     }
 }
