@@ -16,7 +16,8 @@ class RecalculateIncidentMetricsCommand extends Command
     protected $signature = 'incidents:recalculate-metrics
         {--year= : Only recalculate for specific year}
         {--force : Force recalculation even if values exist}
-        {--dry-run : Show what would be changed without making changes}';
+        {--dry-run : Show what would be changed without making changes}
+        {--debug : Show detailed debug information for first 10 incidents}';
 
     /**
      * The console command description.
@@ -52,9 +53,11 @@ class RecalculateIncidentMetricsCommand extends Command
 
         $mttrUpdated = 0;
         $mtbfUpdated = 0;
+        $debugCount = 0;
         $bar = $this->output->createProgressBar($incidents->count());
 
         foreach ($incidents as $incident) {
+            $debugCount++;
             $oldMttr = $incident->mttr;
             $oldMtbfbf = $incident->mtbf;
 
@@ -63,6 +66,38 @@ class RecalculateIncidentMetricsCommand extends Command
 
             // Calculate MTBF
             $this->calculateMtbfbf($incident);
+
+            // Debug output for first 10 incidents
+            if ($this->option('debug') && $debugCount <= 10) {
+                $year = $incident->incident_date->year;
+                $previousIncident = Incident::whereYear('incident_date', $year)
+                    ->where(function ($query) use ($incident) {
+                        $query->where('incident_date', '<', $incident->incident_date)
+                            ->orWhere(function ($query) use ($incident) {
+                                $query->where('incident_date', '=', $incident->incident_date)
+                                    ->where('id', '<', $incident->id);
+                            });
+                    })
+                    ->orderBy('incident_date', 'desc')
+                    ->orderBy('id', 'desc')
+                    ->first();
+
+                $this->newLine();
+                $this->line("  [DEBUG #{$debugCount}] {$incident->no} - {$incident->incident_date->format('Y-m-d H:i:s')}");
+                if ($previousIncident) {
+                    $hoursDiff = abs($incident->incident_date->diffInHours($previousIncident->incident_date));
+                    $this->line("    Previous: {$previousIncident->no} - {$previousIncident->incident_date->format('Y-m-d H:i:s')}");
+                    $this->line("    Hours diff: {$hoursDiff}h");
+                    $this->line("    MTBF = intdiv({$hoursDiff}, 24) = {$incident->mtbf}");
+                } else {
+                    $yearStart = Carbon::create($year, 1, 1)->startOfDay();
+                    $hoursDiff = abs($incident->incident_date->diffInHours($yearStart));
+                    $this->line("    First incident of year {$year}");
+                    $this->line("    Hours from Jan 1: {$hoursDiff}h");
+                    $this->line("    MTBF = intdiv({$hoursDiff}, 24) = {$incident->mtbf}");
+                }
+                $this->line("    Old MTBF: {$oldMtbfbf} -> New MTBF: {$incident->mtbf}");
+            }
 
             // Check if values changed (use strict comparison with proper null handling)
             $mttrChanged = $oldMttr !== $incident->mttr || ($oldMttr === null && $incident->mttr !== null) || ($oldMttr !== null && $incident->mttr === null);
