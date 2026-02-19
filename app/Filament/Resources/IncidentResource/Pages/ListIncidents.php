@@ -122,7 +122,8 @@ class ListIncidents extends ListRecords
     public function getTabs(): array
     {
         return [
-            'All Cases' => Tab::make(),
+            'All Cases' => Tab::make()
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('severity', '!=', 'Non Incident')),
             'Completed Cases' => Tab::make()
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_status', 'Completed')),
             'Recovered Cases' => Tab::make()
