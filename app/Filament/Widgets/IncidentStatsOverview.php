@@ -40,21 +40,27 @@ class IncidentStatsOverview extends BaseWidget
         $mttr = $query->clone()->whereNotNull('mttr')->average('mttr');
 
         // Calculate MTBF correctly: Total Time Period / Number of Incidents
+        // Exclude 'Non Incident' and 'G' severities from MTBF calculation
+        $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
+        $mtbfCount = $mtbfQuery->count();
         $mtbf = 0;
-        if ($totalIncidents > 0) {
-            $minDate = $query->clone()->min('incident_date');
-            $maxDate = $query->clone()->max('incident_date');
+        if ($mtbfCount > 0) {
+            $minDate = $mtbfQuery->min('incident_date');
+            $maxDate = $mtbfQuery->max('incident_date');
 
             if ($minDate && $maxDate) {
                 $minDate = Carbon::parse($minDate)->startOfDay();
                 $maxDate = Carbon::parse($maxDate)->startOfDay();
                 $totalDays = $minDate->diffInDays($maxDate);
-                $mtbf = $totalIncidents > 1 ? $totalDays / ($totalIncidents - 1) : 0;
+                $mtbf = $mtbfCount > 1 ? $totalDays / ($mtbfCount - 1) : 0;
             }
         }
 
         // Last Incident calculation should always be based on all data, not filtered
-        $lastIncident = Incident::latest('incident_date')->first();
+        // Exclude 'Non Incident' and 'G' severities
+        $lastIncident = Incident::whereNotIn('severity', ['Non Incident', 'G'])
+            ->latest('incident_date')
+            ->first();
         $lastIncidentDiff = 'N/A';
         if ($lastIncident) {
             $lastIncidentDiff = Carbon::parse($lastIncident->incident_date)->diffInDays(Carbon::now()).' days ago';

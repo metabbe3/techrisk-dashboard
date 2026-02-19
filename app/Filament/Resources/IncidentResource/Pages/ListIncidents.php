@@ -85,16 +85,19 @@ class ListIncidents extends ListRecords
                     $totalCases = $query->count();
 
                     // Calculate MTBF correctly: Total Time Period / Number of Incidents
+                    // Exclude 'Non Incident' and 'G' severities from MTBF calculation
+                    $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
+                    $mtbfCount = $mtbfQuery->count();
                     $avgMtbf = 0;
-                    if ($totalCases > 0) {
-                        $minDate = $query->min('incident_date');
-                        $maxDate = $query->max('incident_date');
+                    if ($mtbfCount > 0) {
+                        $minDate = $mtbfQuery->min('incident_date');
+                        $maxDate = $mtbfQuery->max('incident_date');
 
                         if ($minDate && $maxDate) {
                             $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
                             $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
                             $totalDays = $minDate->diffInDays($maxDate);
-                            $avgMtbf = $totalCases > 1 ? round($totalDays / ($totalCases - 1), 3) : 0;
+                            $avgMtbf = $mtbfCount > 1 ? round($totalDays / ($mtbfCount - 1), 3) : 0;
                         }
                     }
 
@@ -151,16 +154,19 @@ class ListIncidents extends ListRecords
         $totalCases = $query->count();
 
         // Calculate MTBF correctly: Total Time Period / Number of Incidents
+        // Exclude 'Non Incident' and 'G' severities from MTBF calculation
+        $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
+        $mtbfCount = $mtbfQuery->count();
         $avgMtbf = 0;
-        if ($totalCases > 0) {
-            $minDate = $query->min('incident_date');
-            $maxDate = $query->max('incident_date');
+        if ($mtbfCount > 0) {
+            $minDate = $mtbfQuery->min('incident_date');
+            $maxDate = $mtbfQuery->max('incident_date');
 
             if ($minDate && $maxDate) {
                 $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
                 $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
                 $totalDays = $minDate->diffInDays($maxDate);
-                $avgMtbf = $totalCases > 1 ? round($totalDays / ($totalCases - 1), 3) : 0;
+                $avgMtbf = $mtbfCount > 1 ? round($totalDays / ($mtbfCount - 1), 3) : 0;
             }
         }
 
