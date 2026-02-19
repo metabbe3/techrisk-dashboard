@@ -135,9 +135,18 @@ class IncidentObserver
 
         // Calculate MTBF using optimized query with index
         $year = $incident->incident_date->year;
-        $previousIncident = Incident::where('incident_date', '<', $incident->incident_date)
-            ->whereYear('incident_date', $year)
+        // Find the incident that comes immediately before the current incident
+        // when sorted by (incident_date, id)
+        $previousIncident = Incident::whereYear('incident_date', $year)
+            ->where(function ($query) use ($incident) {
+                $query->where('incident_date', '<', $incident->incident_date)
+                    ->orWhere(function ($query) use ($incident) {
+                        $query->where('incident_date', '=', $incident->incident_date)
+                            ->where('id', '<', $incident->id);
+                    });
+            })
             ->orderBy('incident_date', 'desc')
+            ->orderBy('id', 'desc')
             ->first();
 
         if ($previousIncident) {
@@ -161,9 +170,18 @@ class IncidentObserver
         $year = $incident->incident_date->year;
 
         // Update next incident's MTBF
-        $nextIncident = Incident::where('incident_date', '>', $incident->incident_date)
-            ->whereYear('incident_date', $year)
+        // Find the incident that comes immediately after the current incident
+        // when sorted by (incident_date, id)
+        $nextIncident = Incident::whereYear('incident_date', $year)
+            ->where(function ($query) use ($incident) {
+                $query->where('incident_date', '>', $incident->incident_date)
+                    ->orWhere(function ($query) use ($incident) {
+                        $query->where('incident_date', '=', $incident->incident_date)
+                            ->where('id', '>', $incident->id);
+                    });
+            })
             ->orderBy('incident_date', 'asc')
+            ->orderBy('id', 'asc')
             ->first();
 
         if ($nextIncident) {

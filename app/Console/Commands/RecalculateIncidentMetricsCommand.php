@@ -63,9 +63,9 @@ class RecalculateIncidentMetricsCommand extends Command
             // Calculate MTBF
             $this->calculateMtbfbf($incident);
 
-            // Check if values changed
-            $mttrChanged = $oldMttr != $incident->mttr;
-            $mtbfChanged = $oldMtbfbf != $incident->mtbf;
+            // Check if values changed (use strict comparison with proper null handling)
+            $mttrChanged = $oldMttr !== $incident->mttr || ($oldMttr === null && $incident->mttr !== null) || ($oldMttr !== null && $incident->mttr === null);
+            $mtbfChanged = $oldMtbfbf !== $incident->mtbf || ($oldMtbfbf === null && $incident->mtbf !== null) || ($oldMtbfbf !== null && $incident->mtbf === null);
 
             if ($mttrChanged) {
                 $mttrUpdated++;
@@ -139,9 +139,20 @@ class RecalculateIncidentMetricsCommand extends Command
         $year = $incident->incident_date->year;
 
         // Find previous incident in the same year
-        $previousIncident = Incident::where('incident_date', '<', $incident->incident_date)
-            ->whereYear('incident_date', $year)
+        // The previous incident is the one that comes immediately before the current incident
+        // when incidents are sorted by (incident_date, id).
+        // We find this by looking for incidents with (date < current_date) OR (date = current_date AND id < current_id)
+        // and taking the maximum such incident by (date, id).
+        $previousIncident = Incident::whereYear('incident_date', $year)
+            ->where(function ($query) use ($incident) {
+                $query->where('incident_date', '<', $incident->incident_date)
+                    ->orWhere(function ($query) use ($incident) {
+                        $query->where('incident_date', '=', $incident->incident_date)
+                            ->where('id', '<', $incident->id);
+                    });
+            })
             ->orderBy('incident_date', 'desc')
+            ->orderBy('id', 'desc')
             ->first();
 
         if ($previousIncident) {
