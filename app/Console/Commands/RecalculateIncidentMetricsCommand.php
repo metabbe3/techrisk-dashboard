@@ -160,11 +160,11 @@ class RecalculateIncidentMetricsCommand extends Command
 
         if ($previousIncident) {
             // Days from previous incident (simple calendar date difference)
-            $incident->mtbf = $incident->incident_date->diffInDays($previousIncident->incident_date);
+            $incident->mtbf = abs($incident->incident_date->diffInDays($previousIncident->incident_date));
         } else {
             // First incident of the year - calculate from Jan 1st (simple calendar date difference)
             $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf = $incident->incident_date->diffInDays($yearStart);
+            $incident->mtbf = abs($incident->incident_date->diffInDays($yearStart));
         }
     }
 }
