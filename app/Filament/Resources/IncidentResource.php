@@ -176,6 +176,9 @@ class IncidentResource extends Resource
                 TextColumn::make('incident_status')->badge()->color(fn (string $state): string => match ($state) {
                     'Open' => 'warning', 'In progress' => 'info', 'Finalization' => 'primary', 'Completed' => 'success', default => 'gray',
                 })->sortable(),
+                TextColumn::make('fund_status')->badge()->color(fn (string $state): string => match ($state) {
+                    'Confirmed loss' => 'danger', 'Non fundLoss' => 'success', 'Potential recovery' => 'warning', default => 'gray',
+                })->sortable()->toggleable(),
                 TextColumn::make('pic.name')->label('PIC')->sortable()->toggleable(),
                 TextColumn::make('incident_date')->dateTime()->sortable(),
                 TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->summarize(Sum::make()->money('IDR')->label('Total Potential')),
@@ -291,6 +294,15 @@ class IncidentResource extends Resource
                                 fn (Builder $query, $date): Builder => $query->whereDate('incident_date', '<=', $date),
                             );
                     }),
+
+                // 3. Fund Status Filter
+                SelectFilter::make('fund_status')
+                    ->label('Fund Status')
+                    ->options([
+                        'Confirmed loss' => 'Fund Loss',
+                        'Non fundLoss' => 'Non Fund Loss',
+                        'Potential recovery' => 'Potential Recovery',
+                    ]),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),

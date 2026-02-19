@@ -133,7 +133,20 @@ class Incident extends Model implements Auditable
     public function getMtbfDisplayAttribute(): int
     {
         // Priority order for determining which MTBF to show
-        // This matches the filter tabs in the frontend
+        // Fund status has highest priority since it's a key filter
+
+        // Check fund status FIRST (highest priority)
+        if ($this->fund_status === 'Confirmed loss') {
+            return $this->mtbf_fund_loss ?? $this->mtbf ?? 0;
+        }
+
+        if ($this->fund_status === 'Non fundLoss') {
+            return $this->mtbf_non_fund_loss ?? $this->mtbf ?? 0;
+        }
+
+        if ($this->fund_status === 'Potential recovery') {
+            return $this->mtbf_potential_recovery ?? $this->mtbf ?? 0;
+        }
 
         // Check if this is a recovered case (has recovered_fund > 0)
         if ($this->recovered_fund > 0) {
@@ -153,19 +166,6 @@ class Incident extends Model implements Auditable
         // Check if this is non-tech
         if ($this->incident_type === 'Non-tech') {
             return $this->mtbf_non_tech ?? $this->mtbf ?? 0;
-        }
-
-        // Check fund status
-        if ($this->fund_status === 'Confirmed loss') {
-            return $this->mtbf_fund_loss ?? $this->mtbf ?? 0;
-        }
-
-        if ($this->fund_status === 'Non fundLoss') {
-            return $this->mtbf_non_fund_loss ?? $this->mtbf ?? 0;
-        }
-
-        if ($this->fund_status === 'Potential recovery') {
-            return $this->mtbf_potential_recovery ?? $this->mtbf ?? 0;
         }
 
         // Default to overall MTBF
