@@ -163,7 +163,7 @@ class IncidentResource extends Resource
                 TextColumn::make('mttr_formatted')->label('MTTR (mins)')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
                 }),
-                TextColumn::make('mtbf')->label('MTBF (days)')->sortable()->summarize(Average::make()->label('Avg MTBF')),
+                TextColumn::make('mtbf_display')->label('MTBF (days)')->sortable(),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
                     'P1' => 'danger',
                     'P2' => 'warning',

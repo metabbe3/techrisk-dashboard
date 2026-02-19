@@ -15,7 +15,9 @@ use OwenIt\Auditing\Contracts\Auditable;
 class Incident extends Model implements Auditable
 {
     use HasFactory;
-    use \OwenIt\Auditing\Auditable;
+    use \OwenIt\Auditing\Auditing;
+
+    protected $appends = ['mtbf_display'];
 
     protected $fillable = [
         'no',
@@ -119,6 +121,54 @@ class Incident extends Model implements Auditable
         }
 
         return "{$hours}h {$mins}m";
+    }
+
+    /**
+     * Get the appropriate MTBF value based on incident category.
+     * This dynamically returns the correct MTBF column based on which category
+     * the incident belongs to, allowing the frontend to display "MTBF" with the
+     * correct value for each filtered view.
+     */
+    public function getMtbfDisplayAttribute(): int
+    {
+        // Priority order for determining which MTBF to show
+        // This matches the filter tabs in the frontend
+
+        // Check if this is a recovered case (has recovered_fund > 0)
+        if ($this->recovered_fund > 0) {
+            return $this->mtbf_recovered ?? $this->mtbf ?? 0;
+        }
+
+        // Check if this is a completed case
+        if ($this->incident_status === 'Completed') {
+            return $this->mtbf_completed ?? $this->mtbf ?? 0;
+        }
+
+        // Check if this is P4
+        if ($this->severity === 'P4') {
+            return $this->mtbf_p4 ?? $this->mtbf ?? 0;
+        }
+
+        // Check if this is non-tech
+        if ($this->incident_type === 'Non-tech') {
+            return $this->mtbf_non_tech ?? $this->mtbf ?? 0;
+        }
+
+        // Check fund status
+        if ($this->fund_status === 'Confirmed loss') {
+            return $this->mtbf_fund_loss ?? $this->mtbf ?? 0;
+        }
+
+        if ($this->fund_status === 'Non fundLoss') {
+            return $this->mtbf_non_fund_loss ?? $this->mtbf ?? 0;
+        }
+
+        if ($this->fund_status === 'Potential recovery') {
+            return $this->mtbf_potential_recovery ?? $this->mtbf ?? 0;
+        }
+
+        // Default to overall MTBF
+        return $this->mtbf ?? 0;
     }
 
     public function pic(): BelongsTo
