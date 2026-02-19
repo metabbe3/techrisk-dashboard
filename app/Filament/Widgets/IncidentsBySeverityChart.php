@@ -22,6 +22,23 @@ class IncidentsBySeverityChart extends Widget
 
     public $severityData = [];
 
+    /**
+     * Custom severity order for sorting.
+     */
+    protected array $severityOrder = [
+        'P1' => 1,
+        'P2' => 2,
+        'P3' => 3,
+        'P4' => 4,
+        'Non Incident' => 5,
+        'X1' => 6,
+        'X2' => 7,
+        'X3' => 8,
+        'X4' => 9,
+        'G' => 10,
+        'N' => 11,
+    ];
+
     public function mount(): void
     {
         $this->severityData = $this->getSeverityData();
@@ -69,7 +86,10 @@ class IncidentsBySeverityChart extends Widget
                 'count' => $item->total,
                 'percentage' => $percentage,
             ];
-        })->sortByDesc('count')->values()->toArray();
+        })->sortBy(function ($item) {
+            // Sort by custom severity order
+            return $this->severityOrder[$item['severity']] ?? 999;
+        })->values()->toArray();
     }
 
     /**
@@ -82,7 +102,9 @@ class IncidentsBySeverityChart extends Widget
             'P2' => 'warning',
             'P3' => 'info',
             'P4' => 'success',
-            'G' => 'success',
+            'G', 'N' => 'success',
+            'Non Incident' => 'gray',
+            'X1', 'X2', 'X3', 'X4' => 'gray',
             default => 'gray',
         };
     }
