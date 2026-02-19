@@ -2,14 +2,14 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\Incident;
+use App\Models\ActionImprovement;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Livewire\Attributes\On;
 
-class TotalIncidentsOnly extends BaseWidget
+class DoneActionImprovement extends BaseWidget
 {
-    protected int|string|array $columnSpan = 4;
+    protected int|string|array $columnSpan = 6;
 
     public ?string $start_date = null;
 
@@ -17,21 +17,22 @@ class TotalIncidentsOnly extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Incident::query()->where('classification', 'Incident');
+        $query = ActionImprovement::query();
         $descriptionPeriod = 'this year';
 
         if ($this->start_date && $this->end_date) {
-            $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
+            $query->whereBetween('created_at', [$this->start_date, $this->end_date]);
             $descriptionPeriod = 'in the selected period';
         } else {
-            $query->whereYear('incident_date', now()->year);
+            $query->whereYear('created_at', now()->year);
         }
 
+        $doneCount = $query->where('status', 'done')->count();
+
         return [
-            Stat::make('Total Incidents', $query->count())
-                ->description('Total incidents (Incidents only) '.$descriptionPeriod)
-                ->descriptionIcon('heroicon-m-chart-bar')
-                ->color('primary'),
+            Stat::make('Done Action', $doneCount)
+                ->description('Done actions '.$descriptionPeriod)
+                ->color('success'),
         ];
     }
 

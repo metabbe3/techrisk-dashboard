@@ -21,7 +21,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
     protected function getData(): array
     {
-        $cacheKey = 'mttr_mtbf_trend_' . md5(json_encode([
+        $cacheKey = 'mttr_mtbf_trend_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,

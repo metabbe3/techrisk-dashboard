@@ -20,7 +20,7 @@ class IncidentsByPicChart extends ChartWidget
 
     protected function getData(): array
     {
-        $cacheKey = 'incidents_by_pic_' . md5(json_encode([
+        $cacheKey = 'incidents_by_pic_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,

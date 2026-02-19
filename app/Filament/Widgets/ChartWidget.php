@@ -24,7 +24,7 @@ class ChartWidget extends BaseWidget
             return [];
         }
 
-        $cacheKey = 'chart_widget_' . md5($this->query);
+        $cacheKey = 'chart_widget_'.md5($this->query);
 
         try {
             $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
@@ -36,6 +36,7 @@ class ChartWidget extends BaseWidget
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return [];
         }
 

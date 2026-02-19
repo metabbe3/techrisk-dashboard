@@ -21,7 +21,7 @@ class FundLossTrendChart extends ChartWidget
 
     protected function getData(): array
     {
-        $cacheKey = 'fund_loss_trend_' . md5(json_encode([
+        $cacheKey = 'fund_loss_trend_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,

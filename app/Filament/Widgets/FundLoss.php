@@ -7,9 +7,9 @@ use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Livewire\Attributes\On;
 
-class TotalIncidentsOnly extends BaseWidget
+class FundLoss extends BaseWidget
 {
-    protected int|string|array $columnSpan = 4;
+    protected int|string|array $columnSpan = 3;
 
     public ?string $start_date = null;
 
@@ -17,7 +17,7 @@ class TotalIncidentsOnly extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Incident::query()->where('classification', 'Incident');
+        $query = Incident::query();
         $descriptionPeriod = 'this year';
 
         if ($this->start_date && $this->end_date) {
@@ -27,11 +27,13 @@ class TotalIncidentsOnly extends BaseWidget
             $query->whereYear('incident_date', now()->year);
         }
 
+        $fundLossTotal = $query->where('incident_status', 'Completed')->sum('fund_loss');
+
         return [
-            Stat::make('Total Incidents', $query->count())
-                ->description('Total incidents (Incidents only) '.$descriptionPeriod)
-                ->descriptionIcon('heroicon-m-chart-bar')
-                ->color('primary'),
+            Stat::make('Fund Loss', 'IDR '.number_format($fundLossTotal, 0, ',', '.'))
+                ->description('Total fund loss '.$descriptionPeriod)
+                ->descriptionIcon('heroicon-m-arrow-trending-down')
+                ->color('danger'),
         ];
     }
 

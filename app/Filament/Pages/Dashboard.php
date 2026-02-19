@@ -2,17 +2,22 @@
 
 namespace App\Filament\Pages;
 
-use App\Filament\Widgets\ActionImprovementsOverview;
+use App\Filament\Widgets\DoneActionImprovement;
+use App\Filament\Widgets\FundLoss;
 use App\Filament\Widgets\FundLossTrendChart;
 use App\Filament\Widgets\IncidentsByLabelChart;
 use App\Filament\Widgets\IncidentsByPicChart;
 use App\Filament\Widgets\IncidentsBySeverityChart;
 use App\Filament\Widgets\IncidentsByTypeChart;
-use App\Filament\Widgets\IncidentStatsOverview;
+use App\Filament\Widgets\LastIncident;
 use App\Filament\Widgets\MonthlyIncidentsChart;
+use App\Filament\Widgets\MtbfStat;
 use App\Filament\Widgets\MttrMtbfTrendChart;
+use App\Filament\Widgets\MttrStat;
 use App\Filament\Widgets\OpenIncidents;
+use App\Filament\Widgets\PendingActionImprovement;
 use App\Filament\Widgets\RecentIncidents;
+use App\Filament\Widgets\RecoveredFund;
 use App\Filament\Widgets\TotalIncidents;
 use App\Filament\Widgets\TotalIncidentsOnly;
 use App\Models\UserDashboardPreference;
@@ -58,13 +63,20 @@ class Dashboard extends BaseDashboard
 
         // Return default widgets with organized layout
         return [
-            // Row 1: Total Count Stats
-            TotalIncidentsOnly::class,              // Total Incidents only
-            TotalIncidents::class,                  // Total Issues (Incidents + Issues)
+            // Row 1: Total Incidents, Total Issues, Last Incident (4 cols each = 12 cols)
+            TotalIncidentsOnly::class,              // 4 cols - Total Incidents
+            TotalIncidents::class,                  // 4 cols - Total Issues
+            LastIncident::class,                    // 4 cols - Last Incident
 
-            // Row 2: Key Metrics Stats
-            IncidentStatsOverview::class,
-            ActionImprovementsOverview::class,
+            // Row 2: Fund Loss, Recovered, MTTR, MTBF (3 cols each = 12 cols)
+            FundLoss::class,                        // 3 cols - Fund Loss
+            RecoveredFund::class,                   // 3 cols - Recovered
+            MttrStat::class,                        // 3 cols - MTTR
+            MtbfStat::class,                        // 3 cols - MTBF
+
+            // Row 3: Pending and Done Actions (6 cols each = 12 cols)
+            PendingActionImprovement::class,        // 6 cols - Pending Actions
+            DoneActionImprovement::class,           // 6 cols - Done Actions
 
             // Row 2: Charts (3 charts, 4 columns each = 12 columns total)
             MonthlyIncidentsChart::class,          // 4 cols
