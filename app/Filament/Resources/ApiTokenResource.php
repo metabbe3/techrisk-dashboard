@@ -118,9 +118,9 @@ class ApiTokenResource extends Resource
                     ->dateTime('M d, Y H:i')
                     ->sortable()
                     ->default('Never')
-                    ->color(fn ($state): string => ! $state ? 'gray' : (now()->diffInDays($state) > 25 ? 'danger' : 'success')
+                    ->color(fn ($state): string => ! $state || $state === 'Never' ? 'gray' : (now()->diffInDays($state) > 25 ? 'danger' : 'success')
                     )
-                    ->description(fn ($state): ?string => $state ? now()->diffInDays($state).' days ago' : null
+                    ->description(fn ($state): ?string => ($state && $state !== 'Never') ? now()->diffInDays($state).' days ago' : null
                     ),
 
                 Tables\Columns\TextColumn::make('created_at')
