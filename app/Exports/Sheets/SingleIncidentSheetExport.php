@@ -61,12 +61,12 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 } elseif ($incident->mttr < 0) {
                     // Fund loss - stored as negative days
                     $days = abs($incident->mttr);
-                    $row[] = $days . ' day' . ($days > 1 ? 's' : '');
+                    $row[] = $days.' day'.($days > 1 ? 's' : '');
                 } else {
                     // Regular incident - stored as minutes
                     $minutes = $incident->mttr;
                     if ($minutes < 60) {
-                        $row[] = $minutes . ' min' . ($minutes > 1 ? 's' : '');
+                        $row[] = $minutes.' min'.($minutes > 1 ? 's' : '');
                     } else {
                         $hours = floor($minutes / 60);
                         $mins = $minutes % 60;
@@ -105,10 +105,26 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 // Calculate stats for this specific sheet
                 $query = $this->query->clone();
                 $avgMttr = round($query->where('mttr', '>=', 0)->avg('mttr'), 2); // Exclude fund loss (negative values)
+
+                // Calculate MTBF correctly: Total Time Period / Number of Incidents
+                $totalCases = $query->count();
+                $avgMtbf = 0;
+                if ($totalCases > 0) {
+                    $minDate = $query->min('incident_date');
+                    $maxDate = $query->max('incident_date');
+
+                    if ($minDate && $maxDate) {
+                        $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
+                        $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
+                        $totalDays = $minDate->diffInDays($maxDate);
+                        $avgMtbf = $totalCases > 1 ? round($totalDays / ($totalCases - 1), 3) : 0;
+                    }
+                }
+
                 $this->stats = [
-                    'totalCases' => $query->count(),
+                    'totalCases' => $totalCases,
                     'avgMttr' => $avgMttr,
-                    'avgMtbf' => round($query->avg('mtbf'), 2),
+                    'avgMtbf' => $avgMtbf,
                     'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
                     'totalFundLoss' => $query->sum('fund_loss'),
                     'totalRecoveredFund' => $query->sum('recovered_fund'),

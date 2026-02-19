@@ -38,7 +38,20 @@ class IncidentStatsOverview extends BaseWidget
         $fundLossTotal = $query->clone()->where('incident_status', 'Completed')->sum('fund_loss');
         $recoveredTotal = $query->clone()->where('recovered_fund', '>', 0)->sum('recovered_fund');
         $mttr = $query->clone()->whereNotNull('mttr')->average('mttr');
-        $mtbf = $query->clone()->whereNotNull('mtbf')->average('mtbf');
+
+        // Calculate MTBF correctly: Total Time Period / Number of Incidents
+        $mtbf = 0;
+        if ($totalIncidents > 0) {
+            $minDate = $query->clone()->min('incident_date');
+            $maxDate = $query->clone()->max('incident_date');
+
+            if ($minDate && $maxDate) {
+                $minDate = Carbon::parse($minDate)->startOfDay();
+                $maxDate = Carbon::parse($maxDate)->startOfDay();
+                $totalDays = $minDate->diffInDays($maxDate);
+                $mtbf = $totalIncidents > 1 ? $totalDays / ($totalIncidents - 1) : 0;
+            }
+        }
 
         // Last Incident calculation should always be based on all data, not filtered
         $lastIncident = Incident::latest('incident_date')->first();

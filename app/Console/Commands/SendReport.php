@@ -74,7 +74,22 @@ class SendReport extends Command
             $metrics['avg_mttr'] = $incidents->avg('mttr');
         }
         if (in_array('avg_mtbf', $template->metrics)) {
-            $metrics['avg_mtbf'] = $incidents->avg('mtbf');
+            // Calculate MTBF correctly: Total Time Period / Number of Incidents
+            $totalIncidents = $incidents->count();
+            $avgMtbf = 0;
+
+            if ($totalIncidents > 0) {
+                $minDate = $query->min('incident_date');
+                $maxDate = $query->max('incident_date');
+
+                if ($minDate && $maxDate) {
+                    $minDate = Carbon::parse($minDate)->startOfDay();
+                    $maxDate = Carbon::parse($maxDate)->startOfDay();
+                    $totalDays = $minDate->diffInDays($maxDate);
+                    $avgMtbf = $totalIncidents > 1 ? round($totalDays / ($totalIncidents - 1), 3) : 0;
+                }
+            }
+            $metrics['avg_mtbf'] = $avgMtbf;
         }
 
         $allColumns = array_merge(...array_values((new \App\Filament\Pages\Reporting)->getColumns()));

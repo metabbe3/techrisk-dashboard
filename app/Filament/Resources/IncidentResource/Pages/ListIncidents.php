@@ -82,10 +82,26 @@ class ListIncidents extends ListRecords
                     // For MTBF/MTTR metrics to be meaningful, sort by incident date
                     $query->orderBy('incident_date', 'asc');
 
+                    $totalCases = $query->count();
+
+                    // Calculate MTBF correctly: Total Time Period / Number of Incidents
+                    $avgMtbf = 0;
+                    if ($totalCases > 0) {
+                        $minDate = $query->min('incident_date');
+                        $maxDate = $query->max('incident_date');
+
+                        if ($minDate && $maxDate) {
+                            $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
+                            $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
+                            $totalDays = $minDate->diffInDays($maxDate);
+                            $avgMtbf = $totalCases > 1 ? round($totalDays / ($totalCases - 1), 3) : 0;
+                        }
+                    }
+
                     $stats = [
-                        'totalCases' => $query->count(),
+                        'totalCases' => $totalCases,
                         'avgMttr' => round($query->avg('mttr'), 2),
-                        'avgMtbf' => round($query->avg('mtbf'), 2),
+                        'avgMtbf' => $avgMtbf,
                         'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
                         'totalFundLoss' => $query->sum('fund_loss'),
                         'totalRecoveredFund' => $query->sum('recovered_fund'),
@@ -125,10 +141,26 @@ class ListIncidents extends ListRecords
         // Clone the query to avoid affecting the main table query
         $query = $this->getFilteredTableQuery()->clone();
 
+        $totalCases = $query->count();
+
+        // Calculate MTBF correctly: Total Time Period / Number of Incidents
+        $avgMtbf = 0;
+        if ($totalCases > 0) {
+            $minDate = $query->min('incident_date');
+            $maxDate = $query->max('incident_date');
+
+            if ($minDate && $maxDate) {
+                $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
+                $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
+                $totalDays = $minDate->diffInDays($maxDate);
+                $avgMtbf = $totalCases > 1 ? round($totalDays / ($totalCases - 1), 3) : 0;
+            }
+        }
+
         $stats = [
-            'totalCases' => $query->count(),
+            'totalCases' => $totalCases,
             'avgMttr' => round($query->avg('mttr'), 2),
-            'avgMtbf' => round($query->avg('mtbf'), 2),
+            'avgMtbf' => $avgMtbf,
             'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
             'totalFundLoss' => $query->sum('fund_loss'),
             'totalRecoveredFund' => $query->sum('recovered_fund'),

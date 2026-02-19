@@ -18,7 +18,7 @@ class IncidentsBySeverityChart extends Widget
 
     public ?string $end_date = null;
 
-    protected int | string | array $columnSpan = 4;
+    protected int|string|array $columnSpan = 4;
 
     public $severityData = [];
 
@@ -46,19 +46,18 @@ class IncidentsBySeverityChart extends Widget
 
     /**
      * Get the severity data for the table.
-     *
-     * @return array
      */
     protected function getSeverityData(): array
     {
-        $cacheKey = 'incidents_by_severity_' . md5(json_encode([
+        $cacheKey = 'incidents_by_severity_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
         ]));
 
         $results = Cache::remember($cacheKey, now()->addMinutes(15), function () {
-            $query = Incident::select('severity', DB::raw('count(*) as total'));
+            $query = Incident::select('severity', DB::raw('count(*) as total'))
+                ->where('classification', 'Incident'); // Only count Incidents, not Issues
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
@@ -97,7 +96,7 @@ class IncidentsBySeverityChart extends Widget
      */
     protected function getSeverityColor(string $severity): string
     {
-        return match($severity) {
+        return match ($severity) {
             'P1' => 'danger',
             'P2' => 'warning',
             'P3' => 'info',
@@ -114,7 +113,7 @@ class IncidentsBySeverityChart extends Widget
      */
     protected function getPercentageColor(float $percentage): string
     {
-        return match(true) {
+        return match (true) {
             $percentage >= 30 => 'danger',
             $percentage >= 20 => 'warning',
             $percentage >= 10 => 'info',

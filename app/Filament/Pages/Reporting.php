@@ -16,8 +16,8 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
-use Filament\Pages\Page;
 use Filament\Notifications\Notification;
+use Filament\Pages\Page;
 use Maatwebsite\Excel\Facades\Excel;
 
 class Reporting extends Page implements HasForms
@@ -248,7 +248,23 @@ class Reporting extends Page implements HasForms
             $metrics['avg_mttr'] = (clone $query)->avg('mttr');
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
-            $metrics['avg_mtbf'] = (clone $query)->avg('mtbf');
+            // Calculate MTBF correctly: Total Time Period / Number of Incidents
+            $queryForMtbf = clone $query;
+            $totalIncidents = $queryForMtbf->count();
+            $avgMtbf = 0;
+
+            if ($totalIncidents > 0) {
+                $minDate = $queryForMtbf->min('incident_date');
+                $maxDate = $queryForMtbf->max('incident_date');
+
+                if ($minDate && $maxDate) {
+                    $minDate = Carbon::parse($minDate)->startOfDay();
+                    $maxDate = Carbon::parse($maxDate)->startOfDay();
+                    $totalDays = $minDate->diffInDays($maxDate);
+                    $avgMtbf = $totalIncidents > 1 ? round($totalDays / ($totalIncidents - 1), 3) : 0;
+                }
+            }
+            $metrics['avg_mtbf'] = $avgMtbf;
         }
         $this->metrics = $metrics;
 

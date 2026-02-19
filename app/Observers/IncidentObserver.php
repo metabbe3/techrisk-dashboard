@@ -122,8 +122,9 @@ class IncidentObserver
         if ($incident->stop_bleeding_at) {
             if ($incident->shouldCalculateMttrByDays()) {
                 // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
+                // Add 1 to include both start and end days in the count
                 $days = $incident->incident_date->startOfDay()
-                    ->diffInDays($incident->stop_bleeding_at->startOfDay());
+                    ->diffInDays($incident->stop_bleeding_at->startOfDay()) + 1;
                 $incident->mttr = -$days; // Negative to indicate days vs minutes
             } else {
                 // "Non fundLoss" - store as MINUTES
@@ -150,13 +151,12 @@ class IncidentObserver
             ->first();
 
         if ($previousIncident) {
-            // Days from previous incident (date-only, ignoring time)
-            $incident->mtbf = $previousIncident->incident_date->startOfDay()
-                ->diffInDays($incident->incident_date->startOfDay());
+            // Days from previous incident (simple calendar date difference)
+            $incident->mtbf = $incident->incident_date->diffInDays($previousIncident->incident_date);
         } else {
-            // First incident of the year - calculate from Jan 1st (date-only)
+            // First incident of the year - calculate from Jan 1st (simple calendar date difference)
             $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf = $yearStart->diffInDays($incident->incident_date->startOfDay());
+            $incident->mtbf = $incident->incident_date->diffInDays($yearStart);
         }
 
         $incident->saveQuietly();
@@ -185,16 +185,16 @@ class IncidentObserver
             ->first();
 
         if ($nextIncident) {
-            // Update MTBF - days from this incident to next (date-only, ignoring time)
-            $nextIncident->mtbf = $incident->incident_date->startOfDay()
-                ->diffInDays($nextIncident->incident_date->startOfDay());
+            // Update MTBF - days from this incident to next (simple calendar date difference)
+            $nextIncident->mtbf = $nextIncident->incident_date->diffInDays($incident->incident_date);
 
             // Update MTTR
             if ($nextIncident->stop_bleeding_at) {
                 if ($nextIncident->shouldCalculateMttrByDays()) {
                     // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
+                    // Add 1 to include both start and end days in the count
                     $days = $nextIncident->incident_date->startOfDay()
-                        ->diffInDays($nextIncident->stop_bleeding_at->startOfDay());
+                        ->diffInDays($nextIncident->stop_bleeding_at->startOfDay()) + 1;
                     $nextIncident->mttr = -$days;
                 } else {
                     // "Non fundLoss" - store as MINUTES

@@ -160,7 +160,9 @@ class IncidentResource extends Resource
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')->searchable()->limit(30),
-                TextColumn::make('mttr')->label('MTTR (mins)')->sortable()->summarize(Average::make()->label('Avg MTTR')),
+                TextColumn::make('mttr_formatted')->label('MTTR (mins)')->sortable(query: function (Builder $query, string $direction) {
+                    return $query->orderBy('mttr', $direction);
+                })->summarize(Average::make()->label('Avg MTTR')),
                 TextColumn::make('mtbf')->label('MTBF (days)')->sortable()->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
                     'P1' => 'danger',

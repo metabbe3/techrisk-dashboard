@@ -16,7 +16,7 @@ class WeeklyReportExportController extends Controller
     public function __invoke(Request $request, int $year): StreamedResponse
     {
         // Check if user can access dashboard
-        if (!Auth::check() || !Auth::user()->can('access dashboard')) {
+        if (! Auth::check() || ! Auth::user()->can('access dashboard')) {
             abort(403);
         }
 
@@ -26,7 +26,7 @@ class WeeklyReportExportController extends Controller
         $totalClosed = collect($weeklyData)->sum('incident_closed');
         $grandTotal = collect($weeklyData)->sum('total');
 
-        $filename = 'weekly_report_' . $year . '_' . date('Y-m-d') . '.xlsx';
+        $filename = 'weekly_report_'.$year.'_'.date('Y-m-d').'.xlsx';
 
         return Response::streamDownload(function () use ($weeklyData, $totalOpen, $totalClosed, $grandTotal, $year) {
             // Use PhpSpreadsheet if available, otherwise fallback to CSV
@@ -52,8 +52,11 @@ class WeeklyReportExportController extends Controller
         $weeks = $this->getCustomWeeks($year);
 
         // Load all incidents for the year in a single query
+        // Exclude 'Potential recovery' fund status from weekly report
         $allIncidents = Incident::where('classification', 'Incident')
             ->whereYear('incident_date', $year)
+            ->where(fn ($query) => $query->whereNull('fund_status')
+                ->orWhere('fund_status', '!=', 'Potential recovery'))
             ->get();
 
         foreach ($weeks as $weekNumber => $dateRange) {
@@ -140,11 +143,11 @@ class WeeklyReportExportController extends Controller
      */
     protected function exportWithPhpSpreadsheet(array $weeklyData, int $totalOpen, int $totalClosed, int $grandTotal, int $year): void
     {
-        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet();
+        $spreadsheet = new \PhpOffice\PhpSpreadsheet\Spreadsheet;
         $sheet = $spreadsheet->getActiveSheet();
 
         // Title
-        $sheet->setCellValue('A1', 'Weekly Incident Report - ' . $year);
+        $sheet->setCellValue('A1', 'Weekly Incident Report - '.$year);
         $sheet->mergeCells('A1:E1');
         $sheet->getStyle('A1')->getFont()->setBold(true)->setSize(14);
 
@@ -171,11 +174,11 @@ class WeeklyReportExportController extends Controller
         // Data rows
         $row = 9;
         foreach ($weeklyData as $data) {
-            $sheet->setCellValue('A' . $row, $data->week);
-            $sheet->setCellValue('B' . $row, $data->date_range);
-            $sheet->setCellValue('C' . $row, $data->incident_open);
-            $sheet->setCellValue('D' . $row, $data->incident_closed);
-            $sheet->setCellValue('E' . $row, $data->total);
+            $sheet->setCellValue('A'.$row, $data->week);
+            $sheet->setCellValue('B'.$row, $data->date_range);
+            $sheet->setCellValue('C'.$row, $data->incident_open);
+            $sheet->setCellValue('D'.$row, $data->incident_closed);
+            $sheet->setCellValue('E'.$row, $data->total);
             $row++;
         }
 
@@ -199,7 +202,7 @@ class WeeklyReportExportController extends Controller
         fprintf($output, "\xEF\xBB\xBF");
 
         // Title
-        fputcsv($output, ['Weekly Incident Report - ' . $year]);
+        fputcsv($output, ['Weekly Incident Report - '.$year]);
 
         // Summary
         fputcsv($output, ['']);

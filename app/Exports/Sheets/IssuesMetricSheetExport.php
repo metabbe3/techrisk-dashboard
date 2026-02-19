@@ -54,12 +54,12 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
             } elseif ($incident->mttr < 0) {
                 // Fund loss - stored as negative days
                 $days = abs($incident->mttr);
-                $metricValue = $days . ' day' . ($days > 1 ? 's' : '');
+                $metricValue = $days.' day'.($days > 1 ? 's' : '');
             } else {
                 // Regular incident - stored as minutes
                 $minutes = $incident->mttr;
                 if ($minutes < 60) {
-                    $metricValue = $minutes . ' min' . ($minutes > 1 ? 's' : '');
+                    $metricValue = $minutes.' min'.($minutes > 1 ? 's' : '');
                 } else {
                     $hours = floor($minutes / 60);
                     $mins = $minutes % 60;
@@ -122,9 +122,21 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
                     $metricLabel = 'Average MTTR (excl. fund loss)';
                     $metricValue = $regularMttr !== null ? round($regularMttr, 2) : '-';
                 } else {
-                    // MTBF average - all incidents
+                    // Calculate MTBF correctly: Total Time Period / Number of Incidents
+                    $query = $this->query->clone();
                     $metricLabel = 'Average MTBF';
-                    $metricValue = round($this->query->clone()->avg('mtbf'), 2);
+                    $metricValue = 0;
+                    if ($totalCases > 0) {
+                        $minDate = $query->min('incident_date');
+                        $maxDate = $query->max('incident_date');
+
+                        if ($minDate && $maxDate) {
+                            $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
+                            $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
+                            $totalDays = $minDate->diffInDays($maxDate);
+                            $metricValue = $totalCases > 1 ? round($totalDays / ($totalCases - 1), 3) : 0;
+                        }
+                    }
                 }
 
                 $sheet->setCellValue("A{$summaryStartRow}", 'Total Cases');
