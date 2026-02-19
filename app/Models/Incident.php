@@ -15,7 +15,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 class Incident extends Model implements Auditable
 {
     use HasFactory;
-    use \OwenIt\Auditing\Auditing;
+    use \OwenIt\Auditing\AuditingTrait;
 
     protected $appends = ['mtbf_display'];
 
