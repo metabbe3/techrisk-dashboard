@@ -62,17 +62,15 @@ class Dashboard extends BaseDashboard
 
         // Return default widgets with organized layout
         return [
-            // Row 1: Total Incidents, Total Issues, Fund Loss, Recovered (3 cols each = 12 cols)
-            TotalIncidentsOnly::class,              // 3 cols
-            TotalIncidents::class,                  // 3 cols
-            FundLoss::class,                        // 3 cols
-            RecoveredFund::class,                   // 3 cols
-
-            // Row 2: Last Incident, MTTR, MTBF, Pending Actions (3 cols each = 12 cols)
-            LastIncident::class,                    // 3 cols
-            MttrStat::class,                        // 3 cols
-            MtbfStat::class,                        // 3 cols
-            PendingActionImprovement::class,        // 3 cols
+            // Stats widgets (Filament will auto-size them based on content)
+            TotalIncidentsOnly::class,
+            TotalIncidents::class,
+            FundLoss::class,
+            RecoveredFund::class,
+            LastIncident::class,
+            MttrStat::class,
+            MtbfStat::class,
+            PendingActionImprovement::class,
 
             // Row 2: Charts (3 charts, 4 columns each = 12 columns total)
             MonthlyIncidentsChart::class,          // 4 cols

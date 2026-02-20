@@ -9,8 +9,6 @@ use Livewire\Attributes\On;
 
 class DoneActionImprovement extends BaseWidget
 {
-    protected int|string|array $columnSpan = 6;
-
     public ?string $start_date = null;
 
     public ?string $end_date = null;

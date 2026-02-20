@@ -10,8 +10,6 @@ use Livewire\Attributes\On;
 
 class MtbfStat extends BaseWidget
 {
-    protected int|string|array $columnSpan = 3;
-
     public ?string $start_date = null;
 
     public ?string $end_date = null;
