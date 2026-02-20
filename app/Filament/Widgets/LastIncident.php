@@ -9,7 +9,7 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class LastIncident extends BaseWidget
 {
-    protected int|string|array $columnSpan = 4;
+    protected int|string|array $columnSpan = 3;
 
     protected function getStats(): array
     {

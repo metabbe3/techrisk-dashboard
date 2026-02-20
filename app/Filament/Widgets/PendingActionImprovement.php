@@ -9,7 +9,7 @@ use Livewire\Attributes\On;
 
 class PendingActionImprovement extends BaseWidget
 {
-    protected int|string|array $columnSpan = 6;
+    protected int|string|array $columnSpan = 3;
 
     public ?string $start_date = null;
 
