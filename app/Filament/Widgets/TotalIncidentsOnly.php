@@ -9,6 +9,11 @@ use Livewire\Attributes\On;
 
 class TotalIncidentsOnly extends BaseWidget
 {
+    protected int|string|array $columnSpan = [
+        'md' => 3,
+        'xl' => 3,
+    ];
+
     public ?string $start_date = null;
 
     public ?string $end_date = null;

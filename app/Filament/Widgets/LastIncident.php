@@ -9,6 +9,11 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 
 class LastIncident extends BaseWidget
 {
+    protected int|string|array $columnSpan = [
+        'md' => 3,
+        'xl' => 3,
+    ];
+
     protected function getStats(): array
     {
         $lastIncident = Incident::where('classification', 'Incident')
