@@ -100,63 +100,63 @@ class UserDashboardPreference extends Model
                 'name' => 'Total Incidents',
                 'description' => 'Total count of Incidents only (excludes Issues)',
                 'icon' => 'heroicon-o-chart-bar',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'total_issues' => [
                 'class' => \App\Filament\Widgets\TotalIncidents::class,
                 'name' => 'Total Issues',
                 'description' => 'Total count of all records (Incidents + Issues)',
                 'icon' => 'heroicon-o-chart-bar',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'last_incident' => [
                 'class' => \App\Filament\Widgets\LastIncident::class,
                 'name' => 'Last Incident',
                 'description' => 'Days since the last incident',
                 'icon' => 'heroicon-o-clock',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'fund_loss' => [
                 'class' => \App\Filament\Widgets\FundLoss::class,
                 'name' => 'Fund Loss',
                 'description' => 'Total fund loss amount',
                 'icon' => 'heroicon-o-currency-dollar',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'recovered_fund' => [
                 'class' => \App\Filament\Widgets\RecoveredFund::class,
                 'name' => 'Recovered Fund',
                 'description' => 'Total recovered fund amount',
                 'icon' => 'heroicon-o-arrow-trending-up',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'mttr_stat' => [
                 'class' => \App\Filament\Widgets\MttrStat::class,
                 'name' => 'MTTR',
                 'description' => 'Average recovery time',
                 'icon' => 'heroicon-o-wrench-screwdriver',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'mtbf_stat' => [
                 'class' => \App\Filament\Widgets\MtbfStat::class,
                 'name' => 'MTBF',
                 'description' => 'Average time between failures',
                 'icon' => 'heroicon-o-shield-check',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'pending_action_improvement' => [
                 'class' => \App\Filament\Widgets\PendingActionImprovement::class,
                 'name' => 'Pending Actions',
                 'description' => 'Count of pending action improvements',
                 'icon' => 'heroicon-o-clock',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'done_action_improvement' => [
                 'class' => \App\Filament\Widgets\DoneActionImprovement::class,
                 'name' => 'Done Actions',
                 'description' => 'Count of completed action improvements',
                 'icon' => 'heroicon-o-check-circle',
-                'default_span' => 'auto',
+                'default_span' => 3,
             ],
             'action_improvements_overview' => [
                 'class' => \App\Filament\Widgets\ActionImprovementsOverview::class,
@@ -240,11 +240,14 @@ class UserDashboardPreference extends Model
         $sortOrder = 0;
 
         foreach ($widgets as $key => $widget) {
+            $columnSpan = $widget['default_span'] ?? 'auto';
+
             static::create([
                 'user_id' => $user->id,
                 'widget_class' => $widget['class'],
                 'is_enabled' => true,
                 'sort_order' => $sortOrder++,
+                'column_span' => is_array($columnSpan) ? $columnSpan : ['md' => $columnSpan, 'xl' => $columnSpan],
             ]);
         }
     }
