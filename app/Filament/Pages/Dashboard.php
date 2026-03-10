@@ -15,6 +15,7 @@ use App\Filament\Widgets\MttrMtbfTrendChart;
 use App\Filament\Widgets\MttrStat;
 use App\Filament\Widgets\OpenIncidents;
 use App\Filament\Widgets\PendingActionImprovement;
+use App\Filament\Widgets\DoneActionImprovement;
 use App\Filament\Widgets\RecentIncidents;
 use App\Filament\Widgets\RecoveredFund;
 use App\Filament\Widgets\TotalIncidents;
@@ -62,17 +63,20 @@ class Dashboard extends BaseDashboard
 
         // Return default widgets with organized layout
         return [
-            // Row 1: Total Incidents, Total Issues, Fund Loss, Recovered (3 cols each = 12 cols)
-            TotalIncidentsOnly::class,              // 3 cols
-            TotalIncidents::class,                  // 3 cols
-            FundLoss::class,                        // 3 cols
-            RecoveredFund::class,                   // 3 cols
+            // Row 1: Total Incidents, Total Issues, Fund Loss (4 cols each = 12 cols)
+            TotalIncidentsOnly::class,              // 4 cols
+            TotalIncidents::class,                  // 4 cols
+            FundLoss::class,                        // 4 cols
 
-            // Row 2: Last Incident, MTTR, MTBF, Pending Actions (3 cols each = 12 cols)
-            LastIncident::class,                    // 3 cols
-            MttrStat::class,                        // 3 cols
-            MtbfStat::class,                        // 3 cols
-            PendingActionImprovement::class,        // 3 cols
+            // Row 2: Recovered, Last Incident, MTTR (4 cols each = 12 cols)
+            RecoveredFund::class,                   // 4 cols
+            LastIncident::class,                    // 4 cols
+            MttrStat::class,                        // 4 cols
+
+            // Row 3: MTBF, Pending Action, Done Action (4 cols each = 12 cols)
+            MtbfStat::class,                        // 4 cols
+            PendingActionImprovement::class,        // 4 cols
+            DoneActionImprovement::class,           // 4 cols
 
             // Row 2: Charts (3 charts, 4 columns each = 12 columns total)
             MonthlyIncidentsChart::class,          // 4 cols
