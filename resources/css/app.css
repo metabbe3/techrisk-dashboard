@@ -12,5 +12,5 @@
 
 /* Fix stat widget internal grid to use full width when single stat */
 .fi-wi-stats-overview-stats-ctn.grid {
-    @apply md:grid-cols-1 !important;
+    grid-template-columns: repeat(1, minmax(0, 1fr)) !important;
 }
