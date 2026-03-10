@@ -9,3 +9,8 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* Fix stat widget internal grid to use full width when single stat */
+.fi-wi-stats-overview-stats-ctn.grid {
+    @apply md:grid-cols-1 !important;
+}
