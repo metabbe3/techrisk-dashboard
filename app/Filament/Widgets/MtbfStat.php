@@ -11,8 +11,8 @@ use Livewire\Attributes\On;
 class MtbfStat extends BaseWidget
 {
     protected int|string|array $columnSpan = [
-        'md' => 3,
-        'xl' => 3,
+        'md' => 4,
+        'xl' => 4,
     ];
 
     public ?string $start_date = null;
