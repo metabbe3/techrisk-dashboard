@@ -25,7 +25,7 @@
                 </h1>
             </div>
 
-            <form wire:submit.prevent="submit" class="space-y-6">
+            <form wire:submit.prevent="submit" class="space-y-6 px-2">
                 {{ $this->form }}
 
                 <button
@@ -40,7 +40,7 @@
                 </button>
             </form>
 
-            <div class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400">
+            <div class="mt-6 text-center text-sm text-gray-500 dark:text-gray-400 px-2">
                 Already have an account?
                 <a href="{{ url('/admin/login') }}" class="font-medium text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition-colors">
                     Sign in here
