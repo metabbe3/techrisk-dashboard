@@ -33,7 +33,10 @@
                         type="text"
                         wire:model.live="name"
                         id="name"
-                        class="mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-white/5 dark:text-white sm:text-sm sm:leading-6 @error('name') ring-red-600 focus:ring-red-600"
+                        @class([
+                            'mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-white/5 dark:text-white sm:text-sm sm:leading-6',
+                            'ring-red-600 focus:ring-red-600' => $errors->has('name')
+                        ])
                         placeholder="John Doe"
                     />
                     @error('name')
@@ -48,7 +51,10 @@
                         type="email"
                         wire:model.live="email"
                         id="email"
-                        class="mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-white/5 dark:text-white sm:text-sm sm:leading-6 @error('email') ring-red-600 focus:ring-red-600"
+                        @class([
+                            'mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-white/5 dark:text-white sm:text-sm sm:leading-6',
+                            'ring-red-600 focus:ring-red-600' => $errors->has('email')
+                        ])
                         placeholder="john.doe@example.com"
                     />
                     @error('email')
@@ -125,7 +131,10 @@
                         wire:model.live="reason"
                         id="reason"
                         rows="4"
-                        class="mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-white/5 dark:text-white sm:text-sm sm:leading-6 @error('reason') ring-red-600 focus:ring-red-600"
+                        @class([
+                            'mt-2 block w-full rounded-md border-0 py-2.5 px-3 text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-blue-600 dark:bg-white/5 dark:text-white sm:text-sm sm:leading-6',
+                            'ring-red-600 focus:ring-red-600' => $errors->has('reason')
+                        ])
                         placeholder="Please explain why you need access to the dashboard and what data you will be working with..."
                     ></textarea>
                     @error('reason')
