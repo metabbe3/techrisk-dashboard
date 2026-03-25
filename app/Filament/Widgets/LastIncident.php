@@ -10,8 +10,8 @@ use Filament\Widgets\StatsOverviewWidget\Stat;
 class LastIncident extends BaseWidget
 {
     protected int|string|array $columnSpan = [
-        'md' => 4,
-        'xl' => 4,
+        'md' => 6,
+        'xl' => 6,
     ];
 
     protected function getStats(): array

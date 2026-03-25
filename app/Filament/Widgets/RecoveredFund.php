@@ -10,8 +10,8 @@ use Livewire\Attributes\On;
 class RecoveredFund extends BaseWidget
 {
     protected int|string|array $columnSpan = [
-        'md' => 4,
-        'xl' => 4,
+        'md' => 6,
+        'xl' => 6,
     ];
 
     public ?string $start_date = null;
