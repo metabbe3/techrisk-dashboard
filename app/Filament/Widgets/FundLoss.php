@@ -10,8 +10,8 @@ use Livewire\Attributes\On;
 class FundLoss extends BaseWidget
 {
     protected int|string|array $columnSpan = [
-        'md' => 6,
-        'xl' => 6,
+        'md' => 4,
+        'xl' => 4,
     ];
 
     public ?string $start_date = null;
