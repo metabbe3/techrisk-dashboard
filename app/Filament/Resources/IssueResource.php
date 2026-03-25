@@ -186,7 +186,7 @@ class IssueResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false)
                     ->state(fn (Incident $record): int => $record->mtbf_display)
-                    ->formatStateUsing(fn (int $state): string => $state === 0 ? 'N/A' : number_format($state))
+                    ->formatStateUsing(fn (int $state): string => number_format($state))
                     ->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('incident_date')
                     ->label('Start Date')

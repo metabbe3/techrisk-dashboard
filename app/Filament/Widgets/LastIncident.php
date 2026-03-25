@@ -24,8 +24,8 @@ class LastIncident extends BaseWidget
         if ($lastIncident && $lastIncident->incident_date) {
             $incidentDate = Carbon::parse($lastIncident->incident_date)->startOfDay();
             $today = Carbon::now()->startOfDay();
-            // Prevent negative values if incident date is in the future
-            $days = $incidentDate->gt($today) ? 0 : $today->diffInDays($incidentDate);
+            // Calculate days from incident to today (positive value)
+            $days = $incidentDate->diffInDays($today);
         }
 
         $label = $days === 0 ? 'No recent incident' : $days.' days ago';
