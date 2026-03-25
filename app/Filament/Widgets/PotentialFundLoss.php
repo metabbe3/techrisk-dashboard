@@ -10,13 +10,18 @@ use Livewire\Attributes\On;
 class PotentialFundLoss extends BaseWidget
 {
     protected int|string|array $columnSpan = [
-        'md' => 4,
-        'xl' => 4,
+        'default' => 'full',
+        'lg' => 4,
     ];
 
     public ?string $start_date = null;
 
     public ?string $end_date = null;
+
+    protected function getColumns(): int
+    {
+        return 1;
+    }
 
     protected function getStats(): array
     {

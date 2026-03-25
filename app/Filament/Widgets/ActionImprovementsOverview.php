@@ -10,9 +10,19 @@ use Livewire\Attributes\On;
 
 class ActionImprovementsOverview extends BaseWidget
 {
+    protected int|string|array $columnSpan = [
+        'default' => 'full',
+        'lg' => 8,
+    ];
+
     public ?string $start_date = null;
 
     public ?string $end_date = null;
+
+    protected function getColumns(): int
+    {
+        return 2;
+    }
 
     protected function getStats(): array
     {
