@@ -1,8 +1,8 @@
 <?php
 
 use App\Http\Controllers\DownloadDocumentController;
+use App\Http\Controllers\RequestAccessController;
 use App\Http\Controllers\WeeklyReportExportController;
-use App\Livewire\AccessRequestForm;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/admin/login');
@@ -12,8 +12,8 @@ Route::get('/admin/weekly-report/export/{year}', WeeklyReportExportController::c
     ->middleware(['auth', 'can:access dashboard'])
     ->name('filament.admin.pages.weekly-report-export');
 
-// Access request form (public - uses standalone Livewire component)
-Route::get('/request-access', AccessRequestForm::class)->name('request-access');
+// Access request form (public - Filament Page)
+Route::get('/request-access', RequestAccessController::class)->name('request-access');
 
 // Add this line
 Route::get('/documents/{record}/download', DownloadDocumentController::class)
