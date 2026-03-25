@@ -165,7 +165,8 @@ class IncidentResource extends Resource
                 TextColumn::make('mtbf_display')
                     ->label('MTBF (days)')
                     ->sortable()
-                    ->formatStateUsing(fn ($value) => $value === 0 ? 'N/A' : number_format($value)),
+                    ->state(fn (Incident $record): int => $record->mtbf_display)
+                    ->formatStateUsing(fn (int $state): string => $state === 0 ? 'N/A' : number_format($state)),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
                     'P1' => 'danger',
                     'P2' => 'warning',

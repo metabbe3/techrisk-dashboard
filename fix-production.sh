@@ -51,15 +51,25 @@ else
 fi
 echo ""
 
-# 4. Set file permissions
-echo "Step 4: Setting file permissions..."
+# 4. Run database migrations
+echo "Step 4: Running database migrations..."
+if php artisan migrate --force; then
+    echo "✓ Migrations completed"
+else
+    echo "✗ Migration failed - check database connection"
+    exit 1
+fi
+echo ""
+
+# 5. Set file permissions
+echo "Step 5: Setting file permissions..."
 chmod -R 755 storage 2>/dev/null || echo "⚠️  Could not set storage permissions"
 chmod -R 755 bootstrap/cache 2>/dev/null || echo "⚠️  Could not set bootstrap cache permissions"
 chmod -R 644 public/build/assets/* 2>/dev/null || echo "⚠️  Could not set asset permissions"
 echo "✓ Permissions set"
 echo ""
 
-# 5. Clear all caches
+# 6. Clear all caches
 echo "Step 5: Clearing all caches..."
 php artisan config:clear
 php artisan route:clear
@@ -69,8 +79,8 @@ php artisan optimize:clear
 echo "✓ Caches cleared"
 echo ""
 
-# 6. Rebuild cache
-echo "Step 6: Rebuilding caches..."
+# 7. Rebuild cache
+echo "Step 7: Rebuilding caches..."
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
@@ -78,7 +88,7 @@ php artisan optimize
 echo "✓ Caches rebuilt"
 echo ""
 
-# 7. Test configuration
+# 8. Test configuration
 echo "Step 7: Testing configuration..."
 if php artisan config:cache >/dev/null 2>&1; then
     echo "✓ Configuration is valid"
