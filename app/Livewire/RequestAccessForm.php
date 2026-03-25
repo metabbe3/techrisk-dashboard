@@ -103,8 +103,7 @@ class RequestAccessForm extends Component implements HasForms
                         return $years;
                     })
                     ->gridDirection('row')
-                    ->columns(3)
-                    ->bulkActions(),
+                    ->columns(3),
 
                 Textarea::make('reason')
                     ->label('Reason for Access')
