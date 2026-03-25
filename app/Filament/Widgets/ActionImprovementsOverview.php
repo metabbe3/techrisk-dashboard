@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use App\Models\ActionImprovement;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Facades\Cache;
 use Livewire\Attributes\On;
 
 class ActionImprovementsOverview extends BaseWidget
@@ -15,27 +16,41 @@ class ActionImprovementsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = ActionImprovement::query();
+        // Generate dynamic cache key based on filters
+        $cacheKey = 'action_improvements_'.md5(json_encode([
+            'start_date' => $this->start_date,
+            'end_date' => $this->end_date,
+            'year' => now()->year,
+        ]));
 
-        $descriptionPeriod = 'this year';
-        if ($this->start_date && $this->end_date) {
-            $query->whereBetween('created_at', [$this->start_date, $this->end_date]);
-            $descriptionPeriod = 'in the selected period';
-        } else {
-            $query->whereYear('created_at', now()->year);
-        }
+        return Cache::remember($cacheKey, now()->addMinutes(5), function () {
+            $query = ActionImprovement::query();
 
-        $pendingCount = (clone $query)->where('status', 'pending')->count();
-        $doneCount = (clone $query)->where('status', 'done')->count();
+            $descriptionPeriod = 'this year';
+            if ($this->start_date && $this->end_date) {
+                $query->whereBetween('created_at', [$this->start_date, $this->end_date]);
+                $descriptionPeriod = 'in the selected period';
+            } else {
+                $query->whereYear('created_at', now()->year);
+            }
 
-        return [
-            Stat::make('Pending Action Improvements', $pendingCount)
-                ->description('Pending actions '.$descriptionPeriod)
-                ->color('warning'),
-            Stat::make('Done Action Improvements', $doneCount)
-                ->description('Done actions '.$descriptionPeriod)
-                ->color('success'),
-        ];
+            // Optimized: Use single GROUP BY query instead of two separate count queries
+            $results = $query->selectRaw('status, COUNT(*) as count')
+                ->groupBy('status')
+                ->pluck('count', 'status');
+
+            $pendingCount = $results['pending'] ?? 0;
+            $doneCount = $results['done'] ?? 0;
+
+            return [
+                Stat::make('Pending Action Improvements', $pendingCount)
+                    ->description('Pending actions '.$descriptionPeriod)
+                    ->color('warning'),
+                Stat::make('Done Action Improvements', $doneCount)
+                    ->description('Done actions '.$descriptionPeriod)
+                    ->color('success'),
+            ];
+        });
     }
 
     #[On('dashboardFiltersUpdated')]
