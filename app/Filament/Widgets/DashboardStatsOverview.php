@@ -2,7 +2,6 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\ActionImprovement;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
@@ -25,14 +24,6 @@ class DashboardStatsOverview extends BaseWidget
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
             } else {
                 $query->whereYear('incident_date', now()->year);
-            }
-        };
-
-        $actionDateFilter = function ($query) {
-            if ($this->start_date && $this->end_date) {
-                $query->whereBetween('created_at', [$this->start_date, $this->end_date]);
-            } else {
-                $query->whereYear('created_at', now()->year);
             }
         };
 
@@ -102,18 +93,6 @@ class DashboardStatsOverview extends BaseWidget
             }
         }
 
-        // 8. Pending Action
-        $pendingCount = (clone ActionImprovement::query())
-            ->tap($actionDateFilter)
-            ->where('status', 'pending')
-            ->count();
-
-        // 9. Done Action
-        $doneCount = (clone ActionImprovement::query())
-            ->tap($actionDateFilter)
-            ->where('status', 'done')
-            ->count();
-
         return [
             // Row 1
             Stat::make('Total Incidents', $totalIncidentsOnly)
@@ -147,19 +126,11 @@ class DashboardStatsOverview extends BaseWidget
                 ->descriptionIcon('heroicon-m-wrench-screwdriver')
                 ->color('info'),
 
-            // Row 3
+            // Row 2 (continued)
             Stat::make('MTBF', number_format($mtbf, 2).' days')
                 ->description('Avg time between failures '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-shield-check')
                 ->color('info'),
-
-            Stat::make('Pending Action', $pendingCount)
-                ->description('Pending actions '.$descriptionPeriod)
-                ->color('warning'),
-
-            Stat::make('Done Action', $doneCount)
-                ->description('Done actions '.$descriptionPeriod)
-                ->color('success'),
         ];
     }
 
