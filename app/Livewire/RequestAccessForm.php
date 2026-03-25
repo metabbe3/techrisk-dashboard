@@ -7,7 +7,7 @@ namespace App\Livewire;
 use App\Models\AccessRequest;
 use DanHarrin\LivewireRateLimiting\WithRateLimiting;
 use Filament\Forms\Components\CheckboxList;
-use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -16,7 +16,6 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
@@ -44,28 +43,23 @@ class RequestAccessForm extends Component implements HasForms
     {
         return $form
             ->schema([
-                Placeholder::make('header')
-                    ->label('')
-                    ->content(new HtmlString('<div class="text-center mb-6">
-                        <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Request Dashboard Access</h2>
-                        <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Fill out the form below to request access to the Tech Risk Dashboard.</p>
-                    </div>')),
+                Grid::make(2)->schema([
+                    TextInput::make('name')
+                        ->label('Full Name')
+                        ->required()
+                        ->maxLength(255)
+                        ->placeholder('John Doe')
+                        ->autocomplete(false),
 
-                TextInput::make('name')
-                    ->label('Full Name')
-                    ->required()
-                    ->maxLength(255)
-                    ->placeholder('John Doe')
-                    ->autocomplete(false),
-
-                TextInput::make('email')
-                    ->label('Email Address')
-                    ->email()
-                    ->required()
-                    ->maxLength(255)
-                    ->unique('access_requests', 'email', fn ($record) => $record?->where('status', 'pending'))
-                    ->placeholder('john.doe@example.com')
-                    ->autocomplete(),
+                    TextInput::make('email')
+                        ->label('Email Address')
+                        ->email()
+                        ->required()
+                        ->maxLength(255)
+                        ->unique('access_requests', 'email', fn ($record) => $record?->where('status', 'pending'))
+                        ->placeholder('john.doe@example.com')
+                        ->autocomplete(),
+                ]),
 
                 TextInput::make('password')
                     ->label('Password')
@@ -73,7 +67,8 @@ class RequestAccessForm extends Component implements HasForms
                     ->minLength(8)
                     ->helperText('Leave blank if you already have an account')
                     ->dehydrated(fn ($state) => ! empty($state))
-                    ->dehydrateStateUsing(fn ($state) => empty($state) ? null : Hash::make($state)),
+                    ->dehydrateStateUsing(fn ($state) => empty($state) ? null : Hash::make($state))
+                    ->extraInputAttributes(['class' => 'col-span-2']),
 
                 Select::make('requested_duration_days')
                     ->label('Access Duration')
