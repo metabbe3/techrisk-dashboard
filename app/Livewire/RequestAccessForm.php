@@ -7,7 +7,6 @@ namespace App\Livewire;
 use App\Models\AccessRequest;
 use DanHarrin\LivewireRateLimiting\WithRateLimiting;
 use Filament\Forms\Components\CheckboxList;
-use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
@@ -43,23 +42,21 @@ class RequestAccessForm extends Component implements HasForms
     {
         return $form
             ->schema([
-                Grid::make(2)->schema([
-                    TextInput::make('name')
-                        ->label('Full Name')
-                        ->required()
-                        ->maxLength(255)
-                        ->placeholder('John Doe')
-                        ->autocomplete(false),
+                TextInput::make('name')
+                    ->label('Full Name')
+                    ->required()
+                    ->maxLength(255)
+                    ->placeholder('John Doe')
+                    ->autocomplete(false),
 
-                    TextInput::make('email')
-                        ->label('Email Address')
-                        ->email()
-                        ->required()
-                        ->maxLength(255)
-                        ->unique('access_requests', 'email', fn ($record) => $record?->where('status', 'pending'))
-                        ->placeholder('john.doe@example.com')
-                        ->autocomplete(),
-                ]),
+                TextInput::make('email')
+                    ->label('Email Address')
+                    ->email()
+                    ->required()
+                    ->maxLength(255)
+                    ->unique('access_requests', 'email', fn ($record) => $record?->where('status', 'pending'))
+                    ->placeholder('john.doe@example.com')
+                    ->autocomplete(),
 
                 TextInput::make('password')
                     ->label('Password')
@@ -67,8 +64,7 @@ class RequestAccessForm extends Component implements HasForms
                     ->minLength(8)
                     ->helperText('Leave blank if you already have an account')
                     ->dehydrated(fn ($state) => ! empty($state))
-                    ->dehydrateStateUsing(fn ($state) => empty($state) ? null : Hash::make($state))
-                    ->extraInputAttributes(['class' => 'col-span-2']),
+                    ->dehydrateStateUsing(fn ($state) => empty($state) ? null : Hash::make($state)),
 
                 Select::make('requested_duration_days')
                     ->label('Access Duration')
