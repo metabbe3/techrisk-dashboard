@@ -2,32 +2,31 @@
 
 declare(strict_types=1);
 
-namespace App\Filament\Pages\Auth;
+namespace App\Livewire;
 
 use App\Models\AccessRequest;
 use DanHarrin\LivewireRateLimiting\WithRateLimiting;
+use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\Placeholder;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
-use Filament\Pages\Page;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Livewire\Attributes\Locked;
+use Livewire\Attributes\Layout;
+use Livewire\Component;
 
-class RequestAccess extends Page implements HasForms
+#[Layout('layouts.public')]
+class RequestAccessForm extends Component implements HasForms
 {
     use InteractsWithForms;
     use WithRateLimiting;
-
-    protected static string $view = 'filament.pages.auth.request-access';
-
-    protected static bool $isWidget = false;
-
-    #[Locked]
-    public ?string $maxWidth = '2xl';
 
     public array $data = [];
 
@@ -45,21 +44,21 @@ class RequestAccess extends Page implements HasForms
     {
         return $form
             ->schema([
-                \Filament\Forms\Components\Placeholder::make('header')
+                Placeholder::make('header')
                     ->label('')
                     ->content(new HtmlString('<div class="text-center mb-6">
                         <h2 class="text-2xl font-bold text-gray-900 dark:text-gray-100">Request Dashboard Access</h2>
                         <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">Fill out the form below to request access to the Tech Risk Dashboard.</p>
                     </div>')),
 
-                \Filament\Forms\Components\TextInput::make('name')
+                TextInput::make('name')
                     ->label('Full Name')
                     ->required()
                     ->maxLength(255)
                     ->placeholder('John Doe')
                     ->autocomplete(false),
 
-                \Filament\Forms\Components\TextInput::make('email')
+                TextInput::make('email')
                     ->label('Email Address')
                     ->email()
                     ->required()
@@ -68,7 +67,7 @@ class RequestAccess extends Page implements HasForms
                     ->placeholder('john.doe@example.com')
                     ->autocomplete(),
 
-                \Filament\Forms\Components\TextInput::make('password')
+                TextInput::make('password')
                     ->label('Password')
                     ->password()
                     ->minLength(8)
@@ -76,7 +75,7 @@ class RequestAccess extends Page implements HasForms
                     ->dehydrated(fn ($state) => ! empty($state))
                     ->dehydrateStateUsing(fn ($state) => empty($state) ? null : Hash::make($state)),
 
-                \Filament\Forms\Components\Select::make('requested_duration_days')
+                Select::make('requested_duration_days')
                     ->label('Access Duration')
                     ->required()
                     ->options([
@@ -91,7 +90,7 @@ class RequestAccess extends Page implements HasForms
                     ->default(30)
                     ->selectablePlaceholder(false),
 
-                \Filament\Forms\Components\CheckboxList::make('requested_years')
+                CheckboxList::make('requested_years')
                     ->label('Data Years Required')
                     ->required()
                     ->options(function () {
@@ -104,9 +103,10 @@ class RequestAccess extends Page implements HasForms
                         return $years;
                     })
                     ->gridDirection('row')
-                    ->columns(3),
+                    ->columns(3)
+                    ->bulkActions(),
 
-                \Filament\Forms\Components\Textarea::make('reason')
+                Textarea::make('reason')
                     ->label('Reason for Access')
                     ->required()
                     ->minLength(10)
@@ -164,12 +164,17 @@ class RequestAccess extends Page implements HasForms
 
             Notification::make()
                 ->title('Request Submitted')
-                ->body('Your access request has been submitted successfully. You will be notified once your request is reviewed and approved.')
+                ->body('Your access request has been submitted successfully. You will receive an email once your request is reviewed and approved.')
                 ->success()
                 ->send();
 
         } catch (ValidationException $e) {
             throw $e;
         }
+    }
+
+    public function render(): \Illuminate\View\View
+    {
+        return view('livewire.request-access-form');
     }
 }
