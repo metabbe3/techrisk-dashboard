@@ -172,25 +172,4 @@ class RequestAccess extends Page implements HasForms
             throw $e;
         }
     }
-
-    public function getFormActions(): array
-    {
-        if ($this->submitted) {
-            return [
-                \Filament\Forms\Components\Actions\Action::make('home')
-                    ->label('Return to Home')
-                    ->url('/')
-                    ->color('primary')
-                    ->size('md'),
-            ];
-        }
-
-        return [
-            \Filament\Forms\Components\Actions\Action::make('submit')
-                ->label('Submit Request')
-                ->submit('submit')
-                ->size('md')
-                ->color('primary'),
-        ];
-    }
 }

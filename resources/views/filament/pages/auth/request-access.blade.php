@@ -12,7 +12,9 @@
                         <h2 class="mt-6 text-2xl font-semibold text-gray-900 dark:text-gray-100">Request Submitted</h2>
                         <p class="mt-4 text-gray-600 dark:text-gray-400">Your access request has been submitted successfully. You will receive an email once your request is reviewed and approved.</p>
                         <div class="mt-8">
-                            {{ $this->getFormAction('home') }}
+                            <a href="{{ url('/') }}" class="inline-flex items-center rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800">
+                                Return to Home
+                            </a>
                         </div>
                     </div>
                 </div>
@@ -34,7 +36,15 @@
                             <a href="{{ url('/') }}" class="text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
                                 Cancel
                             </a>
-                            {{ $this->getFormAction('submit') }}
+                            <button
+                                type="submit"
+                                wire:loading.attr="disabled"
+                                wire:loading.class="opacity-50 cursor-not-allowed"
+                                class="inline-flex items-center rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all duration-200 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800"
+                            >
+                                <span wire:loading.remove>Submit Request</span>
+                                <span wire:loading class="hidden">Submitting...</span>
+                            </button>
                         </div>
                     </form>
                 </div>
