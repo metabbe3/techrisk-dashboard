@@ -35,7 +35,9 @@ class RecentIncidents extends BaseWidget
             ->defaultPaginationPageOption(5)
             ->defaultSort('incident_date', 'desc')
             ->columns([
-                Tables\Columns\TextColumn::make('incident_date')->dateTime(),
+                Tables\Columns\TextColumn::make('incident_date')
+                    ->dateTime()
+                    ->formatStateUsing(fn ($state) => $state ? $state->format('Y-m-d') : 'N/A'),
                 Tables\Columns\TextColumn::make('title'),
                 Tables\Columns\TextColumn::make('severity')->badge()->formatStateUsing(fn (string $state): string => strtoupper($state))->color(fn (string $state): string => match (strtoupper($state)) {
                     'P1', 'X1' => 'danger',

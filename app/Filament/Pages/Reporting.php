@@ -146,11 +146,13 @@ class Reporting extends Page implements HasForms
                             Select::make('severities')
                                 ->multiple()
                                 ->options([
-                                    'p1' => 'P1',
-                                    'p2' => 'P2',
-                                    'p3' => 'P3',
-                                    'p4' => 'P4',
+                                    'P1' => 'P1',
+                                    'P2' => 'P2',
+                                    'P3' => 'P3',
+                                    'P4' => 'P4',
                                     'Non Incident' => 'Non Incident',
+                                    'N' => 'N',
+                                    'G' => 'G',
                                     'X1' => 'X1',
                                     'X2' => 'X2',
                                     'X3' => 'X3',
@@ -215,6 +217,32 @@ class Reporting extends Page implements HasForms
     {
         $data = $this->form->getState();
 
+        // Validate date range
+        if ($data['start_date'] && $data['end_date']) {
+            $startDate = Carbon::parse($data['start_date']);
+            $endDate = Carbon::parse($data['end_date']);
+            if ($startDate->gt($endDate)) {
+                Notification::make()
+                    ->title('Invalid date range')
+                    ->body('Start date must be before end date')
+                    ->danger()
+                    ->send();
+
+                return;
+            }
+        }
+
+        // Validate columns selection
+        if (empty($data['columns'] ?? [])) {
+            Notification::make()
+                ->title('No columns selected')
+                ->body('Please select at least one column to export')
+                ->warning()
+                ->send();
+
+            return;
+        }
+
         $query = Incident::query();
 
         if ($data['start_date']) {
@@ -248,23 +276,11 @@ class Reporting extends Page implements HasForms
             $metrics['avg_mttr'] = (clone $query)->avg('mttr');
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
-            // Calculate MTBF correctly: Total Time Period / Number of Incidents
+            // Calculate average MTBF from individual incident MTBF values
             $queryForMtbf = clone $query;
-            $totalIncidents = $queryForMtbf->count();
-            $avgMtbf = 0;
-
-            if ($totalIncidents > 0) {
-                $minDate = $queryForMtbf->min('incident_date');
-                $maxDate = $queryForMtbf->max('incident_date');
-
-                if ($minDate && $maxDate) {
-                    $minDate = Carbon::parse($minDate)->startOfDay();
-                    $maxDate = Carbon::parse($maxDate)->startOfDay();
-                    $totalDays = $minDate->diffInDays($maxDate);
-                    $avgMtbf = $totalIncidents > 1 ? round($totalDays / ($totalIncidents - 1), 3) : 0;
-                }
-            }
-            $metrics['avg_mtbf'] = $avgMtbf;
+            $avgMtbf = $queryForMtbf->whereNotNull('mtbf')
+                ->avg('mtbf') ?? 0;
+            $metrics['avg_mtbf'] = round($avgMtbf, 2);
         }
         $this->metrics = $metrics;
 

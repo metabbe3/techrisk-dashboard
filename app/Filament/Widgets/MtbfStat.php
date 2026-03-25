@@ -21,7 +21,7 @@ class MtbfStat extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Incident::query();
+        $query = Incident::query()->with(['pic', 'incidentType', 'labels']);
         $descriptionPeriod = 'this year';
 
         if ($this->start_date && $this->end_date) {
@@ -36,7 +36,7 @@ class MtbfStat extends BaseWidget
         $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
         $mtbfCount = $mtbfQuery->count();
         $mtbf = 0;
-        if ($mtbfCount > 0) {
+        if ($mtbfCount > 1) {
             $minDate = $mtbfQuery->min('incident_date');
             $maxDate = $mtbfQuery->max('incident_date');
 
@@ -44,7 +44,7 @@ class MtbfStat extends BaseWidget
                 $minDate = Carbon::parse($minDate)->startOfDay();
                 $maxDate = Carbon::parse($maxDate)->startOfDay();
                 $totalDays = $minDate->diffInDays($maxDate);
-                $mtbf = $mtbfCount > 1 ? $totalDays / ($mtbfCount - 1) : 0;
+                $mtbf = $totalDays / ($mtbfCount - 1);
             }
         }
 

@@ -20,7 +20,7 @@ class TotalIncidents extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Incident::query();
+        $query = Incident::query()->with(['pic', 'incidentType', 'labels']);
         $descriptionPeriod = 'this year';
 
         if ($this->start_date && $this->end_date) {

@@ -2,11 +2,10 @@
 
 namespace Tests\Browser;
 
-use App\Models\User;
 use App\Models\Incident;
-use App\Models\IncidentType;
-use Database\Seeders\RolesAndPermissionsSeeder;
+use App\Models\User;
 use Database\Seeders\IncidentTypeSeeder;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Artisan;
 use Laravel\Dusk\Browser;
 use Tests\DuskTestCase;

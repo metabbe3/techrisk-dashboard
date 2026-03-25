@@ -62,6 +62,7 @@ class ActionImprovementController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return $this->errorResponse('Failed to retrieve action improvements.', 500);
         }
     }
@@ -74,6 +75,7 @@ class ActionImprovementController extends Controller
      * @authenticated
      *
      * @urlParam incident integer required The ID of the incident. Example: 1
+     *
      * @bodyParam title string required The title of the action. Example: Increase connection pool size
      * @bodyParam detail string required Detailed description of the action. Example: Configure pool to handle 2x peak traffic
      * @bodyParam due_date date required The due date for the action. Example: 2025-01-20
@@ -123,6 +125,7 @@ class ActionImprovementController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return $this->errorResponse('Failed to create action improvement.', 500);
         }
     }
@@ -149,7 +152,6 @@ class ActionImprovementController extends Controller
      *     "pic_email": ["john.doe@company.com"]
      *   }
      * }
-     *
      * @response 404 {
      *   "code": 404,
      *   "status": "Error",
@@ -168,6 +170,7 @@ class ActionImprovementController extends Controller
             Log::warning('Action improvement not found', [
                 'action_improvement_id' => $actionImprovement->id ?? null,
             ]);
+
             return $this->errorResponse('Action improvement not found.', 404);
         } catch (Exception $e) {
             Log::error('Failed to retrieve action improvement', [
@@ -175,6 +178,7 @@ class ActionImprovementController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return $this->errorResponse('Failed to retrieve action improvement.', 500);
         }
     }
@@ -187,6 +191,7 @@ class ActionImprovementController extends Controller
      * @authenticated
      *
      * @urlParam action_improvement integer required The ID of the action improvement. Example: 1
+     *
      * @bodyParam title string The title of the action. Example: Increase connection pool size
      * @bodyParam detail string Detailed description of the action. Example: Configure pool to handle 2x peak traffic
      * @bodyParam due_date date The due date for the action. Example: 2025-01-20
@@ -231,6 +236,7 @@ class ActionImprovementController extends Controller
             Log::warning('Action improvement not found for update', [
                 'action_improvement_id' => $actionImprovement->id ?? null,
             ]);
+
             return $this->errorResponse('Action improvement not found.', 404);
         } catch (Exception $e) {
             Log::error('Failed to update action improvement', [
@@ -238,6 +244,7 @@ class ActionImprovementController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return $this->errorResponse('Failed to update action improvement.', 500);
         }
     }
@@ -257,7 +264,6 @@ class ActionImprovementController extends Controller
      *   "message": "Action improvement deleted successfully.",
      *   "data": null
      * }
-     *
      * @response 404 {
      *   "code": 404,
      *   "status": "Error",
@@ -275,6 +281,7 @@ class ActionImprovementController extends Controller
             Log::warning('Action improvement not found for deletion', [
                 'action_improvement_id' => $actionImprovement->id ?? null,
             ]);
+
             return $this->errorResponse('Action improvement not found.', 404);
         } catch (Exception $e) {
             Log::error('Failed to delete action improvement', [
@@ -282,6 +289,7 @@ class ActionImprovementController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return $this->errorResponse('Failed to delete action improvement.', 500);
         }
     }

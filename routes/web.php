@@ -23,16 +23,18 @@ Route::get('/documents/{record}/download', DownloadDocumentController::class)
 // API Documentation - Manual route for OpenAPI spec (Scribe auto-route may not work in production)
 Route::get('/docs.openapi', function () {
     $path = storage_path('app/private/scribe/openapi.yaml');
-    if (!file_exists($path)) {
+    if (! file_exists($path)) {
         abort(404, 'OpenAPI specification not found. Run: php artisan scribe:generate');
     }
+
     return response()->file($path, ['Content-Type' => 'application/yaml']);
 })->name('docs.openapi');
 
 Route::get('/docs.postman', function () {
     $path = storage_path('app/private/scribe/collection.json');
-    if (!file_exists($path)) {
+    if (! file_exists($path)) {
         abort(404, 'Postman collection not found. Run: php artisan scribe:generate');
     }
+
     return response()->file($path, ['Content-Type' => 'application/json']);
 })->name('docs.postman');

@@ -36,8 +36,8 @@ class IssuesImporter extends Importer
     {
         $name = $this->data['Name'] ?? null;
 
-        if (!$name) {
-            return new Incident();
+        if (! $name) {
+            return new Incident;
         }
 
         // Normalize the incoming title for fuzzy comparison
@@ -46,8 +46,7 @@ class IssuesImporter extends Importer
         // Query all issues and filter using fuzzy matching
         $existing = Incident::where('classification', 'Issue')
             ->get()
-            ->first(fn (Incident $incident) =>
-                StringHelper::normalizeForComparison($incident->title) === $normalizedTitle
+            ->first(fn (Incident $incident) => StringHelper::normalizeForComparison($incident->title) === $normalizedTitle
             );
 
         if ($existing) {
@@ -58,7 +57,7 @@ class IssuesImporter extends Importer
         }
 
         // Create new record if no duplicate found
-        return new Incident();
+        return new Incident;
     }
 
     public function fillRecord(): void
@@ -81,7 +80,7 @@ class IssuesImporter extends Importer
         ];
 
         // Only generate new ID for new records
-        if (!$this->record->exists) {
+        if (! $this->record->exists) {
             $data['no'] = $this->generateIssueId();
         }
 

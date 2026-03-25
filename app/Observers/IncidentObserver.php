@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Jobs\CalculateIncidentMetrics;
 use App\Models\Incident;
 use App\Models\Label;
 use App\Notifications\AssignedAsPicNotification;
@@ -17,12 +18,12 @@ class IncidentObserver
      */
     public function created(Incident $incident): void
     {
-        $this->flushIncidentCache();
-        $this->autoLabel($incident);
-        $this->calculateMetrics($incident);
-        $this->calculateCategoryMtbf($incident);
-        $this->calculateMtbfAll($incident);
-        $this->updateAdjacentIncidentMetrics($incident);
+        // Dispatch metrics calculation to queue for better performance
+        dispatch(new CalculateIncidentMetrics(
+            $incident,
+            shouldAutoLabel: true,
+            shouldUpdateAdjacent: true
+        ));
 
         // Notify PIC if assigned during creation
         if ($incident->pic_id && $incident->pic) {
@@ -73,25 +74,20 @@ class IncidentObserver
             $incident->pic->notify(new AssignedAsPicNotification($incident));
         }
 
-        $this->flushIncidentCache();
-
-        if ($incident->isDirty('summary') || $incident->isDirty('root_cause')) {
-            $this->autoLabel($incident);
-        }
-
-        if ($incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at')) {
-            $this->calculateMetrics($incident);
-            $this->calculateCategoryMtbf($incident);
-            $this->calculateMtbfAll($incident);
-            $this->updateAdjacentIncidentMetrics($incident);
-        }
-
-        // Recalculate category MTBF when category fields change
-        if ($incident->isDirty('incident_status') || $incident->isDirty('severity') ||
+        // Determine if metrics recalculation is needed
+        $needsRecalculation = $incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at');
+        $needsCategoryRecalculation = $incident->isDirty('incident_status') || $incident->isDirty('severity') ||
             $incident->isDirty('incident_type') || $incident->isDirty('fund_status') ||
-            $incident->isDirty('recovered_fund')) {
-            $this->calculateCategoryMtbf($incident);
-            $this->calculateMtbfAll($incident);
+            $incident->isDirty('recovered_fund');
+        $needsAutoLabel = $incident->isDirty('summary') || $incident->isDirty('root_cause');
+
+        // Dispatch metrics calculation to queue if needed
+        if ($needsRecalculation || $needsCategoryRecalculation || $needsAutoLabel) {
+            dispatch(new CalculateIncidentMetrics(
+                $incident,
+                shouldAutoLabel: $needsAutoLabel,
+                shouldUpdateAdjacent: $needsRecalculation
+            ));
         }
 
         // Handle status change notification
@@ -369,6 +365,9 @@ class IncidentObserver
         // Forget known static cache keys
         Cache::forget('incidents.stats');
         Cache::forget('labels');
+        Cache::forget('incident_types');
+        Cache::forget('users');
+        Cache::forget('dashboard_stats');
 
         // Dynamic cache keys (incidents.{hash}) will expire after 60-minute TTL
         // For immediate invalidation of all incident caches, you would need

@@ -71,7 +71,7 @@ class UserResource extends Resource
 
                                 return "Expires in {$daysLeft} day(s)";
                             })
-                            ->hintColor(fn ($state) => !$state ? 'success' : (\Carbon\Carbon::parse($state)->isPast() ? 'danger' : ((\Carbon\Carbon::parse($state)->diffInDays(now()) <= 7) ? 'warning' : 'info')))
+                            ->hintColor(fn ($state) => ! $state ? 'success' : (\Carbon\Carbon::parse($state)->isPast() ? 'danger' : ((\Carbon\Carbon::parse($state)->diffInDays(now()) <= 7) ? 'warning' : 'info')))
                             ->required(false),
                     ])
                     ->compact(),
@@ -127,9 +127,9 @@ class UserResource extends Resource
                     ->sortable()
                     ->toggleable()
                     ->badge()
-                    ->color(fn ($state) => !$state ? 'success' : (\Carbon\Carbon::parse($state)->isPast() ? 'danger' : 'gray'))
+                    ->color(fn ($state) => ! $state ? 'success' : (\Carbon\Carbon::parse($state)->isPast() ? 'danger' : 'gray'))
                     ->formatStateUsing(function ($state) {
-                        if (!$state) {
+                        if (! $state) {
                             return 'Never';
                         }
 

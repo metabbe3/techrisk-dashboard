@@ -19,7 +19,6 @@ use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\Summarizers\Average;
 use Filament\Tables\Columns\Summarizers\Count;
 use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Columns\TextColumn;
@@ -163,7 +162,10 @@ class IncidentResource extends Resource
                 TextColumn::make('mttr_formatted')->label('MTTR (mins)')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
                 }),
-                TextColumn::make('mtbf_display')->label('MTBF (days)')->sortable(),
+                TextColumn::make('mtbf_display')
+                    ->label('MTBF (days)')
+                    ->sortable()
+                    ->formatStateUsing(fn ($value) => $value === 0 ? 'N/A' : number_format($value)),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
                     'P1' => 'danger',
                     'P2' => 'warning',

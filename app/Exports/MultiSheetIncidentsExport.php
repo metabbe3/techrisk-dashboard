@@ -52,24 +52,40 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $sheets[] = new SingleIncidentSheetExport($nonTechQuery, 'Non-Tech Incidents', $this->headings, $this->columnNames);
 
         // 6. Fund Loss (Incidents only)
-        $fundLossQuery = $incidentsQuery->clone()->where('fund_loss', '>', 0);
+        $fundLossQuery = $incidentsQuery->clone()->where('fund_status', 'Confirmed loss');
         $sheets[] = new SingleIncidentSheetExport($fundLossQuery, 'Fund Loss', $this->headings, $this->columnNames);
+
+        // 7. On Going (Incidents only) - Non-completed incidents
+        $onGoingQuery = $incidentsQuery->clone()->where('incident_status', '!=', 'Completed');
+        $sheets[] = new SingleIncidentSheetExport($onGoingQuery, 'On Going', $this->headings, $this->columnNames);
+
+        // 8. Potential Recovery (Incidents only)
+        $potentialRecoveryQuery = $incidentsQuery->clone()->where('fund_status', 'Potential recovery');
+        $sheets[] = new SingleIncidentSheetExport($potentialRecoveryQuery, 'Potential Recovery', $this->headings, $this->columnNames);
+
+        // 9. Non Fund Loss (Incidents only)
+        $nonFundLossQuery = $incidentsQuery->clone()->where('fund_status', 'Non fundLoss');
+        $sheets[] = new SingleIncidentSheetExport($nonFundLossQuery, 'Non Fund Loss', $this->headings, $this->columnNames);
+
+        // 10. Non Incident (Incidents only)
+        $nonIncidentQuery = $incidentsQuery->clone()->where('severity', 'Non Incident');
+        $sheets[] = new SingleIncidentSheetExport($nonIncidentQuery, 'Non Incident', $this->headings, $this->columnNames);
 
         // Issues tabs - Use fresh query for Issues only (separate from Incidents) - sorted by date
         // Note: These tabs always show ALL Issues (not filtered), because metrics need chronological order
-        // 7. All Issues
+        // 11. All Issues
         $issuesQuery = Incident::where('classification', 'Issue')
             ->orderBy('incident_date', 'asc');
         $sheets[] = new SingleIncidentSheetExport($issuesQuery, 'All Issues', $this->headings, $this->columnNames);
 
-        // 8. Issues - MTTR (Issue Name, Type, MTTR) - Sorted by date ASC for correct MTTR
+        // 12. Issues - MTTR (Issue Name, Type, MTTR) - Sorted by date ASC for correct MTTR
         $issuesMttrQuery = Incident::where('classification', 'Issue')
             ->whereNotNull('mttr')
             ->where('mttr', '>=', 0) // Only regular incidents (positive minutes)
             ->orderBy('incident_date', 'asc');
         $sheets[] = new IssuesMetricSheetExport($issuesMttrQuery, 'Issues - MTTR', 'mttr');
 
-        // 9. Issues - MTBF (Issue Name, Type, MTBF) - Sorted by date ASC for correct MTBF
+        // 13. Issues - MTBF (Issue Name, Type, MTBF) - Sorted by date ASC for correct MTBF
         $issuesMtbfQuery = Incident::where('classification', 'Issue')
             ->whereNotNull('mtbf')
             ->orderBy('incident_date', 'asc');

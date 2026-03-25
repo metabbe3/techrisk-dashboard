@@ -78,7 +78,6 @@ class ExportController extends Controller
      *     }
      *   }
      * }
-     *
      * @response 422 {
      *   "code": 422,
      *   "status": "Error",

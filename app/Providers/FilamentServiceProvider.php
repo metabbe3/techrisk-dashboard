@@ -15,7 +15,7 @@ class FilamentServiceProvider extends ServiceProvider
         FilamentView::registerRenderHook(
             PanelsRenderHook::AUTH_LOGIN_FORM_AFTER,
             function (): string {
-                if (!config('filament.features.request_access_link', true)) {
+                if (! config('filament.features.request_access_link', true)) {
                     return '';
                 }
 

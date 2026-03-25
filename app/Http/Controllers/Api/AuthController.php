@@ -34,14 +34,12 @@ class AuthController extends Controller
      *     "token": "1|aBcDeFgHiJkLmNoPqRsTuVwXyZ1234567890"
      *   }
      * }
-     *
      * @response 401 {
      *   "code": 401,
      *   "status": "Error",
      *   "message": "Invalid credentials.",
      *   "data": null
      * }
-     *
      * @response 422 {
      *   "code": 422,
      *   "status": "Error",

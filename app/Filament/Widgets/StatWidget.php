@@ -10,6 +10,9 @@ class StatWidget extends BaseWidget
 {
     public ?string $query = null;
 
+    /** @var array<mixed> */
+    public array $bindings = [];
+
     public ?string $label = null;
 
     public ?string $icon = null;
@@ -21,10 +24,15 @@ class StatWidget extends BaseWidget
         }
 
         try {
-            $result = DB::select($this->query);
+            // Use parameterized queries with bindings to prevent SQL injection
+            $result = DB::select($this->query, $this->bindings);
             $value = $result[0]->value ?? 0;
         } catch (\Exception $e) {
-            // You can log the error here
+            // Log the error for debugging
+            logger()->error('StatWidget query error', [
+                'query' => $this->query,
+                'error' => $e->getMessage(),
+            ]);
             $value = 'Error';
         }
 

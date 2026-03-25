@@ -14,4 +14,3 @@ class Login extends BaseLogin
         return route('filament.admin.auth.login');
     }
 }
-

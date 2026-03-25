@@ -9,13 +9,18 @@ use Livewire\Attributes\On;
 
 class PotentialFundLoss extends BaseWidget
 {
+    protected int|string|array $columnSpan = [
+        'md' => 4,
+        'xl' => 4,
+    ];
+
     public ?string $start_date = null;
 
     public ?string $end_date = null;
 
     protected function getStats(): array
     {
-        $query = Incident::whereHas('latestStatusUpdate', function ($query) {
+        $query = Incident::query()->with(['pic', 'incidentType', 'labels', 'latestStatusUpdate'])->whereHas('latestStatusUpdate', function ($query) {
             $query->whereNotIn('status', ['Closed', 'Resolved', 'Recovered']);
         });
 

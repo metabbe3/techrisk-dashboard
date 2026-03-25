@@ -17,6 +17,7 @@ class ProcessApiAuditLogJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public int $tries = 3;
+
     public int $timeout = 30;
 
     // Queue is set via constructor ->onQueue()

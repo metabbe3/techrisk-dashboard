@@ -1,7 +1,6 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
-use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
@@ -29,7 +28,7 @@ return new class extends Migration
 
         // Also ensure admin role has this permission (for consistency)
         $adminRole = Role::where('name', 'admin')->where('guard_name', 'web')->first();
-        if ($adminRole && !$adminRole->hasPermissionTo($permission)) {
+        if ($adminRole && ! $adminRole->hasPermissionTo($permission)) {
             $adminRole->givePermissionTo($permission);
         }
     }

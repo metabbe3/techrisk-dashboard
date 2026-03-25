@@ -10,13 +10,11 @@ use App\Filament\Resources\AccessRequestResource\Pages\ViewAccessRequest;
 use App\Models\AccessRequest;
 use Filament\Forms;
 use Filament\Forms\Components\CheckboxList;
-use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
-use Filament\Tables;
 use Filament\Tables\Actions\Action;
 use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Actions\ViewAction;
@@ -93,6 +91,7 @@ class AccessRequestResource extends Resource
                         for ($i = $currentYear - 2; $i <= $currentYear + 1; $i++) {
                             $years[$i] = (string) $i;
                         }
+
                         return $years;
                     }),
 
@@ -130,7 +129,7 @@ class AccessRequestResource extends Resource
 
                 TextColumn::make('requested_duration_days')
                     ->label('Duration')
-                    ->formatStateUsing(fn ($state) => $state . 'd')
+                    ->formatStateUsing(fn ($state) => $state.'d')
                     ->sortable(),
 
                 TextColumn::make('requested_years')

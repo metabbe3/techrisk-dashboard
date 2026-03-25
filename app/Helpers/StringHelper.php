@@ -13,7 +13,7 @@ class StringHelper
      * - Normalize multiple spaces to single space
      * - Convert to lowercase for case-insensitive comparison
      *
-     * @param string $input The raw input string
+     * @param  string  $input  The raw input string
      * @return string The normalized string
      */
     public static function normalizeForComparison(string $input): string
@@ -34,8 +34,8 @@ class StringHelper
     /**
      * Check if two titles are considered duplicates using fuzzy matching.
      *
-     * @param string $title1 First title
-     * @param string $title2 Second title
+     * @param  string  $title1  First title
+     * @param  string  $title2  Second title
      * @return bool True if titles are considered duplicates
      */
     public static function isDuplicateTitle(string $title1, string $title2): bool

@@ -7,7 +7,6 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\ApiAuditLogResource\Pages\ListApiAuditLogs;
 use App\Models\ApiAuditLog;
 use App\Models\UserAuditLogSetting;
-use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
@@ -74,7 +73,7 @@ class ApiAuditLogResource extends Resource
                     ->label('Timestamp')
                     ->dateTime('Y-m-d H:i:s')
                     ->sortable()
-                    ->description(fn (ApiAuditLog $record): string => $record->response_time_ms . 'ms'),
+                    ->description(fn (ApiAuditLog $record): string => $record->response_time_ms.'ms'),
 
                 TextColumn::make('method')
                     ->badge()
@@ -133,8 +132,7 @@ class ApiAuditLogResource extends Resource
                 SelectFilter::make('year')
                     ->label('Year')
                     ->options(fn () => self::getAvailableYears($settings))
-                    ->query(fn (Builder $query, array $data) =>
-                        isset($data['value'])
+                    ->query(fn (Builder $query, array $data) => isset($data['value'])
                             ? $query->whereYear('request_timestamp', $data['value'])
                             : $query
                     ),
@@ -158,14 +156,13 @@ class ApiAuditLogResource extends Resource
                         '4xx' => '4xx - Client Error',
                         '5xx' => '5xx - Server Error',
                     ])
-                    ->query(fn (Builder $query, array $data) =>
-                        empty($data['value']) ? $query : match ($data['value']) {
-                            '2xx' => $query->whereBetween('response_status', [200, 299]),
-                            '3xx' => $query->whereBetween('response_status', [300, 399]),
-                            '4xx' => $query->whereBetween('response_status', [400, 499]),
-                            '5xx' => $query->where('response_status', '>=', 500),
-                            default => $query,
-                        }
+                    ->query(fn (Builder $query, array $data) => empty($data['value']) ? $query : match ($data['value']) {
+                        '2xx' => $query->whereBetween('response_status', [200, 299]),
+                        '3xx' => $query->whereBetween('response_status', [300, 399]),
+                        '4xx' => $query->whereBetween('response_status', [400, 499]),
+                        '5xx' => $query->where('response_status', '>=', 500),
+                        default => $query,
+                    }
                     ),
 
                 // Environment filter (admin only)
@@ -191,22 +188,20 @@ class ApiAuditLogResource extends Resource
                         return $query
                             ->when(
                                 $data['from'],
-                                fn (Builder $query, $date): Builder =>
-                                    $query->whereDate('request_timestamp', '>=', $date),
+                                fn (Builder $query, $date): Builder => $query->whereDate('request_timestamp', '>=', $date),
                             )
                             ->when(
                                 $data['until'],
-                                fn (Builder $query, $date): Builder =>
-                                    $query->whereDate('request_timestamp', '<=', $date),
+                                fn (Builder $query, $date): Builder => $query->whereDate('request_timestamp', '<=', $date),
                             );
                     })
                     ->indicateUsing(function (array $data): array {
                         $indicators = [];
                         if ($data['from'] ?? null) {
-                            $indicators['from'] = 'From ' . $data['from'];
+                            $indicators['from'] = 'From '.$data['from'];
                         }
                         if ($data['until'] ?? null) {
-                            $indicators['until'] = 'Until ' . $data['until'];
+                            $indicators['until'] = 'Until '.$data['until'];
                         }
 
                         return $indicators;
@@ -244,17 +239,17 @@ class ApiAuditLogResource extends Resource
                             ->schema([
                                 \Filament\Infolists\Components\TextEntry::make('query_params')
                                     ->label('Query Parameters')
-                                    ->formatStateUsing(fn ($state) => is_array($state) && !empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : 'No query parameters'),
+                                    ->formatStateUsing(fn ($state) => is_array($state) && ! empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : 'No query parameters'),
                                 \Filament\Infolists\Components\TextEntry::make('request_body')
                                     ->label('Request Body')
-                                    ->formatStateUsing(fn ($state) => is_array($state) && !empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'No request body (GET/HEAD request)' : 'Empty')),
+                                    ->formatStateUsing(fn ($state) => is_array($state) && ! empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'No request body (GET/HEAD request)' : 'Empty')),
                             ]),
 
                         \Filament\Infolists\Components\Section::make('Response Data')
                             ->schema([
                                 \Filament\Infolists\Components\TextEntry::make('response_data')
                                     ->label('Response')
-                                    ->formatStateUsing(fn ($state) => is_array($state) && !empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'Not captured (successful responses are not logged)' : 'Empty')),
+                                    ->formatStateUsing(fn ($state) => is_array($state) && ! empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'Not captured (successful responses are not logged)' : 'Empty')),
                             ])->collapsible(),
 
                         \Filament\Infolists\Components\Section::make('Error')

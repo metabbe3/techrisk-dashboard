@@ -10,8 +10,6 @@ use App\Services\SensitiveDataFilter;
 use App\Services\TraceIdService;
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 
 class ApiAuditLogger
@@ -94,7 +92,7 @@ class ApiAuditLogger
 
     private function captureRequestBody(Request $request): ?array
     {
-        if (!$request->isMethod('POST', 'PUT', 'PATCH')) {
+        if (! $request->isMethod('POST', 'PUT', 'PATCH')) {
             return null;
         }
 
@@ -148,7 +146,7 @@ class ApiAuditLogger
         }
 
         // Capture response data (non-success only, with size limit)
-        if (!$response->isSuccessful()) {
+        if (! $response->isSuccessful()) {
             $entry->response_data = $this->captureResponseContent($response);
         }
     }
@@ -163,7 +161,7 @@ class ApiAuditLogger
 
         $data = json_decode($content, true);
 
-        if (!is_array($data)) {
+        if (! is_array($data)) {
             return ['_raw' => substr($content, 0, 1000)];
         }
 

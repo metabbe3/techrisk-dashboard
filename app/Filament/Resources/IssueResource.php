@@ -181,10 +181,11 @@ class IssueResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false)
                     ->summarize(Average::make()->label('Avg MTTR')),
-                TextColumn::make('mtbf_all')
-                    ->label('MTBF (All)')
+                TextColumn::make('mtbf_display')
+                    ->label('MTBF (days)')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false)
+                    ->formatStateUsing(fn ($value) => $value === 0 ? 'N/A' : number_format($value))
                     ->summarize(Average::make()->label('Avg MTBF')),
                 TextColumn::make('incident_date')
                     ->label('Start Date')

@@ -81,6 +81,20 @@ class Incident extends Model implements Auditable
         'incident_date' => 'datetime',
         'entry_date_tech_risk' => 'date',
         'people_caused' => 'array',
+        'potential_fund_loss' => 'decimal:2',
+        'recovered_fund' => 'decimal:2',
+        'fund_loss' => 'decimal:2',
+        'mttr' => 'decimal:2',
+        'mtbf' => 'decimal:2',
+        'mtbf_completed' => 'decimal:2',
+        'mtbf_recovered' => 'decimal:2',
+        'mtbf_p4' => 'decimal:2',
+        'mtbf_non_tech' => 'decimal:2',
+        'mtbf_fund_loss' => 'decimal:2',
+        'mtbf_non_fund_loss' => 'decimal:2',
+        'mtbf_potential_recovery' => 'decimal:2',
+        'mtbf_non_incident' => 'decimal:2',
+        'mtbf_all' => 'decimal:2',
     ];
 
     /**
@@ -138,47 +152,25 @@ class Incident extends Model implements Auditable
         // Get the active tab from the request (Filament uses 'tableActiveTab' query parameter)
         $activeTab = request()->query('tableActiveTab', 'All Cases');
 
-        // "All Cases" tab uses the default mtbf column directly
-        // (mtbf is calculated excluding Non Incident)
-        if ($activeTab === 'All Cases') {
-            return $this->mtbf ?? 0;
-        }
+        // Define tab to column mapping
+        $tabColumnMap = [
+            'All Cases' => 'mtbf',
+            'Fund Loss' => 'mtbf_fund_loss',
+            'Potential Recovery' => 'mtbf_potential_recovery',
+            'Non Fund Loss' => 'mtbf_non_fund_loss',
+            'Non Incident' => 'mtbf_non_incident',
+            'Completed Cases' => 'mtbf_completed',
+            'Recovered Cases' => 'mtbf_recovered',
+            'P4 Incidents' => 'mtbf_p4',
+            'Non-Tech Incidents' => 'mtbf_non_tech',
+        ];
 
-        // Special tabs use their specific MTBF columns
-        if ($activeTab === 'Fund Loss' || $this->fund_status === 'Confirmed loss') {
-            return $this->mtbf_fund_loss ?? $this->mtbf ?? 0;
-        }
+        // Get the appropriate MTBF column for the active tab
+        $column = $tabColumnMap[$activeTab] ?? 'mtbf';
+        $value = $this->getAttribute($column);
 
-        if ($activeTab === 'Potential Recovery' || $this->fund_status === 'Potential recovery') {
-            return $this->mtbf_potential_recovery ?? $this->mtbf ?? 0;
-        }
-
-        if ($activeTab === 'Non Fund Loss' || $this->fund_status === 'Non fundLoss') {
-            return $this->mtbf_non_fund_loss ?? $this->mtbf ?? 0;
-        }
-
-        if ($activeTab === 'Non Incident' || $this->severity === 'Non Incident') {
-            return $this->mtbf_non_incident ?? $this->mtbf ?? 0;
-        }
-
-        if ($activeTab === 'Completed Cases' || $this->incident_status === 'Completed') {
-            return $this->mtbf_completed ?? $this->mtbf ?? 0;
-        }
-
-        if ($activeTab === 'Recovered Cases' || $this->recovered_fund > 0) {
-            return $this->mtbf_recovered ?? $this->mtbf ?? 0;
-        }
-
-        if ($activeTab === 'P4 Incidents' || $this->severity === 'P4') {
-            return $this->mtbf_p4 ?? $this->mtbf ?? 0;
-        }
-
-        if ($activeTab === 'Non-Tech Incidents' || $this->incident_type === 'Non-tech') {
-            return $this->mtbf_non_tech ?? $this->mtbf ?? 0;
-        }
-
-        // Default to overall MTBF
-        return $this->mtbf ?? 0;
+        // Return value or fallback to 0
+        return $value ?? 0;
     }
 
     public function pic(): BelongsTo

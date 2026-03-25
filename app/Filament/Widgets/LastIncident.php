@@ -19,10 +19,19 @@ class LastIncident extends BaseWidget
         $lastIncident = Incident::where('classification', 'Incident')
             ->latest('incident_date')
             ->first();
-        $days = $lastIncident ? Carbon::now()->diffInDays($lastIncident->incident_date) : 0;
+
+        $days = 0;
+        if ($lastIncident && $lastIncident->incident_date) {
+            $incidentDate = Carbon::parse($lastIncident->incident_date)->startOfDay();
+            $today = Carbon::now()->startOfDay();
+            // Prevent negative values if incident date is in the future
+            $days = $incidentDate->gt($today) ? 0 : $today->diffInDays($incidentDate);
+        }
+
+        $label = $days === 0 ? 'No recent incident' : $days.' days ago';
 
         return [
-            Stat::make('Last Incident', $days.' days ago')
+            Stat::make('Last Incident', $label)
                 ->description('Days since the last incident')
                 ->descriptionIcon('heroicon-m-clock')
                 ->color('warning'),

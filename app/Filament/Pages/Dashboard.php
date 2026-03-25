@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Filament\Widgets\DoneActionImprovement;
 use App\Filament\Widgets\FundLoss;
 use App\Filament\Widgets\FundLossTrendChart;
 use App\Filament\Widgets\IncidentsByLabelChart;
@@ -15,7 +16,6 @@ use App\Filament\Widgets\MttrMtbfTrendChart;
 use App\Filament\Widgets\MttrStat;
 use App\Filament\Widgets\OpenIncidents;
 use App\Filament\Widgets\PendingActionImprovement;
-use App\Filament\Widgets\DoneActionImprovement;
 use App\Filament\Widgets\RecentIncidents;
 use App\Filament\Widgets\RecoveredFund;
 use App\Filament\Widgets\TotalIncidents;

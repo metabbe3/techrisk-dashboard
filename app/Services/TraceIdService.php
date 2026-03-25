@@ -10,6 +10,7 @@ use Illuminate\Support\Str;
 class TraceIdService
 {
     private const TRACE_ID_HEADER = 'X-Trace-ID';
+
     private const REQUEST_ID_HEADER = 'X-Request-ID';
 
     private ?string $currentTraceId = null;

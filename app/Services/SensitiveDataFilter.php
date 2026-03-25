@@ -108,7 +108,7 @@ class SensitiveDataFilter
 
     private function partiallyRedact(mixed $value): string
     {
-        if (!is_string($value)) {
+        if (! is_string($value)) {
             return self::REDACTED_VALUE;
         }
 
@@ -119,6 +119,6 @@ class SensitiveDataFilter
         }
 
         // Show first 2 and last 2 characters
-        return substr($value, 0, 2) . str_repeat('*', $length - 4) . substr($value, -2);
+        return substr($value, 0, 2).str_repeat('*', $length - 4).substr($value, -2);
     }
 }

@@ -6,8 +6,8 @@ use App\Filament\Importers\IssuesImporter;
 use App\Models\Incident;
 use App\Models\IncidentType;
 use App\Models\User;
-use Filament\Actions\Imports\Models\Import;
 use Filament\Actions\Imports\Exceptions\RowImportFailedException;
+use Filament\Actions\Imports\Models\Import;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -16,6 +16,7 @@ class IssuesImporterTest extends TestCase
     use RefreshDatabase;
 
     protected User $user;
+
     protected Import $import;
 
     protected function setUp(): void
