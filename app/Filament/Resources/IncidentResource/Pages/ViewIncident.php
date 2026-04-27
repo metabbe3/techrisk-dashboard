@@ -8,6 +8,7 @@ use Filament\Actions;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
+use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
 
@@ -40,6 +41,7 @@ class ViewIncident extends ViewRecord
                         ->schema([
                             TextEntry::make('title'),
                             TextEntry::make('incidentType.name'),
+                            TextEntry::make('incident_type')->label('Area'),
                             TextEntry::make('summary')->columnSpanFull(),
                             TextEntry::make('root_cause')->columnSpanFull(),
                             TextEntry::make('timeline')
@@ -67,6 +69,9 @@ class ViewIncident extends ViewRecord
                         TextEntry::make('involved_third_party')->label('3rd Party/Client'),
                         TextEntry::make('potential_fund_loss')->money('IDR'),
                         TextEntry::make('fund_loss')->money('IDR'),
+                        TextEntry::make('business_category')->label('Business Category')->badge(),
+                        TextEntry::make('root_cause_category')->label('Root Cause Category')->badge(),
+                        TextEntry::make('responsible_team')->label('Responsible Team')->badge(),
                         TextEntry::make('people_caused'),
                         TextEntry::make('checker'),
                         TextEntry::make('maker'),

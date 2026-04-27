@@ -13,6 +13,7 @@ use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
@@ -72,6 +73,7 @@ class IncidentResource extends Resource
                             Select::make('classification')->options([
                                 'Incident' => 'Incident', 'Issue' => 'Issue',
                             ])->required(),
+                            Select::make('incident_type')->label('Area')->options(['Tech' => 'Tech', 'Non-tech' => 'Non-tech', 'Company Loss' => 'Company Loss'])->required(),
                             TextInput::make('reported_by')->label('Reported By'),
                             TextInput::make('mttr')->label('MTTR (minutes)')->readOnly()->visible(fn ($context) => $context === 'edit'),
                             TextInput::make('mtbf')->label('MTBF (days)')->readOnly()->visible(fn ($context) => $context === 'edit'),
@@ -113,14 +115,22 @@ class IncidentResource extends Resource
                             'Finalization' => 'Finalization',
                             'Completed' => 'Completed',
                         ])->required()->default('Open'),
-                        Select::make('incident_type')->label('Area')->options(['Tech' => 'Tech', 'Non-tech' => 'Non-tech'])->required(),
                         Select::make('incident_source')->options(['Internal' => 'Internal', 'External' => 'External'])->required(),
                         Select::make('pic_id')
                             ->label('Person In Charge')
                             ->relationship('pic', 'name')
                             ->searchable()
                             ->preload(),
-                    ])->columns(4),
+                        TagsInput::make('business_category')
+                            ->label('Business Category')
+                            ->placeholder('Type and press Enter to add'),
+                        TagsInput::make('root_cause_category')
+                            ->label('Root Cause Category')
+                            ->placeholder('Type and press Enter to add'),
+                        TagsInput::make('responsible_team')
+                            ->label('Responsible Team')
+                            ->placeholder('Type and press Enter to add'),
+                    ])->columns(3),
 
                 Section::make('Details & Timeline')
                     ->schema([
@@ -200,6 +210,9 @@ class IncidentResource extends Resource
                 // Toggleable Hidden Columns
                 TextColumn::make('classification')->sortable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('incident_type')->label('Area')->sortable()->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('business_category')->label('Business Category')->badge()->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('root_cause_category')->label('Root Cause Category')->badge()->toggleable(isToggledHiddenByDefault: true),
+                TextColumn::make('responsible_team')->label('Responsible Team')->badge()->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('goc_upload')->boolean()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->groups([
