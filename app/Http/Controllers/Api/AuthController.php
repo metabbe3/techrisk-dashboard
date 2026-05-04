@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\LoginRequest;
 use App\Traits\ApiResponser;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
@@ -50,16 +50,13 @@ class AuthController extends Controller
      *   }
      * }
      */
-    public function login(Request $request)
+    public function login(LoginRequest $request)
     {
-        $credentials = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required',
-        ]);
+        $credentials = $request->validated();
 
         if (Auth::attempt($credentials)) {
             $user = Auth::user();
-            $token = $user->createToken('api-token')->plainTextToken;
+            $token = $user->createToken('api-token-'.$user->id.'-'.now()->format('YmdHis'), ['*'])->plainTextToken;
 
             Log::info('User logged in successfully', [
                 'user_id' => $user->id,
