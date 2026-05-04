@@ -31,13 +31,25 @@ return Application::configure(basePath: dirname(__DIR__))
                 return response()->json([
                     'code' => 422,
                     'status' => 'Error',
-                    'message' => $e->errors(),
+                    'message' => $e->getMessage(),
+                    'errors' => $e->errors(),
                     'data' => null,
                 ], 422);
             }
         });
 
         $exceptions->renderable(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, $request) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                return response()->json([
+                    'code' => 404,
+                    'status' => 'Error',
+                    'message' => 'Resource not found.',
+                    'data' => null,
+                ], 404);
+            }
+        });
+
+        $exceptions->renderable(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
             if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
                 return response()->json([
                     'code' => 404,

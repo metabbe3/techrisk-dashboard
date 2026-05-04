@@ -62,9 +62,12 @@ class ApiAuditLogger
     {
         $path = $request->path();
 
-        return in_array($path, self::SKIP_ENDPOINTS) ||
-               str_starts_with($path, 'health') ||
-               str_starts_with($path, 'metrics');
+        // Strip 'api/' prefix for matching
+        $stripped = str_starts_with($path, 'api/') ? substr($path, 4) : $path;
+
+        return in_array($stripped, self::SKIP_ENDPOINTS) ||
+               str_starts_with($stripped, 'health') ||
+               str_starts_with($stripped, 'metrics');
     }
 
     private function captureRequestData(Request $request, string $traceId): ApiAuditLogEntry
@@ -174,7 +177,7 @@ class ApiAuditLogger
         $data = json_decode($content, true);
 
         if (isset($data['message'])) {
-            return $data['message'];
+            return is_string($data['message']) ? $data['message'] : json_encode($data['message']);
         }
 
         if (isset($data['error'])) {
