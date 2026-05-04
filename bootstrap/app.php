@@ -82,6 +82,17 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
+        $exceptions->renderable(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, $request) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                return response()->json([
+                    'code' => $e->getStatusCode(),
+                    'status' => 'Error',
+                    'message' => $e->getMessage() ?: 'Error.',
+                    'data' => null,
+                ], $e->getStatusCode());
+            }
+        });
+
         $exceptions->renderable(function (\Throwable $e, $request) {
             if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
                 \Illuminate\Support\Facades\Log::error('Unhandled API exception: '.$e->getMessage(), [

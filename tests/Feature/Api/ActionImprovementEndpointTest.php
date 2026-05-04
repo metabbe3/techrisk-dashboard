@@ -60,7 +60,7 @@ class ActionImprovementEndpointTest extends TestCase
         ]);
 
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson("/api/incidents/{$incident->id}/action-improvements");
+            ->getJson("/api/v1/incidents/{$incident->id}/action-improvements");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -79,7 +79,7 @@ class ActionImprovementEndpointTest extends TestCase
         $incident = Incident::factory()->create();
 
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson("/api/incidents/{$incident->id}/action-improvements");
+            ->getJson("/api/v1/incidents/{$incident->id}/action-improvements");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -96,7 +96,7 @@ class ActionImprovementEndpointTest extends TestCase
     public function test_list_action_improvements_for_nonexistent_incident_returns_404(): void
     {
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson('/api/incidents/99999/action-improvements');
+            ->getJson('/api/v1/incidents/99999/action-improvements');
 
         $response->assertStatus(404);
     }
@@ -115,7 +115,7 @@ class ActionImprovementEndpointTest extends TestCase
         ]);
 
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson("/api/incidents/{$incident->id}/action-improvements");
+            ->getJson("/api/v1/incidents/{$incident->id}/action-improvements");
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -163,7 +163,7 @@ class ActionImprovementEndpointTest extends TestCase
         ]);
 
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson("/api/incidents/{$incident1->id}/action-improvements");
+            ->getJson("/api/v1/incidents/{$incident1->id}/action-improvements");
 
         $response->assertStatus(200);
 
@@ -188,7 +188,7 @@ class ActionImprovementEndpointTest extends TestCase
         ]);
 
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson("/api/action-improvements/{$action->id}");
+            ->getJson("/api/v1/action-improvements/{$action->id}");
 
         $response->assertStatus(200)
             ->assertJson([
@@ -218,7 +218,7 @@ class ActionImprovementEndpointTest extends TestCase
         ]);
 
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson("/api/action-improvements/{$action->id}");
+            ->getJson("/api/v1/action-improvements/{$action->id}");
 
         $response->assertStatus(200)
             ->assertJsonStructure([
@@ -243,7 +243,7 @@ class ActionImprovementEndpointTest extends TestCase
     public function test_show_action_improvement_with_nonexistent_id_returns_404(): void
     {
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson('/api/action-improvements/99999');
+            ->getJson('/api/v1/action-improvements/99999');
 
         $response->assertStatus(404);
     }
@@ -262,7 +262,7 @@ class ActionImprovementEndpointTest extends TestCase
         ]);
 
         $response = $this->withHeaders($this->authenticatedHeaders())
-            ->getJson("/api/action-improvements/{$action->id}");
+            ->getJson("/api/v1/action-improvements/{$action->id}");
 
         $response->assertStatus(200);
 
@@ -279,14 +279,14 @@ class ActionImprovementEndpointTest extends TestCase
     {
         $incident = Incident::factory()->create();
 
-        $response = $this->getJson("/api/incidents/{$incident->id}/action-improvements");
+        $response = $this->getJson("/api/v1/incidents/{$incident->id}/action-improvements");
 
         $response->assertUnauthorized();
     }
 
     public function test_unauthenticated_user_cannot_show_action_improvement(): void
     {
-        $response = $this->getJson('/api/action-improvements/1');
+        $response = $this->getJson('/api/v1/action-improvements/1');
 
         $response->assertUnauthorized();
     }
@@ -299,7 +299,7 @@ class ActionImprovementEndpointTest extends TestCase
         $incident = Incident::factory()->create();
 
         $response = $this->withHeaders(['Authorization' => 'Bearer '.$token])
-            ->getJson("/api/incidents/{$incident->id}/action-improvements");
+            ->getJson("/api/v1/incidents/{$incident->id}/action-improvements");
 
         $response->assertStatus(403);
     }
@@ -320,7 +320,7 @@ class ActionImprovementEndpointTest extends TestCase
         ]);
 
         $response = $this->withHeaders(['Authorization' => 'Bearer '.$token])
-            ->getJson("/api/action-improvements/{$action->id}");
+            ->getJson("/api/v1/action-improvements/{$action->id}");
 
         $response->assertStatus(403);
     }
