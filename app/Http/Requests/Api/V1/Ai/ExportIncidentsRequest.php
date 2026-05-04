@@ -21,7 +21,7 @@ class ExportIncidentsRequest extends FormRequest
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'severity' => ['nullable', 'string', 'in:P1,P2,P3,P4,G,X1,X2,X3,X4,Non Incident'],
-            'type' => ['nullable', 'string', 'in:Tech,Non-tech'],
+            'type' => ['nullable', 'string', 'in:Tech,Non-tech,Company Loss'],
         ];
     }
 }

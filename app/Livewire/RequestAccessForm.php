@@ -31,8 +31,18 @@ class RequestAccessForm extends Component implements HasForms
 
     public string $honeypot = '';
 
+    public array $requested_years = [];
+
+    public function getAvailableYearsProperty(): array
+    {
+        return collect(range((int) date('Y') - 2, (int) date('Y') + 1))
+            ->mapWithKeys(fn ($year) => [$year => (string) $year])
+            ->toArray();
+    }
+
     public function mount(): void
     {
+        $this->requested_years = [(int) date('Y')];
         $this->form->fill([
             'requested_duration_days' => 30,
             'requested_years' => [(int) date('Y')],
