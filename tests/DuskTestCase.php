@@ -11,43 +11,14 @@ use PHPUnit\Framework\Attributes\BeforeClass;
 
 abstract class DuskTestCase extends BaseTestCase
 {
-    /**
-     * Prepare for Dusk test execution.
-     */
     #[BeforeClass]
     public static function prepare(): void
     {
-        // Set environment variables before application is created
-        // These must be set before the app boots
-        $_ENV['DB_CONNECTION'] = 'sqlite';
-        $_ENV['DB_DATABASE'] = ':memory:';
-        $_ENV['CACHE_STORE'] = 'array';
-        $_ENV['QUEUE_CONNECTION'] = 'sync';
-        $_ENV['SESSION_DRIVER'] = 'array';
-
         if (! static::runningInSail()) {
             static::startChromeDriver(['--port=9515']);
         }
     }
 
-    /**
-     * Setup the test environment.
-     */
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        // Force SQLite in-memory database for tests
-        config(['database.default' => 'sqlite']);
-        config(['database.connections.sqlite.database' => ':memory:']);
-        config(['cache.default' => 'array']);
-        config(['permission.cache.store' => 'array']);
-        config(['queue.default' => 'sync']);
-    }
-
-    /**
-     * Create the RemoteWebDriver instance.
-     */
     protected function driver(): RemoteWebDriver
     {
         $options = (new ChromeOptions)->addArguments(collect([
