@@ -12,10 +12,13 @@ use App\Observers\IncidentObserver;
 use App\Observers\IncidentTypeObserver;
 use App\Observers\LabelObserver;
 use App\Observers\StatusUpdateObserver;
+use App\Policies\ActionImprovementPolicy;
+use App\Policies\IncidentPolicy;
 use App\Services\SensitiveDataFilter;
 use App\Services\TraceIdService;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
@@ -68,6 +71,10 @@ class AppServiceProvider extends ServiceProvider
         StatusUpdate::observe(StatusUpdateObserver::class);
         Label::observe(LabelObserver::class);
         IncidentType::observe(IncidentTypeObserver::class);
+
+        // Register model policies for API authorization
+        Gate::policy(Incident::class, IncidentPolicy::class);
+        Gate::policy(ActionImprovement::class, ActionImprovementPolicy::class);
 
         FilamentView::registerRenderHook(
             'panels::body.end',
