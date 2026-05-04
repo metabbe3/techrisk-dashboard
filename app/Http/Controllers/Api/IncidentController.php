@@ -3,6 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\ListIncidentsRequest;
+use App\Http\Requests\Api\V1\StoreIncidentRequest;
+use App\Http\Requests\Api\V1\UpdateIncidentRequest;
 use App\Http\Resources\IncidentApiResource;
 use App\Models\Incident;
 use App\Models\IncidentType;
@@ -10,9 +13,8 @@ use App\Models\Label;
 use App\Traits\ApiResponser;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 
 /**
  * @group Incidents
@@ -72,41 +74,40 @@ class IncidentController extends Controller
      *   "data": null
      * }
      */
-    public function index(Request $request)
+    public function index(ListIncidentsRequest $request)
     {
         try {
-            // Build the query - don't cache query builders
             $query = Incident::with(['labels']);
 
-            if ($request->has('start_date') && $request->has('end_date')) {
-                $query->whereBetween('incident_date', [$request->start_date, $request->end_date]);
+            if ($request->filled('start_date') && $request->filled('end_date')) {
+                $query->whereBetween('incident_date', [$request->validated('start_date'), $request->validated('end_date')]);
             }
 
-            if ($request->has('min_fund_loss')) {
-                $query->where('fund_loss', '>=', $request->min_fund_loss);
+            if ($request->filled('min_fund_loss')) {
+                $query->where('fund_loss', '>=', $request->validated('min_fund_loss'));
             }
 
-            if ($request->has('max_fund_loss')) {
-                $query->where('fund_loss', '<=', $request->max_fund_loss);
+            if ($request->filled('max_fund_loss')) {
+                $query->where('fund_loss', '<=', $request->validated('max_fund_loss'));
             }
 
-            if ($request->has('min_potential_fund_loss')) {
-                $query->where('potential_fund_loss', '>=', $request->min_potential_fund_loss);
+            if ($request->filled('min_potential_fund_loss')) {
+                $query->where('potential_fund_loss', '>=', $request->validated('min_potential_fund_loss'));
             }
 
-            if ($request->has('max_potential_fund_loss')) {
-                $query->where('potential_fund_loss', '<=', $request->max_potential_fund_loss);
+            if ($request->filled('max_potential_fund_loss')) {
+                $query->where('potential_fund_loss', '<=', $request->validated('max_potential_fund_loss'));
             }
 
             if ($request->filled('tags')) {
-                $tags = explode(',', $request->input('tags'));
+                $tags = explode(',', $request->validated('tags'));
                 $query->whereHas('labels', function ($q) use ($tags) {
                     $q->whereIn('name', $tags);
                 });
             }
 
             if ($request->filled('type')) {
-                $query->where('incident_type', $request->input('type'));
+                $query->where('incident_type', $request->validated('type'));
             }
 
             return $this->successResponse(
@@ -114,7 +115,7 @@ class IncidentController extends Controller
                 'Incidents retrieved successfully.'
             );
         } catch (Exception $e) {
-            \Log::error('Failed to retrieve incidents: '.$e->getMessage(), [
+            Log::error('Failed to retrieve incidents: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'request_params' => $request->all(),
             ]);
@@ -147,7 +148,7 @@ class IncidentController extends Controller
 
             return $this->successResponse($labels, 'Labels retrieved successfully.');
         } catch (Exception $e) {
-            \Log::error('Failed to retrieve labels: '.$e->getMessage(), [
+            Log::error('Failed to retrieve labels: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
@@ -179,7 +180,7 @@ class IncidentController extends Controller
 
             return $this->successResponse($incidentTypes, 'Incident types retrieved successfully.');
         } catch (Exception $e) {
-            \Log::error('Failed to retrieve incident types: '.$e->getMessage(), [
+            Log::error('Failed to retrieve incident types: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
             ]);
 
@@ -187,33 +188,10 @@ class IncidentController extends Controller
         }
     }
 
-    public function store(Request $request)
+    public function store(StoreIncidentRequest $request)
     {
         try {
-            $validatedData = $request->validate([
-                'title' => 'required|string|max:255',
-                'summary' => 'required|string',
-                'no' => 'required|string|max:255|unique:incidents,no',
-                'root_cause' => 'nullable|string',
-                'severity' => 'required|string',
-                'incident_type' => 'required|in:Tech,Non-tech',
-                'incident_source' => 'required|in:Internal,External',
-                'goc_upload' => 'boolean',
-                'teams_upload' => 'boolean',
-                'discovered_at' => 'nullable|date',
-                'stop_bleeding_at' => 'nullable|date',
-                'incident_date' => 'required|date',
-                'entry_date_tech_risk' => 'required|date',
-                'pic_id' => 'nullable|exists:users,id',
-                'reported_by' => 'nullable|string',
-                'third_party_client' => 'nullable|string',
-                'potential_fund_loss' => 'nullable|numeric',
-                'fund_loss' => 'nullable|numeric',
-                'people_caused' => 'nullable|array',
-                'people_caused.*' => 'nullable|string|max:255',
-                'checker' => 'nullable|string',
-                'maker' => 'nullable|string',
-            ]);
+            $validatedData = $request->validated();
 
             $incident = Incident::create($validatedData);
 
@@ -222,10 +200,8 @@ class IncidentController extends Controller
                 'Incident created successfully.',
                 201
             );
-        } catch (ValidationException $e) {
-            return $this->errorResponse($e->errors(), 422);
         } catch (Exception $e) {
-            \Log::error('Failed to create incident: '.$e->getMessage(), [
+            Log::error('Failed to create incident: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'request_data' => $request->all(),
             ]);
@@ -311,9 +287,9 @@ class IncidentController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
-            \Log::error('Failed to retrieve incident: '.$e->getMessage(), [
+            Log::error('Failed to retrieve incident: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
-                'incident_id' => $incident->id ?? 'unknown',
+                'incident_id' => $incident->id,
             ]);
 
             return $this->errorResponse('Failed to retrieve incident.', 500);
@@ -371,7 +347,7 @@ class IncidentController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
-            \Log::error('Failed to retrieve incident: '.$e->getMessage(), [
+            Log::error('Failed to retrieve incident: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'incident_no' => $no,
             ]);
@@ -440,7 +416,7 @@ class IncidentController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
-            \Log::error('Failed to retrieve incident markdown: '.$e->getMessage(), [
+            Log::error('Failed to retrieve incident markdown: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
                 'incident_no' => $no,
             ]);
@@ -581,33 +557,10 @@ class IncidentController extends Controller
         return implode("\n", $md);
     }
 
-    public function update(Request $request, Incident $incident)
+    public function update(UpdateIncidentRequest $request, Incident $incident)
     {
         try {
-            $validatedData = $request->validate([
-                'title' => 'string|max:255',
-                'summary' => 'string',
-                'no' => 'string|max:255|unique:incidents,no,'.$incident->id,
-                'root_cause' => 'nullable|string',
-                'severity' => 'string',
-                'incident_type' => 'in:Tech,Non-tech',
-                'incident_source' => 'in:Internal,External',
-                'goc_upload' => 'boolean',
-                'teams_upload' => 'boolean',
-                'discovered_at' => 'nullable|date',
-                'stop_bleeding_at' => 'nullable|date',
-                'incident_date' => 'date',
-                'entry_date_tech_risk' => 'date',
-                'pic_id' => 'nullable|exists:users,id',
-                'reported_by' => 'nullable|string',
-                'third_party_client' => 'nullable|string',
-                'potential_fund_loss' => 'nullable|numeric',
-                'fund_loss' => 'nullable|numeric',
-                'people_caused' => 'nullable|array',
-                'people_caused.*' => 'nullable|string|max:255',
-                'checker' => 'nullable|string',
-                'maker' => 'nullable|string',
-            ]);
+            $validatedData = $request->validated();
 
             $incident->update($validatedData);
 
@@ -615,14 +568,12 @@ class IncidentController extends Controller
                 new IncidentApiResource($incident),
                 'Incident updated successfully.'
             );
-        } catch (ValidationException $e) {
-            return $this->errorResponse($e->errors(), 422);
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
-            \Log::error('Failed to update incident: '.$e->getMessage(), [
+            Log::error('Failed to update incident: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
-                'incident_id' => $incident->id ?? 'unknown',
+                'incident_id' => $incident->id,
                 'request_data' => $request->all(),
             ]);
 
@@ -639,9 +590,9 @@ class IncidentController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
-            \Log::error('Failed to delete incident: '.$e->getMessage(), [
+            Log::error('Failed to delete incident: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
-                'incident_id' => $incident->id ?? 'unknown',
+                'incident_id' => $incident->id,
             ]);
 
             return $this->errorResponse('Failed to delete incident.', 500);
