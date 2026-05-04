@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\IncidentResource\Pages;
 
 use App\Filament\Resources\IncidentResource;
@@ -8,7 +10,6 @@ use Filament\Actions;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Components\RepeatableEntry;
 use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
 
@@ -66,7 +67,7 @@ class ViewIncident extends ViewRecord
                         TextEntry::make('entry_date_tech_risk')->date(),
                         TextEntry::make('pic.name')->label('PIC'),
                         TextEntry::make('reported_by'),
-                        TextEntry::make('involved_third_party')->label('3rd Party/Client'),
+                        TextEntry::make('third_party_client')->label('3rd Party/Client'),
                         TextEntry::make('potential_fund_loss')->money('IDR'),
                         TextEntry::make('fund_loss')->money('IDR'),
                         TextEntry::make('business_category')->label('Business Category')->badge(),

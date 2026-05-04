@@ -12,16 +12,17 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Default any existing NULL incident_type values before making NOT NULL
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::table('incidents')->whereNull('incident_type')->update(['incident_type' => 'Tech']);
+            DB::statement("ALTER TABLE incidents MODIFY COLUMN incident_type ENUM('Tech', 'Non-tech', 'Company Loss') NOT NULL DEFAULT 'Tech'");
+        }
+
         Schema::table('incidents', function (Blueprint $table) {
             $table->json('business_category')->nullable()->after('incident_category');
             $table->json('root_cause_category')->nullable()->after('root_cause');
             $table->json('responsible_team')->nullable()->after('reported_by');
         });
-
-        // Modify incident_type enum to add 'Company Loss'
-        if (DB::getDriverName() !== 'sqlite') {
-            DB::statement("ALTER TABLE incidents MODIFY COLUMN incident_type ENUM('Tech', 'Non-tech', 'Company Loss') NOT NULL");
-        }
     }
 
     /**
@@ -34,7 +35,7 @@ return new class extends Migration
         });
 
         if (DB::getDriverName() !== 'sqlite') {
-            DB::statement("ALTER TABLE incidents MODIFY COLUMN incident_type ENUM('Tech', 'Non-tech') NOT NULL");
+            DB::statement("ALTER TABLE incidents MODIFY COLUMN incident_type ENUM('Tech', 'Non-tech') NOT NULL DEFAULT 'Tech'");
         }
     }
 };

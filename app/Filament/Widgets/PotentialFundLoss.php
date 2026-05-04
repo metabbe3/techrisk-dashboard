@@ -2,13 +2,15 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Livewire\Attributes\On;
 
 class PotentialFundLoss extends BaseWidget
 {
+    use InteractsWithDashboardFilters;
+
     protected int|string|array $columnSpan = [
         'default' => 'full',
         'lg' => 4,
@@ -45,12 +47,5 @@ class PotentialFundLoss extends BaseWidget
                 ->descriptionIcon('heroicon-m-currency-dollar')
                 ->color('danger'),
         ];
-    }
-
-    #[On('dashboardFiltersUpdated')]
-    public function updateDashboardFilters(array $data): void
-    {
-        $this->start_date = $data['start_date'];
-        $this->end_date = $data['end_date'];
     }
 }

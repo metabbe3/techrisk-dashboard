@@ -2,6 +2,9 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\IncidentStatus;
+use App\Enums\IncidentType;
+use App\Enums\Severity;
 use App\Exports\IncidentsExport;
 use App\Models\Incident;
 use App\Models\ReportTemplate;
@@ -61,7 +64,7 @@ class Reporting extends Page implements HasForms
                 'stop_bleeding_at' => 'Stop Bleeding At',
                 'entry_date_tech_risk' => 'Entry Date to Tech Risk',
                 'reported_by' => 'Reported By',
-                'involved_third_party' => 'Involved Third Party',
+                'third_party_client' => 'Third Party Client',
                 'potential_fund_loss' => 'Potential Fund Loss',
                 'fund_loss' => 'Fund Loss',
                 'people_caused' => 'People Caused',
@@ -130,34 +133,14 @@ class Reporting extends Page implements HasForms
                             DatePicker::make('end_date'),
                             Select::make('incident_types')
                                 ->multiple()
-                                ->options([
-                                    'Tech' => 'Tech',
-                                    'Non-tech' => 'Non-tech',
-                                ])
+                                ->options(IncidentType::options())
                                 ->live(),
                             Select::make('statuses')
                                 ->multiple()
-                                ->options([
-                                    'Open' => 'Open',
-                                    'In progress' => 'In progress',
-                                    'Finalization' => 'Finalization',
-                                    'Completed' => 'Completed',
-                                ]),
+                                ->options(IncidentStatus::options()),
                             Select::make('severities')
                                 ->multiple()
-                                ->options([
-                                    'P1' => 'P1',
-                                    'P2' => 'P2',
-                                    'P3' => 'P3',
-                                    'P4' => 'P4',
-                                    'Non Incident' => 'Non Incident',
-                                    'N' => 'N',
-                                    'G' => 'G',
-                                    'X1' => 'X1',
-                                    'X2' => 'X2',
-                                    'X3' => 'X3',
-                                    'X4' => 'X4',
-                                ]),
+                                ->options(Severity::options()),
                         ])->columnSpan(1),
                     Section::make('Report Content')
                         ->schema([

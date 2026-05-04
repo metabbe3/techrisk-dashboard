@@ -1,25 +1,25 @@
 <x-filament-widgets::widget>
-    <x-filament::card>
+    <x-filament::section>
         <x-slot name="heading">
             {{ $this->heading }}
         </x-slot>
 
         <div class="overflow-x-auto">
-            <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                    <tr>
+            <table class="w-full">
+                <thead>
+                    <tr class="border-b border-gray-200 dark:border-gray-700">
                         @foreach($this->columns as $column)
-                            <th scope="col" class="px-6 py-3">
+                            <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                                 {{ $column }}
                             </th>
                         @endforeach
                     </tr>
                 </thead>
-                <tbody>
+                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
                     @foreach($this->getTableData() as $row)
-                        <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700">
+                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                             @foreach($this->columns as $column)
-                                <td class="px-6 py-4">
+                                <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                                     {{ $row[$column] ?? '' }}
                                 </td>
                             @endforeach
@@ -28,5 +28,5 @@
                 </tbody>
             </table>
         </div>
-    </x-filament::card>
+    </x-filament::section>
 </x-filament-widgets::widget>

@@ -2,10 +2,9 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\Severity;
 use App\Filament\Resources\IssueResource\Pages;
 use App\Models\Incident;
-use Carbon\Carbon;
-use Filament\Forms;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
@@ -16,8 +15,6 @@ use Filament\Tables;
 use Filament\Tables\Columns\Summarizers\Average;
 use Filament\Tables\Columns\Summarizers\Count;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\Filter;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -70,31 +67,13 @@ class IssueResource extends Resource
                             ->readOnly(fn ($context) => $context === 'edit'),
                         TextInput::make('no')
                             ->label('Issue ID')
-                            ->default(function () {
-                                $baseId = date('Ymd').'_IS_';
-                                $uniqueId = '';
-                                do {
-                                    $suffix = random_int(1000, 9999);
-                                    $uniqueId = $baseId.$suffix;
-                                } while (Incident::where('no', $uniqueId)->exists());
-
-                                return $uniqueId;
-                            })
+                            ->default(fn () => Incident::generateNo('IS'))
                             ->readOnly()
+                            ->unique(ignoreRecord: true)
                             ->columnSpan(1),
                         Select::make('severity')
                             ->label('Severity')
-                            ->options([
-                                'P1' => 'P1',
-                                'P2' => 'P2',
-                                'P3' => 'P3',
-                                'P4' => 'P4',
-                                'G' => 'G',
-                                'X1' => 'X1',
-                                'X2' => 'X2',
-                                'X3' => 'X3',
-                                'X4' => 'X4',
-                            ])
+                            ->options(Severity::options())
                             ->required()
                             ->columnSpan(1),
                         Select::make('incident_type_id')
@@ -139,7 +118,7 @@ class IssueResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->with('incidentType'))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['incidentType', 'pic']))
             ->columns([
                 TextColumn::make('no')
                     ->label('ID')
@@ -151,17 +130,16 @@ class IssueResource extends Resource
                     ->label('Title')
                     ->searchable()
                     ->sortable()
-                    ->formatStateUsing(fn (string $state): string => str_replace('Summary of Incident - ', '', $state)),
+                    ->html()
+                    ->formatStateUsing(function (Incident $record): string {
+                        $record->title = str_replace('Summary of Incident - ', '', $record->title);
+
+                        return view('components.incident-hover-preview', ['incident' => $record])->render();
+                    }),
                 TextColumn::make('severity')
                     ->label('Severity')
                     ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'P1' => 'danger',
-                        'P2' => 'warning',
-                        'P3' => 'info',
-                        'P4' => 'success',
-                        default => 'gray',
-                    })
+                    ->color(fn (string $state): string => Severity::tryFrom($state)?->color() ?? 'gray')
                     ->sortable(),
                 TextColumn::make('classification')
                     ->label('Type')
@@ -185,7 +163,9 @@ class IssueResource extends Resource
                     ->label('MTBF (days)')
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false)
-                    ->state(fn (Incident $record): int => $record->mtbf_display)
+                    ->state(fn (Incident $record): int => $record->getMtbfForTab(
+                        request()->query('tableActiveTab', 'All Cases')
+                    ))
                     ->formatStateUsing(fn (int $state): string => number_format($state)),
                 TextColumn::make('incident_date')
                     ->label('Start Date')
@@ -198,51 +178,8 @@ class IssueResource extends Resource
                     ->toggleable(),
             ])
             ->filters([
-                // Quick Period Filter
-                SelectFilter::make('quick_period')
-                    ->label('Quick Period')
-                    ->options([
-                        'week' => 'This Week',
-                        'month' => 'This Month',
-                        'year' => 'This Year',
-                        'all' => 'All Time',
-                    ])
-                    ->default('year')
-                    ->query(function (Builder $query, array $data) {
-                        $value = $data['value'];
-                        if ($value === 'week') {
-                            return $query->whereBetween('incident_date', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]);
-                        }
-                        if ($value === 'month') {
-                            return $query->whereBetween('incident_date', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()]);
-                        }
-                        if ($value === 'year') {
-                            return $query->whereBetween('incident_date', [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()]);
-                        }
-                        if ($value === 'all') {
-                            return $query;
-                        }
-
-                        return $query;
-                    }),
-
-                // Custom Date Range Filter
-                Filter::make('custom_date_range')
-                    ->form([
-                        Forms\Components\DatePicker::make('from')->label('From Date'),
-                        Forms\Components\DatePicker::make('until')->label('To Date'),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when(
-                                $data['from'],
-                                fn (Builder $query, $date): Builder => $query->whereDate('incident_date', '>=', $date),
-                            )
-                            ->when(
-                                $data['until'],
-                                fn (Builder $query, $date): Builder => $query->whereDate('incident_date', '<=', $date),
-                            );
-                    }),
+                \App\Filament\Filters\QuickPeriodFilter::make(),
+                \App\Filament\Filters\QuickPeriodFilter::dateRange(),
             ])
             ->actions([
                 Tables\Actions\EditAction::make()

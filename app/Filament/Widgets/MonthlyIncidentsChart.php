@@ -2,14 +2,16 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\Cache;
-use Livewire\Attributes\On;
 
 class MonthlyIncidentsChart extends ChartWidget
 {
+    use InteractsWithDashboardFilters;
+
     protected static ?string $heading = 'Monthly Incidents';
 
     protected int|string|array $columnSpan = 4;
@@ -97,12 +99,5 @@ class MonthlyIncidentsChart extends ChartWidget
                 'padding' => 10,
             ],
         ];
-    }
-
-    #[On('dashboardFiltersUpdated')]
-    public function updateDashboardFilters(array $data): void
-    {
-        $this->start_date = $data['start_date'];
-        $this->end_date = $data['end_date'];
     }
 }

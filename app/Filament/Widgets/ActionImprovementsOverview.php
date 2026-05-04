@@ -2,14 +2,16 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\ActionImprovement;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\Cache;
-use Livewire\Attributes\On;
 
 class ActionImprovementsOverview extends BaseWidget
 {
+    use InteractsWithDashboardFilters;
+
     protected int|string|array $columnSpan = [
         'default' => 'full',
         'lg' => 8,
@@ -61,12 +63,5 @@ class ActionImprovementsOverview extends BaseWidget
                     ->color('success'),
             ];
         });
-    }
-
-    #[On('dashboardFiltersUpdated')]
-    public function updateDashboardFilters(array $data): void
-    {
-        $this->start_date = $data['start_date'];
-        $this->end_date = $data['end_date'];
     }
 }

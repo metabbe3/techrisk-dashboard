@@ -2,15 +2,13 @@
     <form wire:submit.prevent="generateReport">
         {{ $this->form }}
 
-        <div class="mt-8 flex">
-            <x-filament::button type="submit" class="mr-4">
+        <div class="mt-8 flex gap-3">
+            <x-filament::button type="submit">
                 Generate Report
             </x-filament::button>
 
-
-
             @if(!empty($incidents))
-                <x-filament::button wire:click="export">
+                <x-filament::button color="success" wire:click="export">
                     Export to Excel
                 </x-filament::button>
             @endif
@@ -18,53 +16,64 @@
     </form>
 
     @if(!empty($metrics))
-        <div class="mt-6">
-            <h2 class="text-lg font-semibold">Metrics</h2>
-            <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <x-filament::section>
+            <x-slot name="heading">
+                Metrics
+            </x-slot>
+
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 @foreach($metrics as $key => $value)
-                    <div class="bg-white overflow-hidden shadow rounded-lg">
-                        <div class="p-5">
-                            <div class="flex items-center">
-                                <div class="flex-shrink-0">
-                                    <svg class="h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                                    </svg>
-                                </div>
-                                <div class="ml-5 w-0 flex-1">
-                                    <dl>
-                                        <dt class="text-sm font-medium text-gray-500 truncate">
-                                            {{ str_replace('_', ' ', Str::title($key)) }}
-                                        </dt>
-                                        <dd class="text-lg font-semibold text-gray-900">
-                                            {{ is_numeric($value) ? number_format($value, 2) : $value }}
-                                        </dd>
-                                    </dl>
-                                </div>
+                    <x-filament::section>
+                        <div class="flex items-center gap-3">
+                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/30">
+                                <x-filament::icon
+                                    icon="heroicon-o-chart-bar"
+                                    class="h-5 w-5 text-primary-600 dark:text-primary-400"
+                                />
+                            </div>
+                            <div>
+                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                    {{ str_replace('_', ' ', Str::title($key)) }}
+                                </p>
+                                <p class="text-xl font-bold text-gray-900 dark:text-white">
+                                    {{ is_numeric($value) ? number_format($value, 2) : $value }}
+                                </p>
                             </div>
                         </div>
-                    </div>
+                    </x-filament::section>
                 @endforeach
             </div>
-        </div>
+        </x-filament::section>
     @endif
 
-    @if(!empty($this->form->getState()['columns']))
-        <div class="mt-6">
-            <h2 class="text-lg font-semibold">Incidents</h2>
+    @php
+        $formState = $this->form->getState();
+        $selectedColumns = $formState['columns'] ?? [];
+        $columnLabels = $this->getColumnsFlattened();
+    @endphp
+
+    @if(!empty($selectedColumns))
+        <x-filament::section>
+            <x-slot name="heading">
+                Incidents
+            </x-slot>
+
             <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left text-gray-500 dark:text-gray-400">
-                    <thead class="text-xs text-gray-700 uppercase bg-gray-50 dark:bg-gray-700 dark:text-gray-400">
-                        <tr>
-                            @foreach($this->form->getState()['columns'] as $column)
-                                <th scope="col" class="px-6 py-3">{{ $this->getColumnsFlattened()[$column] ?? $column }}</th>
+                <table class="w-full">
+                    <thead>
+                        <tr class="border-b border-gray-200 dark:border-gray-700">
+                            @foreach($selectedColumns as $column)
+                                <th scope="col" class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                    {{ $columnLabels[$column] ?? $column }}
+                                </th>
                             @endforeach
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
                         @foreach($incidents as $incident)
-                            <tr class="bg-white border-b dark:bg-gray-800 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600">
-                                @foreach($this->form->getState()['columns'] as $column)
-                                    <td class="px-6 py-4">
+                            <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                                @foreach($selectedColumns as $column)
+                                    <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                                         @php
                                             $value = Arr::get($incident, $column);
                                             if (is_array($value)) {
@@ -80,6 +89,6 @@
                     </tbody>
                 </table>
             </div>
-        </div>
+        </x-filament::section>
     @endif
 </x-filament-panels::page>

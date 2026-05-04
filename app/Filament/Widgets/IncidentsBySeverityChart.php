@@ -2,14 +2,16 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Filament\Widgets\Widget;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Livewire\Attributes\On;
 
 class IncidentsBySeverityChart extends Widget
 {
+    use InteractsWithDashboardFilters;
+
     protected static string $view = 'filament.widgets.incidents-by-severity-chart';
 
     protected static ?string $heading = 'Incidents by Severity';

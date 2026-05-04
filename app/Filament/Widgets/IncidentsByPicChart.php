@@ -2,14 +2,16 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Livewire\Attributes\On;
 
 class IncidentsByPicChart extends ChartWidget
 {
+    use InteractsWithDashboardFilters;
+
     protected static ?string $heading = 'Incidents by Person In Charge';
 
     protected int|string|array $columnSpan = 6;
@@ -86,12 +88,5 @@ class IncidentsByPicChart extends ChartWidget
                 ],
             ],
         ];
-    }
-
-    #[On('dashboardFiltersUpdated')]
-    public function updateDashboardFilters(array $data): void
-    {
-        $this->start_date = $data['start_date'];
-        $this->end_date = $data['end_date'];
     }
 }

@@ -29,7 +29,7 @@ class IncidentResource extends JsonResource
             'incident_date' => $this->incident_date,
             'entry_date_tech_risk' => $this->entry_date_tech_risk,
             'reported_by' => $this->reported_by,
-            'involved_third_party' => $this->involved_third_party,
+            'third_party_client' => $this->third_party_client,
             'potential_fund_loss' => $this->potential_fund_loss,
             'fund_loss' => $this->fund_loss,
             'people_caused' => $this->people_caused,

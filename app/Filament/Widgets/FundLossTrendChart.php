@@ -2,15 +2,17 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Livewire\Attributes\On;
 
 class FundLossTrendChart extends ChartWidget
 {
+    use InteractsWithDashboardFilters;
+
     protected static ?string $heading = 'Fund Loss Trend';
 
     protected int|string|array $columnSpan = 6;
@@ -71,12 +73,5 @@ class FundLossTrendChart extends ChartWidget
     public function getColumnSpan(): int|string|array
     {
         return 6;
-    }
-
-    #[On('dashboardFiltersUpdated')]
-    public function updateDashboardFilters(array $data): void
-    {
-        $this->start_date = $data['start_date'];
-        $this->end_date = $data['end_date'];
     }
 }

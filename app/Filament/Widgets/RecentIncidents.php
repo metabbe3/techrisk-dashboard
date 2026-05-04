@@ -2,14 +2,16 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Filament\Resources\IncidentResource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Widgets\TableWidget as BaseWidget;
-use Livewire\Attributes\On;
 
 class RecentIncidents extends BaseWidget
 {
+    use InteractsWithDashboardFilters;
+
     protected int|string|array $columnSpan = 6;
 
     protected static ?string $heading = 'Recent Incidents';
@@ -58,12 +60,5 @@ class RecentIncidents extends BaseWidget
                         default => 'secondary',
                     }),
             ]);
-    }
-
-    #[On('dashboardFiltersUpdated')]
-    public function updateDashboardFilters(array $data): void
-    {
-        $this->start_date = $data['start_date'];
-        $this->end_date = $data['end_date'];
     }
 }

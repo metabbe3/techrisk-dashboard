@@ -1,6 +1,6 @@
 <?php
 
-// app/Models/Incident.php
+declare(strict_types=1);
 
 namespace App\Models;
 
@@ -17,6 +17,18 @@ class Incident extends Model implements Auditable
 {
     use AuditableTrait;
     use HasFactory;
+
+    private const MTBF_TAB_COLUMN_MAP = [
+        'All Cases' => 'mtbf',
+        'Fund Loss' => 'mtbf_fund_loss',
+        'Potential Recovery' => 'mtbf_potential_recovery',
+        'Non Fund Loss' => 'mtbf_non_fund_loss',
+        'Non Incident' => 'mtbf_non_incident',
+        'Completed Cases' => 'mtbf_completed',
+        'Recovered Cases' => 'mtbf_recovered',
+        'P4 Incidents' => 'mtbf_p4',
+        'Non-Tech Incidents' => 'mtbf_non_tech',
+    ];
 
     protected $appends = ['mtbf_display'];
 
@@ -149,34 +161,36 @@ class Incident extends Model implements Auditable
     }
 
     /**
-     * Get the appropriate MTBF value based on incident category and active tab.
-     * This dynamically returns the correct MTBF column based on which category
-     * the incident belongs to and which tab is currently active.
+     * Get MTBF value for a specific tab.
+     */
+    public function getMtbfForTab(string $tab): int
+    {
+        $column = self::MTBF_TAB_COLUMN_MAP[$tab] ?? 'mtbf';
+
+        return $this->getAttribute($column) ?? 0;
+    }
+
+    /**
+     * Backwards-compatible accessor: defaults to base MTBF.
+     * Prefer getMtbfForTab() in Filament table columns.
      */
     public function getMtbfDisplayAttribute(): int
     {
-        // Get the active tab from the request (Filament uses 'tableActiveTab' query parameter)
-        $activeTab = request()->query('tableActiveTab', 'All Cases');
+        return $this->getAttribute('mtbf') ?? 0;
+    }
 
-        // Define tab to column mapping
-        $tabColumnMap = [
-            'All Cases' => 'mtbf',
-            'Fund Loss' => 'mtbf_fund_loss',
-            'Potential Recovery' => 'mtbf_potential_recovery',
-            'Non Fund Loss' => 'mtbf_non_fund_loss',
-            'Non Incident' => 'mtbf_non_incident',
-            'Completed Cases' => 'mtbf_completed',
-            'Recovered Cases' => 'mtbf_recovered',
-            'P4 Incidents' => 'mtbf_p4',
-            'Non-Tech Incidents' => 'mtbf_non_tech',
-        ];
+    public static function generateNo(string $prefix, int $maxAttempts = 10): string
+    {
+        $baseId = date('Ymd').'_'.$prefix.'_';
 
-        // Get the appropriate MTBF column for the active tab
-        $column = $tabColumnMap[$activeTab] ?? 'mtbf';
-        $value = $this->getAttribute($column);
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            $candidate = $baseId.random_int(1000, 9999);
+            if (! self::where('no', $candidate)->exists()) {
+                return $candidate;
+            }
+        }
 
-        // Return value or fallback to 0
-        return $value ?? 0;
+        return $baseId.random_int(10000, 99999);
     }
 
     public function pic(): BelongsTo

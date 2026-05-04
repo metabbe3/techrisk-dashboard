@@ -2,14 +2,16 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Livewire\Attributes\On;
 
 class DashboardStatsOverview extends BaseWidget
 {
+    use InteractsWithDashboardFilters;
+
     public ?string $start_date = null;
 
     public ?string $end_date = null;
@@ -132,12 +134,5 @@ class DashboardStatsOverview extends BaseWidget
                 ->descriptionIcon('heroicon-m-shield-check')
                 ->color('info'),
         ];
-    }
-
-    #[On('dashboardFiltersUpdated')]
-    public function updateDashboardFilters(array $data): void
-    {
-        $this->start_date = $data['start_date'];
-        $this->end_date = $data['end_date'];
     }
 }
