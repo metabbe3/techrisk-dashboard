@@ -26,5 +26,64 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        $exceptions->renderable(function (\Illuminate\Validation\ValidationException $e, $request) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                return response()->json([
+                    'code' => 422,
+                    'status' => 'Error',
+                    'message' => $e->errors(),
+                    'data' => null,
+                ], 422);
+            }
+        });
+
+        $exceptions->renderable(function (\Illuminate\Database\Eloquent\ModelNotFoundException $e, $request) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                return response()->json([
+                    'code' => 404,
+                    'status' => 'Error',
+                    'message' => 'Resource not found.',
+                    'data' => null,
+                ], 404);
+            }
+        });
+
+        $exceptions->renderable(function (\Illuminate\Auth\AuthenticationException $e, $request) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                return response()->json([
+                    'code' => 401,
+                    'status' => 'Error',
+                    'message' => 'Unauthenticated.',
+                    'data' => null,
+                ], 401);
+            }
+        });
+
+        $exceptions->renderable(function (\Illuminate\Auth\Access\AuthorizationException $e, $request) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                return response()->json([
+                    'code' => 403,
+                    'status' => 'Error',
+                    'message' => 'Unauthorized.',
+                    'data' => null,
+                ], 403);
+            }
+        });
+
+        $exceptions->renderable(function (\Throwable $e, $request) {
+            if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
+                \Illuminate\Support\Facades\Log::error('Unhandled API exception: '.$e->getMessage(), [
+                    'exception' => get_class($e),
+                    'file' => $e->getFile().':'.$e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+
+                return response()->json([
+                    'code' => 500,
+                    'status' => 'Error',
+                    'message' => config('app.debug') ? $e->getMessage() : 'Internal server error.',
+                    'data' => null,
+                ], 500);
+            }
+        });
     })->create();

@@ -6,6 +6,14 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IncidentController;
 use Illuminate\Support\Facades\Route;
 
+// Health check endpoint - no auth required
+Route::get('/health', function () {
+    return response()->json([
+        'status' => 'ok',
+        'timestamp' => now()->toIso8601String(),
+    ]);
+});
+
 // Public login endpoint - strict limit to prevent brute force
 Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1'); // 5 login attempts per minute
@@ -43,7 +51,7 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     });
 
     // Action improvements read (60 req/min)
-    Route::middleware('throttle:60,1')->group(function () {
+    Route::prefix('v1')->middleware('throttle:60,1')->group(function () {
         Route::get('/incidents/{incident}/action-improvements', [ActionImprovementController::class, 'index']);
         Route::get('/action-improvements/{action_improvement}', [ActionImprovementController::class, 'show']);
     });
