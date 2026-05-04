@@ -35,10 +35,17 @@ class IssuesImporterTest extends TestCase
         ]);
     }
 
+    private function setImporterData(IssuesImporter $importer, array $data): void
+    {
+        (function () use ($data) {
+            $this->data = $data;
+        })->call($importer);
+    }
+
     public function test_creates_new_issue_when_no_duplicate_exists(): void
     {
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'New Test Issue']);
+        $this->setImporterData($importer, ['Name' => 'New Test Issue']);
 
         $record = $importer->resolveRecord();
 
@@ -55,7 +62,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Login Error']);
+        $this->setImporterData($importer, ['Name' => 'Login Error']);
 
         $this->expectException(RowImportFailedException::class);
         $this->expectExceptionMessage("Skipped: Issue 'Login Error' already exists as 'Login Error'");
@@ -72,7 +79,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Login Error ']);
+        $this->setImporterData($importer, ['Name' => 'Login Error ']);
 
         $this->expectException(RowImportFailedException::class);
         $this->expectExceptionMessage("Skipped: Issue 'Login Error ' already exists as 'Login Error'");
@@ -89,7 +96,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => '  Login Error']);
+        $this->setImporterData($importer, ['Name' => '  Login Error']);
 
         $this->expectException(RowImportFailedException::class);
 
@@ -105,7 +112,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'LOGIN ERROR']);
+        $this->setImporterData($importer, ['Name' => 'LOGIN ERROR']);
 
         $this->expectException(RowImportFailedException::class);
 
@@ -121,7 +128,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'LoGiN eRrOr']);
+        $this->setImporterData($importer, ['Name' => 'LoGiN eRrOr']);
 
         $this->expectException(RowImportFailedException::class);
 
@@ -137,7 +144,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Login    Error']);
+        $this->setImporterData($importer, ['Name' => 'Login    Error']);
 
         $this->expectException(RowImportFailedException::class);
 
@@ -153,7 +160,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Summary of Incident - Login Error']);
+        $this->setImporterData($importer, ['Name' => 'Summary of Incident - Login Error']);
 
         $this->expectException(RowImportFailedException::class);
 
@@ -168,7 +175,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Database Error']);
+        $this->setImporterData($importer, ['Name' => 'Database Error']);
 
         $record = $importer->resolveRecord();
 
@@ -185,7 +192,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Login Error']);
+        $this->setImporterData($importer, ['Name' => 'Login Error']);
 
         // Should NOT throw exception because classification is 'Incident', not 'Issue'
         $record = $importer->resolveRecord();
@@ -204,7 +211,7 @@ class IssuesImporterTest extends TestCase
 
         // All combined: prefix + spaces + case
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'SUMMARY OF INCIDENT -  LOGIN   ERROR  ']);
+        $this->setImporterData($importer, ['Name' => 'SUMMARY OF INCIDENT -  LOGIN   ERROR  ']);
 
         $this->expectException(RowImportFailedException::class);
 
@@ -220,7 +227,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Login Error']);
+        $this->setImporterData($importer, ['Name' => 'Login Error']);
 
         try {
             $importer->resolveRecord();
@@ -240,7 +247,7 @@ class IssuesImporterTest extends TestCase
         ]);
 
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => 'Login Error']);
+        $this->setImporterData($importer, ['Name' => 'Login Error']);
 
         try {
             $importer->resolveRecord();
@@ -259,7 +266,7 @@ class IssuesImporterTest extends TestCase
     public function test_handles_empty_name(): void
     {
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => '']);
+        $this->setImporterData($importer, ['Name' => '']);
 
         $record = $importer->resolveRecord();
 
@@ -270,7 +277,7 @@ class IssuesImporterTest extends TestCase
     public function test_handles_null_name(): void
     {
         $importer = new IssuesImporter($this->import, ['Name' => 'Name'], []);
-        $importer->setData(['Name' => null]);
+        $this->setImporterData($importer, ['Name' => null]);
 
         $record = $importer->resolveRecord();
 
