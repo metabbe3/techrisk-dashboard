@@ -49,7 +49,7 @@ enum ApiEndpoint: string
             self::INCIDENTS_MARKDOWN => 'api/v1/incidents-by-no',
             self::LABELS => 'api/v1/labels',
             self::INCIDENT_TYPES => 'api/v1/incident-types',
-            self::ACTION_IMPROVEMENTS => 'api/action-improvements',
+            self::ACTION_IMPROVEMENTS => 'api/v1/action-improvements',
             self::AI_EXPORT => 'api/v1/ai/export',
         };
     }
