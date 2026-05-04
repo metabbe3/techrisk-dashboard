@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Listeners\CheckTokenInactivity;
 use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Models\IncidentType;
@@ -18,6 +19,7 @@ use App\Services\SensitiveDataFilter;
 use App\Services\TraceIdService;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
@@ -66,13 +68,18 @@ class AppServiceProvider extends ServiceProvider
             }
         }
 
+        // Listen for Sanctum token authentication to check inactivity
+        Event::listen(
+            \Laravel\Sanctum\Events\TokenAuthenticated::class,
+            CheckTokenInactivity::class,
+        );
+
         Incident::observe(IncidentObserver::class);
         ActionImprovement::observe(ActionImprovementObserver::class);
         StatusUpdate::observe(StatusUpdateObserver::class);
         Label::observe(LabelObserver::class);
         IncidentType::observe(IncidentTypeObserver::class);
 
-        // Register model policies for API authorization
         Gate::policy(Incident::class, IncidentPolicy::class);
         Gate::policy(ActionImprovement::class, ActionImprovementPolicy::class);
 

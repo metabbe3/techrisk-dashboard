@@ -62,7 +62,6 @@ class ApiAuditLogger
     {
         $path = $request->path();
 
-        // Strip 'api/' prefix for matching
         $stripped = str_starts_with($path, 'api/') ? substr($path, 4) : $path;
 
         return in_array($stripped, self::SKIP_ENDPOINTS) ||
@@ -144,37 +143,36 @@ class ApiAuditLogger
         $entry->response_time_ms = (int) ((microtime(true) - $startTime) * 1000);
         $entry->response_size_bytes = strlen((string) $response->getContent());
 
+        $content = $response->getContent();
+        $decoded = json_decode($content, true);
+
         if ($response->isClientError() || $response->isServerError()) {
-            $entry->error_message = $this->extractErrorMessage($response);
+            $entry->error_message = $this->extractErrorMessage($decoded) ?? $response->statusText();
         }
 
-        // Capture response data (non-success only, with size limit)
         if (! $response->isSuccessful()) {
-            $entry->response_data = $this->captureResponseContent($response);
+            $entry->response_data = $this->captureResponseContent($decoded, $content);
         }
     }
 
-    private function captureResponseContent(Response $response): ?array
+    private function captureResponseContent(?array $decoded, string $rawContent): ?array
     {
-        $content = $response->getContent();
-
-        if (empty($content)) {
+        if (empty($rawContent)) {
             return null;
         }
 
-        $data = json_decode($content, true);
-
-        if (! is_array($data)) {
-            return ['_raw' => substr($content, 0, 1000)];
+        if (! is_array($decoded)) {
+            return ['_raw' => substr($rawContent, 0, 1000)];
         }
 
-        return $this->dataFilter->filter($data);
+        return $this->dataFilter->filter($decoded);
     }
 
-    private function extractErrorMessage(Response $response): ?string
+    private function extractErrorMessage(?array $data): ?string
     {
-        $content = $response->getContent();
-        $data = json_decode($content, true);
+        if (! $data) {
+            return null;
+        }
 
         if (isset($data['message'])) {
             return is_string($data['message']) ? $data['message'] : json_encode($data['message']);
@@ -184,7 +182,7 @@ class ApiAuditLogger
             return $data['error'];
         }
 
-        return $response->statusText();
+        return null;
     }
 
     private function filterSensitiveData(array $data): array

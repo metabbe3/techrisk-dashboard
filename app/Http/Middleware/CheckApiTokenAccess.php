@@ -15,9 +15,8 @@ class CheckApiTokenAccess
     /**
      * Handle an incoming request.
      *
-     * Checks:
-     * 1. Token has not expired (30 days after last_used_at)
-     * 2. Token has access to the requested endpoint
+     * Verifies token has access to the requested endpoint.
+     * Token inactivity expiry is handled by CheckTokenInactivity listener.
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -32,18 +31,9 @@ class CheckApiTokenAccess
             ], 401);
         }
 
-        // Check 1: Verify token hasn't expired (30 days of inactivity)
-        if ($this->isTokenExpired($token)) {
-            $token->delete(); // Revoke expired tokens
+        // Token inactivity expiry is handled by CheckTokenInactivity listener
+        // on the TokenAuthenticated event (fires before Sanctum updates last_used_at).
 
-            return response()->json([
-                'code' => 401,
-                'status' => 'Error',
-                'message' => 'Token has expired due to inactivity (30 days). Please request a new token.',
-            ], 401);
-        }
-
-        // Check 2: Verify token has access to the requested endpoint
         $requestPath = $request->path();
 
         if (! $this->tokenCanAccessEndpoint($token, $requestPath)) {
@@ -61,27 +51,7 @@ class CheckApiTokenAccess
             ], 403);
         }
 
-        // Update last_used_at timestamp
-        $token->forceFill([
-            'last_used_at' => now(),
-        ])->save();
-
         return $next($request);
-    }
-
-    /**
-     * Check if token has expired (30 days of inactivity)
-     */
-    private function isTokenExpired(PersonalAccessToken $token): bool
-    {
-        if (! $token->last_used_at) {
-            // Never used tokens are not expired
-            return false;
-        }
-
-        $daysSinceLastUse = now()->diffInDays($token->last_used_at);
-
-        return $daysSinceLastUse > 30;
     }
 
     /**
@@ -89,8 +59,15 @@ class CheckApiTokenAccess
      */
     private function tokenCanAccessEndpoint(PersonalAccessToken $token, string $path): bool
     {
-        // Get allowed endpoints from token
-        $allowedEndpoints = $token->allowed_endpoints ?? [];
+        $allowedEndpoints = $token->allowed_endpoints;
+
+        if (is_string($allowedEndpoints)) {
+            $allowedEndpoints = json_decode($allowedEndpoints, true) ?? [];
+        }
+
+        if ($allowedEndpoints === null) {
+            $allowedEndpoints = [];
+        }
 
         // If no restrictions, allow all (backward compatibility)
         if (empty($allowedEndpoints)) {
