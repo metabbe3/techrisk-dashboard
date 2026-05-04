@@ -3,11 +3,10 @@
 namespace App\Http\Controllers\Api\Ai;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\V1\Ai\ExportIncidentsRequest;
 use App\Http\Resources\Ai\IncidentExportResource;
 use App\Models\Incident;
 use App\Traits\ApiResponser;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Validator;
 
 /**
  * @group AI Export
@@ -88,48 +87,32 @@ class ExportController extends Controller
      *   }
      * }
      */
-    public function export(Request $request)
+    public function export(ExportIncidentsRequest $request)
     {
-        // Authorization check - user must have permission to access API
-        if (! auth()->check() || ! auth()->user()->can('access api')) {
-            return $this->errorResponse('You do not have permission to access this endpoint.', 403);
-        }
+        $validated = $request->validated();
 
-        $validator = Validator::make($request->all(), [
-            'limit' => 'nullable|integer|min:1|max:1000',
-            'offset' => 'nullable|integer|min:0',
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date',
-            'severity' => 'nullable|string|in:P1,P2,P3,P4,G,X1,X2,X3,X4,Non Incident',
-            'type' => 'nullable|string|in:Tech,Non-tech',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->errorResponse($validator->errors(), 422);
-        }
-
-        $limit = $request->input('limit', 100);
-        $offset = $request->input('offset', 0);
+        $limit = $validated['limit'] ?? 100;
+        $offset = $validated['offset'] ?? 0;
 
         $query = Incident::with(['pic', 'labels']);
 
         // Apply date range filter
-        if ($request->has('start_date') && $request->has('end_date')) {
-            $query->whereBetween('incident_date', [$request->start_date, $request->end_date]);
-        } elseif ($request->has('start_date')) {
-            $query->whereDate('incident_date', '>=', $request->start_date);
-        } elseif ($request->has('end_date')) {
-            $query->whereDate('incident_date', '<=', $request->end_date);
+        if (isset($validated['start_date']) && isset($validated['end_date'])) {
+            $query->whereBetween('incident_date', [$validated['start_date'], $validated['end_date']]);
+        } elseif (isset($validated['start_date'])) {
+            $query->whereDate('incident_date', '>=', $validated['start_date']);
+        } elseif (isset($validated['end_date'])) {
+            $query->whereDate('incident_date', '<=', $validated['end_date']);
         }
 
         // Apply severity filter
-        if ($request->has('severity')) {
-            $query->where('severity', $request->severity);
+        if (isset($validated['severity'])) {
+            $query->where('severity', $validated['severity']);
         }
 
         // Apply incident type filter
-        if ($request->has('type')) {
-            $query->where('incident_type', $request->type);
+        if (isset($validated['type'])) {
+            $query->where('incident_type', $validated['type']);
         }
 
         $total = $query->count();
