@@ -26,6 +26,8 @@ class IncidentFactory extends Factory
             'summary' => $this->faker->paragraph,
             'severity' => $this->faker->randomElement(['p1', 'p2', 'p3', 'p4']),
             'incident_type' => $this->faker->randomElement(['Tech', 'Non-tech']),
+            'incident_source' => $this->faker->randomElement(['Internal', 'External']),
+            'classification' => $this->faker->randomElement(['Incident', 'Issue']),
             'incident_date' => $this->faker->dateTimeThisYear(),
             'entry_date_tech_risk' => $this->faker->dateTimeThisYear(),
         ];
