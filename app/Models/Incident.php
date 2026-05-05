@@ -167,7 +167,7 @@ class Incident extends Model implements Auditable
     {
         $column = self::MTBF_TAB_COLUMN_MAP[$tab] ?? 'mtbf';
 
-        return $this->getAttribute($column) ?? 0;
+        return (int) ($this->getAttribute($column) ?? 0);
     }
 
     /**
@@ -176,7 +176,7 @@ class Incident extends Model implements Auditable
      */
     public function getMtbfDisplayAttribute(): int
     {
-        return $this->getAttribute('mtbf') ?? 0;
+        return (int) ($this->getAttribute('mtbf') ?? 0);
     }
 
     public static function generateNo(string $prefix, int $maxAttempts = 10): string
