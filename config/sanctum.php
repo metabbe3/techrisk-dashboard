@@ -81,4 +81,16 @@ return [
         'validate_csrf_token' => Illuminate\Foundation\Http\Middleware\ValidateCsrfToken::class,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Personal Access Token Model
+    |--------------------------------------------------------------------------
+    |
+    | Override the default Sanctum token model to add custom casts
+    | for the allowed_endpoints JSON column.
+    |
+    */
+
+    'model' => App\Models\PersonalAccessToken::class,
+
 ];

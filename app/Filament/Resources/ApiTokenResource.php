@@ -6,6 +6,7 @@ namespace App\Filament\Resources;
 
 use App\Enums\ApiEndpoint;
 use App\Filament\Resources\ApiTokenResource\Pages;
+use App\Models\PersonalAccessToken;
 use App\Models\User;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -13,7 +14,6 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
-use Laravel\Sanctum\PersonalAccessToken;
 
 class ApiTokenResource extends Resource
 {
