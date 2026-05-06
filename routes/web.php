@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Controllers\Ai\ApplyLabelsController;
+use App\Http\Controllers\Ai\SuggestLabelsController;
 use App\Http\Controllers\Ai\TextEnhanceController;
 use App\Http\Controllers\DownloadDocumentController;
 use App\Http\Controllers\WeeklyReportExportController;
@@ -9,6 +11,14 @@ use Illuminate\Support\Facades\Route;
 Route::post('/admin/ai/enhance-text', TextEnhanceController::class)
     ->middleware(['auth', 'can:manage incidents'])
     ->name('ai.enhance-text');
+
+Route::post('/admin/ai/suggest-labels', SuggestLabelsController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.suggest-labels');
+
+Route::post('/admin/ai/apply-labels', ApplyLabelsController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.apply-labels');
 
 Route::redirect('/', '/admin/login');
 

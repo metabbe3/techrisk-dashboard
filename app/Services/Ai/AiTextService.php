@@ -159,6 +159,78 @@ class AiTextService
             ->toArray();
     }
 
+    public function suggestLabels(array $incidentData, array $availableLabels, ?string $model = null): array
+    {
+        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+        $prompt = config('ai.prompts.label_suggest');
+
+        if (! $prompt || empty($availableLabels)) {
+            return ['matched' => [], 'suggested' => []];
+        }
+
+        $userMessage = "Incident data:\n";
+        foreach ($incidentData as $key => $value) {
+            if (filled($value)) {
+                $userMessage .= "- {$key}: {$value}\n";
+            }
+        }
+        $userMessage .= "\nAvailable labels: " . implode(', ', $availableLabels);
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout(config('ai.timeout', 30))
+                ->post($this->buildUrl(), [
+                    'model' => $resolvedModel,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $prompt['system']],
+                        ['role' => 'user', 'content' => $userMessage],
+                    ],
+                    'max_tokens' => 500,
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('AI label suggestion failed', ['error' => $e->getMessage()]);
+
+            return ['matched' => [], 'suggested' => []];
+        }
+
+        if ($response->failed()) {
+            return ['matched' => [], 'suggested' => []];
+        }
+
+        $content = $response->json('choices.0.message.content', '');
+
+        return $this->parseLabelSuggestions($content, $availableLabels);
+    }
+
+    private function parseLabelSuggestions(string $content, array $availableLabels): array
+    {
+        preg_match('/\{.*\}/s', $content, $matches);
+
+        if (empty($matches)) {
+            return ['matched' => [], 'suggested' => []];
+        }
+
+        $parsed = json_decode($matches[0], true);
+
+        if (! is_array($parsed)) {
+            return ['matched' => [], 'suggested' => []];
+        }
+
+        $matched = collect($parsed['matched'] ?? [])
+            ->filter(fn ($name) => in_array($name, $availableLabels))
+            ->values()
+            ->toArray();
+
+        $suggested = collect($parsed['suggested'] ?? [])
+            ->filter(fn ($name) => ! in_array($name, $availableLabels))
+            ->filter(fn ($name) => is_string($name) && strlen($name) <= 50)
+            ->unique()
+            ->values()
+            ->toArray();
+
+        return ['matched' => $matched, 'suggested' => $suggested];
+    }
+
     protected function buildHeaders(): array
     {
         return [

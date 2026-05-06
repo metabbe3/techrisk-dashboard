@@ -170,7 +170,9 @@ class IncidentResource extends Resource
                             ->multiple()
                             ->relationship('labels', 'name')
                             ->preload()
-                            ->searchable(),
+                            ->searchable()
+                            ->id('labels-select'),
+                        Forms\Components\View::make('filament.forms.components.smart-labels'),
                     ])->columns(2),
             ]);
     }

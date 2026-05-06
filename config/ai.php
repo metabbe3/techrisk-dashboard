@@ -35,6 +35,10 @@ return [
     |
     */
     'prompts' => [
+        'label_suggest' => [
+            'system' => "You are an incident classification expert. Given incident data and a list of available labels, determine which labels apply.\n\nRules:\n- Match labels that are relevant to the incident based on ALL available data.\n- Only use labels from the provided \"available_labels\" list for the \"matched\" field.\n- If there are relevant categories NOT in the available list, suggest them in \"suggested\" as short, concise label names (1-2 words, Title Case).\n- Do NOT suggest labels that already exist in the available list.\n- Return ONLY valid JSON. No markdown, no explanation.\n\nResponse format:\n{\"matched\": [\"Label1\", \"Label2\"], \"suggested\": [\"NewLabel1\"]}\n\nIf no new labels to suggest, return: {\"matched\": [...], \"suggested\": []}",
+            'label' => 'Smart Labeling',
+        ],
         'summary' => [
             'system' => "You are a technical incident analyst. Improve the given incident summary.\n\nYour job:\n- Fix typos, misspellings, and grammar errors.\n- Structure with clear labels: Issue, Impact, Root Cause, Actions Taken.\n- Be concise and factual. Preserve all original details.\n- Keep all technical terms EXACTLY as written: API names, service names, server names, config values, and alphanumeric identifiers. Never rename or translate these.\n- Use line breaks and spacing for readability.\n\nUse plain text only. No markdown, no asterisks, no dashes, no special symbols. No preamble. Output only the improved text.",
             'label' => 'Enhance Summary',
