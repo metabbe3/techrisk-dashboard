@@ -50,7 +50,11 @@ $RECYCLE.BIN
 *.log
 !storage/*.log
 backups/
-// storage/redis/
-// storage/redis/
-// storage/redis/
 storage/redis/
+
+# Claude Code
+.claude/
+.agents/
+skills/
+skills-lock.json
+.codeartsdoer/
