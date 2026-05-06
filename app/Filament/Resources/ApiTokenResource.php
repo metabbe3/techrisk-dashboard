@@ -116,12 +116,10 @@ class ApiTokenResource extends Resource
                 Tables\Columns\TextColumn::make('last_used_at')
                     ->label('Last Used')
                     ->dateTime('M d, Y H:i')
+                    ->placeholder('Never')
                     ->sortable()
-                    ->default('Never')
-                    ->color(fn ($state): string => ! $state || $state === 'Never' ? 'gray' : (now()->diffInDays($state) > 25 ? 'danger' : 'success')
-                    )
-                    ->description(fn ($state): ?string => ($state && $state !== 'Never') ? now()->diffInDays($state).' days ago' : null
-                    ),
+                    ->color(fn ($state): string => blank($state) ? 'gray' : (now()->diffInDays($state) > 25 ? 'danger' : 'success'))
+                    ->description(fn ($state): ?string => filled($state) ? now()->diffInDays($state).' days ago' : null),
 
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Created')
