@@ -63,7 +63,6 @@ exported_at: {{ now()->format('Y-m-d H:i:s') }}
 | **Person In Charge** | @if($incident->pic){{ $incident->pic->name }} ({{ $incident->pic->email }})@else N/A @endif |
 | **Reported By** | {{ $incident->reported_by ?? 'N/A' }} |
 | **Third Party/Client** | {{ $incident->third_party_client ?? 'N/A' }} |
-| **People Caused** | @if($incident->people_caused && is_array($incident->people_caused)){{ implode(', ', $incident->people_caused) }}@elseif($incident->people_caused){{ $incident->people_caused }}@else N/A @endif |
 | **Checker** | {{ $incident->checker ?? 'N/A' }} |
 | **Maker** | {{ $incident->maker ?? 'N/A' }} |
 

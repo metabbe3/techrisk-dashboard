@@ -141,16 +141,16 @@ class ApiAuditLogger
         $entry->response_timestamp = now()->toIso8601String();
         $entry->response_status = $response->getStatusCode();
         $entry->response_time_ms = (int) ((microtime(true) - $startTime) * 1000);
-        $entry->response_size_bytes = strlen((string) $response->getContent());
-
-        $content = $response->getContent();
-        $decoded = json_decode($content, true);
-
-        if ($response->isClientError() || $response->isServerError()) {
-            $entry->error_message = $this->extractErrorMessage($decoded) ?? $response->statusText();
-        }
 
         if (! $response->isSuccessful()) {
+            $content = $response->getContent();
+            $entry->response_size_bytes = strlen($content);
+            $decoded = json_decode($content, true);
+
+            if ($response->isClientError() || $response->isServerError()) {
+                $entry->error_message = $this->extractErrorMessage($decoded) ?? $response->statusText();
+            }
+
             $entry->response_data = $this->captureResponseContent($decoded, $content);
         }
     }

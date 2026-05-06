@@ -34,8 +34,6 @@ class UpdateIncidentRequest extends FormRequest
             'third_party_client' => ['nullable', 'string'],
             'potential_fund_loss' => ['nullable', 'numeric'],
             'fund_loss' => ['nullable', 'numeric'],
-            'people_caused' => ['nullable', 'array'],
-            'people_caused.*' => ['nullable', 'string', 'max:255'],
             'checker' => ['nullable', 'string'],
             'maker' => ['nullable', 'string'],
         ];

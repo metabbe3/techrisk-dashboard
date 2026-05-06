@@ -72,7 +72,6 @@ class Incident extends Model implements Auditable
         'business_category',
         'root_cause_category',
         'responsible_team',
-        'people_caused',
         'checker',
         'maker',
         'mttr',
@@ -98,7 +97,6 @@ class Incident extends Model implements Auditable
         'business_category' => 'array',
         'root_cause_category' => 'array',
         'responsible_team' => 'array',
-        'people_caused' => 'array',
         'potential_fund_loss' => 'decimal:2',
         'recovered_fund' => 'decimal:2',
         'fund_loss' => 'decimal:2',
@@ -128,7 +126,7 @@ class Incident extends Model implements Auditable
 
         if ($this->mttr < 0) {
             // Fund loss incident - stored as negative days
-            $days = abs($this->mttr);
+            $days = abs((float) $this->mttr);
             if ($days > 36500) { // More than 100 years
                 return 'N/A';
             }
@@ -137,7 +135,7 @@ class Incident extends Model implements Auditable
         }
 
         // Regular incident - stored as minutes
-        $minutes = $this->mttr;
+        $minutes = (float) $this->mttr;
 
         if ($minutes > 52560000) { // More than 100 years in minutes
             return 'N/A';
@@ -191,6 +189,15 @@ class Incident extends Model implements Auditable
         }
 
         return $baseId.random_int(10000, 99999);
+    }
+
+    public function changeClassification(string $classification): void
+    {
+        $prefix = $classification === 'Incident' ? 'IN' : 'IS';
+        $this->update([
+            'classification' => $classification,
+            'no' => self::generateNo($prefix),
+        ]);
     }
 
     public function pic(): BelongsTo

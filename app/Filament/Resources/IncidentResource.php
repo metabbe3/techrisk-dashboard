@@ -4,15 +4,13 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources;
 
-use App\Enums\BusinessCategory;
 use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
-use App\Enums\ResponsibleTeam;
-use App\Enums\RootCauseCategory;
 use App\Enums\Severity;
 use App\Filament\Resources\IncidentResource\Pages;
+use App\Models\Category;
 use App\Filament\Resources\IncidentResource\RelationManagers;
 use App\Models\Incident;
 use App\Models\UserAuditLogSetting;
@@ -69,7 +67,13 @@ class IncidentResource extends Resource
                             Select::make('severity')->options(Severity::options())->required(),
                             Select::make('classification')->options(IncidentClassification::options())->required(),
                             Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
+                            Select::make('incident_type_id')
+                                ->label('Incident Type')
+                                ->relationship('incidentType', 'name')
+                                ->searchable()
+                                ->preload(),
                             TextInput::make('reported_by')->label('Reported By'),
+                            TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden(),
                             TextInput::make('mttr')->label('MTTR (minutes)')->readOnly()->visible(fn ($context) => $context === 'edit'),
                             TextInput::make('mtbf')->label('MTBF (days)')->readOnly()->visible(fn ($context) => $context === 'edit'),
                         ])->columnSpan(2),
@@ -80,6 +84,9 @@ class IncidentResource extends Resource
                             Checkbox::make('teams_upload')->label('Teams Uploaded'),
                             Checkbox::make('doc_signed')->label('Doc Signed'),
                             Checkbox::make('risk_incident_form_cfm')->label('Risk Incident Form CFM'),
+                            Checkbox::make('glitch_flag')->label('Glitch'),
+                            TextInput::make('investigation_pic_status')->label('Investigation PIC Status')->disabled()->hidden(),
+                            TextInput::make('action_improvement_tracking')->label('Action Improvement Tracking')->disabled()->hidden(),
                         ])->columnSpan(1),
                 ]),
                 Section::make('Timeline')
@@ -96,7 +103,8 @@ class IncidentResource extends Resource
                         TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0),
                         TextInput::make('recovered_fund')->numeric()->prefix('Rp')->default(0)->required(),
                         TextInput::make('fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
-                    ])->columns(4),
+                        TextInput::make('loss_taken_by')->label('Loss Taken By'),
+                    ])->columns(5),
 
                 Section::make('Analysis & Root Cause')
                     ->schema([
@@ -107,18 +115,20 @@ class IncidentResource extends Resource
                             ->relationship('pic', 'name')
                             ->searchable()
                             ->preload(),
+                        TextInput::make('checker'),
+                        TextInput::make('maker'),
                         Select::make('business_category')
                             ->label('Business Category')
                             ->multiple()
-                            ->options(BusinessCategory::options()),
+                            ->options(fn () => Category::options(Category::TYPE_BUSINESS_CATEGORY)),
                         Select::make('root_cause_category')
                             ->label('Root Cause Category')
                             ->multiple()
-                            ->options(RootCauseCategory::options()),
+                            ->options(fn () => Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY)),
                         Select::make('responsible_team')
                             ->label('Responsible Team')
                             ->multiple()
-                            ->options(ResponsibleTeam::options()),
+                            ->options(fn () => Category::options(Category::TYPE_RESPONSIBLE_TEAM)),
                     ])->columns(3),
 
                 Section::make('Details & Timeline')
@@ -140,6 +150,17 @@ class IncidentResource extends Resource
                             ->label('Remark')
                             ->rows(4)
                             ->columnSpanFull(),
+                        Textarea::make('improvements')
+                            ->label('Improvements')
+                            ->rows(4)
+                            ->columnSpanFull()
+                            ->disabled()->hidden(),
+                        TextInput::make('evidence_link')->label('Evidence Link')->url()->columnSpanFull()->disabled()->hidden(),
+                        Textarea::make('evidence')
+                            ->label('Evidence')
+                            ->rows(3)
+                            ->columnSpanFull()
+                            ->disabled()->hidden(),
                         Select::make('labels')
                             ->multiple()
                             ->relationship('labels', 'name')
@@ -161,16 +182,49 @@ class IncidentResource extends Resource
                     ->searchable()
                     ->html()
                     ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render()),
-                TextColumn::make('mttr_formatted')->label('MTTR (mins)')->sortable(query: function (Builder $query, string $direction) {
+                TextColumn::make('mttr_formatted')->label('MTTR')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
                 }),
                 TextColumn::make('mtbf_display')
                     ->label('MTBF (days)')
-                    ->sortable()
-                    ->state(fn (Incident $record): int => $record->getMtbfForTab(
-                        request()->query('tableActiveTab', 'All Cases')
-                    ))
-                    ->formatStateUsing(fn (int $state): string => number_format($state)),
+                    ->state(function (Incident $record): int {
+                        static $cache = [];
+                        $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
+                        $year = $record->incident_date->year;
+                        $key = "{$tab}_{$year}";
+
+                        if (! isset($cache[$key])) {
+                            $query = Incident::whereYear('incident_date', $year)
+                                ->where('classification', '!=', 'Issue')
+                                ->orderBy('incident_date')->orderBy('id');
+
+                            match ($tab) {
+                                'On Going' => $query->where('incident_status', '!=', 'Completed'),
+                                'Completed Cases' => $query->where('incident_status', 'Completed'),
+                                'Recovered Cases' => $query->where('recovered_fund', '>', 0),
+                                'P4 Incidents' => $query->where('severity', 'P4'),
+                                'Non-Tech Incidents' => $query->where('incident_type', 'Non-tech'),
+                                'Fund Loss' => $query->where('fund_status', 'Confirmed loss'),
+                                'Potential Recovery' => $query->where('fund_status', 'Potential recovery'),
+                                'Non Fund Loss' => $query->where('fund_status', 'Non fundLoss'),
+                                'Non Incident' => $query->where('severity', 'Non Incident'),
+                                default => null,
+                            };
+
+                            $incidents = $query->get(['id', 'incident_date']);
+                            $cache[$key] = [];
+                            foreach ($incidents as $i => $inc) {
+                                $cache[$key][$inc->id] = $i === 0
+                                    ? $inc->incident_date->dayOfYear
+                                    : (int) $incidents[$i - 1]->incident_date->startOfDay()
+                                        ->diffInDays($inc->incident_date->startOfDay());
+                            }
+                        }
+
+                        return $cache[$key][$record->id] ?? 0;
+                    })
+                    ->formatStateUsing(fn (int $state): string => number_format($state))
+                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
                 TextColumn::make('severity')->badge()->color(fn (string $state): string => Severity::tryFrom($state)?->color() ?? 'gray')->sortable(),
                 TextColumn::make('incident_status')->badge()->color(fn (string $state): string => IncidentStatus::tryFrom($state)?->color() ?? 'gray')->sortable(),
                 TextColumn::make('fund_status')->badge()->color(fn (string $state): string => FundStatus::tryFrom($state)?->color() ?? 'gray')->sortable()->toggleable(),
@@ -308,6 +362,15 @@ class IncidentResource extends Resource
                         ]);
                     })
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
+                Tables\Actions\Action::make('downgrade_to_issue')
+                    ->label('Downgrade to Issue')
+                    ->icon('heroicon-o-arrow-down-circle')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('Downgrade to Issue')
+                    ->modalDescription('This will reclassify this incident as an issue and assign a new Issue ID.')
+                    ->action(fn (Incident $record) => $record->changeClassification('Issue'))
+                    ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 Tables\Actions\EditAction::make()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
@@ -317,6 +380,16 @@ class IncidentResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\BulkAction::make('bulk_downgrade')
+                        ->label('Downgrade to Issue')
+                        ->icon('heroicon-o-arrow-down-circle')
+                        ->color('warning')
+                        ->requiresConfirmation()
+                        ->modalHeading('Downgrade selected incidents to issues')
+                        ->modalDescription('All selected incidents will be reclassified as issues with new IDs.')
+                        ->action(fn (\Illuminate\Support\Collection $records) => $records->each->changeClassification('Issue'))
+                        ->visible(fn (): bool => auth()->user()->can('manage incidents'))
+                        ->deselectRecordsAfterCompletion(),
                     Tables\Actions\DeleteBulkAction::make()
                         ->databaseTransaction()
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),

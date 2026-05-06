@@ -13,6 +13,7 @@ use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
@@ -35,7 +36,16 @@ class AdminPanelProvider extends PanelProvider
             ->login(Login::class)
             ->profile(CustomProfilePage::class)
             ->colors([
-                'primary' => Color::Blue,
+                'primary' => Color::Indigo,
+                'danger' => Color::Rose,
+                'warning' => Color::Amber,
+                'success' => Color::Emerald,
+                'info' => Color::Sky,
+                'gray' => Color::Slate,
+                'violet' => Color::Violet,
+                'teal' => Color::Teal,
+                'orange' => Color::Orange,
+                'cyan' => Color::Cyan,
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
@@ -57,6 +67,10 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
-            ]);
+            ])
+            ->renderHook(
+                'panels::head.end',
+                fn () => '<link rel="stylesheet" href="' . Vite::asset('resources/css/app.css') . '">'
+            );
     }
 }

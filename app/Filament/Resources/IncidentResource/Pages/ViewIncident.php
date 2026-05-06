@@ -73,7 +73,6 @@ class ViewIncident extends ViewRecord
                         TextEntry::make('business_category')->label('Business Category')->badge(),
                         TextEntry::make('root_cause_category')->label('Root Cause Category')->badge(),
                         TextEntry::make('responsible_team')->label('Responsible Team')->badge(),
-                        TextEntry::make('people_caused'),
                         TextEntry::make('checker'),
                         TextEntry::make('maker'),
                     ])->columns(4),

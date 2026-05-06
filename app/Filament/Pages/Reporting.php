@@ -67,7 +67,6 @@ class Reporting extends Page implements HasForms
                 'third_party_client' => 'Third Party Client',
                 'potential_fund_loss' => 'Potential Fund Loss',
                 'fund_loss' => 'Fund Loss',
-                'people_caused' => 'People Caused',
                 'checker' => 'Checker',
                 'maker' => 'Maker',
                 'mttr' => 'MTTR',
@@ -226,7 +225,7 @@ class Reporting extends Page implements HasForms
             return;
         }
 
-        $query = Incident::query();
+        $query = Incident::query()->where('classification', '!=', 'Issue');
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));
@@ -256,14 +255,21 @@ class Reporting extends Page implements HasForms
             $metrics['total_incidents'] = (clone $query)->count();
         }
         if (in_array('avg_mttr', $data['metrics'] ?? [])) {
-            $metrics['avg_mttr'] = (clone $query)->avg('mttr');
+            $metrics['avg_mttr'] = (clone $query)->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
-            // Calculate average MTBF from individual incident MTBF values
-            $queryForMtbf = clone $query;
-            $avgMtbf = $queryForMtbf->whereNotNull('mtbf')
-                ->avg('mtbf') ?? 0;
-            $metrics['avg_mtbf'] = round($avgMtbf, 2);
+            $mtbfQuery = (clone $query)->whereNotIn('severity', ['Non Incident', 'G']);
+            $mtbfCount = $mtbfQuery->count();
+            $avgMtbf = 0;
+            if ($mtbfCount > 1) {
+                $minDate = $mtbfQuery->min('incident_date');
+                $maxDate = $mtbfQuery->max('incident_date');
+                if ($minDate && $maxDate) {
+                    $totalDays = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay());
+                    $avgMtbf = round($totalDays / ($mtbfCount - 1), 2);
+                }
+            }
+            $metrics['avg_mtbf'] = $avgMtbf;
         }
         $this->metrics = $metrics;
 

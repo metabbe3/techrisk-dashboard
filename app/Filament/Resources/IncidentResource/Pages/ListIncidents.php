@@ -103,7 +103,7 @@ class ListIncidents extends ListRecords
 
                     $stats = [
                         'totalCases' => $totalCases,
-                        'avgMttr' => round($query->avg('mttr'), 2),
+                        'avgMttr' => round($query->clone()->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
                         'avgMtbf' => $avgMtbf,
                         'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
                         'totalFundLoss' => $query->sum('fund_loss'),
@@ -117,9 +117,32 @@ class ListIncidents extends ListRecords
                         'incidents-'.now()->format('Y-m-d').'.'.$format
                     );
                 }),
+            Actions\Action::make('recalculate_metrics')
+                ->label('Recalculate Metrics')
+                ->icon('heroicon-o-arrow-path')
+                ->color('warning')
+                ->requiresConfirmation()
+                ->modalHeading('Recalculate MTBF & MTTR')
+                ->modalDescription('This will recalculate all MTBF and MTTR values for every incident. This may take a few seconds.')
+                ->visible(fn (): bool => auth()->user()->can('manage incidents'))
+                ->action(function () {
+                    \Illuminate\Support\Facades\Artisan::call('incidents:recalculate-metrics');
+                    \Filament\Notifications\Notification::make()
+                        ->title('Metrics recalculated')
+                        ->body('All MTBF and MTTR values have been updated.')
+                        ->success()
+                        ->send();
+                }),
             Actions\CreateAction::make()
                 ->visible(fn (): bool => auth()->user()->can('manage incidents')),
         ];
+    }
+
+    public function getTableQuery(): Builder
+    {
+        app()->instance('activeTab', $this->activeTab ?? 'All Cases');
+
+        return parent::getTableQuery();
     }
 
     public function getTabs(): array
@@ -173,7 +196,8 @@ class ListIncidents extends ListRecords
 
         $stats = [
             'totalCases' => $totalCases,
-            'avgMttr' => round($query->avg('mttr'), 2),
+            'avgMttrMins' => round($query->clone()->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
+            'avgMttrDays' => round(abs($query->clone()->where('mttr', '<', 0)->avg('mttr') ?? 0), 2),
             'avgMtbf' => $avgMtbf,
             'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
             'totalFundLoss' => $query->sum('fund_loss'),

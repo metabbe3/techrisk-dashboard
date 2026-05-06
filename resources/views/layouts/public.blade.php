@@ -13,7 +13,7 @@
     </style>
     @livewireStyles
 </head>
-<body class="bg-gray-50 dark:bg-gray-950">
+<body>
     {{ $slot }}
     @livewireScripts
     @filamentScripts

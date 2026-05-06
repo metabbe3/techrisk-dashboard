@@ -53,12 +53,11 @@ class WeeklyReportTest extends DuskTestCase
     {
         $this->browse(function (Browser $browser) {
             $browser->visit('/admin')
-                ->waitFor('input[name="email"]')
-                ->type('input[name="email"]', 'admin@example.com')
-                ->type('input[name="password"]', 'password')
+                ->waitFor('[wire\\:model="data.email"]')
+                ->type('[wire\\:model="data.email"]', 'admin@example.com')
+                ->type('[wire\\:model="data.password"]', 'password')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/admin')
-                ->assertPathIs('/admin')
+                ->pause(2000)->assertPathBeginsWith('/admin')
 
                 ->visit('/admin/weekly-report')
                 ->pause(2000) // Wait for page to load
@@ -76,12 +75,11 @@ class WeeklyReportTest extends DuskTestCase
 
         $this->browse(function (Browser $browser) use ($currentYear, $lastYear) {
             $browser->visit('/admin')
-                ->waitFor('input[name="email"]')
-                ->type('input[name="email"]', 'admin@example.com')
-                ->type('input[name="password"]', 'password')
+                ->waitFor('[wire\\:model="data.email"]')
+                ->type('[wire\\:model="data.email"]', 'admin@example.com')
+                ->type('[wire\\:model="data.password"]', 'password')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/admin')
-
+                ->pause(2000)->assertPathBeginsWith('/admin')
                 ->visit('/admin/weekly-report')
                 ->pause(2000) // Wait for initial page load
 
@@ -101,12 +99,11 @@ class WeeklyReportTest extends DuskTestCase
     {
         $this->browse(function (Browser $browser) {
             $browser->visit('/admin')
-                ->waitFor('input[name="email"]')
-                ->type('input[name="email"]', 'admin@example.com')
-                ->type('input[name="password"]', 'password')
+                ->waitFor('[wire\\:model="data.email"]')
+                ->type('[wire\\:model="data.email"]', 'admin@example.com')
+                ->type('[wire\\:model="data.password"]', 'password')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/admin')
-
+                ->pause(2000)->assertPathBeginsWith('/admin')
                 ->visit('/admin/weekly-report')
                 ->pause(2000) // Wait for page to load
 

@@ -7,6 +7,7 @@ use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Facades\Cache;
 
 class IncidentStatsOverview extends BaseWidget
 {
@@ -18,14 +19,25 @@ class IncidentStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Incident::query();
+        $cacheKey = 'incident_stats_v2_'.md5(json_encode([
+            'start_date' => $this->start_date,
+            'end_date' => $this->end_date,
+            'v' => Cache::get('dashboard_cache_version', 0),
+        ]));
 
-        // If no custom date range is applied, default to this year
+        return Cache::remember($cacheKey, 300, function () {
+            return $this->calculateStats();
+        });
+    }
+
+    private function calculateStats(): array
+    {
+        $query = Incident::query()->where('classification', '!=', 'Issue');
+
         if (! $this->start_date && ! $this->end_date) {
             $query->whereYear('incident_date', now()->year);
             $descriptionPeriod = 'this year';
         } else {
-            // Apply custom date range if provided
             if ($this->start_date) {
                 $query->where('incident_date', '>=', $this->start_date);
             }
@@ -35,13 +47,10 @@ class IncidentStatsOverview extends BaseWidget
             $descriptionPeriod = 'in the selected period';
         }
 
-        // Perform calculations on the filtered query
         $fundLossTotal = $query->clone()->where('incident_status', 'Completed')->sum('fund_loss');
         $recoveredTotal = $query->clone()->where('recovered_fund', '>', 0)->sum('recovered_fund');
-        $mttr = $query->clone()->whereNotNull('mttr')->average('mttr');
+        $mttr = $query->clone()->where('mttr', '>=', 0)->average('mttr');
 
-        // Calculate MTBF correctly: Total Time Period / Number of Incidents
-        // Exclude 'Non Incident' and 'G' severities from MTBF calculation
         $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
         $mtbfCount = $mtbfQuery->count();
         $mtbf = 0;
@@ -50,16 +59,13 @@ class IncidentStatsOverview extends BaseWidget
             $maxDate = $mtbfQuery->max('incident_date');
 
             if ($minDate && $maxDate) {
-                $minDate = Carbon::parse($minDate)->startOfDay();
-                $maxDate = Carbon::parse($maxDate)->startOfDay();
-                $totalDays = $minDate->diffInDays($maxDate);
+                $totalDays = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay());
                 $mtbf = $mtbfCount > 1 ? $totalDays / ($mtbfCount - 1) : 0;
             }
         }
 
-        // Last Incident calculation should always be based on all data, not filtered
-        // Exclude 'Non Incident' and 'G' severities
-        $lastIncident = Incident::whereNotIn('severity', ['Non Incident', 'G'])
+        $lastIncident = Incident::where('classification', '!=', 'Issue')
+            ->whereNotIn('severity', ['Non Incident', 'G'])
             ->latest('incident_date')
             ->first();
         $lastIncidentDiff = 'N/A';
@@ -80,8 +86,8 @@ class IncidentStatsOverview extends BaseWidget
                 ->description('Total recovered '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
                 ->color('success'),
-            Stat::make('MTTR', number_format($mttr, 2).' minutes')
-                ->description('Avg recovery time '.$descriptionPeriod)
+            Stat::make('MTTR', number_format($mttr, 2).' mins')
+                ->description('Avg recovery time (non-fund loss) '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-wrench-screwdriver')
                 ->color('info'),
             Stat::make('MTBF', number_format($mtbf, 2).' days')

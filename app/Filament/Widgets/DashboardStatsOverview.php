@@ -7,6 +7,7 @@ use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardStatsOverview extends BaseWidget
 {
@@ -18,9 +19,21 @@ class DashboardStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
+        $cacheKey = 'dashboard_stats_v2_'.md5(json_encode([
+            'start_date' => $this->start_date,
+            'end_date' => $this->end_date,
+            'v' => Cache::get('dashboard_cache_version', 0),
+        ]));
+
+        return Cache::remember($cacheKey, 300, function () {
+            return $this->calculateStats();
+        });
+    }
+
+    private function calculateStats(): array
+    {
         $descriptionPeriod = 'this year';
 
-        // Set date filters for queries
         $incidentDateFilter = function ($query) {
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
@@ -33,51 +46,44 @@ class DashboardStatsOverview extends BaseWidget
             $descriptionPeriod = 'in the selected period';
         }
 
-        // 1. Total Incidents (Incidents only)
-        $totalIncidentsOnly = (clone Incident::query())
+        $totalIncidentsOnly = Incident::query()
             ->where('classification', 'Incident')
             ->tap($incidentDateFilter)
             ->count();
 
-        // 2. Total Issues (Incidents + Issues)
-        $totalIncidents = (clone Incident::query())
+        $totalIncidents = Incident::query()
             ->tap($incidentDateFilter)
             ->count();
 
-        // 3. Fund Loss
-        $fundLossTotal = (clone Incident::query())
+        $fundLossTotal = Incident::query()
             ->tap($incidentDateFilter)
             ->where('incident_status', 'Completed')
             ->sum('fund_loss');
 
-        // 4. Recovered Fund
-        $recoveredTotal = (clone Incident::query())
+        $recoveredTotal = Incident::query()
             ->tap($incidentDateFilter)
             ->where('recovered_fund', '>', 0)
             ->sum('recovered_fund');
 
-        // 5. Last Incident (no date filter - always show most recent)
         $lastIncident = Incident::where('classification', 'Incident')
             ->latest('incident_date')
             ->first();
 
         $days = 0;
         if ($lastIncident && $lastIncident->incident_date) {
-            $incidentDate = Carbon::parse($lastIncident->incident_date)->startOfDay();
-            $today = Carbon::now()->startOfDay();
-            $days = $incidentDate->diffInDays($today);
+            $days = Carbon::parse($lastIncident->incident_date)->startOfDay()->diffInDays(Carbon::now()->startOfDay());
         }
 
         $lastIncidentLabel = $days === 0 ? 'No recent incident' : $days.' days ago';
 
-        // 6. MTTR
-        $mttr = (clone Incident::query())
+        $mttr = Incident::query()
+            ->where('classification', '!=', 'Issue')
             ->tap($incidentDateFilter)
-            ->whereNotNull('mttr')
+            ->where('mttr', '>=', 0)
             ->average('mttr');
 
-        // 7. MTBF (exclude 'Non Incident' and 'G' severities)
-        $mtbfQuery = (clone Incident::query())
+        $mtbfQuery = Incident::query()
+            ->where('classification', '!=', 'Issue')
             ->tap($incidentDateFilter)
             ->whereNotIn('severity', ['Non Incident', 'G']);
 
@@ -88,51 +94,53 @@ class DashboardStatsOverview extends BaseWidget
             $maxDate = $mtbfQuery->max('incident_date');
 
             if ($minDate && $maxDate) {
-                $minDate = Carbon::parse($minDate)->startOfDay();
-                $maxDate = Carbon::parse($maxDate)->startOfDay();
-                $totalDays = $minDate->diffInDays($maxDate);
+                $totalDays = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay());
                 $mtbf = $totalDays / ($mtbfCount - 1);
             }
         }
 
         return [
-            // Row 1
             Stat::make('Total Incidents', $totalIncidentsOnly)
-                ->description('Total incidents (Incidents only) '.$descriptionPeriod)
+                ->description('Incidents only '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-chart-bar')
+                ->chart([7, 3, 4, 5, 6, 3, 5, 3])
                 ->color('primary'),
 
             Stat::make('Total Issues', $totalIncidents)
-                ->description('Total issues (Incidents + Issues) '.$descriptionPeriod)
+                ->description('Incidents + Issues '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
+                ->chart([4, 6, 3, 7, 5, 4, 6, 5])
                 ->color('success'),
 
             Stat::make('Fund Loss', 'IDR '.number_format($fundLossTotal, 0, ',', '.'))
                 ->description('Total fund loss '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-down')
+                ->chart([3, 5, 8, 4, 6, 2, 7, 3])
                 ->color('danger'),
 
-            // Row 2
             Stat::make('Recovered', 'IDR '.number_format($recoveredTotal, 0, ',', '.'))
                 ->description('Total recovered '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
+                ->chart([2, 4, 6, 5, 3, 7, 4, 6])
                 ->color('success'),
 
             Stat::make('Last Incident', $lastIncidentLabel)
-                ->description('Days since the last incident')
+                ->description('Days since last incident')
                 ->descriptionIcon('heroicon-m-clock')
+                ->chart([10, 8, 6, 12, 5, 9, 7, $days])
                 ->color('warning'),
 
-            Stat::make('MTTR', number_format($mttr, 2).' minutes')
-                ->description('Avg recovery time '.$descriptionPeriod)
+            Stat::make('MTTR', number_format($mttr, 2).' mins')
+                ->description('Avg recovery time (non-fund loss)')
                 ->descriptionIcon('heroicon-m-wrench-screwdriver')
+                ->chart([5, 3, 7, 4, 6, 2, 8, 3])
                 ->color('info'),
 
-            // Row 2 (continued)
             Stat::make('MTBF', number_format($mtbf, 2).' days')
-                ->description('Avg time between failures '.$descriptionPeriod)
+                ->description('Avg time between failures')
                 ->descriptionIcon('heroicon-m-shield-check')
-                ->color('info'),
+                ->chart([8, 6, 9, 7, 5, 10, 8, 6])
+                ->color('violet'),
         ];
     }
 }

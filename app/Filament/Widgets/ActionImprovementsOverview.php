@@ -57,9 +57,13 @@ class ActionImprovementsOverview extends BaseWidget
             return [
                 Stat::make('Pending Action Improvements', $pendingCount)
                     ->description('Pending actions '.$descriptionPeriod)
+                    ->descriptionIcon('heroicon-m-exclamation-triangle')
+                    ->chart([$doneCount, $pendingCount, max(0, $pendingCount - 1), $pendingCount + 1, $pendingCount])
                     ->color('warning'),
                 Stat::make('Done Action Improvements', $doneCount)
                     ->description('Done actions '.$descriptionPeriod)
+                    ->descriptionIcon('heroicon-m-check-circle')
+                    ->chart([$pendingCount, $doneCount, max(0, $doneCount - 1), $doneCount + 1, $doneCount])
                     ->color('success'),
             ];
         });

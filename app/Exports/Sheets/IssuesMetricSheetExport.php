@@ -19,7 +19,9 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
 
     private $title;
 
-    private $metricType; // 'mttr' or 'mtbf'
+    private $metricType;
+
+    private static array $mtbfCache = [];
 
     public function __construct($query, string $title, string $metricType)
     {
@@ -48,33 +50,9 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
     public function map($incident): array
     {
         if ($this->metricType === 'mttr') {
-            // Format MTTR: fund loss in days, regular in minutes/hours
-            if ($incident->mttr === null) {
-                $metricValue = '-';
-            } elseif ($incident->mttr < 0) {
-                // Fund loss - stored as negative days
-                $days = abs($incident->mttr);
-                $metricValue = $days.' day'.($days > 1 ? 's' : '');
-            } else {
-                // Regular incident - stored as minutes
-                $minutes = $incident->mttr;
-                if ($minutes < 60) {
-                    $metricValue = $minutes.' min'.($minutes > 1 ? 's' : '');
-                } else {
-                    $hours = floor($minutes / 60);
-                    $mins = $minutes % 60;
-                    if ($hours >= 24) {
-                        $days = floor($hours / 24);
-                        $hours = $hours % 24;
-                        $metricValue = "{$days}d {$hours}h {$mins}m";
-                    } else {
-                        $metricValue = "{$hours}h {$mins}m";
-                    }
-                }
-            }
+            $metricValue = $incident->mttr_formatted;
         } else {
-            // MTBF - always in days
-            $metricValue = $incident->mtbf ?? '-';
+            $metricValue = $this->computeIssueMtbf($incident);
         }
 
         return [
@@ -82,6 +60,29 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
             $incident->incidentType?->name ?? 'N/A',
             $metricValue,
         ];
+    }
+
+    private function computeIssueMtbf($incident): int
+    {
+        $year = $incident->incident_date->year;
+        $key = "export_issues_{$year}";
+
+        if (! isset(self::$mtbfCache[$key])) {
+            $incidents = \App\Models\Incident::whereYear('incident_date', $year)
+                ->where('classification', 'Issue')
+                ->orderBy('incident_date')->orderBy('id')
+                ->get(['id', 'incident_date']);
+
+            self::$mtbfCache[$key] = [];
+            foreach ($incidents as $i => $inc) {
+                self::$mtbfCache[$key][$inc->id] = $i === 0
+                    ? $inc->incident_date->dayOfYear
+                    : (int) $incidents[$i - 1]->incident_date->startOfDay()
+                        ->diffInDays($inc->incident_date->startOfDay());
+            }
+        }
+
+        return self::$mtbfCache[$key][$incident->id] ?? 0;
     }
 
     public function registerEvents(): array
@@ -113,16 +114,14 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
                 $totalCases = $this->query->clone()->count();
 
                 if ($this->metricType === 'mttr') {
-                    // Calculate MTTR average (exclude fund loss incidents from average as they skew it)
                     $regularMttr = $this->query->clone()
                         ->whereNotNull('mttr')
-                        ->where('mttr', '>=', 0) // Only regular incidents (positive minutes)
+                        ->where('mttr', '>=', 0)
                         ->avg('mttr');
 
                     $metricLabel = 'Average MTTR (excl. fund loss)';
-                    $metricValue = $regularMttr !== null ? round($regularMttr, 2) : '-';
+                    $metricValue = $regularMttr !== null ? round((float) $regularMttr, 2) : '-';
                 } else {
-                    // Calculate MTBF correctly: Total Time Period / Number of Incidents
                     $query = $this->query->clone();
                     $metricLabel = 'Average MTBF';
                     $metricValue = 0;

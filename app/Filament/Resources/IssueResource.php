@@ -2,7 +2,6 @@
 
 namespace App\Filament\Resources;
 
-use App\Enums\Severity;
 use App\Filament\Resources\IssueResource\Pages;
 use App\Models\Incident;
 use Filament\Forms\Components\DateTimePicker;
@@ -12,7 +11,6 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
 use Filament\Tables;
-use Filament\Tables\Columns\Summarizers\Average;
 use Filament\Tables\Columns\Summarizers\Count;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
@@ -71,18 +69,6 @@ class IssueResource extends Resource
                             ->readOnly()
                             ->unique(ignoreRecord: true)
                             ->columnSpan(1),
-                        Select::make('severity')
-                            ->label('Severity')
-                            ->options(Severity::options())
-                            ->required()
-                            ->columnSpan(1),
-                        Select::make('incident_type_id')
-                            ->label('Incident Type')
-                            ->relationship('incidentType', 'name')
-                            ->searchable()
-                            ->preload()
-                            ->default(fn () => \App\Models\IncidentType::first()?->id)
-                            ->columnSpan(1),
                         Select::make('classification')
                             ->default('Issue')
                             ->disabled()
@@ -118,7 +104,7 @@ class IssueResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['incidentType', 'pic']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType']))
             ->columns([
                 TextColumn::make('no')
                     ->label('ID')
@@ -136,37 +122,39 @@ class IssueResource extends Resource
 
                         return view('components.incident-hover-preview', ['incident' => $record])->render();
                     }),
-                TextColumn::make('severity')
-                    ->label('Severity')
-                    ->badge()
-                    ->color(fn (string $state): string => Severity::tryFrom($state)?->color() ?? 'gray')
-                    ->sortable(),
-                TextColumn::make('classification')
-                    ->label('Type')
-                    ->badge()
-                    ->color(fn (string $state): string => match ($state) {
-                        'Incident' => 'danger',
-                        'Issue' => 'warning',
-                        default => 'gray',
-                    })
-                    ->sortable(),
-                TextColumn::make('incidentType.name')
-                    ->label('Incident Type')
-                    ->sortable()
-                    ->toggleable(),
-                TextColumn::make('mttr')
+                TextColumn::make('mttr_formatted')
                     ->label('MTTR')
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: false)
-                    ->summarize(Average::make()->label('Avg MTTR')),
+                    ->sortable(query: function (\Illuminate\Database\Eloquent\Builder $query, string $direction) {
+                        return $query->orderBy('mttr', $direction);
+                    })
+                    ->toggleable(),
                 TextColumn::make('mtbf_display')
                     ->label('MTBF (days)')
-                    ->sortable()
                     ->toggleable(isToggledHiddenByDefault: false)
-                    ->state(fn (Incident $record): int => $record->getMtbfForTab(
-                        request()->query('tableActiveTab', 'All Cases')
-                    ))
-                    ->formatStateUsing(fn (int $state): string => number_format($state)),
+                    ->state(function (Incident $record): int {
+                        static $cache = [];
+                        $year = $record->incident_date->year;
+                        $key = "issues_{$year}";
+
+                        if (! isset($cache[$key])) {
+                            $incidents = Incident::whereYear('incident_date', $year)
+                                ->where('classification', 'Issue')
+                                ->orderBy('incident_date')->orderBy('id')
+                                ->get(['id', 'incident_date']);
+
+                            $cache[$key] = [];
+                            foreach ($incidents as $i => $inc) {
+                                $cache[$key][$inc->id] = $i === 0
+                                    ? $inc->incident_date->dayOfYear
+                                    : (int) $incidents[$i - 1]->incident_date->startOfDay()
+                                        ->diffInDays($inc->incident_date->startOfDay());
+                            }
+                        }
+
+                        return $cache[$key][$record->id] ?? 0;
+                    })
+                    ->formatStateUsing(fn (int $state): string => number_format($state))
+                    ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
                 TextColumn::make('incident_date')
                     ->label('Start Date')
                     ->dateTime()
@@ -182,6 +170,15 @@ class IssueResource extends Resource
                 \App\Filament\Filters\QuickPeriodFilter::dateRange(),
             ])
             ->actions([
+                Tables\Actions\Action::make('upgrade_to_incident')
+                    ->label('Upgrade to Incident')
+                    ->icon('heroicon-o-arrow-up-circle')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalHeading('Upgrade to Incident')
+                    ->modalDescription('This will reclassify this issue as an incident and assign a new Incident ID.')
+                    ->action(fn (Incident $record) => $record->changeClassification('Incident'))
+                    ->visible(fn (): bool => auth()->user()->can('manage issues')),
                 Tables\Actions\EditAction::make()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage issues')),
@@ -191,6 +188,16 @@ class IssueResource extends Resource
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\BulkAction::make('bulk_upgrade')
+                        ->label('Upgrade to Incident')
+                        ->icon('heroicon-o-arrow-up-circle')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Upgrade selected issues to incidents')
+                        ->modalDescription('All selected issues will be reclassified as incidents with new IDs.')
+                        ->action(fn (\Illuminate\Support\Collection $records) => $records->each->changeClassification('Incident'))
+                        ->visible(fn (): bool => auth()->user()->can('manage issues'))
+                        ->deselectRecordsAfterCompletion(),
                     Tables\Actions\DeleteBulkAction::make()
                         ->databaseTransaction()
                         ->visible(fn (): bool => auth()->user()->can('manage issues')),

@@ -4,12 +4,10 @@ namespace App\Observers;
 
 use App\Jobs\CalculateIncidentMetrics;
 use App\Models\Incident;
-use App\Models\Label;
 use App\Notifications\AssignedAsPicNotification;
 use App\Notifications\IncidentStatusChanged;
 use App\Notifications\IncidentUpdated;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Cache;
 
 class IncidentObserver
 {
@@ -36,6 +34,9 @@ class IncidentObserver
      */
     public function updated(Incident $incident): void
     {
+        $pic = $incident->pic;
+        $currentUser = auth()->user();
+
         // Track changes for notification
         $changes = [];
         $notifiableFields = [
@@ -54,7 +55,6 @@ class IncidentObserver
                 $oldValue = $incident->getOriginal($field);
                 $newValue = $incident->$field;
 
-                // Format dates and special values
                 if ($oldValue instanceof Carbon) {
                     $oldValue = $oldValue->format('Y-m-d H:i');
                 }
@@ -70,23 +70,28 @@ class IncidentObserver
         }
 
         // Handle PIC assignment change
-        if ($incident->isDirty('pic_id') && $incident->pic_id && $incident->pic) {
-            $incident->pic->notify(new AssignedAsPicNotification($incident));
+        if ($incident->isDirty('pic_id') && $incident->pic_id && $pic) {
+            $pic->notify(new AssignedAsPicNotification($incident));
         }
 
         // Determine if metrics recalculation is needed
         $needsRecalculation = $incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at');
         $needsCategoryRecalculation = $incident->isDirty('incident_status') || $incident->isDirty('severity') ||
             $incident->isDirty('incident_type') || $incident->isDirty('fund_status') ||
-            $incident->isDirty('recovered_fund');
+            $incident->isDirty('recovered_fund') || $incident->isDirty('classification');
         $needsAutoLabel = $incident->isDirty('summary') || $incident->isDirty('root_cause');
 
         // Dispatch metrics calculation to queue if needed
         if ($needsRecalculation || $needsCategoryRecalculation || $needsAutoLabel) {
+            $previousClassification = $incident->isDirty('classification')
+                ? $incident->getOriginal('classification')
+                : null;
+
             dispatch(new CalculateIncidentMetrics(
                 $incident,
                 shouldAutoLabel: $needsAutoLabel,
-                shouldUpdateAdjacent: $needsRecalculation
+                shouldUpdateAdjacent: $needsRecalculation || $incident->isDirty('classification'),
+                previousClassification: $previousClassification
             ));
         }
 
@@ -95,9 +100,7 @@ class IncidentObserver
             $oldStatus = $incident->getOriginal('incident_status');
             $newStatus = $incident->incident_status;
 
-            $pic = $incident->pic; // Store reference once to avoid race condition
             if ($pic && $oldStatus && $newStatus) {
-                $currentUser = auth()->user();
                 if (! $currentUser || $currentUser->id !== $incident->pic_id) {
                     $pic->notify(new IncidentStatusChanged($incident, $oldStatus, $newStatus));
                 }
@@ -105,297 +108,10 @@ class IncidentObserver
         }
 
         // Send general update notification if there are meaningful changes
-        if ($incident->wasChanged() && ! empty($changes) && $incident->pic) {
-            $currentUser = auth()->user();
-            $pic = $incident->pic; // Store reference once to avoid race condition
+        if ($incident->wasChanged() && ! empty($changes) && $pic) {
             if ($currentUser && $currentUser->id !== $incident->pic_id) {
                 $pic->notify(new IncidentUpdated($incident, $changes));
             }
         }
-    }
-
-    /**
-     * Calculate MTTR and MTBF for an incident.
-     *
-     * MTTR (Mean Time To Resolve):
-     *   - Fund status "Confirmed loss" or "Potential recovery": stored in DAYS (date-only)
-     *   - Fund status "Non fundLoss": stored in MINUTES
-     *   - Note: Day-based MTTR is stored as negative value to indicate days vs minutes
-     *
-     * MTBF (Mean Time Between Failures): Days from previous incident or Jan 1st (date-only)
-     */
-    private function calculateMetrics(Incident $incident): void
-    {
-        // Calculate MTTR
-        if ($incident->stop_bleeding_at) {
-            if ($incident->shouldCalculateMttrByDays()) {
-                // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
-                // Add 1 to include both start and end days in the count
-                $days = abs($incident->incident_date->startOfDay()
-                    ->diffInDays($incident->stop_bleeding_at->startOfDay())) + 1;
-                $incident->mttr = -$days; // Negative to indicate days vs minutes
-            } else {
-                // "Non fundLoss" - store as MINUTES
-                $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
-            }
-        } else {
-            $incident->mttr = null;
-        }
-
-        // Calculate MTBF using optimized query with index
-        $year = $incident->incident_date->year;
-        // Find the incident that comes immediately before the current incident
-        // when sorted by (incident_date, id), AND has the same classification (Incident vs Issue)
-        // EXCLUDE "Non Incident" severity from overall MTBF calculation
-        $previousIncident = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification) // Same classification only
-            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
-            ->where(function ($query) use ($incident) {
-                $query->where('incident_date', '<', $incident->incident_date)
-                    ->orWhere(function ($query) use ($incident) {
-                        $query->where('incident_date', '=', $incident->incident_date)
-                            ->where('id', '<', $incident->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previousIncident) {
-            // MTBF = calendar day difference (ignoring time)
-            $incident->mtbf = abs($incident->incident_date->startOfDay()
-                ->diffInDays($previousIncident->incident_date->startOfDay()));
-        } else {
-            // First incident of the year - calculate from Jan 1st
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf = abs($incident->incident_date->startOfDay()
-                ->diffInDays($yearStart));
-        }
-
-        $incident->saveQuietly();
-    }
-
-    /**
-     * Update MTBF and MTTR for adjacent incidents when one is created/updated.
-     */
-    private function updateAdjacentIncidentMetrics(Incident $incident): void
-    {
-        $year = $incident->incident_date->year;
-
-        // Update next incident's MTBF
-        // Find the incident that comes immediately after the current incident
-        // when sorted by (incident_date, id), AND has the same classification (Incident vs Issue)
-        // EXCLUDE "Non Incident" severity from overall MTBF calculation
-        $nextIncident = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification) // Same classification only
-            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
-            ->where(function ($query) use ($incident) {
-                $query->where('incident_date', '>', $incident->incident_date)
-                    ->orWhere(function ($query) use ($incident) {
-                        $query->where('incident_date', '=', $incident->incident_date)
-                            ->where('id', '>', $incident->id);
-                    });
-            })
-            ->orderBy('incident_date', 'asc')
-            ->orderBy('id', 'asc')
-            ->first();
-
-        if ($nextIncident) {
-            // Update MTBF - calendar day difference from this incident to next
-            $nextIncident->mtbf = abs($nextIncident->incident_date->startOfDay()
-                ->diffInDays($incident->incident_date->startOfDay()));
-
-            // Update MTTR
-            if ($nextIncident->stop_bleeding_at) {
-                if ($nextIncident->shouldCalculateMttrByDays()) {
-                    // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
-                    // Add 1 to include both start and end days in the count
-                    $days = abs($nextIncident->incident_date->startOfDay()
-                        ->diffInDays($nextIncident->stop_bleeding_at->startOfDay())) + 1;
-                    $nextIncident->mttr = -$days;
-                } else {
-                    // "Non fundLoss" - store as MINUTES
-                    $nextIncident->mttr = $nextIncident->incident_date->diffInMinutes($nextIncident->stop_bleeding_at);
-                }
-            } else {
-                $nextIncident->mttr = null;
-            }
-
-            $nextIncident->saveQuietly();
-        }
-    }
-
-    /**
-     * Calculate MTBF for all category types.
-     * Each category MTBF is calculated independently (only looks at incidents in that category).
-     */
-    private function calculateCategoryMtbf(Incident $incident): void
-    {
-        $year = $incident->incident_date->year;
-
-        // Define categories and their conditions
-        // Note: 'recovered' uses a closure for complex condition
-        $categories = [
-            'completed' => ['incident_status' => 'Completed'],
-            'p4' => ['severity' => 'P4'],
-            'non_tech' => ['incident_type' => 'Non-tech'],
-            'fund_loss' => ['fund_status' => 'Confirmed loss'],
-            'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
-            'potential_recovery' => ['fund_status' => 'Potential recovery'],
-            'non_incident' => ['severity' => 'Non Incident'],
-        ];
-
-        // Process each category
-        foreach ($categories as $key => $condition) {
-            $previousIncident = Incident::whereYear('incident_date', $year)
-                ->where('classification', $incident->classification)
-                ->where($condition)
-                ->where(function ($query) use ($incident) {
-                    $query->where('incident_date', '<', $incident->incident_date)
-                        ->orWhere(function ($query) use ($incident) {
-                            $query->where('incident_date', '=', $incident->incident_date)
-                                ->where('id', '<', $incident->id);
-                        });
-                })
-                ->orderBy('incident_date', 'desc')
-                ->orderBy('id', 'desc')
-                ->first();
-
-            if ($previousIncident) {
-                $incident->{"mtbf_{$key}"} = abs($incident->incident_date->startOfDay()
-                    ->diffInDays($previousIncident->incident_date->startOfDay()));
-            } else {
-                $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-                $incident->{"mtbf_{$key}"} = abs($incident->incident_date->startOfDay()
-                    ->diffInDays($yearStart));
-            }
-        }
-
-        // Special handling for 'recovered' category (recovered_fund > 0)
-        $previousRecovered = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification)
-            ->where('recovered_fund', '>', 0)
-            ->where(function ($query) use ($incident) {
-                $query->where('incident_date', '<', $incident->incident_date)
-                    ->orWhere(function ($query) use ($incident) {
-                        $query->where('incident_date', '=', $incident->incident_date)
-                            ->where('id', '<', $incident->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previousRecovered) {
-            $incident->mtbf_recovered = abs($incident->incident_date->startOfDay()
-                ->diffInDays($previousRecovered->incident_date->startOfDay()));
-        } else {
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf_recovered = abs($incident->incident_date->startOfDay()
-                ->diffInDays($yearStart));
-        }
-    }
-
-    /**
-     * Calculate MTBF for ALL incidents + issues combined (ignoring classification).
-     * This is used for the Issue menu which shows both Incidents and Issues.
-     */
-    private function calculateMtbfAll(Incident $incident): void
-    {
-        $year = $incident->incident_date->year;
-
-        // Find previous incident/issue in the same year, IGNORING classification
-        // This combines both Incidents and Issues for MTBF calculation
-        // EXCLUDE "Non Incident" severity from overall calculation
-        $previousRecord = Incident::whereYear('incident_date', $year)
-            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
-            ->where(function ($query) use ($incident) {
-                $query->where('incident_date', '<', $incident->incident_date)
-                    ->orWhere(function ($query) use ($incident) {
-                        $query->where('incident_date', '=', $incident->incident_date)
-                            ->where('id', '<', $incident->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previousRecord) {
-            $incident->mtbf_all = abs($incident->incident_date->startOfDay()
-                ->diffInDays($previousRecord->incident_date->startOfDay()));
-        } else {
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf_all = abs($incident->incident_date->startOfDay()
-                ->diffInDays($yearStart));
-        }
-    }
-
-    /**
-     * Auto-label incident based on summary and root cause.
-     */
-    private function autoLabel(Incident $incident): void
-    {
-        $allLabels = Cache::remember('labels', 3600, function () {
-            return Label::all();
-        });
-
-        $textBlock = strtolower($incident->summary.' '.$incident->root_cause);
-        $matchedLabelIds = [];
-
-        foreach ($allLabels as $label) {
-            if (preg_match("/\b".preg_quote(strtolower($label->name), '/')."\b/", $textBlock)) {
-                $matchedLabelIds[] = $label->id;
-            }
-        }
-
-        if (! empty($matchedLabelIds)) {
-            $incident->labels()->syncWithoutDetaching($matchedLabelIds);
-        }
-    }
-
-    /**
-     * Flush incident cache with fine-grained keys.
-     * Note: Since we're using plain Cache::remember() without tags,
-     * we rely on the 60-minute TTL for automatic cache expiration.
-     * For immediate invalidation, individual cache keys can be forgotten
-     * if the cache key pattern is known.
-     */
-    private function flushIncidentCache(): void
-    {
-        // Forget known static cache keys
-        Cache::forget('incidents.stats');
-        Cache::forget('labels');
-        Cache::forget('incident_types');
-        Cache::forget('users');
-        Cache::forget('dashboard_stats');
-
-        // Dynamic cache keys (incidents.{hash}) will expire after 60-minute TTL
-        // For immediate invalidation of all incident caches, you would need
-        // to track active cache keys or use a cache versioning strategy.
-        // Given the TTL is relatively short (60 minutes), we rely on natural expiration.
-    }
-
-    /**
-     * Handle the Incident "deleted" event.
-     */
-    public function deleted(Incident $incident): void
-    {
-        $this->flushIncidentCache();
-    }
-
-    /**
-     * Handle the Incident "restored" event.
-     */
-    public function restored(Incident $incident): void
-    {
-        $this->flushIncidentCache();
-    }
-
-    /**
-     * Handle the Incident "force deleted" event.
-     */
-    public function forceDeleted(Incident $incident): void
-    {
-        $this->flushIncidentCache();
     }
 }

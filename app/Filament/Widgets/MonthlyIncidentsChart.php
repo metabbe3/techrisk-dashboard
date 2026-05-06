@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\HasChartColors;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\Cache;
 
 class MonthlyIncidentsChart extends ChartWidget
 {
-    use InteractsWithDashboardFilters;
+    use HasChartColors, InteractsWithDashboardFilters;
 
     protected static ?string $heading = 'Monthly Incidents';
 
@@ -55,8 +56,10 @@ class MonthlyIncidentsChart extends ChartWidget
                 [
                     'label' => 'Incidents',
                     'data' => $values,
-                    'backgroundColor' => '#36A2EB',
-                    'borderColor' => '#9BD0F5',
+                    'backgroundColor' => self::chartColors(12),
+                    'borderColor' => self::chartBorderColors(12),
+                    'borderWidth' => 2,
+                    'borderRadius' => 6,
                 ],
             ],
             'labels' => $labels,
@@ -91,7 +94,7 @@ class MonthlyIncidentsChart extends ChartWidget
                 'y' => [
                     'beginAtZero' => true,
                     'grid' => [
-                        'display' => true,
+                        'color' => 'rgba(0, 0, 0, 0.06)',
                     ],
                 ],
             ],

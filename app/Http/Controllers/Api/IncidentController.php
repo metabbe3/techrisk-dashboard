@@ -143,7 +143,7 @@ class IncidentController extends Controller
     {
         try {
             $labels = Cache::remember('labels', 60, function () {
-                return Label::all()->pluck('name');
+                return Label::pluck('name');
             });
 
             return $this->successResponse($labels, 'Labels retrieved successfully.');
@@ -175,7 +175,7 @@ class IncidentController extends Controller
     {
         try {
             $incidentTypes = Cache::remember('incident_types', 60, function () {
-                return IncidentType::all()->pluck('name');
+                return IncidentType::pluck('name');
             });
 
             return $this->successResponse($incidentTypes, 'Incident types retrieved successfully.');

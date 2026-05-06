@@ -27,7 +27,7 @@ class PotentialFundLoss extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Incident::query()->with(['pic', 'incidentType', 'labels', 'latestStatusUpdate'])->whereHas('latestStatusUpdate', function ($query) {
+        $query = Incident::query()->whereHas('latestStatusUpdate', function ($query) {
             $query->whereNotIn('status', ['Closed', 'Resolved', 'Recovered']);
         });
 
@@ -43,8 +43,9 @@ class PotentialFundLoss extends BaseWidget
 
         return [
             Stat::make('Potential Fund Loss', 'IDR '.number_format($openCases, 2, ',', '.'))
-                ->description('Total potential fund loss from open cases '.$descriptionPeriod)
-                ->descriptionIcon('heroicon-m-currency-dollar')
+                ->description('Open cases potential loss '.$descriptionPeriod)
+                ->descriptionIcon('heroicon-m-exclamation-circle')
+                ->chart([3, 5, 4, 7, 2, 6, 4, 5])
                 ->color('danger'),
         ];
     }

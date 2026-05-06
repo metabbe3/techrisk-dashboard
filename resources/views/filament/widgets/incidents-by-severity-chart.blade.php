@@ -4,57 +4,50 @@
             Incidents by Severity
         </x-slot>
 
-        <div class="overflow-x-auto" style="max-height: 300px; overflow-y: auto;">
-            <table class="w-full">
-                <thead>
-                    <tr class="border-b border-gray-200 dark:border-gray-700">
-                        <th class="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            Severity
-                        </th>
-                        <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            Count
-                        </th>
-                        <th class="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                            Percentage
-                        </th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
-                    @forelse($this->severityData as $row)
-                        <tr class="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
-                            <td class="px-4 py-3 whitespace-nowrap">
-                                <x-filament::badge :color="$this->getSeverityColor($row['severity'])">
-                                    {{ $row['severity'] }}
-                                </x-filament::badge>
-                            </td>
-                            <td class="px-4 py-3 whitespace-nowrap text-center">
-                                <span class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                                    {{ $row['count'] }}
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 whitespace-nowrap text-center">
-                                <x-filament::badge :color="$this->getPercentageColor($row['percentage'])">
-                                    {{ number_format($row['percentage'], 1) }}%
-                                </x-filament::badge>
-                            </td>
-                        </tr>
-                    @empty
-                        <tr>
-                            <td colspan="3" class="px-6 py-12">
-                                <div class="flex flex-col items-center gap-3">
-                                    <x-filament::icon
-                                        icon="heroicon-o-document-text"
-                                        class="h-12 w-12 text-gray-400"
-                                    />
-                                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                        No incidents found
-                                    </p>
-                                </div>
-                            </td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
+        <div class="severity-table overflow-x-auto" style="max-height: 320px; overflow-y: auto;">
+            @forelse($this->severityData as $row)
+                @php
+                    $barClass = match($row['severity']) {
+                        'P1' => 'severity-p1',
+                        'P2' => 'severity-p2',
+                        'P3' => 'severity-p3',
+                        'P4' => 'severity-p4',
+                        default => 'severity-default',
+                    };
+                @endphp
+                <div class="flex items-center gap-3 py-2.5 px-1 border-b border-gray-100 dark:border-gray-800 last:border-0">
+                    <div class="w-24 flex-shrink-0">
+                        <x-filament::badge :color="$this->getSeverityColor($row['severity'])">
+                            {{ $row['severity'] }}
+                        </x-filament::badge>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <div class="severity-bar w-full">
+                            <div class="severity-bar-fill {{ $barClass }}" style="width: {{ min($row['percentage'] * 3, 100) }}%"></div>
+                        </div>
+                    </div>
+                    <div class="w-12 text-right flex-shrink-0">
+                        <span class="text-sm font-bold text-gray-800 dark:text-gray-200">
+                            {{ $row['count'] }}
+                        </span>
+                    </div>
+                    <div class="w-16 text-right flex-shrink-0">
+                        <x-filament::badge :color="$this->getPercentageColor($row['percentage'])" size="sm">
+                            {{ number_format($row['percentage'], 1) }}%
+                        </x-filament::badge>
+                    </div>
+                </div>
+            @empty
+                <div class="flex flex-col items-center gap-3 py-12">
+                    <x-filament::icon
+                        icon="heroicon-o-chart-bar"
+                        class="h-12 w-12 text-gray-400"
+                    />
+                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        No incidents found
+                    </p>
+                </div>
+            @endforelse
         </div>
     </x-filament::section>
 </x-filament-widgets::widget>

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Filament\Concerns\HasChartColors;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Filament\Widgets\ChartWidget;
@@ -10,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 
 class IncidentsByPicChart extends ChartWidget
 {
-    use InteractsWithDashboardFilters;
+    use HasChartColors, InteractsWithDashboardFilters;
 
     protected static ?string $heading = 'Incidents by Person In Charge';
 
@@ -43,11 +44,17 @@ class IncidentsByPicChart extends ChartWidget
             return $query->pluck('total', 'pic_name');
         });
 
+        $count = $data->count();
+
         return [
             'datasets' => [
                 [
                     'label' => 'Incidents',
                     'data' => $data->values()->all(),
+                    'backgroundColor' => self::chartColors($count),
+                    'borderColor' => self::chartBorderColors($count),
+                    'borderWidth' => 1,
+                    'borderRadius' => 4,
                 ],
             ],
             'labels' => $data->keys()->all(),
@@ -78,7 +85,7 @@ class IncidentsByPicChart extends ChartWidget
                 'x' => [
                     'beginAtZero' => true,
                     'grid' => [
-                        'display' => true,
+                        'color' => 'rgba(0, 0, 0, 0.06)',
                     ],
                 ],
                 'y' => [

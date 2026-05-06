@@ -9,3 +9,52 @@
     --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
+
+/* --- Sidebar icon colors per resource --- */
+.fi-sidebar-item [href*="/admin/incidents"] .fi-sidebar-item-icon {
+    color: #6366f1;
+}
+
+.fi-sidebar-item [href*="/admin/issues"] .fi-sidebar-item-icon {
+    color: #f59e0b;
+}
+
+.fi-sidebar-item [href*="/admin/access-requests"] .fi-sidebar-item-icon {
+    color: #8b5cf6;
+}
+
+.fi-sidebar-item [href*="/admin/users"] .fi-sidebar-item-icon {
+    color: #0ea5e9;
+}
+
+.fi-sidebar-item [href*="/admin/roles"] .fi-sidebar-item-icon {
+    color: #14b8a6;
+}
+
+.fi-sidebar-item [href*="/admin/permissions"] .fi-sidebar-item-icon {
+    color: #f97316;
+}
+
+.fi-sidebar-item [href*="/admin/api-tokens"] .fi-sidebar-item-icon {
+    color: #ec4899;
+}
+
+.fi-sidebar-item [href*="/admin/api-audit-logs"] .fi-sidebar-item-icon {
+    color: #64748b;
+}
+
+.fi-sidebar-item [href*="/admin/categories"] .fi-sidebar-item-icon {
+    color: #10b981;
+}
+
+.fi-sidebar-item [href*="/admin/incident-types"] .fi-sidebar-item-icon {
+    color: #06b6d4;
+}
+
+.fi-sidebar-item [href*="/admin/labels"] .fi-sidebar-item-icon {
+    color: #8b5cf6;
+}
+
+.fi-sidebar-item [href*="/admin/weekly-report"] .fi-sidebar-item-icon {
+    color: #f59e0b;
+}

@@ -45,9 +45,13 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         $row = [];
         foreach ($this->columnNames as $columnName) {
             $isBoolean = in_array($columnName, ['glitch_flag', 'risk_incident_form_cfm', 'goc_upload', 'teams_upload', 'doc_signed']);
-            if ($columnName === 'recovery_rate') {
-                if ($incident->potential_fund_loss > 0) {
-                    $rate = ($incident->recovered_fund / $incident->potential_fund_loss) * 100;
+            if ($columnName === 'mttr') {
+                $row[] = $incident->mttr_formatted;
+            } elseif ($columnName === 'mtbf') {
+                $row[] = $this->computeMtbf($incident);
+            } elseif ($columnName === 'recovery_rate') {
+                if ((float) $incident->potential_fund_loss > 0) {
+                    $rate = ((float) $incident->recovered_fund / (float) $incident->potential_fund_loss) * 100;
                     $row[] = number_format($rate, 1).'%';
                 } else {
                     $row[] = '-';
@@ -60,6 +64,31 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         }
 
         return $row;
+    }
+
+    private static array $mtbfCache = [];
+
+    private function computeMtbf($incident): int
+    {
+        $year = $incident->incident_date->year;
+        $key = "export_all_{$year}";
+
+        if (! isset(self::$mtbfCache[$key])) {
+            $incidents = \App\Models\Incident::whereYear('incident_date', $year)
+                ->where('classification', '!=', 'Issue')
+                ->orderBy('incident_date')->orderBy('id')
+                ->get(['id', 'incident_date']);
+
+            self::$mtbfCache[$key] = [];
+            foreach ($incidents as $i => $inc) {
+                self::$mtbfCache[$key][$inc->id] = $i === 0
+                    ? $inc->incident_date->dayOfYear
+                    : (int) $incidents[$i - 1]->incident_date->startOfDay()
+                        ->diffInDays($inc->incident_date->startOfDay());
+            }
+        }
+
+        return self::$mtbfCache[$key][$incident->id] ?? 0;
     }
 
     public function registerEvents(): array

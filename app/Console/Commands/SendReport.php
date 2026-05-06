@@ -40,7 +40,7 @@ class SendReport extends Command
         }
 
         $data = $template->filters;
-        $query = Incident::query();
+        $query = Incident::query()->where('classification', '!=', 'Issue');
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));
@@ -71,23 +71,19 @@ class SendReport extends Command
             $metrics['total_incidents'] = $incidents->count();
         }
         if (in_array('avg_mttr', $template->metrics)) {
-            $metrics['avg_mttr'] = $incidents->avg('mttr');
+            $metrics['avg_mttr'] = $incidents->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $template->metrics)) {
-            // Calculate MTBF correctly: Total Time Period / Number of Incidents
-            $totalIncidents = $incidents->count();
+            $mtbfIncidents = $incidents->whereNotIn('severity', ['Non Incident', 'G']);
+            $mtbfCount = $mtbfIncidents->count();
             $avgMtbf = 0;
 
-            if ($totalIncidents > 0) {
-                $minDate = $query->min('incident_date');
-                $maxDate = $query->max('incident_date');
-
-                if ($minDate && $maxDate) {
-                    $minDate = Carbon::parse($minDate)->startOfDay();
-                    $maxDate = Carbon::parse($maxDate)->startOfDay();
-                    $totalDays = $minDate->diffInDays($maxDate);
-                    $avgMtbf = $totalIncidents > 1 ? round($totalDays / ($totalIncidents - 1), 3) : 0;
-                }
+            if ($mtbfCount > 1) {
+                $sorted = $mtbfIncidents->sortBy('incident_date');
+                $minDate = $sorted->first()->incident_date->startOfDay();
+                $maxDate = $sorted->last()->incident_date->startOfDay();
+                $totalDays = $minDate->diffInDays($maxDate);
+                $avgMtbf = round($totalDays / ($mtbfCount - 1), 3);
             }
             $metrics['avg_mtbf'] = $avgMtbf;
         }

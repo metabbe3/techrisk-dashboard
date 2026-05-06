@@ -130,13 +130,18 @@ class RequestAccessForm extends Component implements HasForms
 
         $passwordToStore = $userExists ? null : (empty($formData['password']) ? null : Hash::make($formData['password']));
 
-        $existingRequest = AccessRequest::where('email', $formData['email'])
-            ->where('status', 'pending')
-            ->first();
+        $existingRequest = AccessRequest::where('email', $formData['email'])->first();
 
         if ($existingRequest) {
+            $message = match ($existingRequest->status) {
+                'pending' => 'You already have a pending access request. Please wait for approval.',
+                'approved' => 'An access request for this email has already been approved.',
+                'rejected' => 'Your previous access request was rejected. Please contact an administrator.',
+                default => 'An access request already exists for this email.',
+            };
+
             throw ValidationException::withMessages([
-                'data.email' => 'You already have a pending access request. Please wait for approval.',
+                'data.email' => $message,
             ]);
         }
 

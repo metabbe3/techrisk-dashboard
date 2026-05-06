@@ -57,8 +57,15 @@ class FundLossTrendChart extends ChartWidget
                 [
                     'label' => 'Fund Loss',
                     'data' => $values,
-                    'borderColor' => '#FF6384',
-                    'backgroundColor' => '#FFB1C1',
+                    'borderColor' => 'rgba(244, 63, 94, 1)',
+                    'backgroundColor' => 'rgba(244, 63, 94, 0.15)',
+                    'fill' => true,
+                    'tension' => 0.4,
+                    'pointBackgroundColor' => 'rgba(244, 63, 94, 1)',
+                    'pointBorderColor' => '#fff',
+                    'pointBorderWidth' => 2,
+                    'pointRadius' => 4,
+                    'pointHoverRadius' => 6,
                 ],
             ],
             'labels' => $labels,
@@ -73,5 +80,33 @@ class FundLossTrendChart extends ChartWidget
     public function getColumnSpan(): int|string|array
     {
         return 6;
+    }
+
+    protected function getOptions(): array
+    {
+        return [
+            'maintainAspectRatio' => false,
+            'plugins' => [
+                'legend' => [
+                    'display' => false,
+                ],
+            ],
+            'scales' => [
+                'x' => [
+                    'grid' => [
+                        'display' => false,
+                    ],
+                ],
+                'y' => [
+                    'beginAtZero' => true,
+                    'grid' => [
+                        'color' => 'rgba(0, 0, 0, 0.06)',
+                    ],
+                ],
+            ],
+            'layout' => [
+                'padding' => 10,
+            ],
+        ];
     }
 }

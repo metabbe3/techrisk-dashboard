@@ -179,9 +179,9 @@ return [
     */
 
     'queue' => [
-        'enable' => false,
-        'connection' => 'sync',
-        'queue' => 'default',
+        'enable' => true,
+        'connection' => 'redis',
+        'queue' => 'audits',
         'delay' => 0,
     ],
 

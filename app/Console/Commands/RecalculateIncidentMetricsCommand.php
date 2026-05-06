@@ -212,8 +212,15 @@ class RecalculateIncidentMetricsCommand extends Command
         } else {
             // First incident of the year - calculate from Jan 1st
             $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf = abs($incident->incident_date->startOfDay()
+            $daysSinceYearStart = abs($incident->incident_date->startOfDay()
                 ->diffInDays($yearStart));
+
+            // If MTBF from year start is unrealistically large (> 90 days), set to null
+            if ($daysSinceYearStart > 90) {
+                $incident->mtbf = null;
+            } else {
+                $incident->mtbf = $daysSinceYearStart;
+            }
         }
     }
 

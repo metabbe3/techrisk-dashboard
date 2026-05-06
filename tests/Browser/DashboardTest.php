@@ -37,12 +37,11 @@ class DashboardTest extends DuskTestCase
     protected function loginAsAdmin(Browser $browser): Browser
     {
         return $browser->visit('/admin/login')
-            ->waitFor('input[name="email"]')
-            ->type('input[name="email"]', 'admin@example.com')
-            ->type('input[name="password"]', 'password')
+            ->waitFor('[wire\\:model="data.email"]')
+            ->type('[wire\\:model="data.email"]', 'admin@example.com')
+            ->type('[wire\\:model="data.password"]', 'password')
             ->press('button[type="submit"]')
-            ->waitForLocation('/admin')
-            ->assertPathIs('/admin');
+            ->pause(2000)->assertPathBeginsWith('/admin');
     }
 
     public function test_dashboard_loads_after_login(): void

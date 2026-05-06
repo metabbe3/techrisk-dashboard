@@ -32,7 +32,6 @@ class IncidentResource extends JsonResource
             'third_party_client' => $this->third_party_client,
             'potential_fund_loss' => $this->potential_fund_loss,
             'fund_loss' => $this->fund_loss,
-            'people_caused' => $this->people_caused,
             'checker' => $this->checker,
             'maker' => $this->maker,
             'created_at' => $this->created_at,

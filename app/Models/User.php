@@ -3,6 +3,7 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\ChannelFilteredNotification;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -125,82 +126,7 @@ class User extends Authenticatable implements FilamentUser
             return;
         }
 
-        // Get the original notification class for type preservation
-        $originalNotificationClass = get_class($instance);
-
-        // Create a proper notification wrapper that extends Notification base class
-        $modifiedNotification = new class($instance, $channels, $originalNotificationClass) extends \Illuminate\Notifications\Notification
-        {
-            protected $notification;
-
-            protected $allowedChannels;
-
-            protected $originalType;
-
-            public function __construct($notification, $allowedChannels, $originalType)
-            {
-                $this->notification = $notification;
-                $this->allowedChannels = $allowedChannels;
-                $this->originalType = $originalType;
-            }
-
-            public function via($notifiable)
-            {
-                return $this->allowedChannels;
-            }
-
-            /**
-             * Override to preserve the original notification class type
-             * This ensures Filament can properly identify and render the notification
-             */
-            public function databaseType()
-            {
-                return $this->originalType;
-            }
-
-            public function toMail($notifiable)
-            {
-                return $this->notification->toMail($notifiable);
-            }
-
-            public function toDatabase($notifiable)
-            {
-                return $this->notification->toDatabase($notifiable);
-            }
-
-            public function toArray($notifiable)
-            {
-                if (method_exists($this->notification, 'toArray')) {
-                    return $this->notification->toArray($notifiable);
-                }
-
-                return [];
-            }
-
-            public function toBroadcast($notifiable)
-            {
-                if (method_exists($this->notification, 'toBroadcast')) {
-                    return $this->notification->toBroadcast($notifiable);
-                }
-
-                return [];
-            }
-
-            public function __call($method, $arguments)
-            {
-                return $this->notification->$method(...$arguments);
-            }
-
-            public function __get($name)
-            {
-                return $this->notification->$name;
-            }
-
-            public function __isset($name)
-            {
-                return isset($this->notification->$name);
-            }
-        };
+        $modifiedNotification = new ChannelFilteredNotification($instance, $channels);
 
         // Use Notification facade instead of parent::notify()
         return \Illuminate\Support\Facades\Notification::send($this, $modifiedNotification);
