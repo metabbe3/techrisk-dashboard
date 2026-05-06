@@ -23,7 +23,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
     protected function getData(): array
     {
-        $cacheKey = 'mttr_mtbf_trend_v2_'.md5(json_encode([
+        $cacheKey = 'mttr_mtbf_trend_v3_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
@@ -38,49 +38,86 @@ class MttrMtbfTrendChart extends ChartWidget
                 $baseQuery->whereYear('incident_date', now()->year);
             }
 
-            // MTTR per month — average of positive (non-fund-loss) values only
-            $mttrData = $baseQuery->clone()
+            // MTTR Non Fund Loss per month (minutes) — average of positive values
+            $mttrNonFundData = $baseQuery->clone()
                 ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('AVG(CASE WHEN mttr >= 0 THEN mttr ELSE NULL END) as avg_mttr'))
                 ->groupBy(DB::raw('MONTH(incident_date)'))
                 ->get()
                 ->keyBy('month');
 
-            // MTBF per month — single query grouped by month
-            $mtbfRows = $baseQuery->clone()
+            // MTTR Fund Loss per month (days) — average of negative values (absolute)
+            $mttrFundData = $baseQuery->clone()
+                ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('AVG(CASE WHEN mttr < 0 THEN ABS(mttr) ELSE NULL END) as avg_mttr'))
+                ->groupBy(DB::raw('MONTH(incident_date)'))
+                ->get()
+                ->keyBy('month');
+
+            // MTBF Non Fund Loss per month
+            $mtbfNonFundRows = $baseQuery->clone()
                 ->whereNotIn('severity', ['Non Incident', 'G'])
+                ->where('fund_status', 'Non fundLoss')
                 ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw('MONTH(incident_date)'))
                 ->get();
 
-            $mtbfData = [];
-            foreach ($mtbfRows as $row) {
+            $mtbfNonFundData = [];
+            foreach ($mtbfNonFundRows as $row) {
                 if ($row->cnt > 1) {
                     $first = Carbon::parse($row->min_date)->startOfDay();
                     $last = Carbon::parse($row->max_date)->startOfDay();
-                    $mtbfData[$row->month] = round($first->diffInDays($last) / ($row->cnt - 1), 2);
+                    $mtbfNonFundData[$row->month] = round($first->diffInDays($last) / ($row->cnt - 1), 2);
                 } else {
-                    $mtbfData[$row->month] = 0;
+                    $mtbfNonFundData[$row->month] = 0;
                 }
             }
 
-            return ['mttr' => $mttrData, 'mtbf' => $mtbfData];
+            // MTBF Fund Loss per month
+            $mtbfFundRows = $baseQuery->clone()
+                ->whereNotIn('severity', ['Non Incident', 'G'])
+                ->whereIn('fund_status', ['Confirmed loss', 'Potential recovery'])
+                ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
+                ->groupBy(DB::raw('MONTH(incident_date)'))
+                ->get();
+
+            $mtbfFundData = [];
+            foreach ($mtbfFundRows as $row) {
+                if ($row->cnt > 1) {
+                    $first = Carbon::parse($row->min_date)->startOfDay();
+                    $last = Carbon::parse($row->max_date)->startOfDay();
+                    $mtbfFundData[$row->month] = round($first->diffInDays($last) / ($row->cnt - 1), 2);
+                } else {
+                    $mtbfFundData[$row->month] = 0;
+                }
+            }
+
+            return [
+                'mttr_non_fund' => $mttrNonFundData,
+                'mttr_fund' => $mttrFundData,
+                'mtbf_non_fund' => $mtbfNonFundData,
+                'mtbf_fund' => $mtbfFundData,
+            ];
         });
 
         $labels = [];
-        $mttr_values = [];
-        $mtbf_values = [];
+        $mttrNonFundValues = [];
+        $mttrFundValues = [];
+        $mtbfNonFundValues = [];
+        $mtbfFundValues = [];
         for ($i = 1; $i <= 12; $i++) {
             $labels[] = Carbon::create()->month($i)->format('M');
-            $mttrRow = $data['mttr']->get($i);
-            $mttr_values[] = $mttrRow ? round((float) $mttrRow->avg_mttr, 2) : 0;
-            $mtbf_values[] = $data['mtbf'][$i] ?? 0;
+            $mttrNonFundRow = $data['mttr_non_fund']->get($i);
+            $mttrNonFundValues[] = $mttrNonFundRow ? round((float) $mttrNonFundRow->avg_mttr, 2) : 0;
+            $mttrFundRow = $data['mttr_fund']->get($i);
+            $mttrFundValues[] = $mttrFundRow ? round((float) $mttrFundRow->avg_mttr, 2) : 0;
+            $mtbfNonFundValues[] = $data['mtbf_non_fund'][$i] ?? 0;
+            $mtbfFundValues[] = $data['mtbf_fund'][$i] ?? 0;
         }
 
         return [
             'datasets' => [
                 [
-                    'label' => 'MTTR (minutes)',
-                    'data' => $mttr_values,
+                    'label' => 'MTTR Non Fund Loss (mins)',
+                    'data' => $mttrNonFundValues,
                     'borderColor' => 'rgba(14, 165, 233, 1)',
                     'backgroundColor' => 'rgba(14, 165, 233, 0.12)',
                     'fill' => true,
@@ -92,13 +129,39 @@ class MttrMtbfTrendChart extends ChartWidget
                     'pointHoverRadius' => 6,
                 ],
                 [
-                    'label' => 'MTBF (days)',
-                    'data' => $mtbf_values,
+                    'label' => 'MTTR Fund Loss (days)',
+                    'data' => $mttrFundValues,
+                    'borderColor' => 'rgba(244, 63, 94, 1)',
+                    'backgroundColor' => 'rgba(244, 63, 94, 0.12)',
+                    'fill' => true,
+                    'tension' => 0.4,
+                    'pointBackgroundColor' => 'rgba(244, 63, 94, 1)',
+                    'pointBorderColor' => '#fff',
+                    'pointBorderWidth' => 2,
+                    'pointRadius' => 4,
+                    'pointHoverRadius' => 6,
+                ],
+                [
+                    'label' => 'MTBF Non Fund Loss (days)',
+                    'data' => $mtbfNonFundValues,
                     'borderColor' => 'rgba(139, 92, 246, 1)',
                     'backgroundColor' => 'rgba(139, 92, 246, 0.12)',
                     'fill' => true,
                     'tension' => 0.4,
                     'pointBackgroundColor' => 'rgba(139, 92, 246, 1)',
+                    'pointBorderColor' => '#fff',
+                    'pointBorderWidth' => 2,
+                    'pointRadius' => 4,
+                    'pointHoverRadius' => 6,
+                ],
+                [
+                    'label' => 'MTBF Fund Loss (days)',
+                    'data' => $mtbfFundValues,
+                    'borderColor' => 'rgba(245, 158, 11, 1)',
+                    'backgroundColor' => 'rgba(245, 158, 11, 0.12)',
+                    'fill' => true,
+                    'tension' => 0.4,
+                    'pointBackgroundColor' => 'rgba(245, 158, 11, 1)',
                     'pointBorderColor' => '#fff',
                     'pointBorderWidth' => 2,
                     'pointRadius' => 4,

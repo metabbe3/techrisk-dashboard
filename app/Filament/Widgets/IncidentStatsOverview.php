@@ -19,7 +19,7 @@ class IncidentStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $cacheKey = 'incident_stats_v2_'.md5(json_encode([
+        $cacheKey = 'incident_stats_v4_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -49,18 +49,28 @@ class IncidentStatsOverview extends BaseWidget
 
         $fundLossTotal = $query->clone()->where('incident_status', 'Completed')->sum('fund_loss');
         $recoveredTotal = $query->clone()->where('recovered_fund', '>', 0)->sum('recovered_fund');
-        $mttr = $query->clone()->where('mttr', '>=', 0)->average('mttr');
+        $mttrNonFundLoss = $query->clone()->where('mttr', '>=', 0)->average('mttr');
+        $mttrFundLoss = abs($query->clone()->where('mttr', '<', 0)->average('mttr') ?? 0);
 
-        $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
-        $mtbfCount = $mtbfQuery->count();
-        $mtbf = 0;
-        if ($mtbfCount > 0) {
-            $minDate = $mtbfQuery->min('incident_date');
-            $maxDate = $mtbfQuery->max('incident_date');
-
+        $mtbfNonFundLossQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G'])->where('fund_status', 'Non fundLoss');
+        $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
+        $mtbfNonFundLoss = 0;
+        if ($mtbfNonFundLossCount > 1) {
+            $minDate = $mtbfNonFundLossQuery->min('incident_date');
+            $maxDate = $mtbfNonFundLossQuery->max('incident_date');
             if ($minDate && $maxDate) {
-                $totalDays = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay());
-                $mtbf = $mtbfCount > 1 ? $totalDays / ($mtbfCount - 1) : 0;
+                $mtbfNonFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfNonFundLossCount - 1);
+            }
+        }
+
+        $mtbfFundLossQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G'])->whereIn('fund_status', ['Confirmed loss', 'Potential recovery']);
+        $mtbfFundLossCount = $mtbfFundLossQuery->count();
+        $mtbfFundLoss = 0;
+        if ($mtbfFundLossCount > 1) {
+            $minDate = $mtbfFundLossQuery->min('incident_date');
+            $maxDate = $mtbfFundLossQuery->max('incident_date');
+            if ($minDate && $maxDate) {
+                $mtbfFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfFundLossCount - 1);
             }
         }
 
@@ -86,14 +96,24 @@ class IncidentStatsOverview extends BaseWidget
                 ->description('Total recovered '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
                 ->color('success'),
-            Stat::make('MTTR', number_format($mttr, 2).' mins')
+            Stat::make('Avg MTTR (Non Fund Loss)', number_format($mttrNonFundLoss, 2).' mins')
                 ->description('Avg recovery time (non-fund loss) '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-wrench-screwdriver')
                 ->color('info'),
-            Stat::make('MTBF', number_format($mtbf, 2).' days')
-                ->description('Avg time between failures '.$descriptionPeriod)
+
+            Stat::make('Avg MTTR (Fund Loss)', number_format($mttrFundLoss, 2).' days')
+                ->description('Avg recovery time (fund loss) '.$descriptionPeriod)
+                ->descriptionIcon('heroicon-m-clock')
+                ->color('danger'),
+            Stat::make('MTBF (Non Fund Loss)', number_format($mtbfNonFundLoss, 2).' days')
+                ->description('Avg time between failures (non-fund loss) '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-shield-check')
-                ->color('info'),
+                ->color('violet'),
+
+            Stat::make('MTBF (Fund Loss)', number_format($mtbfFundLoss, 2).' days')
+                ->description('Avg time between failures (fund loss) '.$descriptionPeriod)
+                ->descriptionIcon('heroicon-m-shield-check')
+                ->color('rose'),
         ];
     }
 }

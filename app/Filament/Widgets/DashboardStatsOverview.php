@@ -19,7 +19,7 @@ class DashboardStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $cacheKey = 'dashboard_stats_v2_'.md5(json_encode([
+        $cacheKey = 'dashboard_stats_v4_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -76,26 +76,47 @@ class DashboardStatsOverview extends BaseWidget
 
         $lastIncidentLabel = $days === 0 ? 'No recent incident' : $days.' days ago';
 
-        $mttr = Incident::query()
+        $mttrNonFundLoss = Incident::query()
             ->where('classification', '!=', 'Issue')
             ->tap($incidentDateFilter)
             ->where('mttr', '>=', 0)
             ->average('mttr');
 
-        $mtbfQuery = Incident::query()
+        $mttrFundLoss = abs(Incident::query()
             ->where('classification', '!=', 'Issue')
             ->tap($incidentDateFilter)
-            ->whereNotIn('severity', ['Non Incident', 'G']);
+            ->where('mttr', '<', 0)
+            ->average('mttr') ?? 0);
 
-        $mtbfCount = $mtbfQuery->count();
-        $mtbf = 0;
-        if ($mtbfCount > 1) {
-            $minDate = $mtbfQuery->min('incident_date');
-            $maxDate = $mtbfQuery->max('incident_date');
+        $mtbfNonFundLossQuery = Incident::query()
+            ->where('classification', '!=', 'Issue')
+            ->tap($incidentDateFilter)
+            ->whereNotIn('severity', ['Non Incident', 'G'])
+            ->where('fund_status', 'Non fundLoss');
 
+        $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
+        $mtbfNonFundLoss = 0;
+        if ($mtbfNonFundLossCount > 1) {
+            $minDate = $mtbfNonFundLossQuery->min('incident_date');
+            $maxDate = $mtbfNonFundLossQuery->max('incident_date');
             if ($minDate && $maxDate) {
-                $totalDays = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay());
-                $mtbf = $totalDays / ($mtbfCount - 1);
+                $mtbfNonFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfNonFundLossCount - 1);
+            }
+        }
+
+        $mtbfFundLossQuery = Incident::query()
+            ->where('classification', '!=', 'Issue')
+            ->tap($incidentDateFilter)
+            ->whereNotIn('severity', ['Non Incident', 'G'])
+            ->whereIn('fund_status', ['Confirmed loss', 'Potential recovery']);
+
+        $mtbfFundLossCount = $mtbfFundLossQuery->count();
+        $mtbfFundLoss = 0;
+        if ($mtbfFundLossCount > 1) {
+            $minDate = $mtbfFundLossQuery->min('incident_date');
+            $maxDate = $mtbfFundLossQuery->max('incident_date');
+            if ($minDate && $maxDate) {
+                $mtbfFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfFundLossCount - 1);
             }
         }
 
@@ -130,17 +151,29 @@ class DashboardStatsOverview extends BaseWidget
                 ->chart([10, 8, 6, 12, 5, 9, 7, $days])
                 ->color('warning'),
 
-            Stat::make('MTTR', number_format($mttr, 2).' mins')
+            Stat::make('Avg MTTR (Non Fund Loss)', number_format($mttrNonFundLoss, 2).' mins')
                 ->description('Avg recovery time (non-fund loss)')
                 ->descriptionIcon('heroicon-m-wrench-screwdriver')
                 ->chart([5, 3, 7, 4, 6, 2, 8, 3])
                 ->color('info'),
 
-            Stat::make('MTBF', number_format($mtbf, 2).' days')
-                ->description('Avg time between failures')
+            Stat::make('Avg MTTR (Fund Loss)', number_format($mttrFundLoss, 2).' days')
+                ->description('Avg recovery time (fund loss)')
+                ->descriptionIcon('heroicon-m-clock')
+                ->chart([2, 4, 3, 5, 2, 6, 3, 4])
+                ->color('danger'),
+
+            Stat::make('MTBF (Non Fund Loss)', number_format($mtbfNonFundLoss, 2).' days')
+                ->description('Avg time between failures (non-fund loss)')
                 ->descriptionIcon('heroicon-m-shield-check')
                 ->chart([8, 6, 9, 7, 5, 10, 8, 6])
                 ->color('violet'),
+
+            Stat::make('MTBF (Fund Loss)', number_format($mtbfFundLoss, 2).' days')
+                ->description('Avg time between failures (fund loss)')
+                ->descriptionIcon('heroicon-m-shield-check')
+                ->chart([3, 5, 4, 6, 3, 7, 5, 4])
+                ->color('rose'),
         ];
     }
 }
