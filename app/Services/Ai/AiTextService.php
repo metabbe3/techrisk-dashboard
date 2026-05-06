@@ -106,6 +106,42 @@ class AiTextService
         return AiSetting::get('models', config('ai.models', []));
     }
 
+    public function fetchModelsFromGateway(): array
+    {
+        $baseUrl = $this->getBaseUrl();
+        $apiKey = $this->getApiKey();
+
+        if (blank($baseUrl) || blank($apiKey)) {
+            return [];
+        }
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$apiKey,
+                'Accept' => 'application/json',
+            ])
+                ->timeout(10)
+                ->get(rtrim($baseUrl, '/').'/models');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to fetch models from AI gateway', ['error' => $e->getMessage()]);
+
+            return [];
+        }
+
+        if ($response->failed()) {
+            return [];
+        }
+
+        $data = $response->json('data', []);
+
+        return collect($data)
+            ->filter(fn ($m) => ($m['object'] ?? '') === 'model')
+            ->pluck('id')
+            ->filter(fn ($id) => ! str_contains($id, 'embedding'))
+            ->mapWithKeys(fn ($id) => [$id => ucwords(str_replace(['-', '_'], ' ', $id))])
+            ->toArray();
+    }
+
     protected function buildHeaders(): array
     {
         return [

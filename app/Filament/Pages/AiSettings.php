@@ -3,6 +3,9 @@
 namespace App\Filament\Pages;
 
 use App\Models\AiSetting;
+use App\Services\Ai\AiTextService;
+use Filament\Forms\Components\Actions;
+use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Components\KeyValue;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Select;
@@ -99,6 +102,36 @@ class AiSettings extends Page implements HasForms
                                 ->mapWithKeys(fn ($name, $id) => [$id => $name]))
                             ->helperText('This model is pre-selected when users click the AI enhance button.')
                             ->columnSpanFull(),
+
+                        Actions::make([
+                            Action::make('sync_models')
+                                ->label('Sync from Gateway')
+                                ->icon('heroicon-o-arrow-path')
+                                ->color('primary')
+                                ->action(function () {
+                                    $models = app(AiTextService::class)->fetchModelsFromGateway();
+
+                                    if (empty($models)) {
+                                        Notification::make()
+                                            ->warning()
+                                            ->title('Sync failed')
+                                            ->body('Could not fetch models. Check your API URL and key.')
+                                            ->send();
+
+                                        return;
+                                    }
+
+                                    $this->data['models'] = $models;
+
+                                    AiSetting::set('models', $models);
+
+                                    Notification::make()
+                                        ->success()
+                                        ->title('Models synced')
+                                        ->body(count($models).' models fetched from the gateway.')
+                                        ->send();
+                                }),
+                        ]),
                     ]),
             ])
             ->statePath('data');
