@@ -41,13 +41,41 @@ class AiTextService
                 ->timeout(config('ai.timeout', 30))
                 ->post($this->buildUrl(), $this->buildPayload($prompt['system'], $text, $resolvedModel));
         } catch (ConnectionException $e) {
-            Log::warning('AI service connection failed', ['error' => $e->getMessage()]);
+            $msg = $e->getMessage();
+            Log::warning('AI service connection failed', ['error' => $msg]);
 
-            return AiTextResult::failure('AI service is unavailable. Please try again.');
+            if (str_contains($msg, 'timed out')) {
+                return AiTextResult::failure('Request timed out. The AI service took too long to respond. Try again or switch to a faster model.');
+            }
+
+            if (str_contains($msg, 'Could not resolve') || str_contains($msg, 'getaddrinfo')) {
+                return AiTextResult::failure('Cannot reach AI service. DNS resolution failed — check network connectivity.');
+            }
+
+            if (str_contains($msg, 'Connection refused')) {
+                return AiTextResult::failure('AI service refused the connection. The service may be down.');
+            }
+
+            return AiTextResult::failure('Cannot connect to AI service. Please check your network and try again.');
+        } catch (\Throwable $e) {
+            Log::warning('AI service unexpected error', ['error' => $e->getMessage()]);
+
+            return AiTextResult::failure('Unexpected error: '.$e->getMessage());
         }
 
         if ($response->status() === 429) {
-            return AiTextResult::failure('AI service rate limit exceeded. Please wait a moment.');
+            return AiTextResult::failure('Rate limit exceeded. Please wait a moment before trying again.');
+        }
+
+        if ($response->status() === 401) {
+            $body = $response->json('error.message', '');
+            Log::warning('AI service auth error', ['body' => $body]);
+
+            return AiTextResult::failure('Authentication failed. Check your API key in AI settings.');
+        }
+
+        if ($response->status() === 403) {
+            return AiTextResult::failure('Access denied. Your API key does not have permission for this model.');
         }
 
         if ($response->failed()) {
@@ -56,7 +84,7 @@ class AiTextService
                 'body' => $response->body(),
             ]);
 
-            return AiTextResult::failure('AI service returned an error. Please try again.');
+            return AiTextResult::failure('AI service error (HTTP '.$response->status().'). Please try again.');
         }
 
         $enhancedText = $this->parseResponse($response);

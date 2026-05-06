@@ -16,6 +16,8 @@
             showModelPicker: false,
             editedText: '',
             modelUsed: '',
+            elapsed: 0,
+            timer: null,
 
             findTextarea() {
                 let el = this.$el.previousElementSibling;
@@ -36,8 +38,10 @@
                 }
 
                 this.loading = true;
+                this.elapsed = 0;
                 this.showModelPicker = false;
                 if (model) this.selectedModel = model;
+                this.timer = setInterval(() => { this.elapsed++; }, 1000);
 
                 const textarea = this.findTextarea();
                 if (textarea) textarea.classList.add('ai-textarea--processing');
@@ -51,7 +55,12 @@
                     });
 
                     if (resp.status === 419) {
-                        try { new FilamentNotification().title('AI Enhancement').body('Session expired. Please refresh.').danger().send(); } catch(e) { alert('Session expired.'); }
+                        this.notify('Session expired', 'Please refresh the page and try again.', 'danger');
+                        return;
+                    }
+
+                    if (!resp.ok && resp.status !== 422) {
+                        this.notify('Server Error', 'Request failed (HTTP ' + resp.status + '). Please try again.', 'danger');
                         return;
                     }
 
@@ -61,14 +70,25 @@
                         this.modelUsed = data.model || this.selectedModel;
                         this.showModal = true;
                     } else {
-                        try { new FilamentNotification().title('AI Enhancement').body(data.error || 'AI enhancement failed.').danger().send(); } catch(e) { alert(data.error || 'AI enhancement failed.'); }
+                        this.notify('AI Enhancement Failed', data.error || 'Unknown error occurred.', 'danger');
                     }
                 } catch(e) {
-                    try { new FilamentNotification().title('AI Enhancement').body('Network error. Please try again.').danger().send(); } catch(ex) { alert('Network error.'); }
+                    if (e.name === 'AbortError') {
+                        this.notify('Request Cancelled', 'The request was aborted.', 'warning');
+                    } else if (e.name === 'TypeError' && e.message.includes('fetch')) {
+                        this.notify('Network Error', 'Cannot reach the server. Check your internet connection.', 'danger');
+                    } else {
+                        this.notify('Error', 'An unexpected error occurred. Please try again.', 'danger');
+                    }
                 } finally {
+                    clearInterval(this.timer);
                     this.loading = false;
                     if (textarea) textarea.classList.remove('ai-textarea--processing');
                 }
+            },
+
+            notify(title, body, type) {
+                try { new FilamentNotification().title(title).body(body).status(type).send(); } catch(e) { alert(title + ': ' + body); }
             },
 
             accept() {
@@ -106,7 +126,7 @@
             <span class="ai-enhance-btn__spinner" x-show="loading" x-transition>
                 <span class="ai-spinner"><span class="ai-spinner__dot"></span><span class="ai-spinner__dot"></span><span class="ai-spinner__dot"></span></span>
             </span>
-            <span class="ai-enhance-btn__label" x-text="loading ? 'Enhancing...' : 'AI Enhance'"></span>
+            <span class="ai-enhance-btn__label" x-text="loading ? 'Enhancing ' + elapsed + 's...' : 'AI Enhance'"></span>
             @if(count($aiConfig['models']) > 1)
                 <span class="ai-enhance-btn__chevron" x-show="!loading">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
