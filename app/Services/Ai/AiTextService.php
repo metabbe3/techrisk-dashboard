@@ -3,6 +3,7 @@
 namespace App\Services\Ai;
 
 use App\Models\AiSetting;
+use App\Models\AiUsageLog;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -36,64 +37,73 @@ class AiTextService
             return AiTextResult::failure('Rate limit exceeded. Please wait a moment before trying again.');
         }
 
+        $inputLength = strlen($text);
+        $startTime = microtime(true);
+        $result = null;
+
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(config('ai.timeout', 30))
                 ->post($this->buildUrl(), $this->buildPayload($prompt['system'], $text, $resolvedModel));
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+            $promptTokens = $usage['prompt_tokens'] ?? null;
+            $completionTokens = $usage['completion_tokens'] ?? null;
+            $totalTokens = $usage['total_tokens'] ?? null;
+            $apiRequestId = $responseData['id'] ?? null;
+
+            if ($response->status() === 429) {
+                $result = AiTextResult::failure('Rate limit exceeded. Please wait a moment before trying again.', $resolvedModel, $responseTimeMs);
+            } elseif ($response->status() === 401) {
+                Log::warning('AI service auth error', ['body' => $response->json('error.message', '')]);
+                $result = AiTextResult::failure('Authentication failed. Check your API key in AI settings.', $resolvedModel, $responseTimeMs);
+            } elseif ($response->status() === 403) {
+                $result = AiTextResult::failure('Access denied. Your API key does not have permission for this model.', $resolvedModel, $responseTimeMs);
+            } elseif ($response->failed()) {
+                Log::warning('AI service returned error', ['status' => $response->status(), 'body' => $response->body()]);
+                $result = AiTextResult::failure('AI service error (HTTP '.$response->status().'). Please try again.', $resolvedModel, $responseTimeMs);
+            } else {
+                $enhancedText = $this->parseResponseFromData($responseData);
+
+                if (blank($enhancedText)) {
+                    $result = AiTextResult::failure('AI returned an empty response.', $resolvedModel, $responseTimeMs);
+                } else {
+                    $cleaned = $this->cleanResponse($enhancedText);
+                    $result = AiTextResult::success(
+                        text: $cleaned,
+                        model: $resolvedModel,
+                        promptTokens: $promptTokens,
+                        completionTokens: $completionTokens,
+                        totalTokens: $totalTokens,
+                        responseTimeMs: $responseTimeMs,
+                        apiRequestId: $apiRequestId,
+                    );
+                }
+            }
         } catch (ConnectionException $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
             $msg = $e->getMessage();
             Log::warning('AI service connection failed', ['error' => $msg]);
 
-            if (str_contains($msg, 'timed out')) {
-                return AiTextResult::failure('Request timed out. The AI service took too long to respond. Try again or switch to a faster model.');
-            }
+            $error = match (true) {
+                str_contains($msg, 'timed out') => 'Request timed out. The AI service took too long to respond. Try again or switch to a faster model.',
+                str_contains($msg, 'Could not resolve') || str_contains($msg, 'getaddrinfo') => 'Cannot reach AI service. DNS resolution failed — check network connectivity.',
+                str_contains($msg, 'Connection refused') => 'AI service refused the connection. The service may be down.',
+                default => 'Cannot connect to AI service. Please check your network and try again.',
+            };
 
-            if (str_contains($msg, 'Could not resolve') || str_contains($msg, 'getaddrinfo')) {
-                return AiTextResult::failure('Cannot reach AI service. DNS resolution failed — check network connectivity.');
-            }
-
-            if (str_contains($msg, 'Connection refused')) {
-                return AiTextResult::failure('AI service refused the connection. The service may be down.');
-            }
-
-            return AiTextResult::failure('Cannot connect to AI service. Please check your network and try again.');
+            $result = AiTextResult::failure($error, $resolvedModel, $responseTimeMs);
         } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
             Log::warning('AI service unexpected error', ['error' => $e->getMessage()]);
-
-            return AiTextResult::failure('Unexpected error: '.$e->getMessage());
+            $result = AiTextResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
         }
 
-        if ($response->status() === 429) {
-            return AiTextResult::failure('Rate limit exceeded. Please wait a moment before trying again.');
-        }
+        $this->logUsage($fieldType, $resolvedModel, $result, $inputLength);
 
-        if ($response->status() === 401) {
-            $body = $response->json('error.message', '');
-            Log::warning('AI service auth error', ['body' => $body]);
-
-            return AiTextResult::failure('Authentication failed. Check your API key in AI settings.');
-        }
-
-        if ($response->status() === 403) {
-            return AiTextResult::failure('Access denied. Your API key does not have permission for this model.');
-        }
-
-        if ($response->failed()) {
-            Log::warning('AI service returned error', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return AiTextResult::failure('AI service error (HTTP '.$response->status().'). Please try again.');
-        }
-
-        $enhancedText = $this->parseResponse($response);
-
-        if (blank($enhancedText)) {
-            return AiTextResult::failure('AI returned an empty response.');
-        }
-
-        return AiTextResult::success($this->cleanResponse($enhancedText), $resolvedModel);
+        return $result;
     }
 
     public function isAvailable(): bool
@@ -178,10 +188,8 @@ class AiTextService
         ];
     }
 
-    protected function parseResponse($response): ?string
+    protected function parseResponseFromData(array $data): ?string
     {
-        $data = $response->json();
-
         return $data['choices'][0]['message']['content']
             ?? $data['output']
             ?? $data['text']
@@ -191,19 +199,37 @@ class AiTextService
 
     protected function cleanResponse(string $text): string
     {
-        // Strip bold/italic markdown
         $text = preg_replace('/\*{1,3}([^*]+)\*{1,3}/', '$1', $text);
-        // Strip strikethrough
         $text = preg_replace('/~~([^~]+)~~/', '$1', $text);
-        // Convert markdown headers (## Heading) to uppercase label with colon
         $text = preg_replace('/^#{1,6}\s+(.+)$/m', '$1:', $text);
-        // Convert markdown horizontal rules to a blank line
         $text = preg_replace('/^[-*_]{3,}\s*$/m', '', $text);
-        // Convert markdown bullet points to clean dashes
         $text = preg_replace('/^[•\-*]\s+/m', '- ', $text);
-        // Collapse 3+ consecutive blank lines into 2
         $text = preg_replace('/\n{3,}/', "\n\n", $text);
 
         return trim($text);
+    }
+
+    private function logUsage(string $fieldType, ?string $model, AiTextResult $result, int $inputLength): void
+    {
+        try {
+            AiUsageLog::create([
+                'user_id' => auth()->id(),
+                'user_email' => auth()->user()?->email,
+                'field_type' => $fieldType,
+                'model' => $model,
+                'input_length' => $inputLength,
+                'output_length' => $result->success ? strlen($result->text ?? '') : null,
+                'prompt_tokens' => $result->promptTokens,
+                'completion_tokens' => $result->completionTokens,
+                'total_tokens' => $result->totalTokens,
+                'response_time_ms' => $result->responseTimeMs ? (int) $result->responseTimeMs : null,
+                'success' => $result->success,
+                'error_message' => $result->error,
+                'api_request_id' => $result->apiRequestId,
+                'requested_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write AI usage log', ['error' => $e->getMessage()]);
+        }
     }
 }

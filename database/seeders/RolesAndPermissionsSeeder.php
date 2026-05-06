@@ -34,10 +34,11 @@ class RolesAndPermissionsSeeder extends Seeder
         Permission::firstOrCreate(['name' => 'view audit logs']);
         Permission::firstOrCreate(['name' => 'access dashboard']);
         Permission::firstOrCreate(['name' => 'manage api tokens']);
+        Permission::firstOrCreate(['name' => 'view ai usage logs']);
 
         // create roles and assign created permissions
         $role = Role::firstOrCreate(['name' => 'user']);
-        $role->givePermissionTo(['view incidents', 'view issues', 'view audit logs', 'access dashboard']);
+        $role->givePermissionTo(['view incidents', 'view issues', 'view audit logs', 'access dashboard', 'view ai usage logs']);
 
         $role = Role::firstOrCreate(['name' => 'admin']);
         $role->givePermissionTo(Permission::all());

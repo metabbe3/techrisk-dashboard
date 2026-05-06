@@ -87,6 +87,11 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasOne(\App\Models\UserAuditLogSetting::class);
     }
 
+    public function aiUsageLogs(): HasMany
+    {
+        return $this->hasMany(AiUsageLog::class);
+    }
+
     /**
      * Override notify to respect user preferences.
      */
