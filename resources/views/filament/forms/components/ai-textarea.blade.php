@@ -15,7 +15,10 @@
             selectedModel: '{{ $aiConfig['defaultModel'] }}',
             showModelPicker: false,
             editedText: '',
+            originalText: '',
             modelUsed: '',
+            refineNote: '',
+            refining: false,
             elapsed: 0,
             timer: null,
 
@@ -66,6 +69,7 @@
 
                     const data = await resp.json();
                     if (data.success && data.text) {
+                        this.originalText = data.text;
                         this.editedText = data.text;
                         this.modelUsed = data.model || this.selectedModel;
                         this.showModal = true;
@@ -89,6 +93,46 @@
 
             notify(title, body, type) {
                 try { new FilamentNotification().title(title).body(body).status(type).send(); } catch(e) { alert(title + ': ' + body); }
+            },
+
+            async refine() {
+                const note = (this.refineNote || '').trim();
+                if (!note) {
+                    this.notify('Refine', 'Please enter instructions for refinement.', 'warning');
+                    return;
+                }
+
+                this.refining = true;
+                this.elapsed = 0;
+                this.timer = setInterval(() => { this.elapsed++; }, 1000);
+
+                try {
+                    const resp = await fetch(this.cfg.endpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.cfg.csrfToken, 'Accept': 'application/json' },
+                        credentials: 'same-origin',
+                        body: JSON.stringify({
+                            text: this.editedText,
+                            field_type: this.cfg.fieldType,
+                            model: this.selectedModel,
+                            additional_prompt: note,
+                        }),
+                    });
+
+                    const data = await resp.json();
+                    if (data.success && data.text) {
+                        this.editedText = data.text;
+                        this.modelUsed = data.model || this.selectedModel;
+                        this.refineNote = '';
+                    } else {
+                        this.notify('Refine Failed', data.error || 'Unknown error.', 'danger');
+                    }
+                } catch(e) {
+                    this.notify('Error', 'Failed to refine. Please try again.', 'danger');
+                } finally {
+                    clearInterval(this.timer);
+                    this.refining = false;
+                }
             },
 
             accept() {
@@ -197,7 +241,27 @@
                         <span x-show="modelUsed" class="ai-modal__badge" x-text="modelUsed"></span>
                     </div>
                     <div class="ai-modal__body">
-                        <textarea x-model="editedText" rows="12" class="ai-modal__textarea"></textarea>
+                        <textarea x-model="editedText" rows="10" class="ai-modal__textarea"></textarea>
+                        <div class="ai-refine-bar">
+                            <input
+                                type="text"
+                                x-model="refineNote"
+                                placeholder="Add instructions to refine (e.g. make it shorter, add more detail...)"
+                                class="ai-refine-input"
+                                @keydown.enter.prevent="refine()"
+                                :disabled="refining"
+                            />
+                            <button type="button" @click="refine()" class="ai-refine-btn" :disabled="refining || !refineNote.trim()">
+                                <span x-show="!refining" style="display:inline-flex;align-items:center;gap:5px;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>
+                                    Refine
+                                </span>
+                                <span x-show="refining" style="display:inline-flex;align-items:center;gap:5px;">
+                                    <span class="ai-spinner"><span class="ai-spinner__dot"></span><span class="ai-spinner__dot"></span><span class="ai-spinner__dot"></span></span>
+                                    <span x-text="elapsed + 's'"></span>
+                                </span>
+                            </button>
+                        </div>
                     </div>
                     <div class="ai-modal__footer">
                         <button type="button" @click="cancel()" class="ai-modal__btn ai-modal__btn--cancel">Cancel</button>
@@ -380,6 +444,35 @@
         box-shadow:0 1px 3px rgba(13,148,136,.25);
     }
     .ai-modal__btn--accept:hover{background:linear-gradient(135deg,#0f766e,#115e59);box-shadow:0 4px 12px rgba(13,148,136,.35);transform:translateY(-1px)}
+
+    /* ===== Refine Bar ===== */
+    .ai-refine-bar{display:flex;gap:8px;margin-top:12px;align-items:center}
+    .ai-refine-input{
+        flex:1;
+        padding:9px 14px;
+        font-size:13px;
+        border-radius:8px;
+        border:1.5px solid #e2e8f0;
+        background:#fff;
+        color:#1e293b;
+        outline:none;
+        font-family:inherit;
+        transition:border-color .2s,box-shadow .2s;
+    }
+    .ai-refine-input:focus{border-color:#0d9488;box-shadow:0 0 0 3px rgba(13,148,136,.12)}
+    .ai-refine-input::placeholder{color:#94a3b8}
+    .ai-refine-input:disabled{opacity:.6;cursor:not-allowed}
+    .ai-refine-btn{
+        display:inline-flex;align-items:center;gap:5px;
+        padding:9px 16px;font-size:13px;font-weight:600;
+        color:#0d9488;background:#f0fdfa;
+        border:1.5px solid #ccfbf1;border-radius:8px;
+        cursor:pointer;font-family:inherit;white-space:nowrap;
+        transition:all .2s;
+    }
+    .ai-refine-btn:hover:not(:disabled){background:#ccfbf1;border-color:#0d9488}
+    .ai-refine-btn:disabled{opacity:.5;cursor:not-allowed}
+    .ai-refine-btn .ai-spinner__dot{width:4px;height:4px;background:#0d9488}
 
     /* ===== Transitions ===== */
     .ai-fade-in{animation:aiFadeIn .15s ease-out forwards}

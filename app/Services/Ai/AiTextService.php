@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class AiTextService
 {
-    public function enhance(string $text, string $fieldType, ?string $model = null): AiTextResult
+    public function enhance(string $text, string $fieldType, ?string $model = null, ?string $additionalPrompt = null): AiTextResult
     {
         if (blank($text)) {
             return AiTextResult::failure('No text provided for enhancement.');
@@ -41,10 +41,17 @@ class AiTextService
         $startTime = microtime(true);
         $result = null;
 
+        $isRefinement = filled($additionalPrompt);
+
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(config('ai.timeout', 30))
-                ->post($this->buildUrl(), $this->buildPayload($prompt['system'], $text, $resolvedModel));
+                ->post($this->buildUrl(), $this->buildPayload(
+                    $prompt['system'],
+                    $text,
+                    $resolvedModel,
+                    $additionalPrompt,
+                ));
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
             $responseData = $response->json();
@@ -101,7 +108,7 @@ class AiTextService
             $result = AiTextResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
         }
 
-        $this->logUsage($fieldType, $resolvedModel, $result, $inputLength);
+        $this->logUsage($fieldType, $resolvedModel, $result, $inputLength, $isRefinement);
 
         return $result;
     }
@@ -176,13 +183,17 @@ class AiTextService
         return config('ai.base_url');
     }
 
-    protected function buildPayload(string $systemPrompt, string $userText, string $model): array
+    protected function buildPayload(string $systemPrompt, string $userText, string $model, ?string $additionalPrompt = null): array
     {
+        $userMessage = filled($additionalPrompt)
+            ? "Please improve the following text with this additional instruction: \"{$additionalPrompt}\"\n\n{$userText}"
+            : "Please improve the following text:\n\n{$userText}";
+
         return [
             'model' => $model,
             'messages' => [
                 ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => "Please improve the following text:\n\n{$userText}"],
+                ['role' => 'user', 'content' => $userMessage],
             ],
             'max_tokens' => 1000,
         ];
@@ -209,7 +220,7 @@ class AiTextService
         return trim($text);
     }
 
-    private function logUsage(string $fieldType, ?string $model, AiTextResult $result, int $inputLength): void
+    private function logUsage(string $fieldType, ?string $model, AiTextResult $result, int $inputLength, bool $isRefinement = false): void
     {
         try {
             AiUsageLog::create([
@@ -226,6 +237,7 @@ class AiTextService
                 'success' => $result->success,
                 'error_message' => $result->error,
                 'api_request_id' => $result->apiRequestId,
+                'metadata' => $isRefinement ? ['type' => 'refinement'] : null,
                 'requested_at' => now(),
             ]);
         } catch (\Throwable $e) {

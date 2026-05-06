@@ -19,12 +19,14 @@ class TextEnhanceController extends Controller
             'text' => 'required|string|max:5000',
             'field_type' => 'required|string|in:summary,root_cause,timeline,remark',
             'model' => 'nullable|string',
+            'additional_prompt' => 'nullable|string|max:1000',
         ]);
 
         $result = $this->aiService->enhance(
             text: $validated['text'],
             fieldType: $validated['field_type'],
             model: $validated['model'] ?? null,
+            additionalPrompt: $validated['additional_prompt'] ?? null,
         );
 
         return response()->json([
