@@ -180,7 +180,7 @@ return [
 
     'queue' => [
         'enable' => true,
-        'connection' => 'redis',
+        'connection' => 'default',
         'queue' => 'audits',
         'delay' => 0,
     ],

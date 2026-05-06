@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
@@ -19,7 +20,7 @@ class DashboardStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $cacheKey = 'dashboard_stats_v4_'.md5(json_encode([
+        $cacheKey = 'dashboard_stats_v5_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -78,12 +79,14 @@ class DashboardStatsOverview extends BaseWidget
 
         $mttrNonFundLoss = Incident::query()
             ->where('classification', '!=', 'Issue')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->tap($incidentDateFilter)
             ->where('mttr', '>=', 0)
             ->average('mttr');
 
         $mttrFundLoss = abs(Incident::query()
             ->where('classification', '!=', 'Issue')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->tap($incidentDateFilter)
             ->where('mttr', '<', 0)
             ->average('mttr') ?? 0);
@@ -91,7 +94,7 @@ class DashboardStatsOverview extends BaseWidget
         $mtbfNonFundLossQuery = Incident::query()
             ->where('classification', '!=', 'Issue')
             ->tap($incidentDateFilter)
-            ->whereNotIn('severity', ['Non Incident', 'G'])
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where('fund_status', 'Non fundLoss');
 
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
@@ -107,7 +110,7 @@ class DashboardStatsOverview extends BaseWidget
         $mtbfFundLossQuery = Incident::query()
             ->where('classification', '!=', 'Issue')
             ->tap($incidentDateFilter)
-            ->whereNotIn('severity', ['Non Incident', 'G'])
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->whereIn('fund_status', ['Confirmed loss', 'Potential recovery']);
 
         $mtbfFundLossCount = $mtbfFundLossQuery->count();

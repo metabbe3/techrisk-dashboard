@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\Severity;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -193,7 +194,7 @@ class RecalculateIncidentMetricsCommand extends Command
         // EXCLUDE "Non Incident" severity from overall MTBF calculation
         $previousIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification) // Same classification only
-            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE) // Exclude Non Incident from overall MTBF
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -306,7 +307,7 @@ class RecalculateIncidentMetricsCommand extends Command
         // This combines both Incidents and Issues for MTBF calculation
         // EXCLUDE "Non Incident" severity from overall calculation
         $previousRecord = Incident::whereYear('incident_date', $year)
-            ->where('severity', '!=', 'Non Incident') // Exclude Non Incident from overall MTBF
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE) // Exclude Non Incident from overall MTBF
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {

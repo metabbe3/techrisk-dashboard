@@ -21,6 +21,8 @@ enum Severity: string
     case X4 = 'X4';
     case NonIncident = 'Non Incident';
 
+    public const METRIC_ELIGIBLE = ['P1', 'P2', 'P3', 'P4', 'X1', 'X2', 'X3', 'X4'];
+
     public function color(): string
     {
         return match ($this) {

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
@@ -19,7 +20,7 @@ class IncidentStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $cacheKey = 'incident_stats_v4_'.md5(json_encode([
+        $cacheKey = 'incident_stats_v5_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -49,10 +50,10 @@ class IncidentStatsOverview extends BaseWidget
 
         $fundLossTotal = $query->clone()->where('incident_status', 'Completed')->sum('fund_loss');
         $recoveredTotal = $query->clone()->where('recovered_fund', '>', 0)->sum('recovered_fund');
-        $mttrNonFundLoss = $query->clone()->where('mttr', '>=', 0)->average('mttr');
-        $mttrFundLoss = abs($query->clone()->where('mttr', '<', 0)->average('mttr') ?? 0);
+        $mttrNonFundLoss = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->average('mttr');
+        $mttrFundLoss = abs($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->average('mttr') ?? 0);
 
-        $mtbfNonFundLossQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G'])->where('fund_status', 'Non fundLoss');
+        $mtbfNonFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('fund_status', 'Non fundLoss');
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
         $mtbfNonFundLoss = 0;
         if ($mtbfNonFundLossCount > 1) {
@@ -63,7 +64,7 @@ class IncidentStatsOverview extends BaseWidget
             }
         }
 
-        $mtbfFundLossQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G'])->whereIn('fund_status', ['Confirmed loss', 'Potential recovery']);
+        $mtbfFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->whereIn('fund_status', ['Confirmed loss', 'Potential recovery']);
         $mtbfFundLossCount = $mtbfFundLossQuery->count();
         $mtbfFundLoss = 0;
         if ($mtbfFundLossCount > 1) {
@@ -75,7 +76,7 @@ class IncidentStatsOverview extends BaseWidget
         }
 
         $lastIncident = Incident::where('classification', '!=', 'Issue')
-            ->whereNotIn('severity', ['Non Incident', 'G'])
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->latest('incident_date')
             ->first();
         $lastIncidentDiff = 'N/A';

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\IncidentResource\Pages;
 
+use App\Enums\Severity;
 use App\Exports\IncidentTableExport;
 use App\Exports\MultiSheetIncidentsExport;
 use App\Filament\Resources\IncidentResource;
@@ -86,7 +87,7 @@ class ListIncidents extends ListRecords
 
                     // Calculate MTBF correctly: Total Time Period / Number of Incidents
                     // Exclude 'Non Incident' and 'G' severities from MTBF calculation
-                    $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
+                    $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
                     $mtbfCount = $mtbfQuery->count();
                     $avgMtbf = 0;
                     if ($mtbfCount > 0) {
@@ -103,7 +104,7 @@ class ListIncidents extends ListRecords
 
                     $stats = [
                         'totalCases' => $totalCases,
-                        'avgMttr' => round($query->clone()->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
+                        'avgMttr' => round($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
                         'avgMtbf' => $avgMtbf,
                         'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
                         'totalFundLoss' => $query->sum('fund_loss'),
@@ -178,8 +179,8 @@ class ListIncidents extends ListRecords
         $totalCases = $query->count();
 
         // Calculate MTBF correctly: Total Time Period / Number of Incidents
-        // Exclude 'Non Incident' and 'G' severities from MTBF calculation
-        $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
+        // Only include eligible severities from MTBF calculation
+        $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
         $mtbfCount = $mtbfQuery->count();
         $avgMtbf = 0;
         if ($mtbfCount > 0) {
@@ -196,8 +197,8 @@ class ListIncidents extends ListRecords
 
         $stats = [
             'totalCases' => $totalCases,
-            'avgMttrMins' => round($query->clone()->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
-            'avgMttrDays' => round(abs($query->clone()->where('mttr', '<', 0)->avg('mttr') ?? 0), 2),
+            'avgMttrMins' => round($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
+            'avgMttrDays' => round(abs($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->avg('mttr') ?? 0), 2),
             'avgMtbf' => $avgMtbf,
             'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
             'totalFundLoss' => $query->sum('fund_loss'),

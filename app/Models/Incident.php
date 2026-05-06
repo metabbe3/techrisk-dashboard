@@ -57,7 +57,6 @@ class Incident extends Model implements Auditable
         'recovered_fund',
         'fund_loss',
         'loss_taken_by',
-        'pic',
         'pic_id',
         'reported_by',
         'third_party_client',
@@ -90,6 +89,9 @@ class Incident extends Model implements Auditable
     protected $casts = [
         'goc_upload' => 'boolean',
         'teams_upload' => 'boolean',
+        'doc_signed' => 'boolean',
+        'risk_incident_form_cfm' => 'boolean',
+        'glitch_flag' => 'boolean',
         'stop_bleeding_at' => 'datetime',
         'discovered_at' => 'datetime',
         'incident_date' => 'datetime',

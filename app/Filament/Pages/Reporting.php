@@ -255,10 +255,10 @@ class Reporting extends Page implements HasForms
             $metrics['total_incidents'] = (clone $query)->count();
         }
         if (in_array('avg_mttr', $data['metrics'] ?? [])) {
-            $metrics['avg_mttr'] = (clone $query)->where('mttr', '>=', 0)->avg('mttr');
+            $metrics['avg_mttr'] = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
-            $mtbfQuery = (clone $query)->whereNotIn('severity', ['Non Incident', 'G']);
+            $mtbfQuery = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE);
             $mtbfCount = $mtbfQuery->count();
             $avgMtbf = 0;
             if ($mtbfCount > 1) {

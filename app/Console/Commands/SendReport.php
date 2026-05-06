@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\Severity;
 use App\Exports\IncidentsExport;
 use App\Models\Incident;
 use App\Models\ReportTemplate;
@@ -71,10 +72,10 @@ class SendReport extends Command
             $metrics['total_incidents'] = $incidents->count();
         }
         if (in_array('avg_mttr', $template->metrics)) {
-            $metrics['avg_mttr'] = $incidents->where('mttr', '>=', 0)->avg('mttr');
+            $metrics['avg_mttr'] = $incidents->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $template->metrics)) {
-            $mtbfIncidents = $incidents->whereNotIn('severity', ['Non Incident', 'G']);
+            $mtbfIncidents = $incidents->whereIn('severity', Severity::METRIC_ELIGIBLE);
             $mtbfCount = $mtbfIncidents->count();
             $avgMtbf = 0;
 

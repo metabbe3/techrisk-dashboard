@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
@@ -23,7 +24,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
     protected function getData(): array
     {
-        $cacheKey = 'mttr_mtbf_trend_v3_'.md5(json_encode([
+        $cacheKey = 'mttr_mtbf_trend_v4_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
@@ -40,6 +41,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
             // MTTR Non Fund Loss per month (minutes) — average of positive values
             $mttrNonFundData = $baseQuery->clone()
+                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('AVG(CASE WHEN mttr >= 0 THEN mttr ELSE NULL END) as avg_mttr'))
                 ->groupBy(DB::raw('MONTH(incident_date)'))
                 ->get()
@@ -47,6 +49,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
             // MTTR Fund Loss per month (days) — average of negative values (absolute)
             $mttrFundData = $baseQuery->clone()
+                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('AVG(CASE WHEN mttr < 0 THEN ABS(mttr) ELSE NULL END) as avg_mttr'))
                 ->groupBy(DB::raw('MONTH(incident_date)'))
                 ->get()
@@ -54,7 +57,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
             // MTBF Non Fund Loss per month
             $mtbfNonFundRows = $baseQuery->clone()
-                ->whereNotIn('severity', ['Non Incident', 'G'])
+                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->where('fund_status', 'Non fundLoss')
                 ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw('MONTH(incident_date)'))
@@ -73,7 +76,7 @@ class MttrMtbfTrendChart extends ChartWidget
 
             // MTBF Fund Loss per month
             $mtbfFundRows = $baseQuery->clone()
-                ->whereNotIn('severity', ['Non Incident', 'G'])
+                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->whereIn('fund_status', ['Confirmed loss', 'Potential recovery'])
                 ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw('MONTH(incident_date)'))

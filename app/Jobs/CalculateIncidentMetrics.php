@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\Severity;
 use App\Models\Incident;
 use App\Models\Label;
 use Carbon\Carbon;
@@ -89,7 +90,7 @@ class CalculateIncidentMetrics implements ShouldQueue
         $year = $incident->incident_date->year;
         $previousIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification)
-            ->where('severity', '!=', 'Non Incident')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -132,7 +133,7 @@ class CalculateIncidentMetrics implements ShouldQueue
 
         $nextIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification)
-            ->where('severity', '!=', 'Non Incident')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -183,7 +184,7 @@ class CalculateIncidentMetrics implements ShouldQueue
 
         $nextInOldGroup = Incident::whereYear('incident_date', $year)
             ->where('classification', $oldClassification)
-            ->where('severity', '!=', 'Non Incident')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -277,7 +278,7 @@ class CalculateIncidentMetrics implements ShouldQueue
         $year = $target->incident_date->year;
 
         $previous = Incident::whereYear('incident_date', $year)
-            ->where('severity', '!=', 'Non Incident')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(function ($query) use ($target) {
                 $query->where('incident_date', '<', $target->incident_date)
                     ->orWhere(function ($query) use ($target) {
@@ -378,7 +379,7 @@ class CalculateIncidentMetrics implements ShouldQueue
         $year = $incident->incident_date->year;
 
         $previousRecord = Incident::whereYear('incident_date', $year)
-            ->where('severity', '!=', 'Non Incident')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {

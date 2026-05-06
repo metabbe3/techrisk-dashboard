@@ -2,6 +2,7 @@
 
 namespace App\Exports\Sheets;
 
+use App\Enums\Severity;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -130,10 +131,10 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 $totalCases = $query->count();
 
                 // MTTR average (exclude fund loss incidents with negative values)
-                $avgMttr = round($query->clone()->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2);
+                $avgMttr = round($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2);
 
                 // Calculate MTBF correctly: Total Time Period / Number of Incidents
-                $mtbfQuery = $query->clone()->whereNotIn('severity', ['Non Incident', 'G']);
+                $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
                 $mtbfCount = $mtbfQuery->count();
                 $avgMtbf = 0;
                 if ($mtbfCount > 0) {
