@@ -9,6 +9,7 @@ use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
+use App\Filament\Forms\Components\AiTextarea;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Models\Category;
 use App\Filament\Resources\IncidentResource\RelationManagers;
@@ -133,22 +134,26 @@ class IncidentResource extends Resource
 
                 Section::make('Details & Timeline')
                     ->schema([
-                        Textarea::make('summary')
+                        AiTextarea::make('summary')
                             ->label('Summary')
                             ->rows(6)
+                            ->aiFieldType('summary')
                             ->columnSpanFull(),
-                        Textarea::make('root_cause')
+                        AiTextarea::make('root_cause')
                             ->label('Root Cause')
                             ->rows(6)
+                            ->aiFieldType('root_cause')
                             ->columnSpanFull(),
-                        Textarea::make('timeline')
+                        AiTextarea::make('timeline')
                             ->label('Incident Timeline and Chronology')
                             ->rows(10)
                             ->helperText('Describe the sequence of events chronologically')
+                            ->aiFieldType('timeline')
                             ->columnSpanFull(),
-                        Textarea::make('remark')
+                        AiTextarea::make('remark')
                             ->label('Remark')
                             ->rows(4)
+                            ->aiFieldType('remark')
                             ->columnSpanFull(),
                         Textarea::make('improvements')
                             ->label('Improvements')

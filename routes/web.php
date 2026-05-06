@@ -1,9 +1,14 @@
 <?php
 
+use App\Http\Controllers\Ai\TextEnhanceController;
 use App\Http\Controllers\DownloadDocumentController;
 use App\Http\Controllers\WeeklyReportExportController;
 use App\Livewire\RequestAccessForm;
 use Illuminate\Support\Facades\Route;
+
+Route::post('/admin/ai/enhance-text', TextEnhanceController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.enhance-text');
 
 Route::redirect('/', '/admin/login');
 
