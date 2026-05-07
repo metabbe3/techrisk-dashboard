@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'check.api.access' => \App\Http\Middleware\CheckApiAccess::class,
             'check.api.token.access' => \App\Http\Middleware\CheckApiTokenAccess::class,
+            'ai.available' => \App\Http\Middleware\EnsureAiAvailable::class,
         ]);
 
         // Register API audit logger for all API routes

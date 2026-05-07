@@ -9,7 +9,6 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
@@ -18,7 +17,7 @@ class NotificationCenter extends Page implements HasTable
 {
     use InteractsWithTable;
 
-    protected static bool $shouldRegisterNavigation = false;
+    protected static bool $shouldRegisterNavigation = true;
 
     protected static ?string $navigationIcon = 'heroicon-o-bell';
 
@@ -35,25 +34,22 @@ class NotificationCenter extends Page implements HasTable
         return Auth::check();
     }
 
-    public function getTableQuery(): Builder
-    {
-        // Use the DatabaseNotification model directly
-        return \Illuminate\Notifications\DatabaseNotification::query()
-            ->where('notifiable_id', Auth::id())
-            ->where('notifiable_type', get_class(Auth::user()))
-            ->latest();
-    }
-
     public function table(Table $table): Table
     {
         return $table
+            ->query(
+                \Illuminate\Notifications\DatabaseNotification::query()
+                    ->where('notifiable_id', Auth::id())
+                    ->where('notifiable_type', get_class(Auth::user()))
+                    ->latest()
+            )
             ->columns([
                 TextColumn::make('data.title')
                     ->label('Title')
                     ->searchable()
                     ->sortable()
                     ->weight('bold')
-                    ->description(fn ($record): string => $record->data['message'] ?? ''),
+                    ->description(fn ($record): string => $record->data['body'] ?? ''),
 
                 TextColumn::make('data.type')
                     ->label('Type')
@@ -65,6 +61,12 @@ class NotificationCenter extends Page implements HasTable
                         'action_improvement_reminder' => 'info',
                         'action_improvement_due_soon' => 'warning',
                         'action_improvement_overdue' => 'danger',
+                        'action_improvement_assigned' => 'info',
+                        'critical_incident' => 'danger',
+                        'pic_assigned' => 'info',
+                        'action_improvement_escalated' => 'danger',
+                        'weekly_overdue_digest' => 'warning',
+                        'admin_announcement' => 'primary',
                         'new_status_update' => 'success',
                         default => 'gray',
                     }),

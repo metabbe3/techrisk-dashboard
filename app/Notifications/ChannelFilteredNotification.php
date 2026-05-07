@@ -53,12 +53,16 @@ class ChannelFilteredNotification extends Notification implements ShouldQueue
         return [];
     }
 
-    public function toBroadcast(object $notifiable): mixed
+    public function toBroadcast(object $notifiable): \Illuminate\Notifications\Messages\BroadcastMessage
     {
         if (method_exists($this->notification, 'toBroadcast')) {
             return $this->notification->toBroadcast($notifiable);
         }
 
-        return [];
+        if (method_exists($this->notification, 'toArray')) {
+            return new \Illuminate\Notifications\Messages\BroadcastMessage($this->notification->toArray($notifiable));
+        }
+
+        return new \Illuminate\Notifications\Messages\BroadcastMessage($this->toDatabase($notifiable));
     }
 }

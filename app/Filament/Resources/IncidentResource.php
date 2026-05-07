@@ -172,7 +172,7 @@ class IncidentResource extends Resource
                             ->preload()
                             ->searchable()
                             ->id('labels-select'),
-                        Forms\Components\View::make('filament.forms.components.smart-labels'),
+                        Forms\Components\View::make('filament.forms.components.smart-labels')->hiddenLabel(),
                     ])->columns(2),
             ]);
     }

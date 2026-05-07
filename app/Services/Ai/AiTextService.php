@@ -164,7 +164,7 @@ class AiTextService
         $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
         $prompt = config('ai.prompts.label_suggest');
 
-        if (! $prompt || empty($availableLabels)) {
+        if (! $prompt) {
             return ['matched' => [], 'suggested' => []];
         }
 
@@ -174,7 +174,7 @@ class AiTextService
                 $userMessage .= "- {$key}: {$value}\n";
             }
         }
-        $userMessage .= "\nAvailable labels: " . implode(', ', $availableLabels);
+        $userMessage .= "\nAvailable labels: " . (empty($availableLabels) ? '(none — suggest relevant new labels)' : implode(', ', $availableLabels));
 
         try {
             $response = Http::withHeaders($this->buildHeaders())
@@ -185,7 +185,7 @@ class AiTextService
                         ['role' => 'system', 'content' => $prompt['system']],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 500,
+                    'max_tokens' => 1000,
                 ]);
         } catch (\Throwable $e) {
             Log::warning('AI label suggestion failed', ['error' => $e->getMessage()]);
@@ -199,6 +199,15 @@ class AiTextService
 
         $content = $response->json('choices.0.message.content', '');
 
+        if (empty($content)) {
+            $fullResponse = $response->body();
+            Log::warning('[Smart Labels] Empty content from AI', ['status' => $response->status(), 'body_preview' => substr($fullResponse, 0, 500)]);
+
+            return ['matched' => [], 'suggested' => []];
+        }
+
+        Log::info('[Smart Labels] AI response', ['content' => substr($content, 0, 1000)]);
+
         return $this->parseLabelSuggestions($content, $availableLabels);
     }
 
@@ -207,26 +216,39 @@ class AiTextService
         preg_match('/\{.*\}/s', $content, $matches);
 
         if (empty($matches)) {
+            Log::warning('[Smart Labels] No JSON found in AI response', ['content' => substr($content, 0, 500)]);
+
             return ['matched' => [], 'suggested' => []];
         }
 
         $parsed = json_decode($matches[0], true);
 
         if (! is_array($parsed)) {
+            Log::warning('[Smart Labels] JSON decode failed', ['raw' => $matches[0], 'error' => json_last_error_msg()]);
+
             return ['matched' => [], 'suggested' => []];
         }
 
+        $availableLower = array_map('mb_strtolower', $availableLabels);
+
         $matched = collect($parsed['matched'] ?? [])
-            ->filter(fn ($name) => in_array($name, $availableLabels))
+            ->filter(fn ($name) => is_string($name))
+            ->filter(function ($name) use ($availableLower) {
+                return in_array(mb_strtolower($name), $availableLower);
+            })
             ->values()
             ->toArray();
 
         $suggested = collect($parsed['suggested'] ?? [])
-            ->filter(fn ($name) => ! in_array($name, $availableLabels))
             ->filter(fn ($name) => is_string($name) && strlen($name) <= 50)
+            ->filter(function ($name) use ($availableLower) {
+                return ! in_array(mb_strtolower($name), $availableLower);
+            })
             ->unique()
             ->values()
             ->toArray();
+
+        Log::info('[Smart Labels] Parsed', ['matched' => $matched, 'suggested' => $suggested, 'raw_matched' => $parsed['matched'] ?? [], 'raw_suggested' => $parsed['suggested'] ?? []]);
 
         return ['matched' => $matched, 'suggested' => $suggested];
     }

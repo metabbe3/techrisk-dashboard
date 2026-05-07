@@ -18,6 +18,9 @@ class NotificationPreference extends Model
         'email_status_update',
         'email_action_improvement_reminder',
         'email_action_improvement_overdue',
+        'email_critical_incident',
+        'email_action_improvement_assigned',
+        'email_admin_announcement',
         // Database preferences
         'database_incident_assignment',
         'database_incident_update',
@@ -25,6 +28,9 @@ class NotificationPreference extends Model
         'database_status_update',
         'database_action_improvement_reminder',
         'database_action_improvement_overdue',
+        'database_critical_incident',
+        'database_action_improvement_assigned',
+        'database_admin_announcement',
     ];
 
     protected $casts = [
@@ -34,12 +40,18 @@ class NotificationPreference extends Model
         'email_status_update' => 'boolean',
         'email_action_improvement_reminder' => 'boolean',
         'email_action_improvement_overdue' => 'boolean',
+        'email_critical_incident' => 'boolean',
+        'email_action_improvement_assigned' => 'boolean',
+        'email_admin_announcement' => 'boolean',
         'database_incident_assignment' => 'boolean',
         'database_incident_update' => 'boolean',
         'database_incident_status_changed' => 'boolean',
         'database_status_update' => 'boolean',
         'database_action_improvement_reminder' => 'boolean',
         'database_action_improvement_overdue' => 'boolean',
+        'database_critical_incident' => 'boolean',
+        'database_action_improvement_assigned' => 'boolean',
+        'database_admin_announcement' => 'boolean',
     ];
 
     /**
@@ -77,7 +89,6 @@ class NotificationPreference extends Model
     {
         return static::firstOrCreate(
             ['user_id' => $user->id],
-            []
         );
     }
 
@@ -92,7 +103,10 @@ class NotificationPreference extends Model
             ($this->email_incident_status_changed ? 1 : 0) +
             ($this->email_status_update ? 1 : 0) +
             ($this->email_action_improvement_reminder ? 1 : 0) +
-            ($this->email_action_improvement_overdue ? 1 : 0);
+            ($this->email_action_improvement_overdue ? 1 : 0) +
+            ($this->email_critical_incident ? 1 : 0) +
+            ($this->email_action_improvement_assigned ? 1 : 0) +
+            ($this->email_admin_announcement ? 1 : 0);
     }
 
     /**
@@ -106,6 +120,9 @@ class NotificationPreference extends Model
             ($this->database_incident_status_changed ? 1 : 0) +
             ($this->database_status_update ? 1 : 0) +
             ($this->database_action_improvement_reminder ? 1 : 0) +
-            ($this->database_action_improvement_overdue ? 1 : 0);
+            ($this->database_action_improvement_overdue ? 1 : 0) +
+            ($this->database_critical_incident ? 1 : 0) +
+            ($this->database_action_improvement_assigned ? 1 : 0) +
+            ($this->database_admin_announcement ? 1 : 0);
     }
 }

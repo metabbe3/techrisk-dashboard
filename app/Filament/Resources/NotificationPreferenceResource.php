@@ -17,7 +17,7 @@ class NotificationPreferenceResource extends Resource
 {
     protected static ?string $model = NotificationPreference::class;
 
-    protected static bool $shouldRegisterNavigation = false;
+    protected static bool $shouldRegisterNavigation = true;
 
     protected static ?string $navigationIcon = 'heroicon-o-bell-alert';
 
@@ -50,6 +50,14 @@ class NotificationPreferenceResource extends Resource
                             ->label('New Status Updates')
                             ->helperText('When new status updates are added')
                             ->default(true),
+                        Toggle::make('email_critical_incident')
+                            ->label('Critical Incidents (P1/P2)')
+                            ->helperText('When a new P1 or P2 incident is created')
+                            ->default(true),
+                        Toggle::make('email_action_improvement_assigned')
+                            ->label('Action Improvement Assigned')
+                            ->helperText('When you are assigned an action improvement')
+                            ->default(true),
                         Toggle::make('email_action_improvement_reminder')
                             ->label('Action Improvement Reminders')
                             ->helperText('When action improvements are due soon')
@@ -57,6 +65,10 @@ class NotificationPreferenceResource extends Resource
                         Toggle::make('email_action_improvement_overdue')
                             ->label('Overdue Action Improvements')
                             ->helperText('When action improvements are overdue')
+                            ->default(true),
+                        Toggle::make('email_admin_announcement')
+                            ->label('Admin Announcements')
+                            ->helperText('System announcements from administrators')
                             ->default(true),
                     ])
                     ->columns(2),
@@ -80,6 +92,14 @@ class NotificationPreferenceResource extends Resource
                             ->label('New Status Updates')
                             ->helperText('Bell icon notifications for new status updates')
                             ->default(true),
+                        Toggle::make('database_critical_incident')
+                            ->label('Critical Incidents (P1/P2)')
+                            ->helperText('Bell icon notifications for new critical incidents')
+                            ->default(true),
+                        Toggle::make('database_action_improvement_assigned')
+                            ->label('Action Improvement Assigned')
+                            ->helperText('Bell icon notifications for action improvement assignments')
+                            ->default(true),
                         Toggle::make('database_action_improvement_reminder')
                             ->label('Action Improvement Reminders')
                             ->helperText('Bell icon notifications for upcoming due dates')
@@ -87,6 +107,10 @@ class NotificationPreferenceResource extends Resource
                         Toggle::make('database_action_improvement_overdue')
                             ->label('Overdue Action Improvements')
                             ->helperText('Bell icon notifications for overdue items')
+                            ->default(true),
+                        Toggle::make('database_admin_announcement')
+                            ->label('Admin Announcements')
+                            ->helperText('Bell icon notifications for system announcements')
                             ->default(true),
                     ])
                     ->columns(2),

@@ -7,6 +7,7 @@ use App\Models\Label;
 use App\Services\Ai\AiTextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class SuggestLabelsController extends Controller
 {
@@ -44,7 +45,7 @@ class SuggestLabelsController extends Controller
             ]);
         }
 
-        $availableLabels = Label::pluck('name')->toArray();
+        $availableLabels = Cache::remember('labels', 3600, fn () => Label::pluck('name')->toArray());
 
         $result = $this->aiService->suggestLabels(
             incidentData: $incidentData,

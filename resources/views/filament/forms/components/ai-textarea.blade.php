@@ -196,6 +196,7 @@
                     class="ai-model-picker"
                 >
                     <div class="ai-model-picker__header">Choose Model</div>
+                    <div class="ai-model-picker__list">
                     <template x-for="(name, key) in cfg.models" :key="key">
                         <button
                             type="button"
@@ -209,6 +210,7 @@
                             </svg>
                         </button>
                     </template>
+                    </div>
                 </div>
             </div>
         @endif
@@ -351,10 +353,10 @@
         border:1px solid #e2e8f0;
         border-radius:12px;
         box-shadow:0 12px 40px rgba(0,0,0,.12),0 2px 8px rgba(0,0,0,.06);
-        padding:4px 0;
         overflow:hidden;
     }
     .ai-model-picker__header{padding:10px 14px 6px;font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.1em}
+    .ai-model-picker__list{max-height:240px;overflow-y:auto;padding:4px 0;overscroll-behavior:contain}
     .ai-model-picker__item{
         display:flex;
         align-items:center;

@@ -2,9 +2,9 @@
 
 namespace App\Observers;
 
-use App\Mail\ActionImprovementNotification;
 use App\Models\ActionImprovement;
-use Illuminate\Support\Facades\Mail;
+use App\Models\User;
+use App\Notifications\ActionImprovementAssigned;
 
 class ActionImprovementObserver
 {
@@ -13,7 +13,7 @@ class ActionImprovementObserver
      */
     public function created(ActionImprovement $actionImprovement): void
     {
-        $this->sendActionImprovementNotifications($actionImprovement);
+        $this->notifyAssignees($actionImprovement);
     }
 
     /**
@@ -22,20 +22,30 @@ class ActionImprovementObserver
     public function updated(ActionImprovement $actionImprovement): void
     {
         if ($actionImprovement->isDirty('pic_email')) {
-            $this->sendActionImprovementNotifications($actionImprovement);
+            $this->notifyAssignees($actionImprovement);
         }
     }
 
     /**
-     * Send notifications to PIC emails for an action improvement.
+     * Send notifications to assigned PICs via User::notify() to respect preferences.
      */
-    private function sendActionImprovementNotifications(ActionImprovement $actionImprovement): void
+    private function notifyAssignees(ActionImprovement $actionImprovement): void
     {
-        if ($actionImprovement->pic_email && is_array($actionImprovement->pic_email)) {
-            foreach ($actionImprovement->pic_email as $email) {
-                if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
-                    Mail::to($email)->queue(new ActionImprovementNotification($actionImprovement));
-                }
+        if (! $actionImprovement->pic_email || ! is_array($actionImprovement->pic_email)) {
+            return;
+        }
+
+        $notified = [];
+
+        foreach ($actionImprovement->pic_email as $email) {
+            if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+
+            $user = User::where('email', $email)->first();
+            if ($user && ! in_array($user->id, $notified)) {
+                $user->notify(new ActionImprovementAssigned($actionImprovement));
+                $notified[] = $user->id;
             }
         }
     }

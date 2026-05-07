@@ -152,6 +152,12 @@ class User extends Authenticatable implements FilamentUser
             \App\Notifications\ActionImprovementReminder::class => 'action_improvement_reminder',
             \App\Notifications\ActionImprovementDueSoon::class => 'action_improvement_reminder',
             \App\Notifications\ActionImprovementOverdue::class => 'action_improvement_overdue',
+            \App\Notifications\ActionImprovementAssigned::class => 'action_improvement_assigned',
+            \App\Notifications\NewCriticalIncident::class => 'critical_incident',
+            \App\Notifications\PicAssignedNotification::class => 'incident_assignment',
+            \App\Notifications\ActionImprovementEscalated::class => 'action_improvement_overdue',
+            \App\Notifications\WeeklyOverdueDigest::class => 'action_improvement_overdue',
+            \App\Notifications\AdminAnnouncement::class => 'admin_announcement',
             default => null,
         };
     }

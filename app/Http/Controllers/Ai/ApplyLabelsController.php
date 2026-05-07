@@ -19,17 +19,18 @@ class ApplyLabelsController extends Controller
         ]);
 
         $labelIds = [];
+        $matchedIds = collect();
 
-        foreach ($validated['matched'] ?? [] as $name) {
-            $label = Label::where('name', $name)->first();
-            if ($label) {
-                $labelIds[] = $label->id;
-            }
+        if (! empty($validated['matched'])) {
+            $matchedIds = Label::whereIn('name', $validated['matched'])->pluck('id', 'name');
+            $labelIds = $matchedIds->values()->all();
         }
 
         foreach ($validated['new_labels'] ?? [] as $name) {
-            $label = Label::firstOrCreate(['name' => $name]);
-            $labelIds[] = $label->id;
+            if ($matchedIds->has($name)) {
+                continue;
+            }
+            $labelIds[] = Label::firstOrCreate(['name' => $name])->id;
         }
 
         return response()->json([

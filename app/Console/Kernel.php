@@ -15,6 +15,9 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('reminders:send-action-improvements')->dailyAt('08:00');
 
+        // Weekly overdue digest for admins — Mondays at 9 AM
+        $schedule->command('reminders:send-weekly-overdue-digest')->weeklyOn(1, '09:00');
+
         // Clean up old notifications - runs daily at 2 AM
         $schedule->command('notifications:clean')->dailyAt('02:00');
 

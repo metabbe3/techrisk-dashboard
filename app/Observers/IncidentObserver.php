@@ -4,9 +4,12 @@ namespace App\Observers;
 
 use App\Jobs\CalculateIncidentMetrics;
 use App\Models\Incident;
+use App\Models\User;
 use App\Notifications\AssignedAsPicNotification;
 use App\Notifications\IncidentStatusChanged;
 use App\Notifications\IncidentUpdated;
+use App\Notifications\NewCriticalIncident;
+use App\Notifications\PicAssignedNotification;
 use Carbon\Carbon;
 
 class IncidentObserver
@@ -26,6 +29,13 @@ class IncidentObserver
         // Notify PIC if assigned during creation
         if ($incident->pic_id && $incident->pic) {
             $incident->pic->notify(new AssignedAsPicNotification($incident));
+
+            $this->notifyAdminsOfPicAssignment($incident, $incident->pic);
+        }
+
+        // Notify admins and team leads for P1/P2 incidents
+        if (in_array($incident->severity, ['P1', 'P2'])) {
+            $this->notifyCriticalIncident($incident);
         }
     }
 
@@ -72,6 +82,8 @@ class IncidentObserver
         // Handle PIC assignment change
         if ($incident->isDirty('pic_id') && $incident->pic_id && $pic) {
             $pic->notify(new AssignedAsPicNotification($incident));
+
+            $this->notifyAdminsOfPicAssignment($incident, $pic);
         }
 
         // Determine if metrics recalculation is needed
@@ -111,6 +123,52 @@ class IncidentObserver
         if ($incident->wasChanged() && ! empty($changes) && $pic) {
             if ($currentUser && $currentUser->id !== $incident->pic_id) {
                 $pic->notify(new IncidentUpdated($incident, $changes));
+            }
+        }
+    }
+
+    /**
+     * Notify admins and team leads about a new critical incident.
+     */
+    private function notifyCriticalIncident(Incident $incident): void
+    {
+        $currentUser = auth()->user();
+        $notified = [$incident->pic_id];
+
+        if ($currentUser) {
+            $notified[] = $currentUser->id;
+        }
+
+        $recipients = User::whereHas('roles', function ($query) {
+            $query->whereIn('name', ['admin', 'team-lead']);
+        })->get();
+
+        foreach ($recipients as $user) {
+            if (! in_array($user->id, $notified)) {
+                $user->notify(new NewCriticalIncident($incident));
+                $notified[] = $user->id;
+            }
+        }
+    }
+
+    /**
+     * Notify admins when a team member is assigned as PIC.
+     */
+    private function notifyAdminsOfPicAssignment(Incident $incident, User $assignedPic): void
+    {
+        $currentUser = auth()->user();
+        $notified = [$assignedPic->id];
+
+        if ($currentUser) {
+            $notified[] = $currentUser->id;
+        }
+
+        $admins = User::whereHas('roles', fn ($q) => $q->where('name', 'admin'))->get();
+
+        foreach ($admins as $admin) {
+            if (! in_array($admin->id, $notified)) {
+                $admin->notify(new PicAssignedNotification($incident, $assignedPic));
+                $notified[] = $admin->id;
             }
         }
     }

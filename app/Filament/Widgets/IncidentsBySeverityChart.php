@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Filament\Widgets\Widget;
@@ -32,13 +33,10 @@ class IncidentsBySeverityChart extends Widget
         'P2' => 2,
         'P3' => 3,
         'P4' => 4,
-        'Non Incident' => 5,
-        'X1' => 6,
-        'X2' => 7,
-        'X3' => 8,
-        'X4' => 9,
-        'G' => 10,
-        'N' => 11,
+        'X1' => 5,
+        'X2' => 6,
+        'X3' => 7,
+        'X4' => 8,
     ];
 
     public function mount(): void
@@ -59,9 +57,10 @@ class IncidentsBySeverityChart extends Widget
 
         $results = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Incident::select('severity', DB::raw('count(*) as total'))
-                ->where('classification', 'Incident') // Only count Incidents, not Issues
+                ->where('classification', 'Incident')
+                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->where(fn ($query) => $query->whereNull('fund_status')
-                    ->orWhere('fund_status', '!=', 'Potential recovery')); // Exclude Potential recovery
+                    ->orWhere('fund_status', '!=', 'Potential recovery'));
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
@@ -105,8 +104,6 @@ class IncidentsBySeverityChart extends Widget
             'P2' => 'warning',
             'P3' => 'info',
             'P4' => 'success',
-            'G', 'N' => 'success',
-            'Non Incident' => 'gray',
             'X1', 'X2', 'X3', 'X4' => 'gray',
             default => 'gray',
         };

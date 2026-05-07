@@ -9,11 +9,11 @@ use App\Livewire\RequestAccessForm;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/admin/ai/enhance-text', TextEnhanceController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:manage incidents', 'ai.available:text,model'])
     ->name('ai.enhance-text');
 
 Route::post('/admin/ai/suggest-labels', SuggestLabelsController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:manage incidents', 'ai.available:matched,suggested'])
     ->name('ai.suggest-labels');
 
 Route::post('/admin/ai/apply-labels', ApplyLabelsController::class)
