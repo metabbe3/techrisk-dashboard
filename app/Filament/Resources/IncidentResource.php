@@ -42,12 +42,27 @@ class IncidentResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-shield-exclamation';
 
+    public static function canViewAny(): bool
+    {
+        return auth()->user()->can('view incidents');
+    }
+
+    public static function canView(Model $record): bool
+    {
+        return auth()->user()->can('view incidents');
+    }
+
     public static function canCreate(): bool
     {
         return auth()->user()->can('manage incidents');
     }
 
     public static function canEdit(Model $record): bool
+    {
+        return auth()->user()->can('manage incidents');
+    }
+
+    public static function canDelete(Model $record): bool
     {
         return auth()->user()->can('manage incidents');
     }
@@ -333,12 +348,119 @@ class IncidentResource extends Resource
                         };
                     }),
 
+                SelectFilter::make('severity')
+                    ->label('Severity')
+                    ->options(Severity::options())
+                    ->multiple(),
+                SelectFilter::make('incident_status')
+                    ->label('Status')
+                    ->options(IncidentStatus::options())
+                    ->multiple(),
+                SelectFilter::make('incident_type')
+                    ->label('Type')
+                    ->options(IncidentType::options())
+                    ->multiple(),
+                SelectFilter::make('classification')
+                    ->label('Classification')
+                    ->options(IncidentClassification::options())
+                    ->multiple(),
+
                 \App\Filament\Filters\QuickPeriodFilter::make(),
                 \App\Filament\Filters\QuickPeriodFilter::dateRange(),
 
                 SelectFilter::make('fund_status')
                     ->label('Fund Status')
                     ->options(FundStatus::filterOptions()),
+
+                SelectFilter::make('labels')
+                    ->label('Labels')
+                    ->multiple()
+                    ->options(fn () => \App\Models\Label::orderBy('name')->pluck('name', 'name')->toArray())
+                    ->query(function (Builder $query, array $data) {
+                        if (empty($data['values'])) {
+                            return $query;
+                        }
+
+                        return $query->whereHas('labels', fn (Builder $q) => $q->whereIn('name', $data['values']));
+                    }),
+
+                SelectFilter::make('pic_id')
+                    ->label('PIC')
+                    ->multiple()
+                    ->searchable()
+                    ->options(fn () => \App\Models\User::orderBy('name')->pluck('name', 'id')->toArray()),
+
+                SelectFilter::make('incident_source')
+                    ->label('Source')
+                    ->multiple()
+                    ->options(['Internal' => 'Internal', 'External' => 'External']),
+
+                SelectFilter::make('glitch_flag')
+                    ->label('Glitch')
+                    ->options([1 => 'Yes', 0 => 'No']),
+
+                SelectFilter::make('business_category')
+                    ->label('Business Category')
+                    ->multiple()
+                    ->options(fn () => \App\Models\Category::options(\App\Models\Category::TYPE_BUSINESS_CATEGORY))
+                    ->query(function (Builder $query, array $data) {
+                        foreach ($data['values'] ?? [] as $value) {
+                            $query->whereJsonContains('business_category', $value);
+                        }
+
+                        return $query;
+                    }),
+
+                SelectFilter::make('root_cause_category')
+                    ->label('Root Cause Category')
+                    ->multiple()
+                    ->options(fn () => \App\Models\Category::options(\App\Models\Category::TYPE_ROOT_CAUSE_CATEGORY))
+                    ->query(function (Builder $query, array $data) {
+                        foreach ($data['values'] ?? [] as $value) {
+                            $query->whereJsonContains('root_cause_category', $value);
+                        }
+
+                        return $query;
+                    }),
+
+                SelectFilter::make('responsible_team')
+                    ->label('Responsible Team')
+                    ->multiple()
+                    ->options(fn () => \App\Models\Category::options(\App\Models\Category::TYPE_RESPONSIBLE_TEAM))
+                    ->query(function (Builder $query, array $data) {
+                        foreach ($data['values'] ?? [] as $value) {
+                            $query->whereJsonContains('responsible_team', $value);
+                        }
+
+                        return $query;
+                    }),
+
+                Tables\Filters\Filter::make('fund_loss_range')
+                    ->label('Fund Loss Range')
+                    ->form([
+                        Forms\Components\TextInput::make('min')->label('Min Loss')->numeric(),
+                        Forms\Components\TextInput::make('max')->label('Max Loss')->numeric(),
+                    ])
+                    ->query(function (Builder $query, array $data) {
+                        return $query
+                            ->when($data['min'] ?? null, fn ($q, $min) => $q->where('fund_loss', '>=', $min))
+                            ->when($data['max'] ?? null, fn ($q, $max) => $q->where('fund_loss', '<=', $max));
+                    }),
+
+                Tables\Filters\Filter::make('missing_root_cause')
+                    ->label('Missing Root Cause')
+                    ->form([
+                        Forms\Components\Toggle::make('enabled')->label('No root cause analysis'),
+                    ])
+                    ->query(function (Builder $query, array $data) {
+                        if (! ($data['enabled'] ?? false)) {
+                            return $query;
+                        }
+
+                        return $query->where(fn (Builder $q) => $q->whereNull('root_cause')->orWhere('root_cause', '')->orWhere('root_cause', 'N/A'));
+                    }),
+
+                \App\Filament\Filters\ContentSearchFilter::make(),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),

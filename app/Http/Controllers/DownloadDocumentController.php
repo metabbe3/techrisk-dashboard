@@ -18,12 +18,6 @@ class DownloadDocumentController extends Controller
             abort(403, 'You do not have permission to download this file.');
         }
 
-        // Additional check: user can only download if they're the PIC or have admin rights
-        if (! auth()->user()->can('manage incidents') &&
-            $record->incident->pic_id !== auth()->id()) {
-            abort(403, 'You can only download documents from incidents you are assigned to.');
-        }
-
         // 1. Check if file exists
         if (! $record->file_path || ! Storage::disk('public')->exists($record->file_path)) {
             abort(404, 'File not found on server.');

@@ -2,6 +2,9 @@
 
 namespace App\Filament\Resources\IncidentResource\Pages;
 
+use App\Enums\FundStatus;
+use App\Enums\IncidentStatus;
+use App\Enums\IncidentType;
 use App\Enums\Severity;
 use App\Exports\IncidentTableExport;
 use App\Exports\MultiSheetIncidentsExport;
@@ -41,6 +44,39 @@ class ListIncidents extends ListRecords
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('ai_search')
+                ->label('AI Search')
+                ->icon('heroicon-o-sparkles')
+                ->color('violet')
+                ->modalHeading('AI-Powered Search')
+                ->modalDescription('Describe what you are looking for in natural language.')
+                ->modalSubmitActionLabel('Apply Filters')
+                ->form(function () {
+                    $aiService = app(\App\Services\Ai\AiTextService::class);
+                    $models = $aiService->getAvailableModels();
+                    $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
+
+                    return [
+                        Select::make('ai_model')
+                            ->label('AI Model')
+                            ->options($models)
+                            ->default($defaultModel)
+                            ->searchable()
+                            ->visible(count($models) > 1),
+                        \Filament\Forms\Components\TextInput::make('nl_query')
+                            ->label('Search query')
+                            ->placeholder('e.g. "show me all P1 fund loss incidents from Q1 related to payment gateway"')
+                            ->required()
+                            ->minLength(3)
+                            ->maxLength(500)
+                            ->live()
+                            ->helperText('The AI will convert your query into table filters.'),
+                    ];
+                })
+                ->action(function (array $data) {
+                    $model = $data['ai_model'] ?? null;
+                    $this->applyAiSearch($data['nl_query'], $model);
+                }),
             Actions\Action::make('export')
                 ->label('Export')
                 ->icon('heroicon-o-document-arrow-down')
@@ -151,23 +187,23 @@ class ListIncidents extends ListRecords
         return [
             'All Cases' => Tab::make(),
             'On Going' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_status', '!=', 'Completed')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_status', '!=', IncidentStatus::Completed->value)),
             'Completed Cases' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_status', 'Completed')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_status', IncidentStatus::Completed->value)),
             'Recovered Cases' => Tab::make()
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('recovered_fund', '>', 0)),
             'P4 Incidents' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('severity', 'P4')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('severity', Severity::P4->value)),
             'Non-Tech Incidents' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_type', 'Non-tech')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('incident_type', IncidentType::NonTech->value)),
             'Fund Loss' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Confirmed loss')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::ConfirmedLoss->value)),
             'Potential Recovery' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Potential recovery')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::PotentialRecovery->value)),
             'Non Fund Loss' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', 'Non fundLoss')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::NonFundLoss->value)),
             'Non Incident' => Tab::make()
-                ->modifyQueryUsing(fn (Builder $query) => $query->where('severity', 'Non Incident')),
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('severity', Severity::NonIncident->value)),
         ];
     }
 
@@ -207,4 +243,126 @@ class ListIncidents extends ListRecords
 
         return view('livewire.incident-stats-footer', ['stats' => $stats]);
     }
+
+    public function applyAiSearch(string $query, ?string $model = null): void
+    {
+        try {
+            $aiService = app(\App\Services\Ai\AiTextService::class);
+            $result = $aiService->parseNaturalLanguageQuery($query, $model);
+            $filters = $result['filters'] ?? [];
+
+            if (empty($filters)) {
+                \Filament\Notifications\Notification::make()
+                    ->warning()
+                    ->title('AI Search')
+                    ->body($result['explanation'] ?? 'Could not understand the query. Try rephrasing.')
+                    ->send();
+
+                return;
+            }
+
+            $tableFilters = [];
+
+            // Enum filters
+            if (! empty($filters['severity'])) {
+                $tableFilters['severity'] = ['values' => $filters['severity']];
+            }
+            if (! empty($filters['incident_status'])) {
+                $tableFilters['incident_status'] = ['values' => $filters['incident_status']];
+            }
+            if (! empty($filters['fund_status'])) {
+                $tableFilters['fund_status'] = ['value' => $filters['fund_status'][0] ?? $filters['fund_status']];
+            }
+            if (! empty($filters['incident_type'])) {
+                $tableFilters['incident_type'] = ['values' => $filters['incident_type']];
+            }
+            if (! empty($filters['classification'])) {
+                $tableFilters['classification'] = ['values' => $filters['classification']];
+            }
+            if (! empty($filters['incident_source'])) {
+                $tableFilters['incident_source'] = ['values' => (array) $filters['incident_source']];
+            }
+
+            // Date range — clear quick_period to avoid conflicting constraints
+            if (! empty($filters['date_from']) || ! empty($filters['date_to'])) {
+                $tableFilters['custom_date_range'] = array_filter([
+                    'from' => $filters['date_from'] ?? null,
+                    'until' => $filters['date_to'] ?? null,
+                ]);
+                $tableFilters['quick_period'] = ['value' => 'all'];
+            }
+
+            // Labels
+            if (! empty($filters['labels'])) {
+                $tableFilters['labels'] = ['values' => (array) $filters['labels']];
+            }
+
+            // PIC — resolve name to ID
+            if (! empty($filters['pic_name'])) {
+                $picIds = \App\Models\User::where('name', 'like', '%'.$filters['pic_name'].'%')->pluck('id')->toArray();
+                if (! empty($picIds)) {
+                    $tableFilters['pic_id'] = ['values' => $picIds];
+                }
+            }
+
+            // Glitch flag
+            if (isset($filters['glitch_flag']) && $filters['glitch_flag'] !== null) {
+                $tableFilters['glitch_flag'] = ['value' => $filters['glitch_flag'] ? '1' : '0'];
+            }
+
+            // JSON category filters
+            if (! empty($filters['business_category'])) {
+                $tableFilters['business_category'] = ['values' => (array) $filters['business_category']];
+            }
+            if (! empty($filters['root_cause_category'])) {
+                $tableFilters['root_cause_category'] = ['values' => (array) $filters['root_cause_category']];
+            }
+            if (! empty($filters['responsible_team'])) {
+                $tableFilters['responsible_team'] = ['values' => (array) $filters['responsible_team']];
+            }
+
+            // Fund loss range
+            $fundMin = $filters['fund_loss_min'] ?? null;
+            $fundMax = $filters['fund_loss_max'] ?? null;
+            if ($fundMin !== null || $fundMax !== null) {
+                $tableFilters['fund_loss_range'] = array_filter([
+                    'min' => $fundMin,
+                    'max' => $fundMax,
+                ]);
+            }
+
+            // Missing root cause
+            if (isset($filters['has_root_cause']) && $filters['has_root_cause'] === false) {
+                $tableFilters['missing_root_cause'] = ['enabled' => true];
+            }
+
+            // Content search (full-text across body fields)
+            if (! empty($filters['content_search'])) {
+                $tableFilters['content_search'] = ['query' => $filters['content_search']];
+            }
+
+            // Title/ID search
+            if (! empty($filters['search_keywords'])) {
+                $this->tableSearch = implode(' ', $filters['search_keywords']);
+            }
+
+            if (! empty($tableFilters) || ! empty($filters['search_keywords'])) {
+                $this->tableFilters = $tableFilters;
+                $this->resetPage();
+
+                \Filament\Notifications\Notification::make()
+                    ->success()
+                    ->title('AI Search')
+                    ->body($result['explanation'] ?? 'Filters applied.')
+                    ->send();
+            }
+        } catch (\Throwable $e) {
+            \Filament\Notifications\Notification::make()
+                ->danger()
+                ->title('AI Search Error')
+                ->body($e->getMessage())
+                ->send();
+        }
+    }
+
 }

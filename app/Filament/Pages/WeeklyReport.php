@@ -115,6 +115,8 @@ class WeeklyReport extends Page implements HasForms
             ->whereYear('incident_date', $year)
             ->where(fn ($query) => $query->whereNull('fund_status')
                 ->orWhere('fund_status', '!=', FundStatus::PotentialRecovery->value))
+            ->with(['pic', 'labels'])
+            ->orderBy('incident_date', 'desc')
             ->get();
 
         $openStatuses = [
@@ -141,6 +143,7 @@ class WeeklyReport extends Page implements HasForms
                 'incident_open' => $incidents->whereIn('incident_status', $openStatuses)->count(),
                 'incident_closed' => $incidents->where('incident_status', IncidentStatus::Completed->value)->count(),
                 'total' => $incidents->count(),
+                'incidents' => $incidents->values(),
             ];
         }
 

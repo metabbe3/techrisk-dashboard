@@ -1,8 +1,11 @@
 <?php
 
+use App\Http\Controllers\Ai\AiSearchController;
 use App\Http\Controllers\Ai\AnalyzeRootCauseController;
+use App\Http\Controllers\Ai\AnalyzeTrendsController;
 use App\Http\Controllers\Ai\ApplyLabelsController;
 use App\Http\Controllers\Ai\DetectSimilarController;
+use App\Http\Controllers\Ai\GenerateWeeklySummaryController;
 use App\Http\Controllers\Ai\SuggestLabelsController;
 use App\Http\Controllers\Ai\TextEnhanceController;
 use App\Http\Controllers\DownloadDocumentController;
@@ -29,6 +32,18 @@ Route::post('/admin/ai/analyze-root-cause', AnalyzeRootCauseController::class)
 Route::post('/admin/ai/detect-similar', DetectSimilarController::class)
     ->middleware(['auth', 'can:manage incidents', 'ai.available:similar'])
     ->name('ai.detect-similar');
+
+Route::post('/admin/ai/weekly-summary', GenerateWeeklySummaryController::class)
+    ->middleware(['auth', 'can:access dashboard', 'ai.available:summary,key_highlights,areas_of_concern,recommendation'])
+    ->name('ai.weekly-summary');
+
+Route::post('/admin/ai/analyze-trends', AnalyzeTrendsController::class)
+    ->middleware(['auth', 'can:access dashboard', 'ai.available:trends,recurring_issues,anomalies,recommendations'])
+    ->name('ai.analyze-trends');
+
+Route::post('/admin/ai/search', AiSearchController::class)
+    ->middleware(['auth', 'can:manage incidents', 'ai.available:filters,explanation'])
+    ->name('ai.search');
 
 Route::redirect('/', '/admin/login');
 

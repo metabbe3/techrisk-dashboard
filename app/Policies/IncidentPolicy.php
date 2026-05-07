@@ -11,26 +11,26 @@ class IncidentPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->can('access api');
+        return $user->can('view incidents');
     }
 
     public function view(User $user, Incident $incident): bool
     {
-        return $user->can('access api');
+        return $user->can('view incidents');
     }
 
     public function create(User $user): bool
     {
-        return false;
+        return $user->can('manage incidents');
     }
 
     public function update(User $user, Incident $incident): bool
     {
-        return false;
+        return $user->can('manage incidents');
     }
 
     public function delete(User $user, Incident $incident): bool
     {
-        return false;
+        return $user->can('manage incidents');
     }
 }
