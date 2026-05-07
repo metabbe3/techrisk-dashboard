@@ -12,6 +12,7 @@ use Filament\Tables;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 
 class NotificationPreferenceResource extends Resource
 {
@@ -26,6 +27,35 @@ class NotificationPreferenceResource extends Resource
     protected static ?string $navigationGroup = 'Notifications';
 
     protected static ?int $navigationSort = 2;
+
+    public static function canAccess(): bool
+    {
+        return auth()->check();
+    }
+
+    public static function canViewAny(): bool
+    {
+        return auth()->check();
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        if (auth()->user()?->hasRole('admin')) {
+            return true;
+        }
+
+        return $record->user_id === auth()->id();
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return auth()->user()?->hasRole('admin') ?? false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return auth()->user()?->hasRole('admin') ?? false;
+    }
 
     public static function form(Form $form): Form
     {
@@ -166,6 +196,12 @@ class NotificationPreferenceResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        return parent::getEloquentQuery()->with('user');
+        $query = parent::getEloquentQuery()->with('user');
+
+        if (! auth()->user()?->hasRole('admin')) {
+            $query->where('user_id', auth()->id());
+        }
+
+        return $query;
     }
 }
