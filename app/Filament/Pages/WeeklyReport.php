@@ -4,6 +4,7 @@ namespace App\Filament\Pages;
 
 use App\Enums\FundStatus;
 use App\Enums\IncidentStatus;
+use App\Enums\Severity;
 use App\Models\Incident;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -113,6 +114,7 @@ class WeeklyReport extends Page implements HasForms
         // OPTIMIZED: Load all incidents for the year in a single query
         $allIncidents = Incident::where('classification', 'Incident')
             ->whereYear('incident_date', $year)
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(fn ($query) => $query->whereNull('fund_status')
                 ->orWhere('fund_status', '!=', FundStatus::PotentialRecovery->value))
             ->with(['pic', 'labels'])

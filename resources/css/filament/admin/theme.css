@@ -273,3 +273,29 @@
 .severity-bar-fill.severity-default {
     background: linear-gradient(90deg, #6b7280, #9ca3af);
 }
+
+.severity-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
+}
+
+.severity-scroll::-webkit-scrollbar {
+    width: 6px;
+}
+
+.severity-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.severity-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(0, 0, 0, 0.15);
+    border-radius: 3px;
+}
+
+.dark .severity-scroll {
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.dark .severity-scroll::-webkit-scrollbar-thumb {
+    background-color: rgba(255, 255, 255, 0.2);
+}
