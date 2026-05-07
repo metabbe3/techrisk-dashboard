@@ -176,6 +176,15 @@ class AiTextService
         }
         $userMessage .= "\nAvailable labels: " . (empty($availableLabels) ? '(none — suggest relevant new labels)' : implode(', ', $availableLabels));
 
+        $inputLength = strlen($userMessage);
+        $startTime = microtime(true);
+        $success = false;
+        $promptTokens = null;
+        $completionTokens = null;
+        $totalTokens = null;
+        $responseTimeMs = null;
+        $apiRequestId = null;
+
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(config('ai.timeout', 30))
@@ -187,28 +196,67 @@ class AiTextService
                     ],
                     'max_tokens' => 1000,
                 ]);
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+            $promptTokens = $usage['prompt_tokens'] ?? null;
+            $completionTokens = $usage['completion_tokens'] ?? null;
+            $totalTokens = $usage['total_tokens'] ?? null;
+            $apiRequestId = $responseData['id'] ?? null;
+
+            if ($response->failed()) {
+                Log::warning('[Smart Labels] AI request failed', ['status' => $response->status()]);
+                $this->logLabelUsage($resolvedModel, false, $inputLength, null, $promptTokens, $completionTokens, $totalTokens, $responseTimeMs, $apiRequestId, 'HTTP '.$response->status());
+
+                return ['matched' => [], 'suggested' => []];
+            }
         } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
             Log::warning('AI label suggestion failed', ['error' => $e->getMessage()]);
+            $this->logLabelUsage($resolvedModel, false, $inputLength, null, null, null, null, $responseTimeMs, null, $e->getMessage());
 
-            return ['matched' => [], 'suggested' => []];
-        }
-
-        if ($response->failed()) {
             return ['matched' => [], 'suggested' => []];
         }
 
         $content = $response->json('choices.0.message.content', '');
 
         if (empty($content)) {
-            $fullResponse = $response->body();
-            Log::warning('[Smart Labels] Empty content from AI', ['status' => $response->status(), 'body_preview' => substr($fullResponse, 0, 500)]);
+            Log::warning('[Smart Labels] Empty content from AI', ['status' => $response->status()]);
+            $this->logLabelUsage($resolvedModel, false, $inputLength, null, $promptTokens, $completionTokens, $totalTokens, $responseTimeMs, $apiRequestId, 'Empty response');
 
             return ['matched' => [], 'suggested' => []];
         }
 
         Log::info('[Smart Labels] AI response', ['content' => substr($content, 0, 1000)]);
+        $result = $this->parseLabelSuggestions($content, $availableLabels);
+        $this->logLabelUsage($resolvedModel, true, $inputLength, strlen($content), $promptTokens, $completionTokens, $totalTokens, $responseTimeMs, $apiRequestId);
 
-        return $this->parseLabelSuggestions($content, $availableLabels);
+        return $result;
+    }
+
+    private function logLabelUsage(?string $model, bool $success, int $inputLength, ?int $outputLength, ?int $promptTokens, ?int $completionTokens, ?int $totalTokens, ?float $responseTimeMs, ?string $apiRequestId, ?string $errorMessage = null): void
+    {
+        try {
+            AiUsageLog::create([
+                'user_id' => auth()->id(),
+                'user_email' => auth()->user()?->email,
+                'field_type' => 'label_suggest',
+                'model' => $model,
+                'input_length' => $inputLength,
+                'output_length' => $outputLength,
+                'prompt_tokens' => $promptTokens,
+                'completion_tokens' => $completionTokens,
+                'total_tokens' => $totalTokens,
+                'response_time_ms' => $responseTimeMs ? (int) $responseTimeMs : null,
+                'success' => $success,
+                'error_message' => $errorMessage,
+                'api_request_id' => $apiRequestId,
+                'requested_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write AI usage log', ['error' => $e->getMessage()]);
+        }
     }
 
     private function parseLabelSuggestions(string $content, array $availableLabels): array

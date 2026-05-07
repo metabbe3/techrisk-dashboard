@@ -67,6 +67,7 @@ class DashboardStatsOverview extends BaseWidget
             ->sum('recovered_fund');
 
         $lastIncident = Incident::where('classification', 'Incident')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->latest('incident_date')
             ->first();
 
