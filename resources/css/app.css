@@ -409,3 +409,13 @@
 :root.dark .sl-model-picker__item { color: #cbd5e1; }
 :root.dark .sl-model-picker__item:hover { background: rgba(13,148,136,.12); color: #5eead4; }
 :root.dark .sl-model-picker__item--active { color: #5eead4; background: rgba(13,148,136,.12); }
+
+/* --- AI Root Cause Analysis & Similar Incidents: Dark Mode --- */
+:root.dark .sl-panel div[style*="background:#fff"] { background: #1e293b !important; border-color: #334155 !important; }
+:root.dark .sl-panel div[style*="background:#f8fafc"] { background: #0f172a !important; border-color: #334155 !important; }
+:root.dark .sl-panel div[style*="background:#f0fdf4"] { background: rgba(5,150,105,.08) !important; border-color: rgba(5,150,105,.2) !important; }
+:root.dark .sl-panel div[style*="background:#fffbeb"] { background: rgba(245,158,11,.08) !important; }
+:root.dark .sl-panel div[style*="color:#334155"] { color: #e2e8f0 !important; }
+:root.dark .sl-panel div[style*="color:#475569"] { color: #94a3b8 !important; }
+:root.dark .sl-panel p[style*="color:#64748b"] { color: #94a3b8 !important; }
+:root.dark .sl-panel p[style*="color:#475569"] { color: #94a3b8 !important; }

@@ -55,6 +55,14 @@ return [
             'system' => "You are a professional technical writer. Improve the given remark.\n\nRules:\n- Use plain text only. No markdown, no asterisks, no special formatting.\n- Improve clarity, grammar, and professional tone.\n- Keep it concise. Preserve the original meaning.\n- Use simple sentences and paragraphs.\n- Output only the improved text, no preamble.",
             'label' => 'Enhance Remark',
         ],
+        'root_cause_analysis' => [
+            'system' => "You are an expert incident root cause analyst. Given incident data (summary, timeline, severity, type), perform a thorough root cause analysis.\n\nYour job:\n- Analyze the incident data to determine the most probable root cause.\n- Identify the primary cause and any contributing factors.\n- Suggest probable root cause categories (e.g., Human Error, System Failure, Process Gap, Third Party, Configuration Error, Security, Network, etc.).\n- Provide a clear, actionable recommendation to prevent recurrence.\n- Use plain text only. No markdown, no asterisks, no special formatting.\n- Be specific and technical. Reference actual systems, processes, or teams mentioned in the data.\n\nReturn ONLY valid JSON in this exact format:\n{\"root_cause\": \"Detailed root cause analysis text...\", \"categories\": [\"Category1\", \"Category2\"], \"contributing_factors\": [\"Factor 1\", \"Factor 2\", \"Factor 3\"], \"recommendation\": \"Recommendation text...\"}\n\nIf you cannot determine a root cause with reasonable confidence, set root_cause to your best hypothesis and note the uncertainty.",
+            'label' => 'AI Root Cause Analysis',
+        ],
+        'similar_incident' => [
+            'system' => "You are an incident similarity analyst. Compare the current incident being reported against a list of recent incidents from the database.\n\nYour job:\n- Compare the current incident against each recent incident.\n- Identify incidents that are genuinely similar based on: similar root cause patterns, affected systems/services, incident types, severity patterns, or recurring issues.\n- For each similar incident found, provide:\n  - The exact incident number (no) from the database list\n  - A similarity score between 0 and 1 (1 = identical, 0.7+ = very similar, 0.4-0.7 = somewhat similar)\n  - A brief reason explaining WHY they are similar\n- Only include incidents with similarity >= 0.4. Skip ones that are clearly unrelated.\n- Limit to the top 5 most similar incidents.\n\nReturn ONLY valid JSON:\n{\"similar\": [{\"incident_no\": \"20260501_INC_0001\", \"similarity\": 0.85, \"reason\": \"Same payment gateway timeout issue\"}]}\n\nIf no similar incidents are found, return: {\"similar\": []}",
+            'label' => 'Find Similar Incidents',
+        ],
     ],
 
     'rate_limit_per_minute' => env('AI_RATE_LIMIT_PER_MINUTE', 10),

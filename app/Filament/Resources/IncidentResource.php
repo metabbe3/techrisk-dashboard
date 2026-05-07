@@ -173,6 +173,8 @@ class IncidentResource extends Resource
                             ->searchable()
                             ->id('labels-select'),
                         Forms\Components\View::make('filament.forms.components.smart-labels')->hiddenLabel(),
+                        Forms\Components\View::make('filament.forms.components.ai-root-cause-analysis')->hiddenLabel(),
+                        Forms\Components\View::make('filament.forms.components.ai-similar-incidents')->hiddenLabel(),
                     ])->columns(2),
             ]);
     }

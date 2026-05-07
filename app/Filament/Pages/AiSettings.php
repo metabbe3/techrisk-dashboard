@@ -41,11 +41,11 @@ class AiSettings extends Page implements HasForms
     public function mount(): void
     {
         $this->form->fill([
-            'base_url' => config('ai.base_url'),
+            'base_url' => AiSetting::get('base_url', config('ai.base_url')),
             'api_key' => filled(AiSetting::get('api_key')) ? '••••••••' : '',
             'default_model' => AiSetting::get('default_model', config('ai.default_model')),
-            'timeout' => config('ai.timeout', 30),
-            'rate_limit' => config('ai.rate_limit_per_minute', 10),
+            'timeout' => AiSetting::get('timeout', config('ai.timeout', 30)),
+            'rate_limit' => AiSetting::get('rate_limit', config('ai.rate_limit_per_minute', 10)),
             'models' => AiSetting::get('models', config('ai.models', [])),
         ]);
     }
@@ -141,10 +141,20 @@ class AiSettings extends Page implements HasForms
     {
         $data = $this->form->getState();
 
+        AiSetting::set('base_url', $data['base_url'] ?? null);
+
         if (filled($data['api_key'] ?? null) && $data['api_key'] !== '••••••••') {
             AiSetting::set('api_key', $data['api_key']);
         } elseif (($data['api_key'] ?? '') === '') {
             AiSetting::set('api_key', null);
+        }
+
+        if (filled($data['timeout'] ?? null)) {
+            AiSetting::set('timeout', (int) $data['timeout']);
+        }
+
+        if (filled($data['rate_limit'] ?? null)) {
+            AiSetting::set('rate_limit', (int) $data['rate_limit']);
         }
 
         AiSetting::set('default_model', $data['default_model'] ?? 'default');

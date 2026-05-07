@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Ai\AnalyzeRootCauseController;
 use App\Http\Controllers\Ai\ApplyLabelsController;
+use App\Http\Controllers\Ai\DetectSimilarController;
 use App\Http\Controllers\Ai\SuggestLabelsController;
 use App\Http\Controllers\Ai\TextEnhanceController;
 use App\Http\Controllers\DownloadDocumentController;
@@ -19,6 +21,14 @@ Route::post('/admin/ai/suggest-labels', SuggestLabelsController::class)
 Route::post('/admin/ai/apply-labels', ApplyLabelsController::class)
     ->middleware(['auth', 'can:manage incidents'])
     ->name('ai.apply-labels');
+
+Route::post('/admin/ai/analyze-root-cause', AnalyzeRootCauseController::class)
+    ->middleware(['auth', 'can:manage incidents', 'ai.available:root_cause,categories,contributing_factors,recommendation'])
+    ->name('ai.analyze-root-cause');
+
+Route::post('/admin/ai/detect-similar', DetectSimilarController::class)
+    ->middleware(['auth', 'can:manage incidents', 'ai.available:similar'])
+    ->name('ai.detect-similar');
 
 Route::redirect('/', '/admin/login');
 

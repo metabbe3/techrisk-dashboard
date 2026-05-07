@@ -45,7 +45,7 @@ class AiTextService
 
         try {
             $response = Http::withHeaders($this->buildHeaders())
-                ->timeout(config('ai.timeout', 30))
+                ->timeout($this->getTimeout())
                 ->post($this->buildUrl(), $this->buildPayload(
                     $prompt['system'],
                     $text,
@@ -187,7 +187,7 @@ class AiTextService
 
         try {
             $response = Http::withHeaders($this->buildHeaders())
-                ->timeout(config('ai.timeout', 30))
+                ->timeout($this->getTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $resolvedModel,
                     'messages' => [
@@ -301,6 +301,242 @@ class AiTextService
         return ['matched' => $matched, 'suggested' => $suggested];
     }
 
+    public function analyzeRootCause(array $incidentData, ?string $model = null): array
+    {
+        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+        $prompt = config('ai.prompts.root_cause_analysis');
+
+        if (! $prompt) {
+            return ['root_cause' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+        }
+
+        $userMessage = "Analyze the following incident and determine the probable root cause:\n\n";
+        foreach ($incidentData as $key => $value) {
+            if (filled($value)) {
+                $userMessage .= "- {$key}: {$value}\n";
+            }
+        }
+
+        $inputLength = strlen($userMessage);
+        $startTime = microtime(true);
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout($this->getTimeout())
+                ->post($this->buildUrl(), [
+                    'model' => $resolvedModel,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $prompt['system']],
+                        ['role' => 'user', 'content' => $userMessage],
+                    ],
+                    'max_tokens' => 2000,
+                ]);
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+
+            if ($response->failed()) {
+                Log::warning('[Root Cause Analysis] AI request failed', ['status' => $response->status()]);
+                $this->logFeatureUsage('root_cause_analysis', $resolvedModel, false, $inputLength, null, $usage, $responseTimeMs, $responseData['id'] ?? null, 'HTTP '.$response->status());
+
+                return ['root_cause' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+            }
+        } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            Log::warning('[Root Cause Analysis] AI request failed', ['error' => $e->getMessage()]);
+            $this->logFeatureUsage('root_cause_analysis', $resolvedModel, false, $inputLength, null, [], $responseTimeMs, null, $e->getMessage());
+
+            return ['root_cause' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+        }
+
+        $content = $response->json('choices.0.message.content', '');
+
+        if (empty($content)) {
+            Log::warning('[Root Cause Analysis] Empty AI response');
+            $this->logFeatureUsage('root_cause_analysis', $resolvedModel, false, $inputLength, null, $usage ?? [], $responseTimeMs, $responseData['id'] ?? null, 'Empty response');
+
+            return ['root_cause' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+        }
+
+        Log::info('[Root Cause Analysis] AI response', ['content' => substr($content, 0, 1000)]);
+        $result = $this->parseRootCauseAnalysis($content);
+        $this->logFeatureUsage('root_cause_analysis', $resolvedModel, true, $inputLength, strlen($content), $usage, $responseTimeMs, $responseData['id'] ?? null);
+
+        return $result;
+    }
+
+    private function parseRootCauseAnalysis(string $content): array
+    {
+        preg_match('/\{.*\}/s', $content, $matches);
+
+        if (empty($matches)) {
+            Log::warning('[Root Cause Analysis] No JSON found', ['content' => substr($content, 0, 500)]);
+
+            return ['root_cause' => $this->cleanResponse($content), 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+        }
+
+        $parsed = json_decode($matches[0], true);
+
+        if (! is_array($parsed)) {
+            Log::warning('[Root Cause Analysis] JSON decode failed', ['error' => json_last_error_msg()]);
+
+            return ['root_cause' => $this->cleanResponse($content), 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+        }
+
+        return [
+            'root_cause' => is_string($parsed['root_cause'] ?? null) ? $this->cleanResponse($parsed['root_cause']) : '',
+            'categories' => collect($parsed['categories'] ?? [])->filter(fn ($c) => is_string($c))->values()->toArray(),
+            'contributing_factors' => collect($parsed['contributing_factors'] ?? [])->filter(fn ($f) => is_string($f))->values()->toArray(),
+            'recommendation' => is_string($parsed['recommendation'] ?? null) ? $this->cleanResponse($parsed['recommendation']) : '',
+        ];
+    }
+
+    public function detectSimilar(array $incidentData, array $recentIncidents, ?string $model = null): array
+    {
+        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+        $prompt = config('ai.prompts.similar_incident');
+
+        if (! $prompt) {
+            return ['similar' => []];
+        }
+
+        $userMessage = "Current incident being reported:\n";
+        foreach ($incidentData as $key => $value) {
+            if (filled($value)) {
+                $userMessage .= "- {$key}: {$value}\n";
+            }
+        }
+
+        $userMessage .= "\nRecent incidents in the database:\n";
+        foreach ($recentIncidents as $i => $inc) {
+            $userMessage .= ($i + 1).". [{$inc['no']}] ".($inc['summary'] ?? 'No summary');
+            $userMessage .= " | Severity: ".($inc['severity'] ?? 'N/A');
+            $userMessage .= " | Type: ".($inc['incident_type'] ?? 'N/A');
+            $userMessage .= " | Date: ".($inc['incident_date'] ?? 'N/A');
+            $userMessage .= " | Status: ".($inc['incident_status'] ?? 'N/A')."\n";
+        }
+
+        $inputLength = strlen($userMessage);
+        $startTime = microtime(true);
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout($this->getTimeout())
+                ->post($this->buildUrl(), [
+                    'model' => $resolvedModel,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $prompt['system']],
+                        ['role' => 'user', 'content' => $userMessage],
+                    ],
+                    'max_tokens' => 2000,
+                ]);
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+
+            if ($response->failed()) {
+                Log::warning('[Similar Incidents] AI request failed', ['status' => $response->status()]);
+                $this->logFeatureUsage('similar_incident', $resolvedModel, false, $inputLength, null, $usage, $responseTimeMs, $responseData['id'] ?? null, 'HTTP '.$response->status());
+
+                return ['similar' => []];
+            }
+        } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            Log::warning('[Similar Incidents] AI request failed', ['error' => $e->getMessage()]);
+            $this->logFeatureUsage('similar_incident', $resolvedModel, false, $inputLength, null, [], $responseTimeMs, null, $e->getMessage());
+
+            return ['similar' => []];
+        }
+
+        $content = $response->json('choices.0.message.content', '');
+
+        if (empty($content)) {
+            Log::warning('[Similar Incidents] Empty AI response');
+            $this->logFeatureUsage('similar_incident', $resolvedModel, false, $inputLength, null, $usage ?? [], $responseTimeMs, $responseData['id'] ?? null, 'Empty response');
+
+            return ['similar' => []];
+        }
+
+        Log::info('[Similar Incidents] AI response', ['content' => substr($content, 0, 1000)]);
+        $result = $this->parseSimilarIncidents($content, $recentIncidents);
+        $this->logFeatureUsage('similar_incident', $resolvedModel, true, $inputLength, strlen($content), $usage, $responseTimeMs, $responseData['id'] ?? null);
+
+        return $result;
+    }
+
+    private function parseSimilarIncidents(string $content, array $recentIncidents): array
+    {
+        preg_match('/\{.*\}/s', $content, $matches);
+
+        if (empty($matches)) {
+            Log::warning('[Similar Incidents] No JSON found', ['content' => substr($content, 0, 500)]);
+
+            return ['similar' => []];
+        }
+
+        $parsed = json_decode($matches[0], true);
+
+        if (! is_array($parsed) || ! isset($parsed['similar'])) {
+            Log::warning('[Similar Incidents] JSON decode failed or missing similar key', ['error' => json_last_error_msg()]);
+
+            return ['similar' => []];
+        }
+
+        $indexedIncidents = collect($recentIncidents)->keyBy('no');
+
+        $similar = collect($parsed['similar'])
+            ->filter(fn ($item) => is_array($item) && isset($item['incident_no']))
+            ->map(function ($item) use ($indexedIncidents) {
+                $incident = $indexedIncidents->get($item['incident_no']);
+                if (! $incident) {
+                    return null;
+                }
+
+                return [
+                    'id' => $incident['id'],
+                    'no' => $incident['no'],
+                    'summary' => $incident['summary'] ?? '',
+                    'severity' => $incident['severity'] ?? '',
+                    'incident_date' => $incident['incident_date'] ?? '',
+                    'incident_status' => $incident['incident_status'] ?? '',
+                    'similarity' => min(max((float) ($item['similarity'] ?? 0), 0), 1),
+                    'reason' => is_string($item['reason'] ?? null) ? $item['reason'] : '',
+                ];
+            })
+            ->filter()
+            ->sortByDesc('similarity')
+            ->values()
+            ->toArray();
+
+        return ['similar' => $similar];
+    }
+
+    private function logFeatureUsage(string $fieldType, ?string $model, bool $success, int $inputLength, ?int $outputLength, array $usage, ?float $responseTimeMs, ?string $apiRequestId, ?string $errorMessage = null): void
+    {
+        try {
+            AiUsageLog::create([
+                'user_id' => auth()->id(),
+                'user_email' => auth()->user()?->email,
+                'field_type' => $fieldType,
+                'model' => $model,
+                'input_length' => $inputLength,
+                'output_length' => $outputLength,
+                'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                'completion_tokens' => $usage['completion_tokens'] ?? null,
+                'total_tokens' => $usage['total_tokens'] ?? null,
+                'response_time_ms' => $responseTimeMs ? (int) $responseTimeMs : null,
+                'success' => $success,
+                'error_message' => $errorMessage,
+                'api_request_id' => $apiRequestId,
+                'requested_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to write AI usage log', ['error' => $e->getMessage()]);
+        }
+    }
+
     protected function buildHeaders(): array
     {
         return [
@@ -322,7 +558,12 @@ class AiTextService
 
     protected function getBaseUrl(): ?string
     {
-        return config('ai.base_url');
+        return AiSetting::get('base_url', config('ai.base_url'));
+    }
+
+    protected function getTimeout(): int
+    {
+        return (int) AiSetting::get('timeout', config('ai.timeout', 30));
     }
 
     protected function buildPayload(string $systemPrompt, string $userText, string $model, ?string $additionalPrompt = null): array
