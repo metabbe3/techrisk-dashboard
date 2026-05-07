@@ -18,6 +18,11 @@ use Filament\Pages\Dashboard as BaseDashboard;
 
 class Dashboard extends BaseDashboard
 {
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->can('manage incidents') ?? false;
+    }
+
     public function getColumns(): int|string|array
     {
         return 12;

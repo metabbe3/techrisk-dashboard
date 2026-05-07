@@ -33,7 +33,7 @@ class WeeklyReport extends Page implements HasForms
 
     public static function canAccess(): bool
     {
-        return Auth::check() && Auth::user()->can('access dashboard');
+        return Auth::check() && Auth::user()->can('manage incidents');
     }
 
     public ?int $selectedYear = null;
