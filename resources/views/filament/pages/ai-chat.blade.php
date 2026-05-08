@@ -374,7 +374,7 @@ function aiChat() {
                     this.messages = data.messages;
                     if (data.conversation?.model) this.selectedModel = data.conversation.model;
                     this.restoreReferencedIncidents();
-                    this.$nextTick(() => this.scrollToBottom());
+                    this.$nextTick(() => { this.scrollToBottom(); this.scheduleMermaidRender(); });
                 }
             } catch (e) { console.error(e); }
             if (window.innerWidth < 1024) this.showSidebar = false;
@@ -492,6 +492,7 @@ function aiChat() {
                         copied: false,
                     }];
                     await this.$nextTick();
+                    this.scheduleMermaidRender();
 
                     if (!this.activeConversationId && data.conversation_id) {
                         this.activeConversationId = data.conversation_id;
@@ -701,13 +702,16 @@ function aiChat() {
         renderMarkdown(text) {
             if (!text) return '';
             try {
-                let html = marked.parse(text, { breaks: true, gfm: true });
-                // Schedule mermaid rendering after DOM update
-                this.$nextTick(() => this.renderMermaidDiagrams());
-                return html;
+                return marked.parse(text, { breaks: true, gfm: true });
             } catch {
                 return text.replace(/\n/g, '<br>');
             }
+        },
+
+        scheduleMermaidRender() {
+            requestAnimationFrame(() => {
+                this.$nextTick(() => this.renderMermaidDiagrams());
+            });
         },
 
         async renderMermaidDiagrams() {
