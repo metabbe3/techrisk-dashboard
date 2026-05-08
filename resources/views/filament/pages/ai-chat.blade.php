@@ -427,7 +427,7 @@ function aiChat() {
                 content: refPrefix + text,
                 created_at: new Date().toISOString(),
             };
-            this.messages.push(userMsg);
+            this.messages = [...this.messages, userMsg];
             this.inputText = '';
             this.autoResize();
             this.scrollToBottom();
@@ -469,13 +469,13 @@ function aiChat() {
                     data = JSON.parse(responseText);
                 } catch (parseError) {
                     console.error('Failed to parse response:', parseError);
-                    this.messages.push({
+                    this.messages = [...this.messages, {
                         id: 'error-' + Date.now(),
                         role: 'assistant',
                         content: '⚠️ Server returned an invalid response. Please try again.',
                         model: null,
                         created_at: new Date().toISOString(),
-                    });
+                    }];
                     return;
                 }
 
@@ -487,10 +487,10 @@ function aiChat() {
                     }
 
                     // Push assistant message and force Alpine to render
-                    this.messages.push({
+                    this.messages = [...this.messages, {
                         ...data.assistant_message,
                         copied: false,
-                    });
+                    }];
                     await this.$nextTick();
 
                     if (!this.activeConversationId && data.conversation_id) {
@@ -509,26 +509,26 @@ function aiChat() {
                     // Fire and forget — don't block rendering
                     this.loadConversations();
                 } else {
-                    this.messages.push({
+                    this.messages = [...this.messages, {
                         id: 'error-' + Date.now(),
                         role: 'assistant',
                         content: '⚠️ ' + (data.error || 'Something went wrong. Please try again.'),
                         model: null,
                         created_at: new Date().toISOString(),
-                    });
+                    }];
                 }
             } catch (e) {
                 if (e.name === 'AbortError') {
                     return;
                 }
                 console.error('sendMessage error:', e);
-                this.messages.push({
+                this.messages = [...this.messages, {
                     id: 'error-' + Date.now(),
                     role: 'assistant',
                     content: '⚠️ Network error. Please check your connection and try again.',
                     model: null,
                     created_at: new Date().toISOString(),
-                });
+                }];
             } finally {
                 this.loading = false;
                 if (this.timer) { clearInterval(this.timer); this.timer = null; }

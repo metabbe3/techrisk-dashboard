@@ -32,31 +32,12 @@ class ChatSendController
         $model = $request->input('model');
         $referencedIds = $request->input('referenced_incidents', []);
 
-        // Detect slash commands and transform message
+        // Detect slash command for title extraction (before conversation creation)
         $slashCommand = null;
         $slashArgs = '';
         if (preg_match('/^\/(\w+)(?:\s+(.*))?/', $userMessage, $match)) {
             $slashCommand = strtolower($match[1]);
             $slashArgs = $match[2] ?? '';
-            $commands = config('ai.chat_slash_commands', []);
-            if (isset($commands[$slashCommand])) {
-                $enriched = app(\App\Services\Ai\ChatContextService::class)->enrichSlashCommand($slashCommand, $slashArgs, $referencedIds);
-                $userMessage = $enriched['message'];
-                if (! empty($enriched['extra_context'])) {
-                    $userMessage .= $enriched['extra_context'];
-                }
-            }
-        }
-
-        // Detect inline web search intent (without /search command at message start)
-        // Triggers on: "/search <query>" anywhere, "search web/internet/online", "look up", "check online"
-        if (! $slashCommand && preg_match('/(?:\/search\b|\bsearch\s+(?:the\s+)?(?:web|internet|online)|look\s+up|check\s+online|\bsearch\s+for)\b/i', $userMessage)) {
-            $contextService = app(\App\Services\Ai\ChatContextService::class);
-            $searchContext = $contextService->getSearchContextFromMessage($userMessage, $referencedIds);
-            if ($searchContext) {
-                $userMessage .= "\n\n".$searchContext;
-                $userMessage .= "\n\nThe user wants external web references combined with internal incident data. Always cite external sources using markdown links.";
-            }
         }
 
         $isNewConversation = ! $conversationId;
@@ -75,6 +56,7 @@ class ChatSendController
             'created_at' => now(),
         ]);
 
+        // Load history BEFORE enrichment so /search can use conversation context
         $history = $conversation->messages()
             ->orderBy('created_at', 'desc')
             ->take(config('ai.chat_max_history', 20))
@@ -89,6 +71,29 @@ class ChatSendController
             $historyText = collect($history)->map(fn ($m) => $m['content'])->implode(' ');
             if (preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $historyText, $historyMatches)) {
                 $referencedIds = array_unique($historyMatches[0]);
+            }
+        }
+
+        // NOW enrich with slash commands (has full history context)
+        $contextService = app(\App\Services\Ai\ChatContextService::class);
+        if ($slashCommand) {
+            $commands = config('ai.chat_slash_commands', []);
+            if (isset($commands[$slashCommand])) {
+                $enriched = $contextService->enrichSlashCommand($slashCommand, $slashArgs, $referencedIds);
+                $userMessage = $enriched['message'];
+                if (! empty($enriched['extra_context'])) {
+                    $userMessage .= $enriched['extra_context'];
+                }
+            }
+        }
+
+        // Detect inline web search intent (without /search command at message start)
+        // Triggers on: "/search <query>" anywhere, "search web/internet/online", "look up", "check online"
+        if (! $slashCommand && preg_match('/(?:\/search\b|\bsearch\s+(?:the\s+)?(?:web|internet|online)|look\s+up|check\s+online|\bsearch\s+for)\b/i', $userMessage)) {
+            $searchContext = $contextService->getSearchContextFromMessage($userMessage, $referencedIds);
+            if ($searchContext) {
+                $userMessage .= "\n\n".$searchContext;
+                $userMessage .= "\n\nThe user wants external web references combined with internal incident data. Always cite external sources using markdown links.";
             }
         }
 

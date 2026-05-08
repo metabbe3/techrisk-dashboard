@@ -4,7 +4,9 @@ namespace App\Services\Ai;
 
 use App\Enums\FundStatus;
 use App\Enums\Severity;
+use App\Models\Category;
 use App\Models\Incident;
+use App\Models\Label;
 use Illuminate\Support\Facades\Cache;
 
 class ChatContextService
@@ -18,8 +20,8 @@ class ChatContextService
         $hasReferenced = ! empty($referencedIds) || preg_match('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
         $refCount = count($referencedIds) + preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
 
-        // When 2+ incidents referenced, skip recent incidents to save tokens
-        $skipRecent = $hasReferenced && $refCount >= 2;
+        // When 2+ incidents referenced OR smart search fired, skip recent incidents to save tokens
+        $skipRecent = ($hasReferenced && $refCount >= 2) || str_contains($enriched, '## Smart Search Results');
 
         $stats = $this->getQuickStats();
         $recent = $skipRecent ? null : $this->getRecentIncidents();
@@ -349,6 +351,12 @@ class ChatContextService
             $parts[] = $this->getExecutiveSummaryContext();
         }
 
+        // Smart context search: detect filters and topic in message
+        $smartContext = $this->smartSearchContext($userMessage, $allIncidentNos);
+        if ($smartContext) {
+            $parts[] = $smartContext;
+        }
+
         return implode("\n\n", $parts);
     }
 
@@ -359,7 +367,7 @@ class ChatContextService
             'compare' => $this->getCompareContext($args),
             'risk' => $this->getRiskContext(),
             'search' => $this->getSearchContext($args, $referencedIds),
-            'find' => '',
+            'find' => $this->smartSearchContext($args ?: 'all incidents', $referencedIds),
             'analyze' => '',
             default => '',
         };
@@ -655,6 +663,640 @@ class ChatContextService
     {
         Cache::forget('chat_quick_stats_v2');
         Cache::forget('chat_recent_incidents_v2');
+    }
+
+    /**
+     * Smart context search: parse natural language filters and return matching incidents.
+     */
+    public function smartSearchContext(string $userMessage, array $referencedIds = []): string
+    {
+        $filters = $this->parseMessageFilters($userMessage);
+
+        // Determine if there's enough signal to search
+        $hasColumnFilters = collect($filters)->except(['topic'])->filter(fn ($v) => $v !== null)->isNotEmpty();
+        $hasTopic = ! empty($filters['topic']);
+
+        if (! $hasColumnFilters && ! $hasTopic) {
+            return '';
+        }
+
+        // If only topic (no column filters), use topic search
+        if ($hasTopic && ! $hasColumnFilters) {
+            $results = $this->searchIncidentsByTopic($filters['topic']);
+        } else {
+            $results = $this->executeFilterQuery($filters, $referencedIds);
+        }
+
+        return $this->formatSmartSearchContext($results, $filters);
+    }
+
+    /**
+     * Parse natural language message into structured filter criteria.
+     */
+    private function parseMessageFilters(string $message): array
+    {
+        $msg = strtolower($message);
+        $filters = [
+            'severity' => null,
+            'status' => null,
+            'date_from' => null,
+            'date_to' => null,
+            'fund_loss_min' => null,
+            'fund_loss_max' => null,
+            'fund_status' => null,
+            'incident_type' => null,
+            'classification' => null,
+            'topic' => null,
+            'pic_name' => null,
+            'has_root_cause' => null,
+            'labels' => null,
+            'business_category' => null,
+            'responsible_team' => null,
+            'root_cause_category' => null,
+        ];
+
+        // --- Severity ---
+        $sevMap = [
+            'critical' => ['P1'], 'p1' => ['P1'],
+            'high' => ['P2'], 'p2' => ['P2'],
+            'medium' => ['P3'], 'p3' => ['P3'],
+            'low' => ['P4'], 'p4' => ['P4'],
+            'x1' => ['X1'], 'x2' => ['X2'], 'x3' => ['X3'], 'x4' => ['X4'],
+        ];
+        $severities = [];
+        foreach ($sevMap as $keyword => $sevs) {
+            if (preg_match('/\b' . preg_quote($keyword, '/') . '\b/i', $message)) {
+                $severities = array_merge($severities, $sevs);
+            }
+        }
+        // Direct severity mentions (P1-P4, X1-X4)
+        if (preg_match_all('/\b([PX]\d)\b/i', $message, $matches)) {
+            foreach ($matches[1] as $m) {
+                $severities[] = strtoupper($m);
+            }
+        }
+        if (! empty($severities)) {
+            $filters['severity'] = array_unique($severities);
+        }
+
+        // --- Status ---
+        $statusMap = [
+            'open' => ['Open'],
+            'in progress' => ['In progress'],
+            'ongoing' => ['Open', 'In progress'],
+            'finalization' => ['Finalization'],
+            'completed' => ['Completed'],
+            'closed' => ['Completed'],
+            'resolved' => ['Completed'],
+            'unresolved' => ['Open', 'In progress', 'Finalization'],
+            'active' => ['Open', 'In progress'],
+        ];
+        $statuses = [];
+        foreach ($statusMap as $keyword => $sts) {
+            if (preg_match('/\b' . preg_quote($keyword, '/') . '\b/i', $message)) {
+                $statuses = array_merge($statuses, $sts);
+            }
+        }
+        if (! empty($statuses)) {
+            $filters['status'] = array_unique($statuses);
+        }
+
+        // --- Date range ---
+        $filters['date_from'] = null;
+        $filters['date_to'] = null;
+
+        // "this month"
+        if (preg_match('/\bthis\s+month\b/i', $msg)) {
+            $filters['date_from'] = now()->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->endOfMonth()->format('Y-m-d');
+        }
+        // "last month"
+        elseif (preg_match('/\blast\s+month\b/i', $msg)) {
+            $filters['date_from'] = now()->subMonth()->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->subMonth()->endOfMonth()->format('Y-m-d');
+        }
+        // "this quarter" / "this q"
+        elseif (preg_match('/\bthis\s+quarter\b|\bthis\s+q\b/i', $msg)) {
+            $filters['date_from'] = now()->startOfQuarter()->format('Y-m-d');
+            $filters['date_to'] = now()->endOfQuarter()->format('Y-m-d');
+        }
+        // "last quarter"
+        elseif (preg_match('/\blast\s+quarter\b/i', $msg)) {
+            $filters['date_from'] = now()->subQuarter()->startOfQuarter()->format('Y-m-d');
+            $filters['date_to'] = now()->subQuarter()->endOfQuarter()->format('Y-m-d');
+        }
+        // "Q1".."Q4"
+        elseif (preg_match('/\bq([1-4])\b/i', $msg, $m)) {
+            $q = (int) $m[1];
+            $year = now()->year;
+            $filters['date_from'] = now()->setDate($year, ($q - 1) * 3 + 1, 1)->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->setDate($year, $q * 3, 1)->endOfMonth()->format('Y-m-d');
+        }
+        // "this year" / "ytd"
+        elseif (preg_match('/\bthis\s+year\b|\bytd\b/i', $msg)) {
+            $filters['date_from'] = now()->startOfYear()->format('Y-m-d');
+            $filters['date_to'] = now()->endOfDay()->format('Y-m-d');
+        }
+        // Month names
+        elseif (preg_match('/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i', $msg, $m)) {
+            $monthNum = date('m', strtotime($m[1] . ' 1'));
+            $year = now()->year;
+            $filters['date_from'] = now()->setDate($year, (int) $monthNum, 1)->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->setDate($year, (int) $monthNum, 1)->endOfMonth()->format('Y-m-d');
+        }
+        // Year
+        elseif (preg_match('/\b(20[2-9]\d)\b/', $msg, $m)) {
+            $filters['date_from'] = $m[1] . '-01-01';
+            $filters['date_to'] = $m[1] . '-12-31';
+        }
+        // "last N days/weeks/months"
+        elseif (preg_match('/\blast\s+(\d+)\s+(days?|weeks?|months?)\b/i', $msg, $m)) {
+            $n = (int) $m[1];
+            $unit = strtolower($m[2]);
+            $filters['date_to'] = now()->format('Y-m-d');
+            $filters['date_from'] = match (rtrim($unit, 's')) {
+                'day' => now()->subDays($n)->format('Y-m-d'),
+                'week' => now()->subWeeks($n)->format('Y-m-d'),
+                'month' => now()->subMonths($n)->format('Y-m-d'),
+                default => null,
+            };
+        }
+
+        // --- Fund loss ---
+        if (preg_match('/\bfund\s+loss\b/i', $msg)) {
+            $filters['fund_status'] = ['Confirmed loss'];
+        }
+        // Amount patterns: "over/above/> X million/thousand"
+        if (preg_match('/\b(?:over|above|>|greater\s+than|more\s+than|exceeding)\s*([\d,.]+)\s*(million|m|thousand|k|billion|b)\b/i', $msg, $m)) {
+            $filters['fund_loss_min'] = $this->parseAmount($m[1], $m[2]);
+        }
+        // "under/below/< X million"
+        if (preg_match('/\b(?:under|below|<|less\s+than)\s*([\d,.]+)\s*(million|m|thousand|k|billion|b)\b/i', $msg, $m)) {
+            $filters['fund_loss_max'] = $this->parseAmount($m[1], $m[2]);
+        }
+        // "between X and Y million"
+        if (preg_match('/\bbetween\s*([\d,.]+)\s*(million|m|thousand|k|billion|b)?\s+and\s*([\d,.]+)\s*(million|m|thousand|k|billion|b)\b/i', $msg, $m)) {
+            $filters['fund_loss_min'] = $this->parseAmount($m[1], $m[2] ?? 'million');
+            $filters['fund_loss_max'] = $this->parseAmount($m[3], $m[4]);
+        }
+        // Bare amount with "fund loss" context: "5 million fund loss"
+        if ($filters['fund_loss_min'] === null && preg_match('/([\d,.]+)\s*(million|m|thousand|k)\s+.*\bfund\s+loss\b/i', $msg, $m)) {
+            $filters['fund_loss_min'] = $this->parseAmount($m[1], $m[2]);
+        }
+
+        // --- Fund status ---
+        $fundStatusMap = [
+            'confirmed loss' => 'Confirmed loss',
+            'potential recovery' => 'Potential recovery',
+            'fully recovered' => 'Fully recovered',
+            'non tech loss' => 'Non Tech Loss',
+            'non fundloss' => 'Non fundLoss',
+        ];
+        foreach ($fundStatusMap as $keyword => $status) {
+            if (stripos($msg, $keyword) !== false && $filters['fund_status'] === null) {
+                $filters['fund_status'] = [$status];
+            }
+        }
+
+        // --- Incident type ---
+        if (preg_match('/\bnon[- ]?tech\b/i', $msg)) {
+            $filters['incident_type'] = ['Non-tech'];
+        } elseif (preg_match('/\btech\b/i', $msg) && ! preg_match('/\bnon[- ]?tech\b/i', $msg)) {
+            $filters['incident_type'] = ['Tech'];
+        }
+        if (preg_match('/\bcompany\s+loss\b/i', $msg)) {
+            $filters['incident_type'] = ($filters['incident_type'] ?? null)
+                ? array_unique(array_merge($filters['incident_type'], ['Company Loss']))
+                : ['Company Loss'];
+        }
+
+        // --- Classification ---
+        if (preg_match('/\bissues?\b/i', $msg) && ! preg_match('/\bincidents?\b/i', $msg)) {
+            $filters['classification'] = 'Issue';
+        } elseif (preg_match('/\bincidents?\b/i', $msg) && ! preg_match('/\bissues?\b/i', $msg)) {
+            $filters['classification'] = 'Incident';
+        }
+
+        // --- PIC ---
+        if (preg_match('/\b(?:pic|assigned\s+to|person\s+in\s+charge)\s+(\w+)\b/i', $message, $m)) {
+            $filters['pic_name'] = $m[1];
+        }
+
+        // --- Root cause ---
+        if (preg_match('/\b(?:no|without|missing|lacking)\s+(?:root\s+cause|rca)\b/i', $msg)) {
+            $filters['has_root_cause'] = false;
+        } elseif (preg_match('/\b(?:has|with)\s+(?:root\s+cause|rca)\b/i', $msg)) {
+            $filters['has_root_cause'] = true;
+        }
+
+        // --- Topic detection ---
+        $filters['topic'] = $this->detectTopicPhrase($message);
+
+        return $filters;
+    }
+
+    /**
+     * Parse a numeric amount string with unit multiplier.
+     */
+    private function parseAmount(string $number, string $unit): float
+    {
+        $value = (float) str_replace(',', '', $number);
+        $unit = strtolower(rtrim($unit, 's'));
+
+        return match ($unit) {
+            'k', 'thousand' => $value * 1000,
+            'm', 'million' => $value * 1000000,
+            'b', 'billion' => $value * 1000000000,
+            default => $value,
+        };
+    }
+
+    /**
+     * Detect a topic/product phrase from the user's message.
+     */
+    private function detectTopicPhrase(string $message): string
+    {
+        // Skip pure incident ID references
+        if (preg_match('/^\s*\d{4}_(?:IN|IS)_\d{4}\s*$/', trim($message))) {
+            return '';
+        }
+
+        $msg = strtolower($message);
+
+        // Gather all known category/label terms
+        $knownTerms = collect();
+
+        try {
+            foreach (Category::options(Category::TYPE_BUSINESS_CATEGORY) as $name => $_) {
+                $knownTerms->push($name);
+            }
+            foreach (Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY) as $name => $_) {
+                $knownTerms->push($name);
+            }
+            foreach (Category::options(Category::TYPE_RESPONSIBLE_TEAM) as $name => $_) {
+                $knownTerms->push($name);
+            }
+        } catch (\Throwable $e) {
+            // Categories table may not exist yet
+        }
+
+        $labelNames = Cache::remember('chat_label_names', 300, fn () => Label::pluck('name')->toArray());
+        foreach ($labelNames as $name) {
+            $knownTerms->push($name);
+        }
+
+        // Check for known term match (longest match first)
+        $matched = null;
+        $matchedLen = 0;
+        foreach ($knownTerms as $term) {
+            if (strlen($term) > $matchedLen && stripos($msg, strtolower($term)) !== false) {
+                $matched = $term;
+                $matchedLen = strlen($term);
+            }
+        }
+
+        if ($matched) {
+            return $matched;
+        }
+
+        // Fallback: capitalized phrase (e.g., "DANA Cicil", "Payment Gateway")
+        // Limit to 2 words max, strip common English words
+        if (preg_match('/\b([A-Z][A-Za-z]*(?:\s+[A-Z]?[a-z]+)?)\b/', $message, $match)) {
+            $phrase = trim($match[1]);
+            $skipWords = '/^(the|this|that|how|can|what|when|who|why|show|tell|please|any|all|are|is|was|has|have|hello|hi|hey|good|thanks|sorry|yes|no|ok|okay|help|please|could|would|should|does|did|will|just|also|like|want|need|know|think|sure|maybe|right|really|hello|there|here|much|many|more|some|been|were|being|about|which|their|these|those|other|after|before|every|each|where|going|doing|having|getting|making|taking|coming|looking|working|give|find|get|make|use|try|see|say|new|long|great|little|own|old|big|high|small|large|next|early|young|important|last|different|better|able|incidents?|issues?|open|closed|fund|loss|tech|type|status|severity|month|quarter|year|week|day|pic|team|root|cause|rca|total|count|number|overview|summary|analysis|report|data|list|overview)$/i';
+            if (strlen($phrase) >= 3 && ! preg_match($skipWords, $phrase)) {
+                return $phrase;
+            }
+        }
+
+        return '';
+    }
+
+    /**
+     * Search incidents by topic across title, categories, and labels.
+     */
+    public function searchIncidentsByTopic(string $topic): array
+    {
+        return Cache::remember('chat_topic_' . md5($topic), 300, function () use ($topic) {
+            $excludeQ = fn ($q) => $q->whereNull('fund_status')
+                ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
+
+            // Fuzzy-match category names that contain the topic
+            $fuzzyCategoryNames = [];
+            try {
+                $fuzzyCategoryNames = Category::where('name', 'LIKE', "%{$topic}%")
+                    ->pluck('name')
+                    ->toArray();
+            } catch (\Throwable $e) {
+                // Categories table may not exist
+            }
+
+            // Fuzzy-match label names
+            $fuzzyLabelNames = Label::where('name', 'LIKE', "%{$topic}%")
+                ->pluck('name')
+                ->toArray();
+
+            $incidents = Incident::where($excludeQ)
+                ->where(function ($q) use ($topic, $fuzzyCategoryNames, $fuzzyLabelNames) {
+                    $q->where('title', 'LIKE', "%{$topic}%");
+
+                    // Exact JSON match for the topic itself
+                    $q->orWhereJsonContains('business_category', $topic);
+                    $q->orWhereJsonContains('responsible_team', $topic);
+                    $q->orWhereJsonContains('root_cause_category', $topic);
+
+                    // Fuzzy category matches
+                    foreach ($fuzzyCategoryNames as $catName) {
+                        $q->orWhereJsonContains('business_category', $catName);
+                        $q->orWhereJsonContains('responsible_team', $catName);
+                        $q->orWhereJsonContains('root_cause_category', $catName);
+                    }
+
+                    // Label matches
+                    if (! empty($fuzzyLabelNames)) {
+                        $q->orWhereHas('labels', fn ($lq) => $lq->whereIn('name', $fuzzyLabelNames));
+                    }
+                })
+                ->with(['pic', 'labels'])
+                ->orderByRaw("CASE WHEN title LIKE ? THEN 0 ELSE 1 END", ["%{$topic}%"])
+                ->orderByDesc('incident_date')
+                ->get();
+
+            // Tag each incident with which criteria matched
+            $topicLower = strtolower($topic);
+            $incidents->each(function ($inc) use ($topic, $topicLower, $fuzzyCategoryNames, $fuzzyLabelNames) {
+                $criteria = [];
+
+                if (stripos($inc->title, $topic) !== false) {
+                    $criteria[] = 'title';
+                }
+
+                $jsonFields = [
+                    'business_category' => 'business_category',
+                    'responsible_team' => 'responsible_team',
+                    'root_cause_category' => 'root_cause_category',
+                ];
+
+                foreach ($jsonFields as $field => $label) {
+                    $values = $inc->$field;
+                    if (is_array($values)) {
+                        foreach (array_merge([$topic], $fuzzyCategoryNames) as $catName) {
+                            if (in_array($catName, $values)) {
+                                $criteria[] = $label;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if ($inc->labels->contains(fn ($l) => stripos($l->name, $topic) !== false
+                    || in_array($l->name, $fuzzyLabelNames))) {
+                    $criteria[] = 'label';
+                }
+
+                $inc->match_criteria = $criteria;
+            });
+
+            return [
+                'topic' => $topic,
+                'total' => $incidents->count(),
+                'incidents' => $incidents,
+                'has_column_filters' => false,
+            ];
+        });
+    }
+
+    /**
+     * Execute a structured filter query against incidents.
+     */
+    private function executeFilterQuery(array $filters, array $excludeIds = []): array
+    {
+        $excludeQ = fn ($q) => $q->whereNull('fund_status')
+            ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
+
+        $query = Incident::where($excludeQ);
+
+        // Exclude already-referenced incident IDs
+        if (! empty($excludeIds)) {
+            $excludeDbIds = Incident::whereIn('no', $excludeIds)->pluck('id')->toArray();
+            if (! empty($excludeDbIds)) {
+                $query->whereNotIn('id', $excludeDbIds);
+            }
+        }
+
+        if (! empty($filters['severity'])) {
+            $query->whereIn('severity', $filters['severity']);
+        }
+
+        if (! empty($filters['status'])) {
+            $query->whereIn('incident_status', $filters['status']);
+        }
+
+        if ($filters['date_from'] && $filters['date_to']) {
+            $query->whereBetween('incident_date', [$filters['date_from'], $filters['date_to'] . ' 23:59:59']);
+        }
+
+        if ($filters['fund_loss_min'] !== null) {
+            $query->where('fund_loss', '>=', $filters['fund_loss_min']);
+        }
+
+        if ($filters['fund_loss_max'] !== null) {
+            $query->where('fund_loss', '<=', $filters['fund_loss_max']);
+        }
+
+        if (! empty($filters['fund_status'])) {
+            $query->whereIn('fund_status', $filters['fund_status']);
+        }
+
+        if (! empty($filters['incident_type'])) {
+            $query->whereIn('incident_type', $filters['incident_type']);
+        }
+
+        if ($filters['classification']) {
+            $query->where('classification', $filters['classification']);
+        }
+
+        if ($filters['pic_name']) {
+            $query->whereHas('pic', fn ($pq) => $pq->where('name', 'LIKE', "%{$filters['pic_name']}%"));
+        }
+
+        if ($filters['has_root_cause'] === false) {
+            $query->whereNull('root_cause');
+        } elseif ($filters['has_root_cause'] === true) {
+            $query->whereNotNull('root_cause');
+        }
+
+        // Topic search: add cross-field OR clauses
+        if (! empty($filters['topic'])) {
+            $topic = $filters['topic'];
+            $fuzzyCategoryNames = [];
+            try {
+                $fuzzyCategoryNames = Category::where('name', 'LIKE', "%{$topic}%")->pluck('name')->toArray();
+            } catch (\Throwable $e) {
+                //
+            }
+            $fuzzyLabelNames = Label::where('name', 'LIKE', "%{$topic}%")->pluck('name')->toArray();
+
+            $query->where(function ($q) use ($topic, $fuzzyCategoryNames, $fuzzyLabelNames) {
+                $q->where('title', 'LIKE', "%{$topic}%");
+                $q->orWhereJsonContains('business_category', $topic);
+                $q->orWhereJsonContains('responsible_team', $topic);
+                $q->orWhereJsonContains('root_cause_category', $topic);
+
+                foreach ($fuzzyCategoryNames as $catName) {
+                    $q->orWhereJsonContains('business_category', $catName);
+                    $q->orWhereJsonContains('responsible_team', $catName);
+                    $q->orWhereJsonContains('root_cause_category', $catName);
+                }
+
+                if (! empty($fuzzyLabelNames)) {
+                    $q->orWhereHas('labels', fn ($lq) => $lq->whereIn('name', $fuzzyLabelNames));
+                }
+            });
+        }
+
+        $incidents = $query->with(['pic', 'labels'])
+            ->orderByDesc('incident_date')
+            ->get();
+
+        // Tag with match criteria for topic-based results
+        if (! empty($filters['topic'])) {
+            $topic = $filters['topic'];
+            $incidents->each(function ($inc) use ($topic) {
+                $criteria = [];
+                if (stripos($inc->title, $topic) !== false) {
+                    $criteria[] = 'title';
+                }
+                if (is_array($inc->business_category) && in_array($topic, $inc->business_category)) {
+                    $criteria[] = 'business_category';
+                }
+                if (is_array($inc->responsible_team) && in_array($topic, $inc->responsible_team)) {
+                    $criteria[] = 'responsible_team';
+                }
+                if (is_array($inc->root_cause_category) && in_array($topic, $inc->root_cause_category)) {
+                    $criteria[] = 'root_cause_category';
+                }
+                if ($inc->labels->contains(fn ($l) => stripos($l->name, $topic) !== false)) {
+                    $criteria[] = 'label';
+                }
+                $inc->match_criteria = $criteria;
+            });
+        }
+
+        return [
+            'topic' => $filters['topic'],
+            'total' => $incidents->count(),
+            'incidents' => $incidents,
+            'has_column_filters' => true,
+        ];
+    }
+
+    /**
+     * Format search results with tiered detail based on count.
+     */
+    private function formatSmartSearchContext(array $results, array $filters): string
+    {
+        $total = $results['total'];
+        $incidents = $results['incidents'];
+        $hasColumnFilters = $results['has_column_filters'] ?? false;
+
+        // Build filter description
+        $filterDesc = [];
+        if (! empty($filters['severity'])) {
+            $filterDesc[] = 'severity=' . implode('/', $filters['severity']);
+        }
+        if (! empty($filters['status'])) {
+            $filterDesc[] = 'status=' . implode('/', $filters['status']);
+        }
+        if ($filters['date_from'] && $filters['date_to']) {
+            $filterDesc[] = "date={$filters['date_from']} to {$filters['date_to']}";
+        }
+        if ($filters['fund_loss_min'] !== null) {
+            $filterDesc[] = 'fund_loss>=' . number_format($filters['fund_loss_min'], 0, ',', '.');
+        }
+        if ($filters['fund_loss_max'] !== null) {
+            $filterDesc[] = 'fund_loss<=' . number_format($filters['fund_loss_max'], 0, ',', '.');
+        }
+        if (! empty($filters['fund_status'])) {
+            $filterDesc[] = 'fund_status=' . implode('/', $filters['fund_status']);
+        }
+        if (! empty($filters['incident_type'])) {
+            $filterDesc[] = 'type=' . implode('/', $filters['incident_type']);
+        }
+        if ($filters['classification']) {
+            $filterDesc[] = 'class=' . $filters['classification'];
+        }
+        if (! empty($filters['topic'])) {
+            $filterDesc[] = 'topic="' . $filters['topic'] . '"';
+        }
+        if ($filters['has_root_cause'] === false) {
+            $filterDesc[] = 'no_root_cause';
+        } elseif ($filters['has_root_cause'] === true) {
+            $filterDesc[] = 'has_root_cause';
+        }
+
+        $filterStr = $filterDesc ? ' | Filters: ' . implode(', ', $filterDesc) : '';
+        $header = "## Smart Search Results ({$total} incidents found){$filterStr}\n";
+
+        // Match breakdown (for topic searches)
+        if (! empty($filters['topic']) && $incidents->isNotEmpty()) {
+            $byCriteria = $incidents->flatMap->match_criteria
+                ->groupBy(fn ($c) => $c)
+                ->map->count();
+            $header .= 'Match breakdown: ' . $byCriteria->map(fn ($c, $n) => "{$n}={$c}")->implode(', ') . "\n";
+        }
+        $header .= "\n";
+
+        if ($total === 0) {
+            return $header . "No incidents found matching the specified criteria.";
+        }
+
+        // Full detail: 1–15 matches
+        if ($total <= 15) {
+            $lines = $incidents->map(function ($inc) {
+                $labels = $inc->labels->pluck('name')->implode(', ') ?: 'None';
+                $pic = $inc->pic?->name ?? 'Unassigned';
+                $fundLoss = $inc->fund_loss > 0 ? ' | Fund Loss: Rp ' . number_format($inc->fund_loss, 0, ',', '.') : '';
+                $bizCat = $inc->business_category ? ' | BizCat: ' . implode(', ', $inc->business_category) : '';
+                $team = $inc->responsible_team ? ' | Team: ' . implode(', ', $inc->responsible_team) : '';
+                $rcCat = $inc->root_cause_category ? ' | RCCat: ' . implode(', ', $inc->root_cause_category) : '';
+                $criteria = ! empty($inc->match_criteria) ? ' | matched_via: ' . implode('+', $inc->match_criteria) : '';
+
+                return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | id:{$inc->id} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_type} | PIC: {$pic} | Date: {$inc->incident_date?->format('Y-m-d')}{$fundLoss} | MTTR: {$inc->mttr} | Labels: {$labels}{$bizCat}{$team}{$rcCat}{$criteria}";
+            })->implode("\n");
+
+            return $header . $lines;
+        }
+
+        // Compact: 16–50 matches
+        if ($total <= 50) {
+            $lines = $incidents->map(function ($inc) {
+                $pic = $inc->pic?->name ?? 'Unassigned';
+                $fundLoss = $inc->fund_loss > 0 ? ' | Loss: Rp ' . number_format($inc->fund_loss, 0, ',', '.') : '';
+                $criteria = ! empty($inc->match_criteria) ? ' | via: ' . implode('+', $inc->match_criteria) : '';
+
+                return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_type} | PIC: {$pic} | {$inc->incident_date?->format('Y-m-d')}{$fundLoss}{$criteria}";
+            })->implode("\n");
+
+            return $header . $lines;
+        }
+
+        // Summary: 51+ matches
+        $sevDist = $incidents->groupBy('severity')->map->count()->sortDesc();
+        $statusDist = $incidents->groupBy('incident_status')->map->count()->sortDesc();
+        $typeDist = $incidents->groupBy('incident_type')->map->count()->sortDesc();
+        $totalLoss = $incidents->sum('fund_loss');
+        $sample = $incidents->take(10);
+
+        $summary = "### Summary ({$total} results — too many to list individually)\n"
+            . "Severity: " . $sevDist->map(fn ($c, $s) => "{$s}={$c}")->implode(', ') . "\n"
+            . "Status: " . $statusDist->map(fn ($c, $s) => "{$s}={$c}")->implode(', ') . "\n"
+            . "Type: " . $typeDist->map(fn ($c, $t) => "{$t}={$c}")->implode(', ') . "\n"
+            . "Total Fund Loss: Rp " . number_format($totalLoss, 0, ',', '.') . "\n\n"
+            . "### Sample (10 most recent):\n"
+            . $sample->map(fn ($inc) => "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_date?->format('Y-m-d')}")->implode("\n");
+
+        return $header . $summary;
     }
 
     private function getExecutiveSummaryContext(): string

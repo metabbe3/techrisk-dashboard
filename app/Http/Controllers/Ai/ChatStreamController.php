@@ -39,11 +39,50 @@ class ChatStreamController
             }, 429, ['Content-Type' => 'text/event-stream']);
         }
 
-        // Detect slash commands
+        // Detect slash command for title extraction (before conversation creation)
         $slashCommand = null;
+        $slashArgs = '';
         if (preg_match('/^\/(\w+)(?:\s+(.*))?/', $userMessage, $match)) {
             $slashCommand = strtolower($match[1]);
             $slashArgs = $match[2] ?? '';
+        }
+
+        // Resolve conversation
+        $conversation = $conversationId
+            ? ChatConversation::where('id', $conversationId)->where('user_id', auth()->id())->firstOrFail()
+            : ChatConversation::create([
+                'user_id' => auth()->id(),
+                'title' => $slashCommand ? '/'.$slashCommand : mb_substr($request->input('message'), 0, 80),
+                'model' => $model,
+            ]);
+
+        $userMsg = ChatMessage::create([
+            'conversation_id' => $conversation->id,
+            'role' => 'user',
+            'content' => $request->input('message'),
+            'created_at' => now(),
+        ]);
+
+        // Load history BEFORE enrichment so /search can use conversation context
+        $history = $conversation->messages()
+            ->orderBy('created_at', 'desc')
+            ->take(config('ai.chat_max_history', 20))
+            ->get()
+            ->reverse()
+            ->values()
+            ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content])
+            ->toArray();
+
+        // If no referenced incidents sent, scan conversation history for previously mentioned IDs
+        if (empty($referencedIds)) {
+            $historyText = collect($history)->map(fn ($m) => $m['content'])->implode(' ');
+            if (preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $historyText, $historyMatches)) {
+                $referencedIds = array_unique($historyMatches[0]);
+            }
+        }
+
+        // NOW enrich with slash commands (has full history context)
+        if ($slashCommand) {
             $commands = config('ai.chat_slash_commands', []);
             if (isset($commands[$slashCommand])) {
                 $enriched = $this->contextService->enrichSlashCommand($slashCommand, $slashArgs, $referencedIds);
@@ -63,34 +102,9 @@ class ChatStreamController
             }
         }
 
-        // Resolve conversation
-        $conversation = $conversationId
-            ? ChatConversation::where('id', $conversationId)->where('user_id', auth()->id())->firstOrFail()
-            : ChatConversation::create([
-                'user_id' => auth()->id(),
-                'title' => $slashCommand ? '/'.$slashCommand : mb_substr($request->input('message'), 0, 80),
-                'model' => $model,
-            ]);
-
-        $userMsg = ChatMessage::create([
-            'conversation_id' => $conversation->id,
-            'role' => 'user',
-            'content' => $request->input('message'),
-            'created_at' => now(),
-        ]);
-
         // Build API messages
-        $systemPrompt = $this->contextService->buildSystemPrompt($userMessage);
+        $systemPrompt = $this->contextService->buildSystemPrompt($userMessage, $referencedIds);
         $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
-
-        $history = $conversation->messages()
-            ->orderBy('created_at', 'desc')
-            ->take(config('ai.chat_max_history', 20))
-            ->get()
-            ->reverse()
-            ->values()
-            ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content])
-            ->toArray();
 
         foreach ($history as $msg) {
             $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
