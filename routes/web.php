@@ -4,6 +4,14 @@ use App\Http\Controllers\Ai\AiSearchController;
 use App\Http\Controllers\Ai\AnalyzeRootCauseController;
 use App\Http\Controllers\Ai\AnalyzeTrendsController;
 use App\Http\Controllers\Ai\ApplyLabelsController;
+use App\Http\Controllers\Ai\ChatCreateController;
+use App\Http\Controllers\Ai\ChatFinalizeController;
+use App\Http\Controllers\Ai\ChatStreamController;
+use App\Http\Controllers\Ai\ChatMessageFeedbackController;
+use App\Http\Controllers\Ai\ChatDeleteController;
+use App\Http\Controllers\Ai\ChatListController;
+use App\Http\Controllers\Ai\ChatMessagesController;
+use App\Http\Controllers\Ai\ChatSendController;
 use App\Http\Controllers\Ai\DetectSimilarController;
 use App\Http\Controllers\Ai\GenerateWeeklySummaryController;
 use App\Http\Controllers\Ai\SuggestLabelsController;
@@ -44,6 +52,69 @@ Route::post('/admin/ai/analyze-trends', AnalyzeTrendsController::class)
 Route::post('/admin/ai/search', AiSearchController::class)
     ->middleware(['auth', 'can:manage incidents', 'ai.available:filters,explanation'])
     ->name('ai.search');
+
+// AI Chat Assistant
+Route::post('/admin/ai/chat/stream', ChatStreamController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.stream');
+Route::post('/admin/ai/chat/finalize', ChatFinalizeController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.finalize');
+Route::post('/admin/ai/chat/send', ChatSendController::class)
+    ->middleware(['auth', 'can:manage incidents', 'ai.available:message,conversation_id'])
+    ->name('ai.chat.send');
+Route::get('/admin/ai/chat/conversations', ChatListController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.conversations');
+Route::post('/admin/ai/chat/conversations', ChatCreateController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.create');
+Route::delete('/admin/ai/chat/conversations/{id}', ChatDeleteController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.delete');
+Route::post('/admin/ai/chat/messages/{id}/feedback', ChatMessageFeedbackController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.feedback');
+Route::get('/admin/ai/chat/conversations/{id}/messages', ChatMessagesController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.messages');
+Route::post('/admin/ai/chat/refresh-context', function () {
+    app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
+    return response()->json([
+        'success' => true,
+        'freshness' => app(\App\Services\Ai\ChatContextService::class)->getDataFreshness(),
+    ]);
+})
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.refresh-context');
+
+Route::get('/admin/ai/chat/incident-search', function (\Illuminate\Http\Request $request) {
+    $q = $request->input('q', '');
+    if (strlen($q) < 2) {
+        return response()->json(['incidents' => []]);
+    }
+
+    $incidents = \App\Models\Incident::where('no', 'LIKE', "%{$q}%")
+        ->orWhere('title', 'LIKE', "%{$q}%")
+        ->orWhere('summary', 'LIKE', "%{$q}%")
+        ->with('pic')
+        ->orderBy('incident_date', 'desc')
+        ->limit(10)
+        ->get()
+        ->map(fn ($inc) => [
+            'no' => $inc->no,
+            'title' => $inc->title ?? 'Untitled',
+            'severity' => $inc->severity,
+            'status' => $inc->incident_status,
+            'date' => $inc->incident_date?->format('Y-m-d'),
+            'pic' => $inc->pic?->name,
+            'classification' => $inc->classification,
+        ]);
+
+    return response()->json(['incidents' => $incidents]);
+})
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.chat.incident-search');
 
 Route::redirect('/', '/admin/login');
 

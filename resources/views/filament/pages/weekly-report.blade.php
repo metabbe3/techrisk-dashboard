@@ -166,7 +166,7 @@
                                                     $sevColor = $sevEnum ? $sevEnum->color() : 'gray';
                                                     $statusEnum = \App\Enums\IncidentStatus::tryFrom($incident->incident_status);
                                                     $statusColor = $statusEnum ? $statusEnum->color() : 'gray';
-                                                    $incidentUrl = route('filament.admin.resources.incidents.view', ['record' => $incident->no]);
+                                                    $incidentUrl = route('filament.admin.resources.incidents.view', ['record' => $incident->id]);
                                                 @endphp
                                                 <div class="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-sm hover:shadow-md transition-shadow">
                                                     <div class="px-4 py-3">

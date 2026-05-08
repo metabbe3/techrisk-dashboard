@@ -1,3 +1,4 @@
+c
 #!/bin/bash
 # fix-production.sh - Run this on the production server to fix 500 errors
 
