@@ -153,7 +153,7 @@
                         <div class="ai-chat-typing">
                             <span></span><span></span><span></span>
                         </div>
-                        <span class="text-xs text-gray-400" x-show="elapsed > 0" x-text="elapsed + 's'"></span>
+                        <span class="text-xs text-gray-400" x-ref="elapsedDisplay" x-show="loading" x-text="''"></span>
                         <button @click="stopGeneration()" class="ai-chat-stop-btn">
                             <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
                             Stop
@@ -245,6 +245,9 @@
 <script>
 function aiChat() {
     const slashCommands = {{ Js::from(config('ai.chat_slash_commands', [])) }};
+    // Non-reactive internal state (won't trigger Alpine re-renders)
+    let _elapsed = 0;
+    let _timer = null;
 
     return {
         conversations: [],
@@ -252,8 +255,6 @@ function aiChat() {
         messages: [],
         inputText: '',
         loading: false,
-        elapsed: 0,
-        timer: null,
         selectedModel: '{{ $defaultModel }}',
         models: {{ Js::from($models) }},
         showSidebar: false,
@@ -297,7 +298,7 @@ function aiChat() {
             });
 
             document.addEventListener('livewire:navigating', () => {
-                if (this.timer) clearInterval(this.timer);
+                if (_timer) clearInterval(_timer);
             });
         },
 
@@ -411,8 +412,8 @@ function aiChat() {
             // Safety: reset stuck loading state
             if (this.loading) {
                 this.loading = false;
-                if (this.timer) { clearInterval(this.timer); this.timer = null; }
-                this.elapsed = 0;
+                if (_timer) { clearInterval(_timer); _timer = null; }
+                _elapsed = 0;
             }
 
             this.slashActive = false;
@@ -433,9 +434,13 @@ function aiChat() {
             this.scrollToBottom();
 
             this.loading = true;
-            this.elapsed = 0;
+            _elapsed = 0;
             this.lastUserMessage = text;
-            this.timer = setInterval(() => this.elapsed++, 1000);
+            const elapsedRef = this.$refs.elapsedDisplay;
+            _timer = setInterval(() => {
+                _elapsed++;
+                if (elapsedRef) elapsedRef.textContent = _elapsed + 's';
+            }, 1000);
             this.abortController = new AbortController();
 
             try {
@@ -480,10 +485,11 @@ function aiChat() {
                 }
 
                 if (data.success && data.assistant_message) {
-                    // Update temp user message with real ID
+                    // Update temp user message with real ID (new array to preserve key tracking)
                     if (data.user_message) {
-                        const idx = this.messages.findIndex(m => m.id === userMsg.id);
-                        if (idx !== -1) this.messages[idx].id = data.user_message.id;
+                        this.messages = this.messages.map(m =>
+                            m.id === userMsg.id ? { ...m, id: data.user_message.id } : m
+                        );
                     }
 
                     // Push assistant message and force Alpine to render
@@ -532,8 +538,8 @@ function aiChat() {
                 }];
             } finally {
                 this.loading = false;
-                if (this.timer) { clearInterval(this.timer); this.timer = null; }
-                this.elapsed = 0;
+                if (_timer) { clearInterval(_timer); _timer = null; }
+                _elapsed = 0;
                 this.showIncidentPicker = false;
                 this.$nextTick(() => this.scrollToBottom());
             }
@@ -545,8 +551,8 @@ function aiChat() {
                 this.abortController = null;
             }
             this.loading = false;
-            if (this.timer) { clearInterval(this.timer); this.timer = null; }
-            this.elapsed = 0;
+            if (_timer) { clearInterval(_timer); _timer = null; }
+            _elapsed = 0;
         },
 
         copyMessage(content) {
