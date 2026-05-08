@@ -19,7 +19,7 @@ class AiChat extends Page
 
     public static function canAccess(): bool
     {
-        return Auth::check() && Auth::user()->can('manage incidents');
+        return Auth::check() && Auth::user()->can('access ai chat');
     }
 
     public function getViewData(): array

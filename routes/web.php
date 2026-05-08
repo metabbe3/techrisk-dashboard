@@ -55,28 +55,28 @@ Route::post('/admin/ai/search', AiSearchController::class)
 
 // AI Chat Assistant
 Route::post('/admin/ai/chat/stream', ChatStreamController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.stream');
 Route::post('/admin/ai/chat/finalize', ChatFinalizeController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.finalize');
 Route::post('/admin/ai/chat/send', ChatSendController::class)
-    ->middleware(['auth', 'can:manage incidents', 'ai.available:message,conversation_id'])
+    ->middleware(['auth', 'can:access ai chat', 'ai.available:message,conversation_id'])
     ->name('ai.chat.send');
 Route::get('/admin/ai/chat/conversations', ChatListController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.conversations');
 Route::post('/admin/ai/chat/conversations', ChatCreateController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.create');
 Route::delete('/admin/ai/chat/conversations/{id}', ChatDeleteController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.delete');
 Route::post('/admin/ai/chat/messages/{id}/feedback', ChatMessageFeedbackController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.feedback');
 Route::get('/admin/ai/chat/conversations/{id}/messages', ChatMessagesController::class)
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.messages');
 Route::post('/admin/ai/chat/refresh-context', function () {
     app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
@@ -85,7 +85,7 @@ Route::post('/admin/ai/chat/refresh-context', function () {
         'freshness' => app(\App\Services\Ai\ChatContextService::class)->getDataFreshness(),
     ]);
 })
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.refresh-context');
 
 Route::get('/admin/ai/chat/incident-search', function (\Illuminate\Http\Request $request) {
@@ -113,7 +113,7 @@ Route::get('/admin/ai/chat/incident-search', function (\Illuminate\Http\Request 
 
     return response()->json(['incidents' => $incidents]);
 })
-    ->middleware(['auth', 'can:manage incidents'])
+    ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.incident-search');
 
 Route::redirect('/', '/admin/login');
