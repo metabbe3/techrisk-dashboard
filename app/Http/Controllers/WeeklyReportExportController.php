@@ -52,11 +52,10 @@ class WeeklyReportExportController extends Controller
         $weeks = $this->getCustomWeeks($year);
 
         // Load all incidents for the year in a single query
-        // Exclude 'Potential recovery' fund status from weekly report
         $allIncidents = Incident::where('classification', 'Incident')
             ->whereYear('incident_date', $year)
             ->where(fn ($query) => $query->whereNull('fund_status')
-                ->orWhere('fund_status', '!=', 'Potential recovery'))
+                ->orWhereNotIn('fund_status', \App\Enums\FundStatus::EXCLUDED_FROM_COUNTS))
             ->get();
 
         foreach ($weeks as $weekNumber => $dateRange) {

@@ -22,6 +22,8 @@ class Incident extends Model implements Auditable
         'All Cases' => 'mtbf',
         'Fund Loss' => 'mtbf_fund_loss',
         'Potential Recovery' => 'mtbf_potential_recovery',
+        'Fully Recovered' => 'mtbf_fully_recovered',
+        'Non Tech Loss' => 'mtbf_non_tech_loss',
         'Non Fund Loss' => 'mtbf_non_fund_loss',
         'Non Incident' => 'mtbf_non_incident',
         'Completed Cases' => 'mtbf_completed',
@@ -82,6 +84,8 @@ class Incident extends Model implements Auditable
         'mtbf_fund_loss',
         'mtbf_non_fund_loss',
         'mtbf_potential_recovery',
+        'mtbf_fully_recovered',
+        'mtbf_non_tech_loss',
         'mtbf_non_incident',
         'mtbf_all',
     ];
@@ -111,6 +115,8 @@ class Incident extends Model implements Auditable
         'mtbf_fund_loss' => 'decimal:2',
         'mtbf_non_fund_loss' => 'decimal:2',
         'mtbf_potential_recovery' => 'decimal:2',
+        'mtbf_fully_recovered' => 'decimal:2',
+        'mtbf_non_tech_loss' => 'decimal:2',
         'mtbf_non_incident' => 'decimal:2',
         'mtbf_all' => 'decimal:2',
     ];
@@ -259,6 +265,6 @@ class Incident extends Model implements Auditable
      */
     public function shouldCalculateMttrByDays(): bool
     {
-        return in_array($this->fund_status, ['Confirmed loss', 'Potential recovery']);
+        return in_array($this->fund_status, ['Confirmed loss', 'Potential recovery', 'Fully recovered', 'Non Tech Loss']);
     }
 }

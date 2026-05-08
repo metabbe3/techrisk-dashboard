@@ -64,7 +64,7 @@ class IncidentStatsOverview extends BaseWidget
             }
         }
 
-        $mtbfFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->whereIn('fund_status', ['Confirmed loss', 'Potential recovery']);
+        $mtbfFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('fund_status', 'Confirmed loss');
         $mtbfFundLossCount = $mtbfFundLossQuery->count();
         $mtbfFundLoss = 0;
         if ($mtbfFundLossCount > 1) {

@@ -116,7 +116,7 @@ class WeeklyReport extends Page implements HasForms
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(fn ($query) => $query->whereNull('fund_status')
-                ->orWhere('fund_status', '!=', FundStatus::PotentialRecovery->value))
+                ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
             ->with(['pic', 'labels'])
             ->orderBy('incident_date', 'desc')
             ->get();

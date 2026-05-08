@@ -165,7 +165,7 @@ class RecalculateIncidentMetricsCommand extends Command
         }
 
         // Check if should calculate by days based on fund_status
-        $calculateByDays = in_array($incident->fund_status, ['Confirmed loss', 'Potential recovery']);
+        $calculateByDays = in_array($incident->fund_status, ['Confirmed loss', 'Potential recovery', 'Fully recovered', 'Non Tech Loss']);
 
         if ($calculateByDays) {
             // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
@@ -241,6 +241,8 @@ class RecalculateIncidentMetricsCommand extends Command
             'fund_loss' => ['fund_status' => 'Confirmed loss'],
             'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
             'potential_recovery' => ['fund_status' => 'Potential recovery'],
+            'fully_recovered' => ['fund_status' => 'Fully recovered'],
+            'non_tech_loss' => ['fund_status' => 'Non Tech Loss'],
             'non_incident' => ['severity' => 'Non Incident'],
         ];
 

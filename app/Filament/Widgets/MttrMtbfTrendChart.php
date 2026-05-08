@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -77,7 +78,7 @@ class MttrMtbfTrendChart extends ChartWidget
             // MTBF Fund Loss per month
             $mtbfFundRows = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->whereIn('fund_status', ['Confirmed loss', 'Potential recovery'])
+                ->where('fund_status', 'Confirmed loss')
                 ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw('MONTH(incident_date)'))
                 ->get();

@@ -230,6 +230,8 @@ class IncidentResource extends Resource
                                 'Non-Tech Incidents' => $query->where('incident_type', 'Non-tech'),
                                 'Fund Loss' => $query->where('fund_status', 'Confirmed loss'),
                                 'Potential Recovery' => $query->where('fund_status', 'Potential recovery'),
+                                'Fully Recovered' => $query->where('fund_status', 'Fully recovered'),
+                                'Non Tech Loss' => $query->where('fund_status', 'Non Tech Loss'),
                                 'Non Fund Loss' => $query->where('fund_status', 'Non fundLoss'),
                                 'Non Incident' => $query->where('severity', 'Non Incident'),
                                 default => null,

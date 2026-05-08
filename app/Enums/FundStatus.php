@@ -13,6 +13,10 @@ enum FundStatus: string
     case NonFundLoss = 'Non fundLoss';
     case ConfirmedLoss = 'Confirmed loss';
     case PotentialRecovery = 'Potential recovery';
+    case FullyRecovered = 'Fully recovered';
+    case NonTechLoss = 'Non Tech Loss';
+
+    public const EXCLUDED_FROM_COUNTS = ['Potential recovery', 'Fully recovered', 'Non Tech Loss'];
 
     public function color(): string
     {
@@ -20,6 +24,8 @@ enum FundStatus: string
             self::ConfirmedLoss => 'danger',
             self::NonFundLoss => 'success',
             self::PotentialRecovery => 'warning',
+            self::FullyRecovered => 'teal',
+            self::NonTechLoss => 'gray',
         };
     }
 
@@ -29,6 +35,8 @@ enum FundStatus: string
             self::ConfirmedLoss => 'Fund Loss',
             self::NonFundLoss => 'Non Fund Loss',
             self::PotentialRecovery => 'Potential Recovery',
+            self::FullyRecovered => 'Fully Recovered',
+            self::NonTechLoss => 'Non Tech Loss',
         };
     }
 

@@ -217,6 +217,8 @@ class CalculateIncidentMetrics implements ShouldQueue
             'fund_loss' => ['fund_status' => 'Confirmed loss'],
             'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
             'potential_recovery' => ['fund_status' => 'Potential recovery'],
+            'fully_recovered' => ['fund_status' => 'Fully recovered'],
+            'non_tech_loss' => ['fund_status' => 'Non Tech Loss'],
             'non_incident' => ['severity' => 'Non Incident'],
         ];
 
@@ -315,6 +317,8 @@ class CalculateIncidentMetrics implements ShouldQueue
             'fund_loss' => ['fund_status' => 'Confirmed loss'],
             'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
             'potential_recovery' => ['fund_status' => 'Potential recovery'],
+            'fully_recovered' => ['fund_status' => 'Fully recovered'],
+            'non_tech_loss' => ['fund_status' => 'Non Tech Loss'],
             'non_incident' => ['severity' => 'Non Incident'],
         ];
 

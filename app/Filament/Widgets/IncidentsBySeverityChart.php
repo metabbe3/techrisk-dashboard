@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -60,7 +61,7 @@ class IncidentsBySeverityChart extends Widget
                 ->where('classification', 'Incident')
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->where(fn ($query) => $query->whereNull('fund_status')
-                    ->orWhere('fund_status', '!=', 'Potential recovery'));
+                    ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS));
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Filament\Concerns\HasChartColors;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -29,7 +30,8 @@ class IncidentsByTypeChart extends ChartWidget
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
-            $query = Incident::select('incident_type', \DB::raw('count(*) as total'));
+            $query = Incident::select('incident_type', \DB::raw('count(*) as total'))
+                ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS));
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

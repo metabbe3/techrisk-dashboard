@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Filament\Concerns\HasChartColors;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -33,6 +34,7 @@ class IncidentsByPicChart extends ChartWidget
             $query = Incident::query()
                 ->select('users.name as pic_name', DB::raw('count(incidents.id) as total'))
                 ->join('users', 'incidents.pic_id', '=', 'users.id')
+                ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
                 ->groupBy('users.name');
 
             if ($this->start_date && $this->end_date) {

@@ -200,6 +200,10 @@ class ListIncidents extends ListRecords
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::ConfirmedLoss->value)),
             'Potential Recovery' => Tab::make()
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::PotentialRecovery->value)),
+            'Fully Recovered' => Tab::make()
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::FullyRecovered->value)),
+            'Non Tech Loss' => Tab::make()
+                ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::NonTechLoss->value)),
             'Non Fund Loss' => Tab::make()
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('fund_status', FundStatus::NonFundLoss->value)),
             'Non Incident' => Tab::make()
