@@ -105,11 +105,14 @@
                     </div>
                     <div class="ai-chat-msg-content" :class="msg.role">
                         <template x-if="msg.role === 'user'">
-                            <p class="text-sm" x-text="msg.content"></p>
+                            <div>
+                                <p class="text-sm" x-text="msg.content"></p>
+                                <p class="text-[10px] text-indigo-200 mt-1.5 opacity-0 hover:opacity-100 transition-opacity" x-text="new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></p>
+                            </div>
                         </template>
                         <template x-if="msg.role === 'assistant'">
                             <div>
-                                <div class="ai-chat-msg-text text-sm prose prose-sm dark:prose-invert max-w-none" x-html="renderMarkdown(msg.content)"></div>
+                                <div class="ai-chat-msg-text text-sm prose prose-sm dark:prose-invert max-w-none" x-html="msg.parsedHtml"></div>
                                 <div class="flex items-center gap-2 mt-2">
                                     <span x-show="msg.model" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400" x-text="msg.model"></span>
                                     <span x-show="msg.tokens_used" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400" x-text="msg.prompt_tokens ? msg.prompt_tokens + '→' + msg.completion_tokens + ' (' + msg.tokens_used + ')' : msg.tokens_used + ' tokens'"></span>
@@ -153,7 +156,7 @@
                         <div class="ai-chat-typing">
                             <span></span><span></span><span></span>
                         </div>
-                        <span class="text-xs text-gray-400" x-ref="elapsedDisplay" x-show="loading" x-text="''"></span>
+                        <span class="text-xs text-gray-400" x-ref="elapsedDisplay" x-show="loading"></span>
                         <button @click="stopGeneration()" class="ai-chat-stop-btn">
                             <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
                             Stop
@@ -237,7 +240,7 @@
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
                 </button>
             </div>
-            <p class="text-[10px] text-gray-400 text-center mt-1.5">AI can make mistakes. Verify important data. <span x-text="'Model: ' + selectedModelLabel"></span></p>
+            <p class="text-[10px] text-gray-400 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span></p>
         </div>
     </div>
 </div>
@@ -248,6 +251,24 @@ function aiChat() {
     // Non-reactive internal state (won't trigger Alpine re-renders)
     let _elapsed = 0;
     let _timer = null;
+
+    // Markdown parser — caches result on message objects
+    function parseMd(text) {
+        if (!text) return '';
+        if (typeof marked !== 'undefined') {
+            try { return marked.parse(text, { breaks: true, gfm: true }); }
+            catch { return text.replace(/\n/g, '<br>'); }
+        }
+        return text.replace(/\n/g, '<br>');
+    }
+
+    // Enrich a message object with parsedHtml
+    function withHtml(msg) {
+        if (msg.role === 'assistant' && !msg.parsedHtml) {
+            msg.parsedHtml = parseMd(msg.content);
+        }
+        return msg;
+    }
 
     return {
         conversations: [],
@@ -292,10 +313,12 @@ function aiChat() {
             this.loadConversations();
             if (window.innerWidth >= 1024) this.showSidebar = true;
 
-            mermaid.initialize({
-                startOnLoad: false,
-                theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
-            });
+            if (typeof mermaid !== 'undefined') {
+                mermaid.initialize({
+                    startOnLoad: false,
+                    theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
+                });
+            }
 
             document.addEventListener('livewire:navigating', () => {
                 if (_timer) clearInterval(_timer);
@@ -372,7 +395,7 @@ function aiChat() {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    this.messages = data.messages;
+                    this.messages = data.messages.map(m => withHtml(m));
                     if (data.conversation?.model) this.selectedModel = data.conversation.model;
                     this.restoreReferencedIncidents();
                     this.$nextTick(() => { this.scrollToBottom(); this.scheduleMermaidRender(); });
@@ -436,10 +459,10 @@ function aiChat() {
             this.loading = true;
             _elapsed = 0;
             this.lastUserMessage = text;
-            const elapsedRef = this.$refs.elapsedDisplay;
             _timer = setInterval(() => {
                 _elapsed++;
-                if (elapsedRef) elapsedRef.textContent = _elapsed + 's';
+                const el = document.querySelector('[x-ref="elapsedDisplay"]');
+                if (el) el.textContent = _elapsed + 's';
             }, 1000);
             this.abortController = new AbortController();
 
@@ -474,68 +497,62 @@ function aiChat() {
                     data = JSON.parse(responseText);
                 } catch (parseError) {
                     console.error('Failed to parse response:', parseError);
-                    this.messages = [...this.messages, {
+                    this.messages = [...this.messages, withHtml({
                         id: 'error-' + Date.now(),
                         role: 'assistant',
                         content: '⚠️ Server returned an invalid response. Please try again.',
                         model: null,
                         created_at: new Date().toISOString(),
-                    }];
+                    })];
                     return;
                 }
 
                 if (data.success && data.assistant_message) {
-                    // Update temp user message with real ID (new array to preserve key tracking)
-                    if (data.user_message) {
-                        this.messages = this.messages.map(m =>
-                            m.id === userMsg.id ? { ...m, id: data.user_message.id } : m
-                        );
-                    }
-
-                    // Push assistant message and force Alpine to render
-                    this.messages = [...this.messages, {
+                    // Append assistant message only — keep temp user ID to avoid key changes
+                    this.messages = [...this.messages, withHtml({
                         ...data.assistant_message,
                         copied: false,
-                    }];
-                    await this.$nextTick();
-                    this.scheduleMermaidRender();
+                    })];
 
-                    if (!this.activeConversationId && data.conversation_id) {
-                        this.activeConversationId = data.conversation_id;
-                    }
-
-                    if (data.updated_title) {
-                        const conv = this.conversations.find(c => c.id === data.conversation_id);
-                        if (conv) conv.title = data.updated_title;
-                    }
-
-                    if (data.data_freshness) {
-                        this.dataFreshness = data.data_freshness;
-                    }
-
-                    // Fire and forget — don't block rendering
-                    this.loadConversations();
+                    // Defer all side effects so Alpine processes the message change cleanly
+                    const payload = data;
+                    setTimeout(() => {
+                        if (!this.activeConversationId && payload.conversation_id) {
+                            this.activeConversationId = payload.conversation_id;
+                        }
+                        if (payload.updated_title) {
+                            this.conversations = this.conversations.map(c =>
+                                c.id === payload.conversation_id ? { ...c, title: payload.updated_title } : c
+                            );
+                        }
+                        if (payload.data_freshness) {
+                            this.dataFreshness = payload.data_freshness;
+                        }
+                        this.scheduleMermaidRender();
+                        this.scrollToBottom();
+                        this.loadConversations();
+                    }, 50);
                 } else {
-                    this.messages = [...this.messages, {
+                    this.messages = [...this.messages, withHtml({
                         id: 'error-' + Date.now(),
                         role: 'assistant',
                         content: '⚠️ ' + (data.error || 'Something went wrong. Please try again.'),
                         model: null,
                         created_at: new Date().toISOString(),
-                    }];
+                    })];
                 }
             } catch (e) {
                 if (e.name === 'AbortError') {
                     return;
                 }
                 console.error('sendMessage error:', e);
-                this.messages = [...this.messages, {
+                this.messages = [...this.messages, withHtml({
                     id: 'error-' + Date.now(),
                     role: 'assistant',
                     content: '⚠️ Network error. Please check your connection and try again.',
                     model: null,
                     created_at: new Date().toISOString(),
-                }];
+                })];
             } finally {
                 this.loading = false;
                 if (_timer) { clearInterval(_timer); _timer = null; }
@@ -557,29 +574,26 @@ function aiChat() {
 
         copyMessage(content) {
             navigator.clipboard.writeText(content).then(() => {
-                // Flash "Copied!" on the last assistant message
-                const msgs = this.messages;
-                for (let i = msgs.length - 1; i >= 0; i--) {
-                    if (msgs[i].role === 'assistant') {
-                        msgs[i].copied = true;
-                        setTimeout(() => { msgs[i].copied = false; }, 1500);
-                        break;
-                    }
+                const idx = this.messages.map(m => m.role).lastIndexOf('assistant');
+                if (idx !== -1) {
+                    this.messages = this.messages.map((m, i) =>
+                        i === idx ? { ...m, copied: true } : m
+                    );
+                    setTimeout(() => {
+                        this.messages = this.messages.map(m =>
+                            m.copied ? { ...m, copied: false } : m
+                        );
+                    }, 1500);
                 }
             });
         },
 
         async regenerateResponse(assistantIdx) {
-            // Find the user message before this assistant message
             let userMsgIdx = assistantIdx - 1;
             if (userMsgIdx < 0 || this.messages[userMsgIdx]?.role !== 'user') return;
 
             const userText = this.messages[userMsgIdx].content;
-
-            // Remove the last assistant message
-            this.messages.splice(assistantIdx, 1);
-
-            // Re-send the user message
+            this.messages = this.messages.filter((_, i) => i !== assistantIdx);
             this.inputText = userText;
             this.sendMessage();
         },
@@ -598,8 +612,9 @@ function aiChat() {
                     body: JSON.stringify({ feedback }),
                 });
                 if (res.ok) {
-                    const msg = this.messages.find(m => m.id === messageId);
-                    if (msg) msg.feedback = feedback;
+                    this.messages = this.messages.map(m =>
+                        m.id === messageId ? { ...m, feedback } : m
+                    );
                 }
             } catch (e) { console.error(e); }
         },
@@ -624,16 +639,16 @@ function aiChat() {
         },
 
         toggleIncidentRef(inc) {
-            const idx = this.referencedIncidents.findIndex(i => i.no === inc.no);
-            if (idx !== -1) {
-                this.referencedIncidents.splice(idx, 1);
+            const exists = this.referencedIncidents.some(i => i.no === inc.no);
+            if (exists) {
+                this.referencedIncidents = this.referencedIncidents.filter(i => i.no !== inc.no);
             } else {
-                this.referencedIncidents.push(inc);
+                this.referencedIncidents = [...this.referencedIncidents, inc];
             }
         },
 
         removeReferencedIncident(idx) {
-            this.referencedIncidents.splice(idx, 1);
+            this.referencedIncidents = this.referencedIncidents.filter((_, i) => i !== idx);
         },
 
         isIncidentReferenced(no) {
@@ -657,16 +672,13 @@ function aiChat() {
             }
 
             // Look up incident details for each ID from the backend
-            this.referencedIncidents = [];
+            const refs = [];
             for (const no of foundIds) {
-                // Check if already in the list
-                if (this.referencedIncidents.some(i => i.no === no)) continue;
+                if (refs.some(i => i.no === no)) continue;
 
-                // Try to find details from existing assistant messages first (free)
                 let found = null;
                 for (const msg of this.messages) {
                     if (msg.role === 'assistant' && msg.content && msg.content.includes(no)) {
-                        // Extract severity from assistant messages that mention this incident
                         const sevMatch = msg.content.match(new RegExp(no + '[\\s\\S]*?Severity[:\\s]*(P[1-4]|G|X[1-4])', 'i'));
                         found = { no, title: '', severity: sevMatch ? sevMatch[1].toUpperCase() : '', status: '', date: '', pic: '' };
                         break;
@@ -676,8 +688,9 @@ function aiChat() {
                 if (!found) {
                     found = { no, title: '', severity: '', status: '', date: '', pic: '' };
                 }
-                this.referencedIncidents.push(found);
+                refs.push(found);
             }
+            this.referencedIncidents = refs;
 
             // Fetch fresh details from API for any incidents missing titles
             const missingTitles = this.referencedIncidents.filter(i => !i.title);
@@ -690,27 +703,20 @@ function aiChat() {
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        for (const inc of (data.incidents || [])) {
-                            const ref = this.referencedIncidents.find(i => i.no === inc.no);
-                            if (ref) {
-                                ref.title = inc.title;
-                                ref.severity = ref.severity || inc.severity;
-                                ref.status = inc.status;
-                                ref.date = inc.date;
-                                ref.pic = inc.pic;
-                            }
-                        }
+                        this.referencedIncidents = this.referencedIncidents.map(ref => {
+                            const inc = (data.incidents || []).find(i => i.no === ref.no);
+                            if (!inc) return ref;
+                            return {
+                                ...ref,
+                                title: inc.title,
+                                severity: ref.severity || inc.severity,
+                                status: inc.status,
+                                date: inc.date,
+                                pic: inc.pic,
+                            };
+                        });
                     }
                 } catch (e) { /* non-critical, chips just won't have full details */ }
-            }
-        },
-
-        renderMarkdown(text) {
-            if (!text) return '';
-            try {
-                return marked.parse(text, { breaks: true, gfm: true });
-            } catch {
-                return text.replace(/\n/g, '<br>');
             }
         },
 
@@ -722,20 +728,19 @@ function aiChat() {
 
         async renderMermaidDiagrams() {
             const container = this.$refs.messageContainer;
-            if (!container) return;
+            if (!container || typeof mermaid === 'undefined') return;
 
             const blocks = container.querySelectorAll('code.language-mermaid');
             for (const block of blocks) {
                 const pre = block.closest('pre');
                 if (!pre || pre.dataset.mermaidRendered) continue;
+                pre.dataset.mermaidRendered = 'true';
 
                 try {
                     const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
                     const { svg } = await mermaid.render(id, block.textContent);
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'mermaid';
-                    wrapper.innerHTML = svg;
-                    pre.replaceWith(wrapper);
+                    pre.innerHTML = svg;
+                    pre.className = 'mermaid';
                 } catch (e) {
                     pre.dataset.mermaidRendered = 'error';
                     console.warn('Mermaid render error:', e);

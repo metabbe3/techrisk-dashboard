@@ -69,129 +69,305 @@ class IncidentResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form
-            ->schema([
-                Grid::make(3)->schema([
-                    Section::make('Core Details')
+        return $form->schema(static::createFormSchema());
+    }
+
+    public static function editFormSchema(): array
+    {
+        return [
+            Forms\Components\Tabs::make('EditIncidentTabs')
+                ->tabs([
+                    Forms\Components\Tabs\Tab::make('General')
+                        ->icon('heroicon-o-document-text')
                         ->schema([
-                            TextInput::make('title')->required(),
-                            TextInput::make('no')->label('Incident ID')
-                                ->required()
-                                ->default(fn () => Incident::generateNo('IN'))
-                                ->readOnly()
-                                ->unique(ignoreRecord: true),
-                            Select::make('severity')->options(Severity::options())->required(),
-                            Select::make('classification')->options(IncidentClassification::options())->required(),
-                            Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
-                            Select::make('incident_type_id')
-                                ->label('Incident Type')
-                                ->relationship('incidentType', 'name')
-                                ->searchable()
-                                ->preload(),
-                            TextInput::make('reported_by')->label('Reported By'),
-                            TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden(),
-                            TextInput::make('mttr')->label('MTTR (minutes)')->readOnly()->visible(fn ($context) => $context === 'edit'),
-                            TextInput::make('mtbf')->label('MTBF (days)')->readOnly()->visible(fn ($context) => $context === 'edit'),
-                        ])->columnSpan(2),
+                            Grid::make(['default' => 1, 'lg' => 3])->schema([
+                                Section::make('Core Details')
+                                    ->icon('heroicon-o-identification')
+                                    ->schema([
+                                        TextInput::make('title')->required()->columnSpanFull(),
+                                        TextInput::make('no')->label('Incident ID')
+                                            ->required()
+                                            ->readOnly()
+                                            ->unique(ignoreRecord: true),
+                                        Select::make('severity')->options(Severity::options())->required(),
+                                        Select::make('classification')->options(IncidentClassification::options())->required(),
+                                        Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
+                                        Select::make('incident_type_id')
+                                            ->label('Incident Type')
+                                            ->relationship('incidentType', 'name')
+                                            ->searchable()
+                                            ->preload(),
+                                        TextInput::make('reported_by')->label('Reported By'),
+                                        Grid::make(['default' => 1, 'sm' => 2])->schema([
+                                            TextInput::make('mttr')->label('MTTR (minutes)')->readOnly(),
+                                            TextInput::make('mtbf')->label('MTBF (days)')->readOnly(),
+                                        ]),
+                                    ])->columnSpan(['default' => 'full', 'lg' => 2]),
 
-                    Section::make('Admin & Upload Status')
+                                Section::make('Status & Assignment')
+                                    ->icon('heroicon-o-user-group')
+                                    ->schema([
+                                        Select::make('incident_status')
+                                            ->options(IncidentStatus::options())
+                                            ->required()
+                                            ->default('Open')
+                                            ->live(),
+                                        Select::make('incident_source')
+                                            ->options(['Internal' => 'Internal', 'External' => 'External'])
+                                            ->required(),
+                                        Select::make('pic_id')
+                                            ->label('Person In Charge')
+                                            ->relationship('pic', 'name')
+                                            ->searchable()
+                                            ->preload(),
+                                        TextInput::make('checker'),
+                                        TextInput::make('maker'),
+                                    ])->columnSpan(['default' => 'full', 'lg' => 1]),
+                            ]),
+                        ]),
+
+                    Forms\Components\Tabs\Tab::make('Timeline')
+                        ->icon('heroicon-o-clock')
                         ->schema([
-                            Checkbox::make('goc_upload')->label('GoC Uploaded'),
-                            Checkbox::make('teams_upload')->label('Teams Uploaded'),
-                            Checkbox::make('doc_signed')->label('Doc Signed'),
-                            Checkbox::make('risk_incident_form_cfm')->label('Risk Incident Form CFM'),
-                            Checkbox::make('glitch_flag')->label('Glitch'),
-                            TextInput::make('investigation_pic_status')->label('Investigation PIC Status')->disabled()->hidden(),
-                            TextInput::make('action_improvement_tracking')->label('Action Improvement Tracking')->disabled()->hidden(),
-                        ])->columnSpan(1),
-                ]),
-                Section::make('Timeline')
-                    ->schema([
-                        DateTimePicker::make('incident_date')->label('Occurred Time')->required(),
-                        DateTimePicker::make('discovered_at'),
-                        DateTimePicker::make('stop_bleeding_at'),
-                        DateTimePicker::make('entry_date_tech_risk')->required(),
-                    ])->columns(4),
+                            Section::make('Incident Dates')
+                                ->icon('heroicon-o-calendar')
+                                ->schema([
+                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required(),
+                                    DateTimePicker::make('discovered_at'),
+                                    DateTimePicker::make('stop_bleeding_at'),
+                                    DateTimePicker::make('entry_date_tech_risk')->required(),
+                                ])->columns(['default' => 1, 'sm' => 2, 'lg' => 4]),
 
-                Section::make('Financial Impact')
-                    ->schema([
-                        Select::make('fund_status')->options(FundStatus::options()),
-                        TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0),
-                        TextInput::make('recovered_fund')->numeric()->prefix('Rp')->default(0)->required(),
-                        TextInput::make('fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
-                        TextInput::make('loss_taken_by')->label('Loss Taken By'),
-                    ])->columns(5),
+                            Section::make('Categories')
+                                ->icon('heroicon-o-tag')
+                                ->schema([
+                                    Select::make('business_category')
+                                        ->label('Business Category')
+                                        ->multiple()
+                                        ->options(fn () => Category::options(Category::TYPE_BUSINESS_CATEGORY)),
+                                    Select::make('root_cause_category')
+                                        ->label('Root Cause Category')
+                                        ->multiple()
+                                        ->options(fn () => Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY)),
+                                    Select::make('responsible_team')
+                                        ->label('Responsible Team')
+                                        ->multiple()
+                                        ->options(fn () => Category::options(Category::TYPE_RESPONSIBLE_TEAM)),
+                                ])->columns(['default' => 1, 'md' => 3]),
 
-                Section::make('Analysis & Root Cause')
+                            Section::make('Financial Impact')
+                                ->icon('heroicon-o-currency-dollar')
+                                ->schema([
+                                    Select::make('fund_status')->options(FundStatus::options()),
+                                    TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0),
+                                    TextInput::make('recovered_fund')->numeric()->prefix('Rp')->default(0)->required(),
+                                    TextInput::make('fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
+                                    TextInput::make('loss_taken_by')->label('Loss Taken By'),
+                                ])->columns(['default' => 1, 'sm' => 2, 'xl' => 5]),
+                        ]),
+
+                    Forms\Components\Tabs\Tab::make('Content & Analysis')
+                        ->icon('heroicon-o-pencil-square')
+                        ->extraAttributes(['style' => 'overflow: visible !important;'])
+                        ->schema([
+                            Section::make('AI Tools')
+                                ->icon('heroicon-o-sparkles')
+                                ->extraAttributes(['style' => 'overflow: visible !important;'])
+                                ->schema([
+                                    Forms\Components\View::make('filament.forms.components.ai-root-cause-analysis')->hiddenLabel(),
+                                    Forms\Components\View::make('filament.forms.components.ai-similar-incidents')->hiddenLabel(),
+                                ])->columns(2),
+
+                            Section::make('Details & Timeline')
+                                ->icon('heroicon-o-document-chart-bar')
+                                ->schema([
+                                    AiTextarea::make('summary')
+                                        ->label('Summary')
+                                        ->rows(6)
+                                        ->aiFieldType('summary')
+                                        ->columnSpanFull(),
+                                    AiTextarea::make('root_cause')
+                                        ->label('Root Cause')
+                                        ->rows(6)
+                                        ->aiFieldType('root_cause')
+                                        ->columnSpanFull(),
+                                    AiTextarea::make('timeline')
+                                        ->label('Incident Timeline and Chronology')
+                                        ->rows(10)
+                                        ->helperText('Describe the sequence of events chronologically')
+                                        ->aiFieldType('timeline')
+                                        ->columnSpanFull(),
+                                    AiTextarea::make('remark')
+                                        ->label('Remark')
+                                        ->rows(4)
+                                        ->aiFieldType('remark')
+                                        ->columnSpanFull(),
+                                    Textarea::make('improvements')
+                                        ->label('Improvements')
+                                        ->rows(4)
+                                        ->columnSpanFull()
+                                        ->disabled()->hidden(),
+                                    TextInput::make('evidence_link')->label('Evidence Link')->url()->columnSpanFull()->disabled()->hidden(),
+                                    Textarea::make('evidence')
+                                        ->label('Evidence')
+                                        ->rows(3)
+                                        ->columnSpanFull()
+                                        ->disabled()->hidden(),
+                                    Select::make('labels')
+                                        ->multiple()
+                                        ->relationship('labels', 'name')
+                                        ->preload()
+                                        ->searchable()
+                                        ->id('labels-select'),
+                                    Forms\Components\View::make('filament.forms.components.smart-labels')->hiddenLabel(),
+                                ])->columns(['default' => 1, 'md' => 2]),
+                        ]),
+
+                    Forms\Components\Tabs\Tab::make('Admin')
+                        ->icon('heroicon-o-cog-6-tooth')
+                        ->schema([
+                            Section::make('Upload & Document Status')
+                                ->icon('heroicon-o-check-circle')
+                                ->schema([
+                                    Checkbox::make('goc_upload')->label('GoC Uploaded'),
+                                    Checkbox::make('teams_upload')->label('Teams Uploaded'),
+                                    Checkbox::make('doc_signed')->label('Doc Signed'),
+                                    Checkbox::make('risk_incident_form_cfm')->label('Risk Incident Form CFM'),
+                                    Checkbox::make('glitch_flag')->label('Glitch'),
+                                    TextInput::make('investigation_pic_status')->label('Investigation PIC Status')->disabled()->hidden(),
+                                    TextInput::make('action_improvement_tracking')->label('Action Improvement Tracking')->disabled()->hidden(),
+                                    TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden(),
+                                ])->columns(['default' => 1, 'sm' => 2]),
+                        ]),
+                ])
+                ->activeTab(1)
+                ->persistTabInQueryString()
+                ->columnSpanFull(),
+        ];
+    }
+
+    public static function createFormSchema(): array
+    {
+        return [
+            Grid::make(3)->schema([
+                Section::make('Core Details')
                     ->schema([
-                        Select::make('incident_status')->options(IncidentStatus::options())->required()->default('Open'),
-                        Select::make('incident_source')->options(['Internal' => 'Internal', 'External' => 'External'])->required(),
-                        Select::make('pic_id')
-                            ->label('Person In Charge')
-                            ->relationship('pic', 'name')
+                        TextInput::make('title')->required(),
+                        TextInput::make('no')->label('Incident ID')
+                            ->required()
+                            ->default(fn () => Incident::generateNo('IN'))
+                            ->readOnly()
+                            ->unique(ignoreRecord: true),
+                        Select::make('severity')->options(Severity::options())->required(),
+                        Select::make('classification')->options(IncidentClassification::options())->required(),
+                        Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
+                        Select::make('incident_type_id')
+                            ->label('Incident Type')
+                            ->relationship('incidentType', 'name')
                             ->searchable()
                             ->preload(),
-                        TextInput::make('checker'),
-                        TextInput::make('maker'),
-                        Select::make('business_category')
-                            ->label('Business Category')
-                            ->multiple()
-                            ->options(fn () => Category::options(Category::TYPE_BUSINESS_CATEGORY)),
-                        Select::make('root_cause_category')
-                            ->label('Root Cause Category')
-                            ->multiple()
-                            ->options(fn () => Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY)),
-                        Select::make('responsible_team')
-                            ->label('Responsible Team')
-                            ->multiple()
-                            ->options(fn () => Category::options(Category::TYPE_RESPONSIBLE_TEAM)),
-                    ])->columns(3),
+                        TextInput::make('reported_by')->label('Reported By'),
+                        TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden(),
+                    ])->columnSpan(2),
 
-                Section::make('Details & Timeline')
+                Section::make('Admin & Upload Status')
                     ->schema([
-                        AiTextarea::make('summary')
-                            ->label('Summary')
-                            ->rows(6)
-                            ->aiFieldType('summary')
-                            ->columnSpanFull(),
-                        AiTextarea::make('root_cause')
-                            ->label('Root Cause')
-                            ->rows(6)
-                            ->aiFieldType('root_cause')
-                            ->columnSpanFull(),
-                        AiTextarea::make('timeline')
-                            ->label('Incident Timeline and Chronology')
-                            ->rows(10)
-                            ->helperText('Describe the sequence of events chronologically')
-                            ->aiFieldType('timeline')
-                            ->columnSpanFull(),
-                        AiTextarea::make('remark')
-                            ->label('Remark')
-                            ->rows(4)
-                            ->aiFieldType('remark')
-                            ->columnSpanFull(),
-                        Textarea::make('improvements')
-                            ->label('Improvements')
-                            ->rows(4)
-                            ->columnSpanFull()
-                            ->disabled()->hidden(),
-                        TextInput::make('evidence_link')->label('Evidence Link')->url()->columnSpanFull()->disabled()->hidden(),
-                        Textarea::make('evidence')
-                            ->label('Evidence')
-                            ->rows(3)
-                            ->columnSpanFull()
-                            ->disabled()->hidden(),
-                        Select::make('labels')
-                            ->multiple()
-                            ->relationship('labels', 'name')
-                            ->preload()
-                            ->searchable()
-                            ->id('labels-select'),
-                        Forms\Components\View::make('filament.forms.components.smart-labels')->hiddenLabel(),
-                        Forms\Components\View::make('filament.forms.components.ai-root-cause-analysis')->hiddenLabel(),
-                        Forms\Components\View::make('filament.forms.components.ai-similar-incidents')->hiddenLabel(),
-                    ])->columns(2),
-            ]);
+                        Checkbox::make('goc_upload')->label('GoC Uploaded'),
+                        Checkbox::make('teams_upload')->label('Teams Uploaded'),
+                        Checkbox::make('doc_signed')->label('Doc Signed'),
+                        Checkbox::make('risk_incident_form_cfm')->label('Risk Incident Form CFM'),
+                        Checkbox::make('glitch_flag')->label('Glitch'),
+                        TextInput::make('investigation_pic_status')->label('Investigation PIC Status')->disabled()->hidden(),
+                        TextInput::make('action_improvement_tracking')->label('Action Improvement Tracking')->disabled()->hidden(),
+                    ])->columnSpan(1),
+            ]),
+            Section::make('Timeline')
+                ->schema([
+                    DateTimePicker::make('incident_date')->label('Occurred Time')->required(),
+                    DateTimePicker::make('discovered_at'),
+                    DateTimePicker::make('stop_bleeding_at'),
+                    DateTimePicker::make('entry_date_tech_risk')->required(),
+                ])->columns(4),
+
+            Section::make('Financial Impact')
+                ->schema([
+                    Select::make('fund_status')->options(FundStatus::options()),
+                    TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0),
+                    TextInput::make('recovered_fund')->numeric()->prefix('Rp')->default(0)->required(),
+                    TextInput::make('fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
+                    TextInput::make('loss_taken_by')->label('Loss Taken By'),
+                ])->columns(5),
+
+            Section::make('Analysis & Root Cause')
+                ->schema([
+                    Select::make('incident_status')->options(IncidentStatus::options())->required()->default('Open'),
+                    Select::make('incident_source')->options(['Internal' => 'Internal', 'External' => 'External'])->required(),
+                    Select::make('pic_id')
+                        ->label('Person In Charge')
+                        ->relationship('pic', 'name')
+                        ->searchable()
+                        ->preload(),
+                    TextInput::make('checker'),
+                    TextInput::make('maker'),
+                    Select::make('business_category')
+                        ->label('Business Category')
+                        ->multiple()
+                        ->options(fn () => Category::options(Category::TYPE_BUSINESS_CATEGORY)),
+                    Select::make('root_cause_category')
+                        ->label('Root Cause Category')
+                        ->multiple()
+                        ->options(fn () => Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY)),
+                    Select::make('responsible_team')
+                        ->label('Responsible Team')
+                        ->multiple()
+                        ->options(fn () => Category::options(Category::TYPE_RESPONSIBLE_TEAM)),
+                ])->columns(3),
+
+            Section::make('Details & Timeline')
+                ->schema([
+                    AiTextarea::make('summary')
+                        ->label('Summary')
+                        ->rows(6)
+                        ->aiFieldType('summary')
+                        ->columnSpanFull(),
+                    AiTextarea::make('root_cause')
+                        ->label('Root Cause')
+                        ->rows(6)
+                        ->aiFieldType('root_cause')
+                        ->columnSpanFull(),
+                    AiTextarea::make('timeline')
+                        ->label('Incident Timeline and Chronology')
+                        ->rows(10)
+                        ->helperText('Describe the sequence of events chronologically')
+                        ->aiFieldType('timeline')
+                        ->columnSpanFull(),
+                    AiTextarea::make('remark')
+                        ->label('Remark')
+                        ->rows(4)
+                        ->aiFieldType('remark')
+                        ->columnSpanFull(),
+                    Textarea::make('improvements')
+                        ->label('Improvements')
+                        ->rows(4)
+                        ->columnSpanFull()
+                        ->disabled()->hidden(),
+                    TextInput::make('evidence_link')->label('Evidence Link')->url()->columnSpanFull()->disabled()->hidden(),
+                    Textarea::make('evidence')
+                        ->label('Evidence')
+                        ->rows(3)
+                        ->columnSpanFull()
+                        ->disabled()->hidden(),
+                    Select::make('labels')
+                        ->multiple()
+                        ->relationship('labels', 'name')
+                        ->preload()
+                        ->searchable()
+                        ->id('labels-select'),
+                    Forms\Components\View::make('filament.forms.components.smart-labels')->hiddenLabel(),
+                    Forms\Components\View::make('filament.forms.components.ai-root-cause-analysis')->hiddenLabel(),
+                    Forms\Components\View::make('filament.forms.components.ai-similar-incidents')->hiddenLabel(),
+                ])->columns(2),
+        ];
     }
 
     public static function table(Table $table): Table
