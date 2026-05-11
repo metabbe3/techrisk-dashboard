@@ -172,6 +172,7 @@ Route::prefix('admin/war-room')->middleware(['auth', 'can:access war room'])->gr
     Route::post('/sessions/{id}/reanalyze', WarRoomReanalyzeController::class)->name('war-room.reanalyze');
     Route::delete('/sessions/{id}', WarRoomDeleteController::class)->name('war-room.delete');
     Route::get('/sessions/{id}/poll', WarRoomPollController::class)->name('war-room.poll');
+    Route::get('/sessions/{id}/export-pdf', WarRoomExportPdfController::class)->name('war-room.export-pdf');
 });
 
 Route::redirect('/', '/admin/login');
