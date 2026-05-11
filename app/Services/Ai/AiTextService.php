@@ -11,6 +11,36 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class AiTextService
 {
+    public function suggestSkills(string $userMessage, ?string $model = null): array
+    {
+        $prompt = config('ai.prompts.agent_skill_suggest');
+
+        if (! $prompt) {
+            return ['success' => false, 'error' => 'Skill suggestion is not configured.'];
+        }
+
+        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+
+        $result = $this->callAiForJson(
+            'agent_skill_suggest',
+            $resolvedModel,
+            $prompt['system'],
+            $userMessage,
+            ['skills' => []]
+        );
+
+        $skills = collect($result['skills'] ?? [])
+            ->filter(fn ($s) => is_string($s) && strlen($s) <= 50)
+            ->values()
+            ->toArray();
+
+        return [
+            'success' => true,
+            'skills' => $skills,
+            'model' => $resolvedModel,
+        ];
+    }
+
     public function enhance(string $text, string $fieldType, ?string $model = null, ?string $additionalPrompt = null): AiTextResult
     {
         if (blank($text)) {
@@ -174,7 +204,7 @@ class AiTextService
                 $userMessage .= "- {$key}: {$value}\n";
             }
         }
-        $userMessage .= "\nAvailable labels: " . (empty($availableLabels) ? '(none — suggest relevant new labels)' : implode(', ', $availableLabels));
+        $userMessage .= "\nAvailable labels: ".(empty($availableLabels) ? '(none — suggest relevant new labels)' : implode(', ', $availableLabels));
 
         $inputLength = strlen($userMessage);
         $startTime = microtime(true);
@@ -347,10 +377,10 @@ class AiTextService
         $userMessage .= "\nRecent incidents in the database:\n";
         foreach ($recentIncidents as $i => $inc) {
             $userMessage .= ($i + 1).". [{$inc['no']}] ".($inc['summary'] ?? 'No summary');
-            $userMessage .= " | Severity: ".($inc['severity'] ?? 'N/A');
-            $userMessage .= " | Type: ".($inc['incident_type'] ?? 'N/A');
-            $userMessage .= " | Date: ".($inc['incident_date'] ?? 'N/A');
-            $userMessage .= " | Status: ".($inc['incident_status'] ?? 'N/A')."\n";
+            $userMessage .= ' | Severity: '.($inc['severity'] ?? 'N/A');
+            $userMessage .= ' | Type: '.($inc['incident_type'] ?? 'N/A');
+            $userMessage .= ' | Date: '.($inc['incident_date'] ?? 'N/A');
+            $userMessage .= ' | Status: '.($inc['incident_status'] ?? 'N/A')."\n";
         }
 
         $result = $this->callAiForJson('similar_incident', $resolvedModel, $prompt['system'], $userMessage, ['similar' => []]);
@@ -597,7 +627,7 @@ class AiTextService
             ."Available root cause categories: {$rcCats}\n"
             ."Available responsible teams: {$teams}\n"
             ."Available PICs (Person in Charge): {$pics}\n"
-            ."Always use exact names from these lists.";
+            .'Always use exact names from these lists.';
 
         $systemPrompt = str_replace('DYNAMIC_DATA_PLACEHOLDER', $dynamicData, $systemPrompt);
 

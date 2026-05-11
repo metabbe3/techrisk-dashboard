@@ -5,23 +5,23 @@ namespace App\Filament\Pages;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\Auth;
 
-class AiChat extends Page
+class WarRoom extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-sparkles';
+    protected static ?string $navigationIcon = 'heroicon-o-users';
 
-    protected static ?string $navigationLabel = 'TechRisk AI';
+    protected static ?string $navigationLabel = 'Discussion Forum';
 
-    protected static ?string $title = 'TechRisk AI';
+    protected static ?string $title = 'Discussion Forum';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?int $navigationSort = 4;
 
-    protected static string $view = 'filament.pages.ai-chat';
+    protected static string $view = 'filament.pages.war-room';
 
     protected static bool $isDiscovered = true;
 
     public static function canAccess(): bool
     {
-        return Auth::check() && Auth::user()->can('access ai chat');
+        return Auth::check() && Auth::user()->can('access war room');
     }
 
     public function getViewData(): array

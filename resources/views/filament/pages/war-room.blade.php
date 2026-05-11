@@ -1,0 +1,2172 @@
+<x-filament-panels::page>
+@push('scripts')
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>
+document.addEventListener('alpine:init', () => {
+    Alpine.data('warRoom', () => {
+        const colorMap = {
+            blue: '#3b82f6', indigo: '#6366f1', purple: '#8b5cf6', green: '#22c55e',
+            teal: '#14b8a6', cyan: '#06b6d4', red: '#ef4444', orange: '#f97316',
+            amber: '#f59e0b', pink: '#ec4899', emerald: '#10b981', gray: '#6b7280',
+        };
+
+        function hexToRgba(hex, alpha) {
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        }
+
+        return {
+            showSidebar: false,
+            showCreateForm: true,
+            showReport: false,
+            showReanalyzeModal: false,
+            reanalyzeInstructions: '',
+            reanalyzing: false,
+            creating: false,
+            sessions: [],
+            activeSession: null,
+            availableAgents: [],
+            models: {!! json_encode($models) !!},
+            defaultModel: '{!! addslashes($defaultModel) !!}',
+
+            incidentSearch: '',
+            incidentResults: [],
+            selectedIncident: null,
+            selectedAgents: [],
+            config: { maxRounds: 2, model: '', moderatorModel: '', enableWebSearch: false, userInstructions: '' },
+
+            pollInterval: null,
+
+            getHeaders(withContentType = false) {
+                const headers = {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                };
+                if (withContentType) headers['Content-Type'] = 'application/json';
+                return headers;
+            },
+
+            getAgentColor(name, alpha = 1) {
+                const hex = colorMap[name] || colorMap.gray;
+                return alpha === 1 ? hex : hexToRgba(hex, alpha);
+            },
+
+            getAgentInitial(name) {
+                if (!name) return '?';
+                const words = name.trim().split(/\s+/);
+                if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+                return name.slice(0, 2).toUpperCase();
+            },
+
+            async init() {
+                if (typeof mermaid !== 'undefined') {
+                    mermaid.initialize({
+                        startOnLoad: false,
+                        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'default',
+                    });
+                }
+                await this.loadAgents();
+                await this.loadSessions();
+                const params = new URLSearchParams(window.location.search);
+                const sessionId = params.get('session');
+                if (sessionId) {
+                    await this.loadSession(sessionId);
+                }
+            },
+
+            async loadAgents() {
+                try {
+                    const res = await fetch('/admin/war-room/agents', { headers: this.getHeaders() });
+                    if (!res.ok) { console.error('Load agents failed:', res.status, await res.text()); return; }
+                    this.availableAgents = await res.json();
+                } catch (e) { console.error('Failed to load agents:', e); }
+            },
+
+            async loadSessions() {
+                try {
+                    const res = await fetch('/admin/war-room/sessions', { headers: this.getHeaders() });
+                    if (!res.ok) { console.error('Load sessions failed:', res.status, await res.text()); return; }
+                    const data = await res.json();
+                    this.sessions = data.data || data;
+                } catch (e) { console.error('Failed to load sessions:', e); }
+            },
+
+            async searchIncidents() {
+                if (this.incidentSearch.length < 2) { this.incidentResults = []; return; }
+                try {
+                    const res = await fetch('/admin/war-room/incident-search?q=' + encodeURIComponent(this.incidentSearch), { headers: this.getHeaders() });
+                    if (!res.ok) { console.error('Search incidents failed:', res.status, await res.text()); return; }
+                    const data = await res.json();
+                    this.incidentResults = data.incidents || [];
+                } catch (e) { console.error('Failed to search incidents:', e); }
+            },
+
+            selectIncident(inc) {
+                this.selectedIncident = inc;
+                this.incidentResults = [];
+                this.incidentSearch = '';
+            },
+
+            toggleAgent(role) {
+                const idx = this.selectedAgents.indexOf(role);
+                if (idx === -1) { this.selectedAgents.push(role); }
+                else { this.selectedAgents.splice(idx, 1); }
+            },
+
+            async createSession() {
+                if (!this.selectedIncident || this.selectedAgents.length === 0 || this.creating) return;
+                this.creating = true;
+                try {
+                    const res = await fetch('/admin/war-room/sessions', {
+                        method: 'POST',
+                        headers: this.getHeaders(true),
+                        body: JSON.stringify({
+                            incident_id: this.selectedIncident.id,
+                            selected_agents: this.selectedAgents,
+                            max_rounds: this.config.maxRounds,
+                            model: this.config.model || null,
+                            moderator_model: this.config.moderatorModel || null,
+                            enable_web_search: this.config.enableWebSearch,
+                            user_instructions: this.config.userInstructions || null,
+                        })
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        this.showCreateForm = false;
+                        await this.loadSession(data.id);
+                        await this.loadSessions();
+                    } else if (res.status === 409 && data.existing_session) {
+                        const existing = data.existing_session;
+                        const action = confirm(
+                            'This incident already has a discussion session (' + existing.status + ', created ' + new Date(existing.created_at).toLocaleDateString() + ').\n\nClick OK to view the existing session, or Cancel to go back.'
+                        );
+                        if (action) {
+                            this.showCreateForm = false;
+                            await this.loadSession(existing.id);
+                        }
+                    } else {
+                        console.error('Create session error:', res.status, data);
+                        alert('Failed to create session: ' + (data.message || JSON.stringify(data)));
+                    }
+                } catch (e) {
+                    console.error('Create session exception:', e);
+                    alert('Error creating session: ' + e.message);
+                } finally {
+                    this.creating = false;
+                }
+            },
+
+            async loadSession(id) {
+                try {
+                    const res = await fetch('/admin/war-room/sessions/' + id, { headers: this.getHeaders() });
+                    if (!res.ok) { console.error('Load session failed:', res.status, await res.text()); return; }
+                    this.activeSession = await res.json();
+                    this.showCreateForm = false;
+                    this.showReport = false;
+
+                    if (this.activeSession.messages) {
+                        Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; });
+                    }
+
+                    this.startPolling();
+                    this.scheduleMermaidRender();
+                } catch (e) { console.error('Failed to load session:', e); }
+            },
+
+            startPolling() {
+                this.stopPolling();
+                if (this.activeSession?.status === 'running') {
+                    this.pollInterval = setInterval(() => this.poll(), 3000);
+                }
+            },
+
+            stopPolling() {
+                if (this.pollInterval) {
+                    clearInterval(this.pollInterval);
+                    this.pollInterval = null;
+                }
+            },
+
+            async poll() {
+                if (!this.activeSession || this.activeSession.status !== 'running') {
+                    this.stopPolling();
+                    return;
+                }
+                try {
+                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/poll', { headers: this.getHeaders() });
+                    const data = await res.json();
+                    this.activeSession.status = data.status;
+                    this.activeSession.current_round = data.current_round;
+                    this.activeSession.error_message = data.error_message;
+
+                    // Check if any message status changed — reload to show new content
+                    let needsReload = false;
+                    if (data.messages) {
+                        for (const [round, msgs] of Object.entries(data.messages)) {
+                            for (const msg of msgs) {
+                                const existing = this.activeSession.messages?.[round]?.find(m => m.id === msg.id);
+                                if (existing && existing.status !== msg.status) {
+                                    if (msg.status === 'completed' || msg.status === 'failed') {
+                                        needsReload = true;
+                                    }
+                                    existing.status = msg.status;
+                                    if (msg.error_message) existing.error_message = msg.error_message;
+                                }
+                            }
+                        }
+                    }
+
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        this.stopPolling();
+                        await this.loadSession(this.activeSession.id);
+                        await this.loadSessions();
+                    } else if (needsReload) {
+                        // A message finished — reload to show its content
+                        const sessionId = this.activeSession.id;
+                        const res2 = await fetch('/admin/war-room/sessions/' + sessionId, { headers: this.getHeaders() });
+                        if (res2.ok) {
+                            const fullData = await res2.json();
+                            this.activeSession = fullData;
+                            if (this.activeSession.messages) {
+                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; });
+                            }
+                            this.scheduleMermaidRender();
+                        }
+                    }
+                } catch (e) { console.error('Poll failed:', e); }
+            },
+
+            async retryFailed() {
+                if (!this.activeSession) return;
+                try {
+                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/retry', {
+                        method: 'POST',
+                        headers: this.getHeaders(true),
+                    });
+                    if (!res.ok) { console.error('Retry failed:', res.status, await res.text()); return; }
+                    await this.loadSession(this.activeSession.id);
+                } catch (e) { console.error('Retry exception:', e); alert('Retry failed: ' + e.message); }
+            },
+
+            async deleteSession(id) {
+                if (!confirm('Delete this discussion session?')) return;
+                try {
+                    const res = await fetch('/admin/war-room/sessions/' + id, {
+                        method: 'DELETE',
+                        headers: this.getHeaders(true),
+                    });
+                    if (res.ok) {
+                        await this.loadSessions();
+                        if (this.activeSession?.id === id) {
+                            this.activeSession = null;
+                            this.showReport = false;
+                            this.showCreateForm = true;
+                        }
+                    }
+                } catch (e) { console.error('Delete failed:', e); }
+            },
+
+            openReanalyzeModal() {
+                if (!this.activeSession) return;
+                this.reanalyzeInstructions = this.activeSession.user_instructions || '';
+                this.showReanalyzeModal = true;
+            },
+
+            async submitReanalyze() {
+                this.reanalyzing = true;
+                try {
+                    const body = {};
+                    if (this.reanalyzeInstructions.trim()) {
+                        body.user_instructions = this.reanalyzeInstructions.trim();
+                    }
+                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/reanalyze', {
+                        method: 'POST',
+                        headers: this.getHeaders(true),
+                        body: Object.keys(body).length ? JSON.stringify(body) : undefined,
+                    });
+                    if (res.ok) {
+                        this.showReanalyzeModal = false;
+                        await this.loadSession(this.activeSession.id);
+                        await this.loadSessions();
+                    } else {
+                        const data = await res.json();
+                        alert(data.message || 'Cannot re-analyze this session.');
+                    }
+                } catch (e) { console.error('Reanalyze failed:', e); alert('Error: ' + e.message); }
+                finally { this.reanalyzing = false; }
+            },
+
+            getSortedRounds() {
+                if (!this.activeSession?.messages) return [];
+                const rounds = new Set();
+                Object.values(this.activeSession.messages).flat().forEach(m => rounds.add(m.round));
+                return [...rounds].sort((a, b) => a - b);
+            },
+
+            getRoundMessages(round) {
+                if (!this.activeSession?.messages) return [];
+                return (this.activeSession.messages[round] || []).sort((a, b) => {
+                    const order = { completed: 0, running: 1, pending: 2, failed: 3 };
+                    return (order[a.status] || 0) - (order[b.status] || 0);
+                });
+            },
+
+            renderMarkdown(text) {
+                if (!text) return '';
+                if (typeof marked !== 'undefined') {
+                    try { return marked.parse(text, { breaks: true, gfm: true }); }
+                    catch { return text.replace(/\n/g, '<br>'); }
+                }
+                return text.replace(/\n/g, '<br>');
+            },
+
+            scheduleMermaidRender() {
+                requestAnimationFrame(() => {
+                    this.$nextTick(() => this.renderMermaidDiagrams());
+                });
+            },
+
+            async renderMermaidDiagrams() {
+                const container = this.$refs.contentContainer;
+                if (!container || typeof mermaid === 'undefined') return;
+
+                const blocks = container.querySelectorAll('code.language-mermaid');
+                for (const block of blocks) {
+                    const pre = block.closest('pre');
+                    if (!pre || pre.dataset.mermaidRendered) continue;
+                    pre.dataset.mermaidRendered = 'true';
+
+                    try {
+                        const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+                        const { svg } = await mermaid.render(id, block.textContent);
+                        pre.innerHTML = svg;
+                        pre.className = 'df-mermaid';
+                    } catch (e) {
+                        pre.dataset.mermaidRendered = 'error';
+                        console.warn('Mermaid render error:', e);
+                    }
+                }
+            },
+
+            formatDate(dateStr) {
+                if (!dateStr) return '';
+                const d = new Date(dateStr);
+                return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            }
+        };
+    });
+});
+</script>
+@endpush
+
+<div x-data="warRoom" class="df-app">
+    {{-- Mobile overlay --}}
+    <div class="df-mobile-overlay" :class="{ 'df-mobile-overlay--visible': showSidebar }" @click="showSidebar = false"></div>
+
+    {{-- Sidebar --}}
+    <aside class="df-sidebar" :class="{ 'df-sidebar--open': showSidebar }">
+        <div class="df-sidebar__header">
+            <div class="df-sidebar__title-row">
+                <svg class="df-sidebar__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+                </svg>
+                <h3 class="df-sidebar__heading">Sessions</h3>
+            </div>
+            <button class="df-btn df-btn--primary df-btn--sm" @click="showCreateForm = true; activeSession = null; showSidebar = false">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12h14"/></svg>
+                New
+            </button>
+        </div>
+
+        <div class="df-sidebar__list">
+            <template x-for="session in sessions" :key="session.id">
+                <div class="df-session-item" :class="{ 'df-session-item--active': activeSession?.id === session.id }"
+                        @click="loadSession(session.id); showSidebar = false;">
+                    <div class="df-session-item__top">
+                        <span class="df-session-item__title" x-text="session.title || 'Discussion Session'"></span>
+                        <button @click.stop="deleteSession(session.id)" class="df-session-item__delete" title="Delete">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        </button>
+                    </div>
+                    <div class="df-session-item__meta">
+                        <span class="df-status-badge" :class="'df-status-badge--' + session.status" x-text="session.status"></span>
+                        <span class="df-session-item__date" x-text="formatDate(session.created_at)"></span>
+                        <span x-show="session.user_name" class="df-session-item__user" x-text="'by ' + session.user_name"></span>
+                    </div>
+                    <p class="df-session-item__incident" x-show="session.incident" x-text="session.incident?.no + (session.incident?.severity ? ' · ' + session.incident?.severity : '')"></p>
+                </div>
+            </template>
+
+            <div x-show="sessions.length === 0" class="df-empty-sidebar">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.3">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                </svg>
+                <p>No sessions yet</p>
+                <span>Click "New" to start a discussion</span>
+            </div>
+        </div>
+    </aside>
+
+    {{-- Main content --}}
+    <main class="df-main">
+        {{-- Header --}}
+        <header class="df-header">
+            <div class="df-header__left">
+                <button class="df-mobile-toggle" @click="showSidebar = !showSidebar">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+                </button>
+                <div class="df-header__title-group">
+                    <h2 class="df-header__title">
+                        <span x-show="!activeSession">Discussion Forum</span>
+                        <span x-show="activeSession" x-text="activeSession?.title || 'Discussion Forum'"></span>
+                    </h2>
+                    <p class="df-header__subtitle" x-show="activeSession?.status === 'running'">
+                        Round <span x-text="activeSession?.current_round || 0"></span> of <span x-text="activeSession?.max_rounds || 2"></span> in progress
+                    </p>
+                </div>
+            </div>
+
+            <div class="df-header__actions">
+                <div x-show="activeSession?.status === 'running'" class="df-running-indicator">
+                    <span class="df-pulse-dot"></span>
+                    <span>Analyzing</span>
+                </div>
+                <button x-show="activeSession?.status === 'completed'" @click="showReport = !showReport; scheduleMermaidRender()"
+                        class="df-btn" :class="showReport ? 'df-btn--ghost' : 'df-btn--success'">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path x-show="!showReport" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        <path x-show="showReport" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                    </svg>
+                    <span x-text="showReport ? 'Show Discussion' : 'View Report'"></span>
+                </button>
+                <button x-show="activeSession?.status === 'completed' || activeSession?.status === 'failed'" @click="openReanalyzeModal()" class="df-btn df-btn--ghost">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Re-analyze
+                </button>
+                <button x-show="activeSession?.status === 'failed'" @click="retryFailed()" class="df-btn df-btn--danger">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Retry
+                </button>
+                <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-btn df-btn--ghost" style="color: #ef4444;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                    Delete
+                </button>
+            </div>
+        </header>
+
+        {{-- Scrollable content area --}}
+        <div class="df-content" x-ref="contentContainer">
+
+            {{-- ===== CREATE FORM ===== --}}
+            <div x-show="showCreateForm && !activeSession" x-transition class="df-create-form">
+                <div class="df-create-form__card">
+                    <div class="df-create-form__header">
+                        <div class="df-create-form__header-icon">
+                            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                                <path d="M17 8h2a2 2 0 012 2v6a2 2 0 01-2 2h-2v4l-4-4H9a1.994 1.994 0 01-1.414-.586m0 0L11 14h4a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2v4l.586-.586z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="df-create-form__title">Launch Discussion</h3>
+                            <p class="df-create-form__desc">Select an incident and specialist agents for the discussion forum simulation.</p>
+                        </div>
+                    </div>
+
+                    <div class="df-form-section">
+                        <label class="df-label">Incident</label>
+                        <div class="df-search-wrapper">
+                            <svg class="df-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                            <input type="text" class="df-input df-input--search" x-model="incidentSearch" @input.debounce.300ms="searchIncidents()" placeholder="Search by ID, title, or summary..." />
+                        </div>
+
+                        {{-- Search results dropdown --}}
+                        <div x-show="incidentResults.length > 0" x-transition class="df-dropdown">
+                            <template x-for="inc in incidentResults" :key="inc.id || inc.no">
+                                <button class="df-dropdown-item" @click="selectIncident(inc)">
+                                    <div class="df-dropdown-item__top">
+                                        <span class="df-severity-badge" :class="'df-severity-badge--' + (inc.severity || 'default')" x-text="inc.severity"></span>
+                                        <span class="df-dropdown-item__id" x-text="inc.no"></span>
+                                    </div>
+                                    <p class="df-dropdown-item__title" x-text="inc.title"></p>
+                                </button>
+                            </template>
+                        </div>
+
+                        {{-- Selected incident --}}
+                        <div x-show="selectedIncident" x-transition class="df-selected-inc">
+                            <div class="df-selected-inc__info">
+                                <span class="df-selected-inc__id" x-text="selectedIncident?.no"></span>
+                                <span class="df-selected-inc__sep">&mdash;</span>
+                                <span class="df-selected-inc__title" x-text="selectedIncident?.title"></span>
+                            </div>
+                            <button @click="selectedIncident = null" class="df-selected-inc__remove">&times;</button>
+                        </div>
+                    </div>
+
+                    <div class="df-form-section">
+                        <label class="df-label">Specialist Agents <span class="df-label__count" x-text="selectedAgents.length ? selectedAgents.length + ' selected' : ''"></span></label>
+                        <div class="df-agent-roster">
+                            <template x-for="agent in availableAgents" :key="agent.role_key">
+                                <button @click="toggleAgent(agent.role_key)" class="df-agent-card"
+                                        :class="{ 'df-agent-card--selected': selectedAgents.includes(agent.role_key) }"
+                                        :style="'--agent-color:' + getAgentColor(agent.color)">
+                                    <div class="df-agent-card__glow"></div>
+                                    <div class="df-agent-card__inner">
+                                        <div class="df-agent-card__avatar" :style="'--agent-color:' + getAgentColor(agent.color)">
+                                            <span x-text="getAgentInitial(agent.display_name)"></span>
+                                        </div>
+                                        <div class="df-agent-card__body">
+                                            <div class="df-agent-card__header">
+                                                <span class="df-agent-card__name" x-text="agent.display_name"></span>
+                                                <div class="df-agent-card__toggle"
+                                                     :class="selectedAgents.includes(agent.role_key) ? 'df-agent-card__toggle--on' : ''">
+                                                    <svg x-show="selectedAgents.includes(agent.role_key)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 13l4 4L19 7"/></svg>
+                                                </div>
+                                            </div>
+                                            <p x-show="agent.description" class="df-agent-card__desc" x-text="agent.description"></p>
+                                            <div x-show="agent.skills && agent.skills.length > 0" class="df-agent-card__skills">
+                                                <template x-for="skill in (agent.skills || []).slice(0, 4)" :key="skill">
+                                                    <span class="df-agent-card__skill" x-text="skill"></span>
+                                                </template>
+                                                <span x-show="(agent.skills || []).length > 4" class="df-agent-card__more" x-text="'+' + ((agent.skills || []).length - 4) + ' more'"></span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </template>
+                        </div>
+                        <div x-show="availableAgents.length === 0" class="df-hint">Loading agents...</div>
+                    </div>
+
+                    <div class="df-form-row">
+                        <div class="df-form-field">
+                            <label class="df-label">Discussion Rounds</label>
+                            <select x-model.number="config.maxRounds" class="df-select">
+                                <option value="1">1 round (quick)</option>
+                                <option value="2">2 rounds (standard)</option>
+                                <option value="3">3 rounds (deep)</option>
+                            </select>
+                        </div>
+                        <div class="df-form-field">
+                            <label class="df-label">Agent Model</label>
+                            <select x-model="config.model" class="df-select">
+                                <option value="">Default</option>
+                                <template x-for="(name, id) in models" :key="id">
+                                    <option :value="id" x-text="name"></option>
+                                </template>
+                            </select>
+                        </div>
+                    </div>
+
+                    <label class="df-checkbox-row">
+                        <input type="checkbox" x-model="config.enableWebSearch" class="df-checkbox" />
+                        <span>Enable web search for agents</span>
+                    </label>
+
+                    <div class="df-form-section">
+                        <label class="df-label">Additional Instructions <span class="df-label__hint">(optional)</span></label>
+                        <textarea x-model="config.userInstructions" class="df-textarea" rows="3"
+                            placeholder="Add extra context, focus areas, or specific questions you want the agents to address..."></textarea>
+                    </div>
+
+                    <button @click="createSession()" :disabled="!selectedIncident || selectedAgents.length === 0 || creating"
+                            class="df-btn df-btn--launch"
+                            :class="{ 'df-btn--disabled': !selectedIncident || selectedAgents.length === 0 || creating }">
+                        <svg x-show="!creating" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        </svg>
+                        <svg x-show="creating" width="16" height="16" class="df-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M6.76 6.76L3.93 3.93"/>
+                        </svg>
+                        <span x-text="creating ? 'Launching...' : 'Launch Discussion'"></span>
+                    </button>
+                </div>
+            </div>
+
+            {{-- ===== USER INSTRUCTIONS BANNER ===== --}}
+            <div x-show="activeSession && activeSession.user_instructions && !showReport" x-transition class="df-instructions-banner">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                <span x-text="activeSession?.user_instructions"></span>
+            </div>
+
+            {{-- ===== DISCUSSION ROUNDS ===== --}}
+            <div x-show="activeSession && !showReport">
+                <template x-for="round in getSortedRounds()" :key="round">
+                    <section class="df-round">
+                        <div class="df-round__header">
+                            <div class="df-round__badge" x-text="round"></div>
+                            <h3 class="df-round__title" x-text="round === 1 ? 'Initial Analysis' : 'Discussion Round ' + round"></h3>
+                            <div class="df-round__line"></div>
+                        </div>
+
+                        <div class="df-round__messages">
+                            <template x-for="msg in getRoundMessages(round)" :key="msg.id">
+                                <div class="df-msg" :class="'df-msg--' + msg.status">
+                                    <div class="df-msg__accent" :style="'background:' + getAgentColor(msg.agent_color || 'gray')"></div>
+                                    <div class="df-msg__body">
+                                        <div class="df-msg__header">
+                                            <div class="df-msg__author">
+                                                <div class="df-msg__avatar" :style="'background:' + getAgentColor(msg.agent_color || 'gray', 0.12) + '; color:' + getAgentColor(msg.agent_color || 'gray')"
+                                                     x-text="getAgentInitial(msg.agent_name)"></div>
+                                                <span class="df-msg__name" x-text="msg.agent_name"></span>
+                                            </div>
+                                            <div class="df-msg__controls">
+                                                <span x-show="msg.response_time_ms" class="df-msg__time" x-text="(msg.response_time_ms / 1000).toFixed(1) + 's'"></span>
+                                                <button x-show="msg.status === 'completed' && msg.content" @click="msg._expanded = !msg._expanded; scheduleMermaidRender()" class="df-msg__toggle">
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                         :style="msg._expanded ? 'transform:rotate(180deg)' : ''" style="transition:transform 0.2s">
+                                                        <path d="M19 9l-7 7-7-7"/>
+                                                    </svg>
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {{-- Pending state --}}
+                                        <div x-show="msg.status === 'pending'" class="df-msg__state df-msg__state--pending">
+                                            <div class="df-loader"></div>
+                                            <span>Waiting for response...</span>
+                                        </div>
+
+                                        {{-- Running state --}}
+                                        <div x-show="msg.status === 'running'" class="df-msg__state df-msg__state--running">
+                                            <div class="df-loader df-loader--active"></div>
+                                            <span>Analyzing incident data...</span>
+                                        </div>
+
+                                        {{-- Failed state --}}
+                                        <div x-show="msg.status === 'failed'" class="df-msg__state df-msg__state--failed">
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
+                                            <span x-text="msg.error_message || 'Agent processing failed'"></span>
+                                        </div>
+
+                                        {{-- Completed content --}}
+                                        <div x-show="msg.status === 'completed' && msg.content"
+                                             x-html="renderMarkdown(msg._expanded ? msg.content : (msg.content || '').substring(0, 300) + ((msg.content || '').length > 300 ? '...' : ''))"
+                                             class="df-msg__content"
+                                             :class="{ 'df-msg__content--collapsed': !msg._expanded }">
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </section>
+                </template>
+            </div>
+
+            {{-- ===== FINAL REPORT ===== --}}
+            <div x-show="activeSession && showReport && activeSession?.status === 'completed'" x-transition class="df-report">
+                <div class="df-report__banner">
+                    <div class="df-report__banner-icon">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <h2 class="df-report__title">Final Report</h2>
+                        <p class="df-report__subtitle" x-text="activeSession?.title"></p>
+                    </div>
+                </div>
+
+                <div x-show="activeSession?.final_report_html" x-html="renderMarkdown(activeSession?.final_report_html || '')"
+                     class="df-report__body">
+                </div>
+
+                <div x-show="!activeSession?.final_report_html" class="df-report__loading">
+                    <div class="df-loader df-loader--active"></div>
+                    <p>Generating report...</p>
+                </div>
+
+                <div x-show="activeSession?.tokens_used" class="df-report__tokens">
+                    Tokens used: <strong x-text="activeSession?.tokens_used?.toLocaleString()"></strong>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    {{-- Re-analyze Modal --}}
+    <div x-show="showReanalyzeModal" x-transition.opacity class="df-modal-backdrop" @click.self="showReanalyzeModal = false">
+        <div x-show="showReanalyzeModal" x-transition class="df-modal" @click.stop>
+            <div class="df-modal__header">
+                <div class="df-modal__header-icon">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </div>
+                <div>
+                    <h3 class="df-modal__title">Re-analyze Discussion</h3>
+                    <p class="df-modal__desc">Re-run with fresh incident data. Previous responses will be cleared.</p>
+                </div>
+            </div>
+            <div class="df-modal__body">
+                <label class="df-label">Additional Instructions <span class="df-label__hint">(optional)</span></label>
+                <textarea x-model="reanalyzeInstructions" class="df-textarea" rows="4"
+                    placeholder="Add extra context, focus areas, or specific questions for the agents..."></textarea>
+            </div>
+            <div class="df-modal__footer">
+                <button @click="showReanalyzeModal = false" class="df-btn df-btn--ghost">Cancel</button>
+                <button @click="submitReanalyze()" :disabled="reanalyzing" class="df-btn df-btn--primary" :class="{ 'df-btn--disabled': reanalyzing }">
+                    <svg x-show="!reanalyzing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    <svg x-show="reanalyzing" width="14" height="14" class="df-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M6.76 6.76L3.93 3.93"/></svg>
+                    <span x-text="reanalyzing ? 'Re-analyzing...' : 'Re-analyze'"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+/* ========================================
+   Discussion Forum — "The Roundtable" Theme
+   ======================================== */
+
+/* --- CSS Custom Properties --- */
+.df-app {
+    --df-bg: #faf9f7;
+    --df-surface: #ffffff;
+    --df-surface-hover: #f5f3f0;
+    --df-border: #e8e5e0;
+    --df-border-light: #f0eeeb;
+    --df-text: #1c1917;
+    --df-text-secondary: #78716c;
+    --df-text-muted: #a8a29e;
+    --df-amber-50: #fffbeb;
+    --df-amber-100: #fef3c7;
+    --df-amber-500: #f59e0b;
+    --df-amber-600: #d97706;
+    --df-amber-700: #b45309;
+    --df-green-50: #f0fdf4;
+    --df-green-500: #22c55e;
+    --df-green-700: #15803d;
+    --df-red-50: #fef2f2;
+    --df-red-500: #ef4444;
+    --df-red-700: #b91c1c;
+    --df-blue-50: #eff6ff;
+    --df-blue-500: #3b82f6;
+    --df-radius: 10px;
+    --df-radius-sm: 6px;
+    --df-radius-lg: 14px;
+    --df-shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --df-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    --df-shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+    --df-transition: 0.15s ease;
+    --df-sidebar-w: 280px;
+}
+
+/* --- Layout --- */
+.df-app {
+    display: flex;
+    height: calc(100vh - 120px);
+    overflow: hidden;
+    background: var(--df-bg);
+    font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--df-text);
+}
+
+/* --- Mobile overlay --- */
+.df-mobile-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 40;
+    backdrop-filter: blur(2px);
+}
+.df-mobile-overlay--visible { display: block; }
+
+/* --- Sidebar --- */
+.df-sidebar {
+    width: var(--df-sidebar-w);
+    min-width: var(--df-sidebar-w);
+    background: var(--df-surface);
+    border-right: 1px solid var(--df-border);
+    display: flex;
+    flex-direction: column;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.df-sidebar__header {
+    padding: 16px;
+    border-bottom: 1px solid var(--df-border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.df-sidebar__title-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.df-sidebar__icon {
+    width: 18px;
+    height: 18px;
+    color: var(--df-amber-600);
+}
+
+.df-sidebar__heading {
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--df-text);
+    margin: 0;
+}
+
+.df-sidebar__list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+}
+
+/* --- Session items --- */
+.df-session-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: var(--df-radius-sm);
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    margin-bottom: 2px;
+    transition: background var(--df-transition);
+}
+
+.df-session-item:hover { background: var(--df-surface-hover); }
+.df-session-item--active { background: var(--df-amber-50) !important; }
+
+.df-session-item__top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.df-session-item__title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--df-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.4;
+    flex: 1;
+    min-width: 0;
+}
+
+.df-session-item__delete {
+    opacity: 0;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 4px;
+    border: none;
+    background: none;
+    color: var(--df-text-muted);
+    cursor: pointer;
+    transition: all .15s;
+}
+.df-session-item:hover .df-session-item__delete { opacity: 1; }
+.df-session-item__delete:hover { color: #ef4444; background: rgba(239,68,68,.1); }
+
+.df-session-item__meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
+.df-session-item__date {
+    font-size: 11px;
+    color: var(--df-text-muted);
+}
+
+.df-session-item__user {
+    font-size: 10px;
+    color: var(--df-text-muted);
+    opacity: 0.7;
+    margin-left: auto;
+}
+
+.df-session-item__incident {
+    font-size: 11px;
+    color: var(--df-text-secondary);
+    margin: 2px 0 0;
+}
+
+/* --- Status badges --- */
+.df-status-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 1px 7px;
+    border-radius: 999px;
+}
+.df-status-badge--completed { background: var(--df-green-50); color: var(--df-green-700); }
+.df-status-badge--running { background: var(--df-amber-50); color: var(--df-amber-700); }
+.df-status-badge--failed { background: var(--df-red-50); color: var(--df-red-700); }
+.df-status-badge--pending { background: #f5f5f4; color: #78716c; }
+
+/* --- Severity badges --- */
+.df-severity-badge {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    padding: 1px 6px;
+    border-radius: 4px;
+}
+.df-severity-badge--P1 { background: #fef2f2; color: #991b1b; }
+.df-severity-badge--P2 { background: var(--df-amber-50); color: var(--df-amber-700); }
+.df-severity-badge--P3 { background: var(--df-blue-50); color: #1e40af; }
+.df-severity-badge--default { background: #f5f5f4; color: #57534e; }
+
+/* --- Empty states --- */
+.df-empty-sidebar {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--df-text-muted);
+}
+.df-empty-sidebar p {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 12px 0 2px;
+    color: var(--df-text-secondary);
+}
+.df-empty-sidebar span {
+    font-size: 12px;
+}
+
+/* --- Main area --- */
+.df-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: var(--df-bg);
+}
+
+/* --- Header --- */
+.df-header {
+    padding: 14px 24px;
+    background: var(--df-surface);
+    border-bottom: 1px solid var(--df-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.df-header__left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.df-header__title {
+    font-size: 16px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--df-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.df-header__subtitle {
+    font-size: 12px;
+    color: var(--df-text-secondary);
+    margin: 2px 0 0;
+}
+
+.df-header__actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+/* --- Running indicator --- */
+.df-running-indicator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--df-amber-700);
+    background: var(--df-amber-50);
+    padding: 4px 10px;
+    border-radius: 999px;
+}
+
+.df-pulse-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--df-amber-500);
+    animation: df-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* --- Buttons --- */
+.df-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: var(--df-radius-sm);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all var(--df-transition);
+    background: transparent;
+    color: var(--df-text-secondary);
+    font-family: inherit;
+}
+.df-btn:hover { background: var(--df-surface-hover); }
+
+.df-btn--sm { padding: 4px 10px; font-size: 11px; }
+
+.df-btn--primary {
+    background: var(--df-amber-600);
+    color: white;
+    border-color: var(--df-amber-600);
+}
+.df-btn--primary:hover { background: var(--df-amber-700); border-color: var(--df-amber-700); }
+
+.df-btn--success {
+    background: var(--df-green-500);
+    color: white;
+    border-color: var(--df-green-500);
+}
+.df-btn--success:hover { background: var(--df-green-700); border-color: var(--df-green-700); }
+
+.df-btn--danger {
+    background: var(--df-red-500);
+    color: white;
+    border-color: var(--df-red-500);
+}
+.df-btn--danger:hover { background: var(--df-red-700); border-color: var(--df-red-700); }
+
+.df-btn--ghost {
+    background: transparent;
+    color: var(--df-text-secondary);
+    border-color: var(--df-border);
+}
+.df-btn--ghost:hover { background: var(--df-surface-hover); }
+
+.df-btn--launch {
+    width: 100%;
+    padding: 13px 20px;
+    font-size: 14px;
+    font-weight: 700;
+    background: var(--df-text);
+    color: white;
+    border-color: var(--df-text);
+    border-radius: var(--df-radius);
+    justify-content: center;
+}
+.df-btn--launch:hover:not(.df-btn--disabled) { background: #292524; border-color: #292524; }
+.df-btn--disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+/* --- Mobile toggle --- */
+.df-mobile-toggle {
+    display: none;
+    padding: 6px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--df-text-secondary);
+    border-radius: var(--df-radius-sm);
+}
+.df-mobile-toggle:hover { background: var(--df-surface-hover); }
+
+/* --- Content area --- */
+.df-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 24px;
+}
+
+/* --- Create Form --- */
+.df-create-form {
+    max-width: 660px;
+    margin: 0 auto;
+    animation: df-fade-up 0.3s ease;
+}
+
+.df-create-form__card {
+    background: var(--df-surface);
+    border-radius: var(--df-radius-lg);
+    padding: 28px;
+    border: 1px solid var(--df-border);
+    box-shadow: var(--df-shadow);
+}
+
+.df-create-form__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 28px;
+}
+
+.df-create-form__header-icon {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--df-amber-50);
+    color: var(--df-amber-700);
+    border-radius: var(--df-radius);
+}
+
+.df-create-form__title {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0 0 4px;
+    color: var(--df-text);
+}
+
+.df-create-form__desc {
+    font-size: 13px;
+    color: var(--df-text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+/* --- Form elements --- */
+.df-form-section { margin-bottom: 22px; }
+
+.df-label {
+    display: block;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--df-text-secondary);
+    margin-bottom: 8px;
+}
+
+.df-search-wrapper {
+    position: relative;
+}
+
+.df-search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--df-text-muted);
+    pointer-events: none;
+}
+
+.df-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--df-border);
+    border-radius: var(--df-radius-sm);
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--df-text);
+    background: var(--df-surface);
+    transition: border-color var(--df-transition), box-shadow var(--df-transition);
+}
+.df-input:focus {
+    outline: none;
+    border-color: var(--df-amber-500);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+.df-input--search { padding-left: 36px; }
+
+.df-select {
+    width: 100%;
+    padding: 9px 2.5rem 9px 12px;
+    border: 1px solid var(--df-border);
+    border-radius: var(--df-radius-sm);
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--df-text);
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: var(--df-surface);
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    cursor: pointer;
+    transition: border-color var(--df-transition);
+}
+.df-select:focus {
+    outline: none;
+    border-color: var(--df-amber-500);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+
+/* --- Dropdown --- */
+.df-dropdown {
+    margin-top: 6px;
+    border: 1px solid var(--df-border);
+    border-radius: var(--df-radius);
+    overflow: hidden;
+    box-shadow: var(--df-shadow-md);
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--df-surface);
+}
+
+.df-dropdown-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 10px 14px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    font-family: inherit;
+    border-bottom: 1px solid var(--df-border-light);
+    transition: background var(--df-transition);
+}
+.df-dropdown-item:last-child { border-bottom: none; }
+.df-dropdown-item:hover { background: var(--df-surface-hover); }
+
+.df-dropdown-item__top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.df-dropdown-item__id {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--df-text);
+}
+
+.df-dropdown-item__title {
+    margin: 3px 0 0;
+    font-size: 12px;
+    color: var(--df-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* --- Selected incident --- */
+.df-selected-inc {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    padding: 10px 12px;
+    background: var(--df-amber-50);
+    border-radius: var(--df-radius-sm);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    animation: df-fade-up 0.2s ease;
+}
+
+.df-selected-inc__info {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+.df-selected-inc__id {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--df-amber-700);
+    white-space: nowrap;
+}
+
+.df-selected-inc__sep {
+    color: var(--df-text-muted);
+    flex-shrink: 0;
+}
+
+.df-selected-inc__title {
+    font-size: 13px;
+    color: var(--df-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.df-selected-inc__remove {
+    background: none;
+    border: none;
+    font-size: 18px;
+    color: var(--df-text-muted);
+    cursor: pointer;
+    padding: 0 0 0 8px;
+    line-height: 1;
+    flex-shrink: 0;
+}
+.df-selected-inc__remove:hover { color: var(--df-text); }
+
+/* --- Agent roster --- */
+.df-label__count {
+    font-weight: 500;
+    font-size: 11px;
+    color: var(--df-amber-600);
+    margin-left: 8px;
+}
+
+.df-agent-roster {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+
+.df-agent-card {
+    position: relative;
+    display: block;
+    text-align: left;
+    padding: 0;
+    border-radius: var(--df-radius);
+    font-size: 12px;
+    cursor: pointer;
+    border: 1.5px solid var(--df-border);
+    background: var(--df-surface);
+    color: var(--df-text-secondary);
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    font-family: inherit;
+    overflow: hidden;
+}
+
+.df-agent-card:hover {
+    border-color: color-mix(in srgb, var(--agent-color, #78716c) 40%, var(--df-border));
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--agent-color, #78716c) 8%, transparent);
+}
+
+.df-agent-card--selected {
+    border-color: color-mix(in srgb, var(--agent-color, #6b7280) 50%, transparent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--agent-color, #6b7280) 20%, transparent),
+                0 2px 12px color-mix(in srgb, var(--agent-color, #6b7280) 12%, transparent);
+}
+
+.df-agent-card__glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 100%;
+    background: linear-gradient(135deg,
+        color-mix(in srgb, var(--agent-color, #6b7280) 4%, transparent) 0%,
+        transparent 60%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+.df-agent-card--selected .df-agent-card__glow { opacity: 1; }
+
+.df-agent-card__inner {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 8px;
+    text-align: center;
+}
+
+/* --- Avatar --- */
+.df-agent-card__avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: white;
+    background: var(--agent-color, #78716c);
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--agent-color, #78716c) 30%, transparent);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.df-agent-card:hover .df-agent-card__avatar {
+    transform: scale(1.08);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--agent-color, #78716c) 35%, transparent);
+}
+
+.df-agent-card--selected .df-agent-card__avatar {
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--agent-color, #78716c) 40%, transparent);
+}
+
+/* --- Body --- */
+.df-agent-card__body {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+}
+
+.df-agent-card__header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+}
+
+.df-agent-card__name {
+    font-weight: 700;
+    color: var(--df-text);
+    font-size: 11px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+    max-width: 100%;
+}
+
+/* --- Toggle checkbox --- */
+.df-agent-card__toggle {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    border: 1.5px solid var(--df-border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.2s ease;
+    background: var(--df-surface);
+    color: white;
+    position: absolute;
+    top: 6px;
+    right: 6px;
+}
+
+.df-agent-card:hover .df-agent-card__toggle {
+    border-color: var(--df-text-muted);
+}
+
+.df-agent-card__toggle--on {
+    background: var(--agent-color, var(--df-green-500));
+    border-color: var(--agent-color, var(--df-green-500));
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--agent-color, #6b7280) 30%, transparent);
+}
+
+.df-agent-card__desc {
+    margin: 2px 0 0;
+    font-size: 10px;
+    line-height: 1.4;
+    color: var(--df-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.df-agent-card__skills {
+    display: none;
+}
+
+.df-agent-card__skill {
+    display: none;
+}
+
+.df-agent-card__more {
+    display: none;
+}
+
+/* --- Form grid --- */
+.df-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.df-form-field {}
+
+.df-hint {
+    font-size: 12px;
+    color: var(--df-text-muted);
+    margin-top: 8px;
+}
+
+/* --- Checkbox --- */
+.df-checkbox-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--df-text-secondary);
+    margin-bottom: 24px;
+}
+
+.df-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--df-amber-600);
+    cursor: pointer;
+}
+
+/* --- Textarea --- */
+.df-textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--df-border);
+    border-radius: var(--df-radius-sm);
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--df-text);
+    background: var(--df-surface);
+    resize: vertical;
+    min-height: 60px;
+    transition: border-color var(--df-transition), box-shadow var(--df-transition);
+}
+.df-textarea:focus {
+    outline: none;
+    border-color: var(--df-amber-500);
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.1);
+}
+.df-textarea::placeholder {
+    color: var(--df-text-muted);
+}
+
+.df-label__hint {
+    font-weight: 400;
+    font-size: 11px;
+    color: var(--df-text-muted);
+}
+
+/* --- Instructions banner --- */
+.df-instructions-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 20px;
+    background: var(--df-amber-50);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: var(--df-radius);
+    font-size: 13px;
+    color: var(--df-amber-700);
+    line-height: 1.5;
+}
+.df-instructions-banner svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+/* --- Modal --- */
+.df-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+
+.df-modal {
+    background: var(--df-surface);
+    border-radius: var(--df-radius-lg);
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 0 4px 16px rgba(0, 0, 0, 0.08);
+    width: 100%;
+    max-width: 480px;
+    border: 1px solid var(--df-border);
+}
+
+.df-modal__header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 24px 24px 0;
+}
+
+.df-modal__header-icon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--df-amber-50);
+    color: var(--df-amber-700);
+    border-radius: var(--df-radius);
+}
+
+.df-modal__title {
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0 0 3px;
+    color: var(--df-text);
+}
+
+.df-modal__desc {
+    font-size: 13px;
+    color: var(--df-text-secondary);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.df-modal__body {
+    padding: 20px 24px;
+}
+
+.df-modal__footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding: 16px 24px;
+    border-top: 1px solid var(--df-border);
+}
+
+/* --- Discussion Rounds --- */
+.df-round {
+    margin-bottom: 32px;
+    animation: df-fade-up 0.3s ease;
+}
+
+.df-round__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.df-round__badge {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--df-text);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.df-round__title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--df-text);
+    margin: 0;
+    white-space: nowrap;
+}
+
+.df-round__line {
+    flex: 1;
+    height: 1px;
+    background: var(--df-border);
+}
+
+.df-round__messages {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+    gap: 14px;
+}
+
+/* --- Message card --- */
+.df-msg {
+    position: relative;
+    display: flex;
+    background: var(--df-surface);
+    border-radius: var(--df-radius);
+    border: 1px solid var(--df-border);
+    overflow: hidden;
+    box-shadow: var(--df-shadow-sm);
+    transition: box-shadow var(--df-transition);
+}
+.df-msg:hover { box-shadow: var(--df-shadow); }
+
+.df-msg__accent {
+    width: 4px;
+    flex-shrink: 0;
+}
+
+.df-msg__body {
+    flex: 1;
+    min-width: 0;
+}
+
+.df-msg__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px 10px;
+}
+
+.df-msg__author {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.df-msg__avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    flex-shrink: 0;
+}
+
+.df-msg__name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--df-text);
+}
+
+.df-msg__controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.df-msg__time {
+    font-size: 10px;
+    color: var(--df-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.df-msg__toggle {
+    padding: 4px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--df-text-muted);
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color var(--df-transition), background var(--df-transition);
+}
+.df-msg__toggle:hover { color: var(--df-text); background: var(--df-surface-hover); }
+
+/* --- Message states --- */
+.df-msg__state {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 14px;
+    font-size: 12px;
+}
+.df-msg__state--pending { color: var(--df-text-muted); }
+.df-msg__state--running { color: var(--df-amber-700); }
+.df-msg__state--failed { color: var(--df-red-700); }
+
+/* --- Message content (markdown) --- */
+.df-msg__content {
+    padding: 0 14px 14px;
+    font-size: 13px;
+    line-height: 1.75;
+    color: var(--df-text);
+    max-height: 600px;
+    overflow-y: auto;
+}
+.df-msg__content--collapsed {
+    max-height: 200px;
+    overflow: hidden;
+    position: relative;
+}
+.df-msg__content--collapsed::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(transparent, var(--df-surface));
+    pointer-events: none;
+}
+
+/* Headings */
+.df-msg__content h1 {
+    font-size: 17px; font-weight: 800; margin: 20px 0 10px;
+    color: var(--df-text); line-height: 1.25;
+    padding-bottom: 6px; border-bottom: 2px solid var(--df-border);
+}
+.df-msg__content h2 {
+    font-size: 15px; font-weight: 700; margin: 18px 0 8px;
+    color: var(--df-text); line-height: 1.3;
+    padding-bottom: 4px; border-bottom: 1px solid var(--df-border-light);
+}
+.df-msg__content h3 {
+    font-size: 14px; font-weight: 700; margin: 14px 0 6px;
+    color: var(--df-text);
+}
+.df-msg__content h4 {
+    font-size: 13px; font-weight: 700; margin: 12px 0 4px;
+    color: var(--df-text-secondary);
+}
+.df-msg__content h1:first-child, .df-msg__content h2:first-child,
+.df-msg__content h3:first-child { margin-top: 0; }
+
+/* Paragraphs */
+.df-msg__content p { margin: 8px 0; }
+.df-msg__content p:first-child { margin-top: 0; }
+.df-msg__content p:last-child { margin-bottom: 0; }
+.df-msg__content strong { font-weight: 700; color: var(--df-text); }
+.df-msg__content em { font-style: italic; color: var(--df-text-secondary); }
+
+/* Lists */
+.df-msg__content ul {
+    list-style: none; padding-left: 0; margin: 8px 0;
+}
+.df-msg__content ul li {
+    position: relative; padding-left: 18px; margin-bottom: 5px;
+}
+.df-msg__content ul li::before {
+    content: ''; position: absolute; left: 4px; top: 8px;
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--df-amber-500);
+}
+.df-msg__content ol {
+    list-style: none; counter-reset: df-counter; padding-left: 0; margin: 8px 0;
+}
+.df-msg__content ol li {
+    position: relative; padding-left: 24px; margin-bottom: 5px; counter-increment: df-counter;
+}
+.df-msg__content ol li::before {
+    content: counter(df-counter); position: absolute; left: 0; top: 0;
+    font-size: 11px; font-weight: 800; color: var(--df-amber-700);
+    background: var(--df-amber-50); min-width: 18px; height: 18px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+}
+.df-msg__content li > ul, .df-msg__content li > ol { margin: 4px 0; }
+
+/* Blockquotes */
+.df-msg__content blockquote {
+    border-left: 3px solid var(--df-amber-500);
+    padding: 10px 14px; margin: 12px 0;
+    background: var(--df-amber-50);
+    border-radius: 0 var(--df-radius-sm) var(--df-radius-sm) 0;
+    color: var(--df-text-secondary);
+    font-style: italic;
+}
+
+/* Inline code */
+.df-msg__content code {
+    background: rgba(217, 119, 6, 0.08);
+    padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; color: var(--df-amber-700);
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+/* Code blocks */
+.df-msg__content pre {
+    background: #1c1917; color: #e7e5e4;
+    padding: 16px; border-radius: var(--df-radius);
+    overflow-x: auto; font-size: 12px; line-height: 1.6;
+    margin: 12px 0; border: 1px solid #292524;
+}
+.df-msg__content pre code {
+    background: none; padding: 0; color: inherit; font-size: inherit;
+}
+
+/* Tables */
+.df-msg__content table {
+    width: 100%; border-collapse: collapse; margin: 12px 0;
+    font-size: 12px; border-radius: var(--df-radius-sm);
+    overflow: hidden; border: 1px solid var(--df-border);
+}
+.df-msg__content thead { background: var(--df-surface-hover); }
+.df-msg__content th {
+    padding: 8px 12px; text-align: left; font-weight: 700;
+    color: var(--df-text-secondary); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 2px solid var(--df-border);
+}
+.df-msg__content td {
+    padding: 8px 12px; border-bottom: 1px solid var(--df-border-light);
+    color: var(--df-text);
+}
+.df-msg__content tr:last-child td { border-bottom: none; }
+.df-msg__content tr:nth-child(even) td { background: #faf9f7; }
+
+/* Horizontal rule */
+.df-msg__content hr {
+    border: none; height: 1px; background: var(--df-border);
+    margin: 16px 0;
+}
+
+/* Links */
+.df-msg__content a {
+    color: var(--df-amber-700); text-decoration: none;
+    font-weight: 600; border-bottom: 1px dashed var(--df-amber-500);
+    transition: all 0.15s;
+}
+.df-msg__content a:hover { border-bottom-style: solid; }
+
+/* Mermaid diagrams */
+.df-msg__content .df-mermaid,
+.df-report__body .df-mermaid {
+    margin: 14px 0; text-align: center;
+    background: #faf9f7; border-radius: var(--df-radius);
+    padding: 20px; overflow-x: auto; border: 1px solid var(--df-border);
+}
+.df-msg__content .df-mermaid svg,
+.df-report__body .df-mermaid svg {
+    max-width: 100%; height: auto;
+}
+
+/* Alert/callout boxes (if AI generates them) */
+.df-msg__content > p:first-child > strong:first-child { color: var(--df-amber-700); }
+
+/* --- Loader spinner --- */
+.df-loader {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--df-border);
+    border-top-color: transparent;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.df-loader--active {
+    border-color: var(--df-amber-100);
+    border-top-color: var(--df-amber-500);
+    animation: df-spin 0.8s linear infinite;
+}
+
+/* --- Report view --- */
+.df-report {
+    max-width: 800px;
+    margin: 0 auto;
+    animation: df-fade-up 0.3s ease;
+}
+
+.df-report__banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 28px;
+    background: linear-gradient(135deg, #1c1917 0%, #44403c 100%);
+    border-radius: var(--df-radius-lg);
+    margin-bottom: 24px;
+    color: white;
+}
+
+.df-report__banner-icon {
+    width: 56px;
+    height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.12);
+    border-radius: 50%;
+    color: var(--df-amber-500);
+    flex-shrink: 0;
+}
+
+.df-report__title {
+    font-size: 22px;
+    font-weight: 700;
+    margin: 0 0 2px;
+}
+
+.df-report__subtitle {
+    font-size: 13px;
+    margin: 0;
+    opacity: 0.7;
+}
+
+.df-report__body {
+    font-size: 14px;
+    line-height: 1.85;
+    color: var(--df-text);
+    background: var(--df-surface);
+    border-radius: var(--df-radius-lg);
+    padding: 32px;
+    border: 1px solid var(--df-border);
+    box-shadow: var(--df-shadow);
+}
+
+/* Report headings */
+.df-report__body h1 {
+    font-size: 22px; font-weight: 800; margin: 32px 0 14px;
+    color: var(--df-text); line-height: 1.2;
+    padding-bottom: 10px; border-bottom: 2px solid var(--df-amber-500);
+}
+.df-report__body h2 {
+    font-size: 18px; font-weight: 700; margin: 28px 0 12px;
+    color: var(--df-text); line-height: 1.3;
+    padding-bottom: 6px; border-bottom: 1px solid var(--df-border);
+}
+.df-report__body h3 {
+    font-size: 15px; font-weight: 700; margin: 20px 0 8px;
+    color: var(--df-text);
+}
+.df-report__body h4 {
+    font-size: 14px; font-weight: 700; margin: 16px 0 6px;
+    color: var(--df-text-secondary);
+}
+.df-report__body h1:first-child, .df-report__body h2:first-child { margin-top: 0; }
+
+/* Report text */
+.df-report__body p { margin: 10px 0; }
+.df-report__body p:first-child { margin-top: 0; }
+.df-report__body strong { font-weight: 700; color: var(--df-text); }
+.df-report__body em { font-style: italic; color: var(--df-text-secondary); }
+
+/* Report lists */
+.df-report__body ul {
+    list-style: none; padding-left: 0; margin: 10px 0;
+}
+.df-report__body ul li {
+    position: relative; padding-left: 20px; margin-bottom: 6px;
+}
+.df-report__body ul li::before {
+    content: ''; position: absolute; left: 4px; top: 9px;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--df-amber-500);
+}
+.df-report__body ol {
+    list-style: none; counter-reset: df-counter; padding-left: 0; margin: 10px 0;
+}
+.df-report__body ol li {
+    position: relative; padding-left: 28px; margin-bottom: 6px; counter-increment: df-counter;
+}
+.df-report__body ol li::before {
+    content: counter(df-counter); position: absolute; left: 0; top: 1px;
+    font-size: 12px; font-weight: 800; color: var(--df-amber-700);
+    background: var(--df-amber-50); min-width: 20px; height: 20px;
+    border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    line-height: 1;
+}
+
+/* Report blockquotes */
+.df-report__body blockquote {
+    border-left: 3px solid var(--df-amber-500);
+    padding: 12px 16px; margin: 14px 0;
+    background: var(--df-amber-50);
+    border-radius: 0 var(--df-radius-sm) var(--df-radius-sm) 0;
+    color: var(--df-text-secondary);
+    font-style: italic;
+}
+
+/* Report inline code */
+.df-report__body code {
+    background: rgba(217, 119, 6, 0.08);
+    padding: 2px 6px; border-radius: 4px;
+    font-size: 12px; color: var(--df-amber-700);
+    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+/* Report code blocks */
+.df-report__body pre {
+    background: #1c1917; color: #e7e5e4;
+    padding: 18px; border-radius: var(--df-radius);
+    overflow-x: auto; font-size: 13px; line-height: 1.6;
+    margin: 14px 0; border: 1px solid #292524;
+}
+.df-report__body pre code {
+    background: none; padding: 0; color: inherit; font-size: inherit;
+}
+
+/* Report tables */
+.df-report__body table {
+    width: 100%; border-collapse: collapse; margin: 14px 0;
+    font-size: 13px; border-radius: var(--df-radius-sm);
+    overflow: hidden; border: 1px solid var(--df-border);
+}
+.df-report__body thead { background: var(--df-surface-hover); }
+.df-report__body th {
+    padding: 10px 14px; text-align: left; font-weight: 700;
+    color: var(--df-text-secondary); font-size: 11px;
+    text-transform: uppercase; letter-spacing: 0.04em;
+    border-bottom: 2px solid var(--df-border);
+}
+.df-report__body td {
+    padding: 10px 14px; border-bottom: 1px solid var(--df-border-light);
+    color: var(--df-text);
+}
+.df-report__body tr:last-child td { border-bottom: none; }
+.df-report__body tr:nth-child(even) td { background: #faf9f7; }
+
+/* Report horizontal rule */
+.df-report__body hr {
+    border: none; height: 1px; background: var(--df-border);
+    margin: 20px 0;
+}
+
+/* Report links */
+.df-report__body a {
+    color: var(--df-amber-700); text-decoration: none;
+    font-weight: 600; border-bottom: 1px dashed var(--df-amber-500);
+    transition: all 0.15s;
+}
+.df-report__body a:hover { border-bottom-style: solid; }
+
+.df-report__loading {
+    text-align: center;
+    padding: 48px 20px;
+    color: var(--df-text-muted);
+}
+.df-report__loading p { margin: 12px 0 0; font-size: 13px; }
+
+.df-report__tokens {
+    margin-top: 20px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--df-text-muted);
+}
+.df-report__tokens strong { color: var(--df-text-secondary); }
+
+/* --- Animations --- */
+@keyframes df-spin { to { transform: rotate(360deg); } }
+@keyframes df-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes df-fade-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- Responsive --- */
+@media (max-width: 1023px) {
+    .df-sidebar {
+        position: fixed;
+        top: 0;
+        left: 0;
+        height: 100vh;
+        z-index: 50;
+        transform: translateX(-100%);
+    }
+    .df-sidebar--open { transform: translateX(0); }
+    .df-mobile-toggle { display: flex; }
+    .df-round__messages {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 640px) {
+    .df-content { padding: 16px; }
+    .df-header { padding: 12px 16px; }
+    .df-create-form__card { padding: 20px; }
+    .df-form-row { grid-template-columns: 1fr; }
+    .df-report__banner { padding: 20px; }
+}
+</style>
+
+</x-filament-panels::page>

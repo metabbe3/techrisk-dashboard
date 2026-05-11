@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Models\WarRoomSession;
 use Illuminate\Support\Facades\Broadcast;
 
 /*
@@ -26,4 +27,10 @@ Broadcast::channel('presence.online', function ($user) {
         'name' => $user->name,
         'email' => $user->email,
     ];
+});
+
+Broadcast::channel('war-room.{sessionId}', function (User $user, string $sessionId) {
+    $session = WarRoomSession::find($sessionId);
+
+    return $session && (int) $session->user_id === (int) $user->id;
 });

@@ -11,8 +11,8 @@ use App\Enums\IncidentType;
 use App\Enums\Severity;
 use App\Filament\Forms\Components\AiTextarea;
 use App\Filament\Resources\IncidentResource\Pages;
-use App\Models\Category;
 use App\Filament\Resources\IncidentResource\RelationManagers;
+use App\Models\Category;
 use App\Models\Incident;
 use App\Models\UserAuditLogSetting;
 use Filament\Forms;
@@ -713,6 +713,7 @@ class IncidentResource extends Resource
             RelationManagers\InvestigationDocumentsRelationManager::class,
             RelationManagers\AuditsRelationManager::class,
             RelationManagers\ActionImprovementsRelationManager::class,
+            RelationManagers\WarRoomSessionsRelationManager::class,
         ];
     }
 

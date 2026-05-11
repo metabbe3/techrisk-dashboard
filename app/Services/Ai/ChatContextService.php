@@ -7,6 +7,7 @@ use App\Enums\Severity;
 use App\Models\Category;
 use App\Models\Incident;
 use App\Models\Label;
+use App\Models\WarRoomAgentConfig;
 use Illuminate\Support\Facades\Cache;
 
 class ChatContextService
@@ -52,6 +53,57 @@ class ChatContextService
         }
 
         return $prompt.$context;
+    }
+
+    public function buildPersonaSystemPrompt(WarRoomAgentConfig $persona, string $userMessage, array $referencedIds = []): string
+    {
+        $personaPrompt = $persona->system_prompt ?? '';
+        $skills = collect($persona->skills ?? [])
+            ->map(fn ($s) => is_array($s) ? ($s['skill'] ?? '') : $s)
+            ->filter(fn ($s) => filled($s))
+            ->values()
+            ->toArray();
+        $skillList = ! empty($skills) ? implode(', ', $skills) : 'domain expertise';
+
+        $bridge = "You are responding as **{$persona->display_name}**. {$persona->description}. "
+            ."Apply your domain expertise to analyze the provided TechRisk data from your specialist perspective. "
+            ."Core capabilities: {$skillList}. "
+            ."Structure your analysis according to your expertise area. "
+            ."Use clear markdown headers. Always cite specific data points from the context. "
+            ."Do NOT append follow-up questions in HTML comments.\n\n";
+
+        $enriched = $this->enrichContext($userMessage, $referencedIds);
+        $hasReferenced = ! empty($referencedIds) || preg_match('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
+        $refCount = count($referencedIds) + preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
+        $skipRecent = ($hasReferenced && $refCount >= 2) || str_contains($enriched, '## Smart Search Results');
+
+        $stats = $this->getQuickStats();
+        $recent = $skipRecent ? null : $this->getRecentIncidents();
+
+        $context = "\n\n--- CURRENT DATA CONTEXT ---\n\n";
+
+        if ($hasReferenced) {
+            $context .= "## ⚠️ PRIORITY: USER-REFERENCED INCIDENTS\n"
+                ."The user has specifically attached/referenced one or more incidents. "
+                ."Focus your response PRIMARILY on these specific incidents.\n\n";
+            if ($enriched) {
+                $context .= "{$enriched}\n\n";
+            }
+            $context .= "---\n\n"
+                ."## Background Data (for reference only)\n\n"
+                ."### Quick Stats (this year)\n{$stats}\n";
+            if ($recent) {
+                $context .= "\n### Recent Incidents\n{$recent}\n";
+            }
+        } else {
+            $context .= "## Quick Stats (this year)\n{$stats}\n\n"
+                ."## Recent Incidents (last 10)\n{$recent}\n";
+            if ($enriched) {
+                $context .= "\n## Additional Context (based on your question)\n{$enriched}\n";
+            }
+        }
+
+        return $personaPrompt."\n\n".$bridge.$context;
     }
 
     public function getQuickStats(): string

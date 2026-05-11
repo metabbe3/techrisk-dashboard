@@ -26,6 +26,12 @@ class ChatMessagesController
                 'completion_tokens' => $m->completion_tokens,
                 'feedback' => $m->feedback,
                 'created_at' => $m->created_at?->toIso8601String(),
+                'persona' => $m->persona_key ? [
+                    'key' => $m->persona_key,
+                    'name' => $m->persona_name,
+                    'icon' => $m->persona_icon,
+                    'color' => $m->persona_color,
+                ] : null,
             ]);
 
         return response()->json([

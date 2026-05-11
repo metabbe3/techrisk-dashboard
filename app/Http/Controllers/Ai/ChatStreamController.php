@@ -25,6 +25,7 @@ class ChatStreamController
             'model' => 'nullable|string',
             'referenced_incidents' => 'nullable|array',
             'referenced_incidents.*' => 'string',
+            'web_search' => 'nullable|boolean',
         ]);
 
         $userMessage = $request->input('message');
@@ -94,11 +95,22 @@ class ChatStreamController
         }
 
         // Detect inline web search intent (without /search command at message start)
+        $searchEnriched = false;
         if (! $slashCommand && preg_match('/(?:\/search\b|\bsearch\s+(?:the\s+)?(?:web|internet|online)|look\s+up|check\s+online|\bsearch\s+for)\b/i', $userMessage)) {
             $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
             if ($searchContext) {
                 $userMessage .= "\n\n".$searchContext;
                 $userMessage .= "\n\nThe user wants external web references combined with internal incident data. Always cite external sources using markdown links.";
+                $searchEnriched = true;
+            }
+        }
+
+        // Force web search when toggle is ON and not already enriched
+        if ($request->boolean('web_search') && ! $searchEnriched && $slashCommand !== 'search') {
+            $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
+            if ($searchContext) {
+                $userMessage .= "\n\n".$searchContext;
+                $userMessage .= "\n\nSupplementary web search results are included above. Integrate external references with internal data where relevant. Cite external sources using markdown links.";
             }
         }
 

@@ -17,16 +17,22 @@ class ChatMessage extends Model
         'role',
         'content',
         'model',
+        'persona_key',
+        'persona_name',
+        'persona_icon',
+        'persona_color',
         'tokens_used',
         'prompt_tokens',
         'completion_tokens',
         'feedback',
         'feedback_comment',
+        'web_search_used',
         'created_at',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
+        'web_search_used' => 'boolean',
     ];
 
     public function conversation(): BelongsTo

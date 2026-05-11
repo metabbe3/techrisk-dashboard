@@ -67,8 +67,9 @@ class DashboardStatsOverview extends BaseWidget
 
         $recoveredTotal = Incident::query()
             ->tap($incidentDateFilter)
+            ->where('classification', '!=', 'Issue')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where('recovered_fund', '>', 0)
-            ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
             ->sum('recovered_fund');
 
         $lastIncident = Incident::where('classification', 'Incident')

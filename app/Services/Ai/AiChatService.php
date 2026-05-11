@@ -4,6 +4,7 @@ namespace App\Services\Ai;
 
 use App\Models\AiSetting;
 use App\Models\AiUsageLog;
+use App\Models\WarRoomAgentConfig;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -69,17 +70,7 @@ class AiChatService
                 $content = $responseData['choices'][0]['message']['content'] ?? '';
                 $finishReason = $responseData['choices'][0]['finish_reason'] ?? '';
 
-                if ($finishReason === 'length') {
-                    Log::warning('AI response hit token limit', [
-                        'usage' => $usage,
-                        'model' => $resolvedModel,
-                    ]);
-                    $result = AiTextResult::failure(
-                        'Response was cut off due to token limits. Try referencing fewer incidents or asking a shorter question.',
-                        $resolvedModel,
-                        $responseTimeMs
-                    );
-                } elseif (blank($content)) {
+                if (blank($content)) {
                     Log::warning('AI returned empty content', [
                         'finish_reason' => $finishReason,
                         'usage' => $usage,
@@ -116,6 +107,88 @@ class AiChatService
         }
 
         return $result;
+    }
+
+    public function chatWithPersona(array $messages, string $userMessage, ?string $model, WarRoomAgentConfig $persona, array $referencedIds = []): AiTextResult
+    {
+        $resolvedModel = $persona->model_override ?? $model ?? AiSetting::get('default_model', config('ai.default_model'));
+
+        $userId = auth()->id() ?? 'guest';
+        if (! RateLimiter::attempt("ai-chat-persona:{$userId}", 20, fn () => true)) {
+            return AiTextResult::failure('Rate limit exceeded. Please wait a moment before sending another message.');
+        }
+
+        $systemPrompt = $this->contextService->buildPersonaSystemPrompt($persona, $userMessage, $referencedIds);
+        $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
+
+        $maxHistory = config('ai.chat_max_history', 20);
+        $historyMessages = array_slice($messages, -$maxHistory);
+        foreach ($historyMessages as $msg) {
+            $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
+        }
+
+        for ($i = count($apiMessages) - 1; $i >= 1; $i--) {
+            if (($apiMessages[$i]['role'] ?? '') === 'user') {
+                $apiMessages[$i]['content'] = $userMessage;
+                break;
+            }
+        }
+
+        $startTime = microtime(true);
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout($this->getTimeout())
+                ->post($this->buildUrl(), [
+                    'model' => $resolvedModel,
+                    'messages' => $apiMessages,
+                    'max_tokens' => config('ai.chat_max_tokens', 4000),
+                ]);
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+
+            if ($response->status() === 429) {
+                return AiTextResult::failure('Rate limit exceeded. Please wait a moment.', $resolvedModel, $responseTimeMs);
+            }
+
+            if ($response->status() === 401) {
+                return AiTextResult::failure('Authentication failed. Check your API key.', $resolvedModel, $responseTimeMs);
+            }
+
+            if ($response->failed()) {
+                Log::warning('AI persona chat error', ['status' => $response->status(), 'persona' => $persona->role_key]);
+
+                return AiTextResult::failure('AI service error (HTTP '.$response->status().'). Please try again.', $resolvedModel, $responseTimeMs);
+            }
+
+            $content = $responseData['choices'][0]['message']['content'] ?? '';
+            $finishReason = $responseData['choices'][0]['finish_reason'] ?? '';
+
+            if (blank($content)) {
+                return AiTextResult::failure('AI returned an empty response. Try rephrasing your question.', $resolvedModel, $responseTimeMs);
+            }
+
+            return AiTextResult::success(
+                text: $content,
+                model: $resolvedModel,
+                promptTokens: $usage['prompt_tokens'] ?? null,
+                completionTokens: $usage['completion_tokens'] ?? null,
+                totalTokens: $usage['total_tokens'] ?? null,
+                responseTimeMs: $responseTimeMs,
+                apiRequestId: $responseData['id'] ?? null,
+            );
+        } catch (ConnectionException $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+
+            return AiTextResult::failure('Cannot connect to AI service. Please check your network.', $resolvedModel, $responseTimeMs);
+        } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            Log::warning('AI persona chat unexpected error', ['error' => $e->getMessage()]);
+
+            return AiTextResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
+        }
     }
 
     private function buildHeaders(): array

@@ -73,6 +73,76 @@
                     </template>
                 </div>
             </div>
+            {{-- Web Search Toggle --}}
+            <button @click="webSearchEnabled = !webSearchEnabled"
+                    class="ai-chat-model-btn"
+                    :class="webSearchEnabled ? 'ai-chat-web-search--on' : ''"
+                    :title="webSearchEnabled ? 'Web search ON — every message searches the internet' : 'Click to enable web search for all messages'">
+                <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+                <span class="text-xs font-medium" x-text="webSearchEnabled ? 'Search ON' : 'Web Search'"></span>
+            </button>
+            {{-- Persona Selector --}}
+            <div class="relative" x-data="{ showPersonaPicker: false }">
+                <button @click="showPersonaPicker = !showPersonaPicker" class="ai-chat-model-btn" :class="selectedPersonas.length > 0 ? 'ai-chat-model-btn--active' : ''">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"/></svg>
+                    <span class="text-xs font-medium" x-text="selectedPersonas.length > 0 ? selectedPersonas.length + ' Personas' : 'Personas'"></span>
+                    <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <div x-show="showPersonaPicker" @click.away="showPersonaPicker = false"
+                     x-transition:enter="transition ease-out duration-200"
+                     x-transition:enter-start="opacity-0 scale-95 translate-y-1"
+                     x-transition:enter-end="opacity-100 scale-100 translate-y-0"
+                     x-transition:leave="transition ease-in duration-150"
+                     x-transition:leave-start="opacity-100 scale-100"
+                     x-transition:leave-end="opacity-0 scale-95 translate-y-1"
+                     class="ai-chat-persona-panel">
+                    <div class="ai-chat-persona-panel__header">
+                        <div>
+                            <h4 class="ai-chat-persona-panel__title">Specialist Personas</h4>
+                            <p class="ai-chat-persona-panel__subtitle">Select analysts to give their unique perspective</p>
+                        </div>
+                        <template x-if="selectedPersonas.length > 0">
+                            <button @click="selectedPersonas = []" type="button" class="ai-chat-persona-panel__clear">
+                                <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 18L18 6M6 6l12 12"/></svg>
+                                Clear
+                            </button>
+                        </template>
+                    </div>
+                    <div class="ai-chat-persona-panel__list">
+                        <template x-for="agent in availableAgents" :key="agent.role_key">
+                            <button @click="togglePersona(agent.role_key)"
+                                    type="button"
+                                    class="ai-chat-persona-card"
+                                    :class="{ 'ai-chat-persona-card--selected': selectedPersonas.includes(agent.role_key) }"
+                                    :style="'--p-color:' + getPersonaColor(agent.color)">
+                                <div class="ai-chat-persona-card__glow"></div>
+                                <div class="ai-chat-persona-card__inner">
+                                    <div class="ai-chat-persona-card__avatar">
+                                        <span x-text="getAgentInitial(agent.display_name)"></span>
+                                    </div>
+                                    <div class="ai-chat-persona-card__body">
+                                        <div class="ai-chat-persona-card__header">
+                                            <span class="ai-chat-persona-card__name" x-text="agent.display_name"></span>
+                                            <span class="ai-chat-persona-card__role" x-text="agent.role_key"></span>
+                                            <div class="ai-chat-persona-card__toggle"
+                                                 :class="selectedPersonas.includes(agent.role_key) ? 'ai-chat-persona-card__toggle--on' : ''">
+                                                <svg x-show="selectedPersonas.includes(agent.role_key)" class="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+                                            </div>
+                                        </div>
+                                        <p x-show="agent.description" class="ai-chat-persona-card__desc" x-text="agent.description"></p>
+                                        <div x-show="agent.skills && agent.skills.length > 0" class="ai-chat-persona-card__skills">
+                                            <template x-for="skill in (agent.skills || []).slice(0, 5)" :key="skill">
+                                                <span class="ai-chat-persona-card__skill" x-text="skill"></span>
+                                            </template>
+                                            <span x-show="(agent.skills || []).length > 5" class="ai-chat-persona-card__more" x-text="'+' + ((agent.skills || []).length - 5)"></span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+            </div>
         </div>
 
         {{-- Messages --}}
@@ -95,15 +165,20 @@
             {{-- Message List --}}
             <template x-for="(msg, idx) in messages" :key="msg.id">
                 <div class="ai-chat-msg" :class="msg.role">
-                    <div class="ai-chat-msg-avatar" :class="msg.role">
+                    <div class="ai-chat-msg-avatar" :class="msg.role"
+                         :style="msg.persona ? 'background:' + getPersonaColor(msg.persona.color, 0.15) + '; color:' + getPersonaColor(msg.persona.color) : ''">
                         <template x-if="msg.role === 'user'">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                         </template>
-                        <template x-if="msg.role === 'assistant'">
+                        <template x-if="msg.role === 'assistant' && !msg.persona">
                             <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
                         </template>
+                        <template x-if="msg.role === 'assistant' && msg.persona">
+                            <span class="text-xs font-bold" x-text="getAgentInitial(msg.persona.name)"></span>
+                        </template>
                     </div>
-                    <div class="ai-chat-msg-content" :class="msg.role">
+                    <div class="ai-chat-msg-content" :class="[msg.role, msg.persona ? 'persona-border' : '']"
+                         :style="msg.persona ? 'border-left: 3px solid ' + getPersonaColor(msg.persona.color, 0.6) : ''">
                         <template x-if="msg.role === 'user'">
                             <div>
                                 <p class="text-sm" x-text="msg.content"></p>
@@ -112,9 +187,26 @@
                         </template>
                         <template x-if="msg.role === 'assistant'">
                             <div>
+                                <template x-if="msg.persona">
+                                    <div class="flex items-center gap-1.5 mb-1.5">
+                                        <span class="text-[11px] font-semibold" :style="'color:' + getPersonaColor(msg.persona.color)" x-text="msg.persona.name"></span>
+                                        <span class="text-[10px] text-gray-400">perspective</span>
+                                    </div>
+                                </template>
                                 <div class="ai-chat-msg-text text-sm prose prose-sm dark:prose-invert max-w-none" x-html="msg.parsedHtml"></div>
                                 <div class="flex items-center gap-2 mt-2">
-                                    <span x-show="msg.model" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400" x-text="msg.model"></span>
+                                    <template x-if="msg.persona">
+                                        <span class="text-[10px] px-1.5 py-0.5 rounded" :style="'background:' + getPersonaColor(msg.persona.color, 0.1) + '; color:' + getPersonaColor(msg.persona.color)" x-text="msg.persona.name"></span>
+                                    </template>
+                                    <template x-if="!msg.persona">
+                                        <span x-show="msg.model" class="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400" x-text="msg.model"></span>
+                                    </template>
+                                    <template x-if="msg.web_search_used">
+                                        <span class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1">
+                                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+                                            Searched web
+                                        </span>
+                                    </template>
                                     <span x-show="msg.tokens_used" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400" x-text="msg.prompt_tokens ? msg.prompt_tokens + '→' + msg.completion_tokens + ' (' + msg.tokens_used + ')' : msg.tokens_used + ' tokens'"></span>
                                     <button @click="copyMessage(msg.content)" class="ai-chat-action-btn" title="Copy">
                                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
@@ -148,21 +240,43 @@
 
             {{-- Typing Indicator --}}
             <div x-show="loading" x-transition class="ai-chat-msg assistant">
-                <div class="ai-chat-msg-avatar assistant">
-                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
-                </div>
-                <div class="ai-chat-msg-content assistant">
-                    <div class="flex items-center gap-2">
-                        <div class="ai-chat-typing">
-                            <span></span><span></span><span></span>
+                <template x-if="selectedPersonas.length > 0">
+                    <div class="flex flex-col gap-2 w-full">
+                        <template x-for="roleKey in selectedPersonas" :key="roleKey">
+                            <div class="flex items-center gap-2">
+                                <span class="ai-chat-persona-icon" :style="'width:28px;height:28px;font-size:10px;background:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray', 0.15) + '; color:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray')">
+                                    <span x-text="getAgentInitial(getAgentByKey(roleKey)?.display_name || '?')"></span>
+                                </span>
+                                <div class="ai-chat-typing"><span></span><span></span><span></span></div>
+                                <span class="text-[11px] text-gray-400" x-text="getAgentByKey(roleKey)?.display_name || roleKey"></span>
+                            </div>
+                        </template>
+                        <div class="flex items-center gap-2 ml-9">
+                            <span class="text-xs text-gray-400" x-ref="elapsedDisplay" x-show="loading"></span>
+                            <button @click="stopGeneration()" class="ai-chat-stop-btn">
+                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                                Stop
+                            </button>
                         </div>
-                        <span class="text-xs text-gray-400" x-ref="elapsedDisplay" x-show="loading"></span>
-                        <button @click="stopGeneration()" class="ai-chat-stop-btn">
-                            <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-                            Stop
-                        </button>
                     </div>
-                </div>
+                </template>
+                <template x-if="selectedPersonas.length === 0">
+                    <div class="flex items-center gap-1">
+                        <div class="ai-chat-msg-avatar assistant">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z"/></svg>
+                        </div>
+                        <div class="ai-chat-msg-content assistant">
+                            <div class="flex items-center gap-2">
+                                <div class="ai-chat-typing"><span></span><span></span><span></span></div>
+                                <span class="text-xs text-gray-400" x-ref="elapsedDisplay2" x-show="loading"></span>
+                                <button @click="stopGeneration()" class="ai-chat-stop-btn">
+                                    <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                                    Stop
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
 
@@ -241,6 +355,7 @@
                 </button>
             </div>
             <p class="text-[10px] text-gray-400 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span></p>
+            <p x-show="selectedPersonas.length >= 3" class="text-[10px] text-amber-500 text-center mt-0.5" x-text="selectedPersonas.length + ' personas will generate separate responses, increasing token usage.'"></p>
         </div>
     </div>
 </div>
@@ -251,6 +366,14 @@ function aiChat() {
     // Non-reactive internal state (won't trigger Alpine re-renders)
     let _elapsed = 0;
     let _timer = null;
+
+    const colorMap = {
+        blue: '#3b82f6', indigo: '#6366f1', purple: '#8b5cf6', green: '#22c55e',
+        teal: '#14b8a6', cyan: '#06b6d4', red: '#ef4444', orange: '#f97316',
+        amber: '#f59e0b', pink: '#ec4899', emerald: '#10b981', gray: '#6b7280',
+        rose: '#f43f5e', fuchsia: '#d946ef', sky: '#0ea5e9', violet: '#8b5cf6',
+        yellow: '#eab308',
+    };
 
     // Markdown parser — caches result on message objects
     function parseMd(text) {
@@ -290,6 +413,9 @@ function aiChat() {
         incidentSearch: '',
         incidentResults: [],
         incidentSearchLoading: false,
+        availableAgents: [],
+        selectedPersonas: [],
+        webSearchEnabled: false,
 
         get selectedModelLabel() {
             return this.models[this.selectedModel] || this.selectedModel;
@@ -311,6 +437,7 @@ function aiChat() {
 
         init() {
             this.loadConversations();
+            this.loadAgents();
             if (window.innerWidth >= 1024) this.showSidebar = true;
 
             if (typeof mermaid !== 'undefined') {
@@ -329,6 +456,41 @@ function aiChat() {
             this.autoResize();
             this.slashActive = this.inputText.startsWith('/') && this.filteredCommands.length > 0;
             this.slashIndex = 0;
+        },
+
+        getAgentInitial(name) {
+            if (!name) return '?';
+            const words = name.trim().split(/\s+/);
+            if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
+            return name.slice(0, 2).toUpperCase();
+        },
+
+        getPersonaColor(colorName, alpha = 1) {
+            const hex = colorMap[colorName] || colorMap.gray;
+            if (alpha === 1) return hex;
+            const r = parseInt(hex.slice(1, 3), 16);
+            const g = parseInt(hex.slice(3, 5), 16);
+            const b = parseInt(hex.slice(5, 7), 16);
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        },
+
+        getAgentByKey(roleKey) {
+            return this.availableAgents.find(a => a.role_key === roleKey);
+        },
+
+        togglePersona(roleKey) {
+            const idx = this.selectedPersonas.indexOf(roleKey);
+            if (idx === -1) this.selectedPersonas.push(roleKey);
+            else this.selectedPersonas.splice(idx, 1);
+        },
+
+        async loadAgents() {
+            try {
+                const res = await fetch('/admin/ai/chat/agents', {
+                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (res.ok) this.availableAgents = await res.json();
+            } catch (e) { console.error('Failed to load agents:', e); }
         },
 
         selectSlashCommand(cmd) {
@@ -398,6 +560,12 @@ function aiChat() {
                     this.messages = data.messages.map(m => withHtml(m));
                     if (data.conversation?.model) this.selectedModel = data.conversation.model;
                     this.restoreReferencedIncidents();
+                    // Restore persona selection from conversation history
+                    const personaKeys = new Set();
+                    for (const msg of data.messages) {
+                        if (msg.persona && msg.persona.key) personaKeys.add(msg.persona.key);
+                    }
+                    this.selectedPersonas = [...personaKeys];
                     this.$nextTick(() => { this.scrollToBottom(); this.scheduleMermaidRender(); });
                 }
             } catch (e) { console.error(e); }
@@ -461,7 +629,7 @@ function aiChat() {
             this.lastUserMessage = text;
             _timer = setInterval(() => {
                 _elapsed++;
-                const el = document.querySelector('[x-ref="elapsedDisplay"]');
+                const el = document.querySelector('[x-ref="elapsedDisplay"]') || document.querySelector('[x-ref="elapsedDisplay2"]');
                 if (el) el.textContent = _elapsed + 's';
             }, 1000);
             this.abortController = new AbortController();
@@ -482,6 +650,8 @@ function aiChat() {
                         conversation_id: this.activeConversationId,
                         model: this.selectedModel,
                         referenced_incidents: refIds,
+                        personas: this.selectedPersonas.length > 0 ? this.selectedPersonas : undefined,
+                        web_search: this.webSearchEnabled,
                     }),
                 });
 
@@ -507,12 +677,25 @@ function aiChat() {
                     return;
                 }
 
-                if (data.success && data.assistant_message) {
-                    // Append assistant message only — keep temp user ID to avoid key changes
-                    this.messages = [...this.messages, withHtml({
-                        ...data.assistant_message,
-                        copied: false,
-                    })];
+                if (data.success) {
+                    const searched = data.web_search_used === true;
+                    // Handle multi-persona responses
+                    if (data.mode === 'personas' && data.assistant_messages) {
+                        for (const msg of data.assistant_messages) {
+                            this.messages = [...this.messages, withHtml({
+                                ...msg,
+                                web_search_used: searched,
+                                copied: false,
+                            })];
+                        }
+                    } else if (data.assistant_message) {
+                        // Default single response (backward compatible)
+                        this.messages = [...this.messages, withHtml({
+                            ...data.assistant_message,
+                            web_search_used: searched,
+                            copied: false,
+                        })];
+                    }
 
                     // Defer all side effects so Alpine processes the message change cleanly
                     const payload = data;
