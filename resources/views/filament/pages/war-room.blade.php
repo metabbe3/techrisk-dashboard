@@ -467,7 +467,7 @@ document.addEventListener('alpine:init', () => {
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     Retry
                 </button>
-                <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-btn df-btn--ghost" style="color: #ef4444;">
+                <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-btn df-btn--ghost df-btn--delete">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     Delete
                 </button>
@@ -785,6 +785,116 @@ document.addEventListener('alpine:init', () => {
     --df-transition: 0.15s ease;
     --df-sidebar-w: 280px;
 }
+
+/* --- Dark mode overrides --- */
+:root.dark .df-app {
+    --df-bg: #0f1117;
+    --df-surface: #1a1d27;
+    --df-surface-hover: #242834;
+    --df-border: #2e3345;
+    --df-border-light: #252a38;
+    --df-text: #e4e5ea;
+    --df-text-secondary: #9ca0ad;
+    --df-text-muted: #6b7085;
+    --df-amber-50: rgba(245, 158, 11, 0.08);
+    --df-amber-100: rgba(245, 158, 11, 0.15);
+    --df-amber-500: #f59e0b;
+    --df-amber-600: #d97706;
+    --df-amber-700: #fbbf24;
+    --df-green-50: rgba(34, 197, 94, 0.08);
+    --df-green-500: #22c55e;
+    --df-green-700: #4ade80;
+    --df-red-50: rgba(239, 68, 68, 0.08);
+    --df-red-500: #ef4444;
+    --df-red-700: #f87171;
+    --df-blue-50: rgba(59, 130, 246, 0.08);
+    --df-blue-500: #3b82f6;
+    --df-shadow-sm: 0 1px 2px rgba(0,0,0,0.2);
+    --df-shadow: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
+    --df-shadow-md: 0 4px 6px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.2);
+}
+
+:root.dark .df-status-badge--pending { background: #252a38; color: #9ca0ad; }
+
+:root.dark .df-severity-badge--P1 { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+:root.dark .df-severity-badge--P2 { background: rgba(245, 158, 11, 0.12); color: #fbbf24; }
+:root.dark .df-severity-badge--P3 { background: rgba(59, 130, 246, 0.12); color: #60a5fa; }
+:root.dark .df-severity-badge--default { background: #252a38; color: #9ca0ad; }
+
+:root.dark .df-btn--launch { background: #e4e5ea; color: #1a1d27; border-color: #e4e5ea; }
+:root.dark .df-btn--launch:hover:not(.df-btn--disabled) { background: #c9cad0; border-color: #c9cad0; }
+:root.dark .df-btn--ghost { border-color: #2e3345; }
+:root.dark .df-btn--ghost:hover { background: #242834; }
+
+:root.dark .df-select {
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%239ca0ad' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3E%3C/svg%3E");
+    background-color: #1a1d27;
+}
+
+:root.dark .df-agent-card { background: #1a1d27; border-color: #2e3345; }
+:root.dark .df-agent-card:hover { border-color: color-mix(in srgb, var(--agent-color, #9ca0ad) 35%, #2e3345); }
+:root.dark .df-agent-card__toggle { background: #1a1d27; border-color: #2e3345; }
+
+:root.dark .df-input { background: #1a1d27; border-color: #2e3345; color: #e4e5ea; }
+:root.dark .df-input:focus { border-color: var(--df-amber-500); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+:root.dark .df-textarea { background: #1a1d27; border-color: #2e3345; color: #e4e5ea; }
+:root.dark .df-textarea:focus { border-color: var(--df-amber-500); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
+:root.dark .df-textarea::placeholder { color: #6b7085; }
+
+:root.dark .df-dropdown { background: #1a1d27; border-color: #2e3345; }
+:root.dark .df-selected-inc { background: rgba(245, 158, 11, 0.06); border-color: rgba(245, 158, 11, 0.15); }
+:root.dark .df-selected-inc__id { color: #fbbf24; }
+
+:root.dark .df-modal { background: #1a1d27; border-color: #2e3345; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 4px 16px rgba(0, 0, 0, 0.3); }
+
+:root.dark .df-modal__header-icon { background: rgba(245, 158, 11, 0.1); }
+
+:root.dark .df-round__badge { background: #e4e5ea; color: #1a1d27; }
+
+:root.dark .df-msg { background: #1a1d27; border-color: #2e3345; }
+:root.dark .df-msg__toggle:hover { background: #242834; }
+
+:root.dark .df-msg__content--collapsed::after { background: linear-gradient(transparent, #1a1d27); }
+
+:root.dark .df-msg__content pre,
+:root.dark .df-report__body pre { background: #0f1117; border-color: #2e3345; }
+
+:root.dark .df-msg__content table,
+:root.dark .df-report__body table { border-color: #2e3345; }
+:root.dark .df-msg__content thead,
+:root.dark .df-report__body thead { background: #242834; }
+:root.dark .df-msg__content th,
+:root.dark .df-report__body th { border-bottom-color: #2e3345; }
+:root.dark .df-msg__content td,
+:root.dark .df-report__body td { border-bottom-color: #252a38; }
+:root.dark .df-msg__content tr:nth-child(even) td { background: rgba(255,255,255, 0.02); }
+:root.dark .df-report__body tr:nth-child(even) td { background: rgba(255,255,255, 0.02); }
+
+:root.dark .df-msg__content h1,
+:root.dark .df-report__body h1 { border-bottom-color: var(--df-amber-500); }
+:root.dark .df-msg__content h2,
+:root.dark .df-report__body h2 { border-bottom-color: #2e3345; }
+
+:root.dark .df-msg__content code,
+:root.dark .df-report__body code { background: rgba(245, 158, 11, 0.1); }
+
+:root.dark .df-msg__content .df-mermaid,
+:root.dark .df-report__body .df-mermaid { background: #0f1117; border-color: #2e3345; }
+
+:root.dark .df-report__banner { background: linear-gradient(135deg, #1a1d27 0%, #2e3345 100%); }
+
+:root.dark .df-report__body { background: #1a1d27; border-color: #2e3345; }
+
+:root.dark .df-starting-state__icon { background: rgba(245, 158, 11, 0.1); }
+
+:root.dark .df-mobile-overlay { background: rgba(0, 0, 0, 0.6); }
+
+:root.dark .df-session-item--active { background: rgba(245, 158, 11, 0.06) !important; }
+
+:root.dark .df-session-item__delete:hover { background: rgba(239, 68, 68, 0.15); }
+
+.df-btn--delete { color: #ef4444; }
+:root.dark .df-btn--delete { color: #f87171; }
 
 /* --- Layout --- */
 .df-app {
