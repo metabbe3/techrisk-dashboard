@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
+use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
@@ -29,10 +29,9 @@ class PotentialFundLoss extends BaseWidget
     protected function getStats(): array
     {
         $query = Incident::query()
-            ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
-            ->whereHas('latestStatusUpdate', function ($query) {
-                $query->whereNotIn('status', ['Closed', 'Resolved', 'Recovered']);
-            });
+            ->where('classification', '!=', 'Issue')
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->whereNotIn('incident_status', ['Closed', 'Resolved', 'Recovered']);
 
         $descriptionPeriod = 'this year';
         if ($this->start_date && $this->end_date) {

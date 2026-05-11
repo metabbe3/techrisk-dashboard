@@ -118,38 +118,44 @@ class WarRoomService
 
     public function onAgentCompleted(WarRoomSession $session, WarRoomMessage $message): void
     {
-        $session = $session->fresh();
+        $lock = cache()->lock("warroom:round_complete:{$session->id}:{$message->round}", 30);
 
-        $pendingCount = WarRoomMessage::where('session_id', $session->id)
-            ->where('round', $message->round)
-            ->whereIn('status', ['pending', 'running'])
-            ->count();
+        try {
+            $lock->block(10, function () use ($session, $message) {
+                $session = $session->fresh();
 
-        if ($pendingCount > 0) {
-            return;
-        }
+                $pendingCount = WarRoomMessage::where('session_id', $session->id)
+                    ->where('round', $message->round)
+                    ->whereIn('status', ['pending', 'running'])
+                    ->count();
 
-        $failedCount = WarRoomMessage::where('session_id', $session->id)
-            ->where('round', $message->round)
-            ->where('status', 'failed')
-            ->count();
+                if ($pendingCount > 0) {
+                    return;
+                }
 
-        $completedCount = WarRoomMessage::where('session_id', $session->id)
-            ->where('round', $message->round)
-            ->where('status', 'completed')
-            ->count();
+                $completedCount = WarRoomMessage::where('session_id', $session->id)
+                    ->where('round', $message->round)
+                    ->where('status', 'completed')
+                    ->count();
 
-        if ($completedCount === 0) {
-            $session->markFailed('All agents failed in round '.$message->round);
+                if ($completedCount === 0) {
+                    $session->markFailed('All agents failed in round '.$message->round);
 
-            return;
-        }
+                    return;
+                }
 
-        if ($message->round < $session->max_rounds) {
-            $session->advanceRound();
-            $this->dispatchRound($session, $message->round + 1);
-        } else {
-            SynthesizeWarRoomReport::dispatch($session);
+                if ($message->round < $session->max_rounds) {
+                    $session->advanceRound();
+                    $this->dispatchRound($session, $message->round + 1);
+                } else {
+                    SynthesizeWarRoomReport::dispatch($session);
+                }
+            });
+        } catch (\Illuminate\Contracts\Cache\LockTimeout $e) {
+            Log::warning('[WarRoom] Could not acquire round completion lock', [
+                'session_id' => $session->id,
+                'round' => $message->round,
+            ]);
         }
     }
 
@@ -228,7 +234,16 @@ class WarRoomService
             $this->logUsage('war_room_agent', $model, false, [], $responseTimeMs, $session, $agentRole, $round, $e->getMessage());
         }
 
-        $this->onAgentCompleted($session->fresh(), $message->fresh());
+        try {
+            $this->onAgentCompleted($session->fresh(), $message->fresh());
+        } catch (\Throwable $e) {
+            Log::error('[WarRoom] onAgentCompleted failed', [
+                'session_id' => $session->id,
+                'agent_role' => $agentRole,
+                'round' => $round,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function synthesizeReport(WarRoomSession $session): void
@@ -297,6 +312,10 @@ class WarRoomService
         $session = $message->session;
 
         $message->update(['status' => 'pending', 'error_message' => null]);
+
+        if ($session->status === 'failed') {
+            $session->update(['status' => 'running', 'error_message' => null]);
+        }
 
         ProcessWarRoomAgent::dispatch($session, $message->agent_role, $message->round);
     }

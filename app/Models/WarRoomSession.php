@@ -102,6 +102,9 @@ class WarRoomSession extends Model
 
     public function markRunning(): void
     {
+        if ($this->status !== 'pending') {
+            return;
+        }
         $this->update([
             'status' => 'running',
             'started_at' => now(),
@@ -110,6 +113,9 @@ class WarRoomSession extends Model
 
     public function markCompleted(): void
     {
+        if ($this->status !== 'running') {
+            return;
+        }
         $this->update([
             'status' => 'completed',
             'completed_at' => now(),
@@ -118,6 +124,9 @@ class WarRoomSession extends Model
 
     public function markFailed(string $error): void
     {
+        if ($this->status === 'completed') {
+            return;
+        }
         $this->update([
             'status' => 'failed',
             'failed_at' => now(),

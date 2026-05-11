@@ -179,7 +179,7 @@ document.addEventListener('alpine:init', () => {
 
             startPolling() {
                 this.stopPolling();
-                if (this.activeSession?.status === 'running') {
+                if (this.activeSession?.status === 'running' || this.activeSession?.status === 'pending') {
                     this.pollInterval = setInterval(() => this.poll(), 3000);
                 }
             },
@@ -192,7 +192,7 @@ document.addEventListener('alpine:init', () => {
             },
 
             async poll() {
-                if (!this.activeSession || this.activeSession.status !== 'running') {
+                if (!this.activeSession || (this.activeSession.status !== 'running' && this.activeSession.status !== 'pending')) {
                     this.stopPolling();
                     return;
                 }
@@ -202,6 +202,19 @@ document.addEventListener('alpine:init', () => {
                     this.activeSession.status = data.status;
                     this.activeSession.current_round = data.current_round;
                     this.activeSession.error_message = data.error_message;
+
+                    // If status changed from pending → running, reload to get new messages
+                    if (data.status === 'running' && (!this.activeSession.messages || Object.keys(this.activeSession.messages || {}).length === 0)) {
+                        const sessionId = this.activeSession.id;
+                        const res2 = await fetch('/admin/war-room/sessions/' + sessionId, { headers: this.getHeaders() });
+                        if (res2.ok) {
+                            const fullData = await res2.json();
+                            this.activeSession = fullData;
+                            if (this.activeSession.messages) {
+                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; });
+                            }
+                        }
+                    }
 
                     // Check if any message status changed — reload to show new content
                     let needsReload = false;
@@ -427,11 +440,14 @@ document.addEventListener('alpine:init', () => {
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'running'">
                         Round <span x-text="activeSession?.current_round || 0"></span> of <span x-text="activeSession?.max_rounds || 2"></span> in progress
                     </p>
+                    <p class="df-header__subtitle" x-show="activeSession?.status === 'pending'">
+                        Preparing agents...
+                    </p>
                 </div>
             </div>
 
             <div class="df-header__actions">
-                <div x-show="activeSession?.status === 'running'" class="df-running-indicator">
+                <div x-show="activeSession?.status === 'running' || activeSession?.status === 'pending'" class="df-running-indicator">
                     <span class="df-pulse-dot"></span>
                     <span>Analyzing</span>
                 </div>
@@ -591,6 +607,21 @@ document.addEventListener('alpine:init', () => {
             <div x-show="activeSession && activeSession.user_instructions && !showReport" x-transition class="df-instructions-banner">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                 <span x-text="activeSession?.user_instructions"></span>
+            </div>
+
+            {{-- ===== PENDING / STARTING STATE ===== --}}
+            <div x-show="activeSession && activeSession.status === 'pending' && getSortedRounds().length === 0" x-transition class="df-starting-state">
+                <div class="df-starting-state__icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                    </svg>
+                </div>
+                <h3 class="df-starting-state__title">Starting Discussion</h3>
+                <p class="df-starting-state__desc">Preparing agents and analyzing incident data...</p>
+                <div class="df-starting-state__loader">
+                    <div class="df-loader df-loader--active"></div>
+                    <span>This may take a few seconds</span>
+                </div>
             </div>
 
             {{-- ===== DISCUSSION ROUNDS ===== --}}
@@ -2134,6 +2165,47 @@ document.addEventListener('alpine:init', () => {
     color: var(--df-text-muted);
 }
 .df-report__tokens strong { color: var(--df-text-secondary); }
+
+/* --- Starting state --- */
+.df-starting-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 80px 20px;
+    text-align: center;
+    animation: df-fade-up 0.4s ease;
+}
+.df-starting-state__icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: var(--df-amber-50);
+    color: var(--df-amber-600);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 20px;
+    animation: df-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+.df-starting-state__title {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--df-text);
+    margin: 0 0 6px;
+}
+.df-starting-state__desc {
+    font-size: 14px;
+    color: var(--df-text-secondary);
+    margin: 0 0 24px;
+}
+.df-starting-state__loader {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--df-text-muted);
+}
 
 /* --- Animations --- */
 @keyframes df-spin { to { transform: rotate(360deg); } }

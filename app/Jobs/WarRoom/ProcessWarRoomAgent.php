@@ -2,6 +2,7 @@
 
 namespace App\Jobs\WarRoom;
 
+use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
 use Illuminate\Bus\Queueable;
@@ -40,6 +41,18 @@ class ProcessWarRoomAgent implements ShouldQueue
             ]);
 
             throw $e;
+        }
+    }
+
+    public function failed(\Throwable $exception): void
+    {
+        $message = WarRoomMessage::where('session_id', $this->session->id)
+            ->where('agent_role', $this->agentRole)
+            ->where('round', $this->round)
+            ->first();
+
+        if ($message && $message->status !== 'completed') {
+            $message->markFailed('Job failed after retries: '.$exception->getMessage());
         }
     }
 }
