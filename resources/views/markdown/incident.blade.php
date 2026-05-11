@@ -144,16 +144,6 @@ No investigation documents attached.
 
 {{ $incident->remark ?? 'No remarks provided.' }}
 
-## Administrative Status
-
-| Status Flag | Value |
-|-------------|-------|
-| **GoC Uploaded** | {{ \App\Services\Markdown\MarkdownFormatter::formatBool($incident->goc_upload) }} |
-| **Teams Uploaded** | {{ \App\Services\Markdown\MarkdownFormatter::formatBool($incident->teams_upload) }} |
-| **Doc Signed** | {{ \App\Services\Markdown\MarkdownFormatter::formatBool($incident->doc_signed) }} |
-| **Risk Incident Form CFM** | {{ \App\Services\Markdown\MarkdownFormatter::formatBool($incident->risk_incident_form_cfm) }} |
-| **Glitch Flag** | {{ $incident->glitch_flag ?? 'N/A' }} |
-
 ---
 
 *Exported from Technical Risk Dashboard on {{ now()->format('Y-m-d H:i:s') }}*
