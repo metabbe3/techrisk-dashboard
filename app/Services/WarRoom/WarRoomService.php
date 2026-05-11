@@ -193,7 +193,7 @@ class WarRoomService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => config('ai.war_room.max_output_tokens', 2000),
+                    'max_tokens' => config('ai.war_room.max_output_tokens', 4000),
                 ]);
 
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -263,7 +263,7 @@ class WarRoomService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 4000,
+                    'max_tokens' => config('ai.war_room.max_output_tokens', 4000) * 2,
                 ]);
 
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
