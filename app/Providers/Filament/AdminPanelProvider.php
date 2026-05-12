@@ -53,6 +53,7 @@ class AdminPanelProvider extends PanelProvider
             ->pages([
                 Dashboard::class,
                 WeeklyReport::class,
+                \App\Filament\Pages\AnalyticsPage::class,
             ])
             ->middleware([
                 EncryptCookies::class,
