@@ -92,7 +92,8 @@
     x-init="
         const rcaCleanup = () => clearInterval($data.rcaTimer);
         document.addEventListener('livewire:navigated', rcaCleanup);
-        $cleanup(() => { clearInterval($data.rcaTimer); document.removeEventListener('livewire:navigated', rcaCleanup); });
+        const rcaObs = new MutationObserver(() => { if (!$el.isConnected) { rcaCleanup(); rcaObs.disconnect(); } });
+        rcaObs.observe($el.parentElement, { childList: true });
     "
     class="smart-label-wrapper"
 >

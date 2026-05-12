@@ -131,7 +131,8 @@
     x-init="
         const slCleanup = () => clearInterval($data.slTimer);
         document.addEventListener('livewire:navigated', slCleanup);
-        $cleanup(() => { clearInterval($data.slTimer); document.removeEventListener('livewire:navigated', slCleanup); });
+        const slObs = new MutationObserver(() => { if (!$el.isConnected) { slCleanup(); slObs.disconnect(); } });
+        slObs.observe($el.parentElement, { childList: true });
     "
     class="smart-label-wrapper"
 >

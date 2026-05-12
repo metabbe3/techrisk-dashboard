@@ -104,7 +104,8 @@
     x-init="
         const simCleanup = () => clearInterval($data.simTimer);
         document.addEventListener('livewire:navigated', simCleanup);
-        $cleanup(() => { clearInterval($data.simTimer); document.removeEventListener('livewire:navigated', simCleanup); });
+        const simObs = new MutationObserver(() => { if (!$el.isConnected) { simCleanup(); simObs.disconnect(); } });
+        simObs.observe($el.parentElement, { childList: true });
     "
     class="smart-label-wrapper"
 >

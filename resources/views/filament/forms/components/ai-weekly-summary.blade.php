@@ -69,7 +69,8 @@
     x-init="
         const wsCleanup = () => clearInterval($data.wsTimer);
         document.addEventListener('livewire:navigated', wsCleanup);
-        $cleanup(() => { clearInterval($data.wsTimer); document.removeEventListener('livewire:navigated', wsCleanup); });
+        const wsObs = new MutationObserver(() => { if (!$el.isConnected) { wsCleanup(); wsObs.disconnect(); } });
+        wsObs.observe($el.parentElement, { childList: true });
     "
     style="margin-bottom:16px;"
 >
