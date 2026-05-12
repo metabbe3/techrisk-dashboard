@@ -122,18 +122,12 @@
 .fi-resource-edit-record-page .fi-section {
     border: 1px solid #eef0f4;
     border-radius: 12px;
-    overflow: hidden;
+    overflow: visible;
     transition: border-color .2s;
 }
-/* AI Tools section: allow model picker to escape */
-.fi-resource-edit-record-page .fi-section:has(.smart-label-wrapper) {
-    overflow: visible;
-}
-/* Tab panel and tabs container must also allow overflow for picker */
-.fi-resource-edit-record-page .fi-fo-tabs-tab:has(.smart-label-wrapper) {
-    overflow: visible !important;
-}
-.fi-resource-edit-record-page .fi-fo-tabs:has(.smart-label-wrapper) {
+/* Tab panels and tabs must allow dropdown/picker overflow */
+.fi-resource-edit-record-page .fi-fo-tabs-tab,
+.fi-resource-edit-record-page .fi-fo-tabs {
     overflow: visible !important;
 }
 .fi-resource-edit-record-page .fi-section:hover {
