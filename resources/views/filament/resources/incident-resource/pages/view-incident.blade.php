@@ -119,7 +119,7 @@
                     Summary
                 </h3>
                 <div class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700">{!! Str::markdown($inc->summary) !!}</div>
-                @if($inc->ai_enhanced_fields['summary'] ?? false)
+                @if($inc->ai_enhanced_fields['summary']['enhanced'] ?? false)
                 <span class="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-full px-2.5 py-0.5">
                     <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>
                     AI Enhanced
@@ -136,7 +136,7 @@
                     Root Cause Analysis
                 </h3>
                 <div class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700">{!! Str::markdown($inc->root_cause) !!}</div>
-                @if($inc->ai_enhanced_fields['root_cause'] ?? false)
+                @if($inc->ai_enhanced_fields['root_cause']['enhanced'] ?? false)
                 <span class="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-full px-2.5 py-0.5">
                     <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>
                     AI Enhanced
@@ -153,7 +153,7 @@
                     Incident Timeline & Chronology
                 </h3>
                 <div class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700">{!! Str::markdown($inc->timeline) !!}</div>
-                @if($inc->ai_enhanced_fields['timeline'] ?? false)
+                @if($inc->ai_enhanced_fields['timeline']['enhanced'] ?? false)
                 <span class="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-full px-2.5 py-0.5">
                     <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>
                     AI Enhanced
@@ -170,7 +170,7 @@
                     Remark
                 </h3>
                 <div class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700">{!! Str::markdown($inc->remark) !!}</div>
-                @if($inc->ai_enhanced_fields['remark'] ?? false)
+                @if($inc->ai_enhanced_fields['remark']['enhanced'] ?? false)
                 <span class="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/30 border border-teal-200 dark:border-teal-800 rounded-full px-2.5 py-0.5">
                     <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>
                     AI Enhanced

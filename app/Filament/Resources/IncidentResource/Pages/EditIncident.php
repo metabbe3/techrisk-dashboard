@@ -50,4 +50,30 @@ class EditIncident extends EditRecord
 
         return $data;
     }
+
+    protected function beforeSave(): void
+    {
+        $fields = ['summary', 'root_cause', 'timeline', 'remark'];
+        $aiFields = $this->record->ai_enhanced_fields ?? [];
+        $changed = false;
+
+        foreach ($fields as $field) {
+            if (! isset($aiFields[$field]['enhanced'])) {
+                continue;
+            }
+
+            $submitted = trim((string) ($this->data[$field] ?? ''));
+            $storedHash = $aiFields[$field]['hash'] ?? null;
+
+            if ($storedHash && md5($submitted) !== $storedHash) {
+                unset($aiFields[$field]);
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            $this->record->ai_enhanced_fields = empty($aiFields) ? null : $aiFields;
+            $this->record->saveQuietly();
+        }
+    }
 }

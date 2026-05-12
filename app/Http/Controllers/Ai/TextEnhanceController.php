@@ -32,7 +32,7 @@ class TextEnhanceController extends Controller
         );
 
         if ($result->success && ! empty($validated['incident_id'])) {
-            $this->markFieldAiEnhanced($validated['incident_id'], $validated['field_type']);
+            $this->markFieldAiEnhanced($validated['incident_id'], $validated['field_type'], $result->text);
         }
 
         return response()->json([
@@ -43,7 +43,7 @@ class TextEnhanceController extends Controller
         ]);
     }
 
-    private function markFieldAiEnhanced(int $incidentId, string $fieldType): void
+    private function markFieldAiEnhanced(int $incidentId, string $fieldType, string $aiText): void
     {
         $incident = Incident::find($incidentId);
 
@@ -52,7 +52,10 @@ class TextEnhanceController extends Controller
         }
 
         $fields = $incident->ai_enhanced_fields ?? [];
-        $fields[$fieldType] = true;
+        $fields[$fieldType] = [
+            'enhanced' => true,
+            'hash' => md5(trim($aiText)),
+        ];
         $incident->update(['ai_enhanced_fields' => $fields]);
     }
 }
