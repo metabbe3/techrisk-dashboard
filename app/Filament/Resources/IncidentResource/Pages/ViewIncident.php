@@ -21,13 +21,31 @@ class ViewIncident extends ViewRecord
 {
     protected static string $resource = IncidentResource::class;
 
+    private function isAiEnhanced($record, string $field): bool
+    {
+        $data = $record->ai_enhanced_fields;
+
+        if (! $data) {
+            return false;
+        }
+
+        $value = $data[$field] ?? null;
+
+        if (is_array($value)) {
+            return (bool) ($value['enhanced'] ?? false);
+        }
+
+        return (bool) $value;
+    }
+
     private function aiBadge(string $field): TextEntry
     {
-        return TextEntry::make('ai_enhanced_fields')
+        return TextEntry::make("ai_badge_{$field}")
             ->label('')
+            ->default('')
             ->html()
             ->formatStateUsing(function ($record) use ($field) {
-                if (! ($record->ai_enhanced_fields[$field]['enhanced'] ?? false)) {
+                if (! $this->isAiEnhanced($record, $field)) {
                     return '';
                 }
 
@@ -35,7 +53,7 @@ class ViewIncident extends ViewRecord
                     . '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>'
                     . 'AI Enhanced</span>';
             })
-            ->visible(fn ($record) => $record->ai_enhanced_fields[$field]['enhanced'] ?? false);
+            ->visible(fn ($record) => $this->isAiEnhanced($record, $field));
     }
 
     protected function getHeaderActions(): array
