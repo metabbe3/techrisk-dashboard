@@ -26,8 +26,11 @@
 
             {{-- AI Analysis --}}
             @if($aiAnalysis)
-            <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">{{ $aiAnalysis }}</p>
+            <p class="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-2">{{ $aiAnalysis }}</p>
             @endif
+
+            {{-- Disclaimer --}}
+            <p class="text-xs text-gray-400 dark:text-gray-500 mb-4">AI-generated analysis may be inaccurate. Please verify the results independently.</p>
 
             {{-- Matched Incidents --}}
             @if(!empty($matches))
