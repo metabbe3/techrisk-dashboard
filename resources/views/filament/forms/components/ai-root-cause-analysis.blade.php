@@ -1,12 +1,21 @@
 @php
     $endpoint = route('ai.analyze-root-cause');
     $applyLabelsEndpoint = route('ai.apply-labels');
+    $markEnhancedEndpoint = route('ai.mark-enhanced');
     $csrf = csrf_token();
     $aiService = app(\App\Services\Ai\AiTextService::class);
     $models = $aiService->getAvailableModels();
     $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
     $isAvailable = $aiService->isAvailable();
     $hasMultipleModels = count($models) > 1;
+    $recordId = null;
+    try {
+        $livewire = \Livewire\Livewire::current();
+        if ($livewire && method_exists($livewire, 'getRecord')) {
+            $record = $livewire->getRecord();
+            $recordId = $record?->id;
+        }
+    } catch (\Throwable $e) {}
 @endphp
 
 @if($isAvailable)
@@ -120,19 +129,36 @@ if (typeof window.aiRootCauseData === 'undefined') {
                 if (!this.rcaResults) return;
                 this.rcaApplying = true;
                 try {
+                    const appliedFields = {};
+
                     if (this.rcaApply.summary && this.rcaResults.summary) {
                         this.$wire.set('data.summary', this.rcaResults.summary);
+                        appliedFields.summary = this.rcaResults.summary;
                     }
                     if (this.rcaApply.root_cause && this.rcaResults.root_cause) {
                         this.$wire.set('data.root_cause', this.rcaResults.root_cause);
+                        appliedFields.root_cause = this.rcaResults.root_cause;
                     }
                     if (this.rcaApply.remark && this.rcaResults.remark) {
                         this.$wire.set('data.remark', this.rcaResults.remark);
+                        appliedFields.remark = this.rcaResults.remark;
                     }
                     if (this.rcaApply.recommendation && this.rcaResults.recommendation) {
                         const curRemark = await this.$wire.get('data.remark') || '';
                         const append = (curRemark ? curRemark + '\n\n' : '') + '## Recommendation\n' + this.rcaResults.recommendation;
                         this.$wire.set('data.remark', append);
+                        appliedFields.remark = append;
+                    }
+
+                    // Mark fields as AI-enhanced
+                    const recordId = config.recordId;
+                    if (recordId && Object.keys(appliedFields).length > 0) {
+                        try {
+                            await this.rcaFetch(config.markEnhancedEndpoint, {
+                                incident_id: recordId,
+                                fields: appliedFields,
+                            });
+                        } catch(e) { console.warn('Mark enhanced failed:', e); }
                     }
 
                     const selMatched = (this.rcaResults.labels_matched || []).filter(l => this.rcaSelectedLabels.includes(l));
@@ -163,7 +189,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
 }
 </script>
 
-<div x-data="aiRootCauseData({ endpoint: '{{ $endpoint }}', applyLabelsEndpoint: '{{ $applyLabelsEndpoint }}', csrf: '{{ $csrf }}', defaultModel: '{{ $defaultModel }}' })"
+<div x-data="aiRootCauseData({ endpoint: '{{ $endpoint }}', applyLabelsEndpoint: '{{ $applyLabelsEndpoint }}', markEnhancedEndpoint: '{{ $markEnhancedEndpoint }}', csrf: '{{ $csrf }}', defaultModel: '{{ $defaultModel }}', recordId: '{{ $recordId }}' })"
     x-init="
         const rcaCleanup = () => clearInterval($data.rcaTimer);
         document.addEventListener('livewire:navigated', rcaCleanup);
