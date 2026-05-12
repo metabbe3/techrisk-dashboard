@@ -21,6 +21,23 @@ class ViewIncident extends ViewRecord
 {
     protected static string $resource = IncidentResource::class;
 
+    private function aiBadge(string $field): TextEntry
+    {
+        return TextEntry::make('ai_enhanced_fields')
+            ->label('')
+            ->html()
+            ->formatStateUsing(function ($record) use ($field) {
+                if (! ($record->ai_enhanced_fields[$field] ?? false)) {
+                    return '';
+                }
+
+                return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#0d9488;background:#f0fdfa;border:1px solid #ccfbf1;border-radius:999px;padding:2px 10px;font-weight:600;">'
+                    . '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>'
+                    . 'AI Enhanced</span>';
+            })
+            ->visible(fn ($record) => $record->ai_enhanced_fields[$field] ?? false);
+    }
+
     protected function getHeaderActions(): array
     {
         return [
@@ -53,6 +70,7 @@ class ViewIncident extends ViewRecord
                             ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No summary provided'),
+                        $this->aiBadge('summary'),
                     ])
                     ->collapsible()
                     ->columnSpanFull(),
@@ -65,6 +83,7 @@ class ViewIncident extends ViewRecord
                             ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No root cause analysis'),
+                        $this->aiBadge('root_cause'),
                         TextEntry::make('root_cause_category')
                             ->label('Root Cause Category')
                             ->badge()
@@ -87,6 +106,7 @@ class ViewIncident extends ViewRecord
                             ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No timeline recorded'),
+                        $this->aiBadge('timeline'),
                     ])
                     ->collapsible()
                     ->columnSpanFull(),
@@ -99,6 +119,7 @@ class ViewIncident extends ViewRecord
                             ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No remarks'),
+                        $this->aiBadge('remark'),
                     ])
                     ->collapsible()
                     ->visible(fn ($record) => filled($record->remark))

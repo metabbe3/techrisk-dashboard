@@ -54,7 +54,7 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': this.cfg.csrfToken, 'Accept': 'application/json' },
                         credentials: 'same-origin',
-                        body: JSON.stringify({ text: text, field_type: this.cfg.fieldType, model: this.selectedModel }),
+                        body: JSON.stringify({ text: text, field_type: this.cfg.fieldType, model: this.selectedModel, incident_id: this.cfg.recordId || null }),
                     });
 
                     if (resp.status === 419) {
@@ -116,6 +116,7 @@
                             field_type: this.cfg.fieldType,
                             model: this.selectedModel,
                             additional_prompt: note,
+                            incident_id: this.cfg.recordId || null,
                         }),
                     });
 

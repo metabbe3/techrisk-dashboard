@@ -46,6 +46,7 @@ class AiTextarea extends Textarea
             'models' => $models,
             'defaultModel' => 'gpt-4',
             'promptLabel' => config("ai.prompts.{$fieldType}.label", 'Enhance with AI'),
+            'recordId' => $this->getRecord()?->id,
         ];
     }
 
