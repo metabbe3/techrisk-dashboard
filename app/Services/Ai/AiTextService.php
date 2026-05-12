@@ -331,30 +331,55 @@ class AiTextService
         return ['matched' => $matched, 'suggested' => $suggested];
     }
 
-    public function analyzeRootCause(array $incidentData, ?string $model = null): array
+    public function analyzeRootCause(array $incidentData, ?string $model = null, array $availableLabels = []): array
     {
         $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
         $prompt = config('ai.prompts.root_cause_analysis');
 
         if (! $prompt) {
-            return ['root_cause' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+            return ['summary' => '', 'root_cause' => '', 'remark' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => '', 'labels_matched' => [], 'labels_suggested' => []];
         }
 
-        $userMessage = "Analyze the following incident and determine the probable root cause:\n\n";
+        $userMessage = "Analyze the following incident:\n\n";
         foreach ($incidentData as $key => $value) {
             if (filled($value)) {
                 $userMessage .= "- {$key}: {$value}\n";
             }
         }
 
-        $defaultResult = ['root_cause' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => ''];
+        if (! empty($availableLabels)) {
+            $userMessage .= "\nAvailable labels: " . implode(', ', $availableLabels);
+        } else {
+            $userMessage .= "\nAvailable labels: (none — suggest relevant new labels)";
+        }
+
+        $defaultResult = ['summary' => '', 'root_cause' => '', 'remark' => '', 'categories' => [], 'contributing_factors' => [], 'recommendation' => '', 'labels_matched' => [], 'labels_suggested' => []];
         $result = $this->callAiForJson('root_cause_analysis', $resolvedModel, $prompt['system'], $userMessage, $defaultResult);
 
+        $strings = collect(['summary', 'root_cause', 'remark', 'recommendation'])
+            ->mapWithKeys(fn ($k) => [$k => is_string($result[$k] ?? null) ? $this->cleanResponse($result[$k]) : ''])
+            ->toArray();
+
+        $labelMapLower = collect($availableLabels)->mapWithKeys(fn ($l) => [mb_strtolower($l) => $l])->toArray();
+        $matched = collect($result['labels_matched'] ?? [])
+            ->filter(fn ($l) => is_string($l) && isset($labelMapLower[mb_strtolower($l)]))
+            ->map(fn ($l) => $labelMapLower[mb_strtolower($l)])
+            ->unique()
+            ->values()
+            ->toArray();
+
+        $suggested = collect($result['labels_suggested'] ?? [])
+            ->filter(fn ($l) => is_string($l) && mb_strlen($l) <= 50 && ! isset($labelMapLower[mb_strtolower($l)]))
+            ->unique(fn ($l) => mb_strtolower($l))
+            ->values()
+            ->toArray();
+
         return [
-            'root_cause' => is_string($result['root_cause'] ?? null) ? $this->cleanResponse($result['root_cause']) : '',
+            ...$strings,
             'categories' => collect($result['categories'] ?? [])->filter(fn ($c) => is_string($c))->values()->toArray(),
             'contributing_factors' => collect($result['contributing_factors'] ?? [])->filter(fn ($f) => is_string($f))->values()->toArray(),
-            'recommendation' => is_string($result['recommendation'] ?? null) ? $this->cleanResponse($result['recommendation']) : '',
+            'labels_matched' => $matched,
+            'labels_suggested' => $suggested,
         ];
     }
 

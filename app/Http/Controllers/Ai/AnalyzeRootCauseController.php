@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Ai;
 
 use App\Http\Controllers\Controller;
+use App\Models\Label;
 use App\Services\Ai\AiTextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class AnalyzeRootCauseController extends Controller
 {
@@ -34,24 +36,35 @@ class AnalyzeRootCauseController extends Controller
             return response()->json([
                 'success' => false,
                 'error' => 'No incident data provided. Fill in at least summary or timeline.',
+                'summary' => '',
                 'root_cause' => '',
+                'remark' => '',
                 'categories' => [],
                 'contributing_factors' => [],
                 'recommendation' => '',
+                'labels_matched' => [],
+                'labels_suggested' => [],
             ]);
         }
+
+        $availableLabels = Cache::remember('labels', 3600, fn () => Label::pluck('name')->toArray());
 
         $result = $this->aiService->analyzeRootCause(
             incidentData: $incidentData,
             model: $validated['model'] ?? null,
+            availableLabels: $availableLabels,
         );
 
         return response()->json([
             'success' => true,
+            'summary' => $result['summary'],
             'root_cause' => $result['root_cause'],
+            'remark' => $result['remark'],
             'categories' => $result['categories'],
             'contributing_factors' => $result['contributing_factors'],
             'recommendation' => $result['recommendation'],
+            'labels_matched' => $result['labels_matched'],
+            'labels_suggested' => $result['labels_suggested'],
         ]);
     }
 }

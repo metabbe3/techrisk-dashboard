@@ -1,5 +1,6 @@
 @php
     $endpoint = route('ai.analyze-root-cause');
+    $applyLabelsEndpoint = route('ai.apply-labels');
     $csrf = csrf_token();
     $aiService = app(\App\Services\Ai\AiTextService::class);
     $models = $aiService->getAvailableModels();
@@ -18,9 +19,26 @@
         rcaTimer: null,
         rcaSelectedModel: '{{ $defaultModel }}',
         rcaShowModelPicker: false,
+        rcaApplying: false,
 
         rcaNotify(body, type) {
-            try { new FilamentNotification().title('Root Cause Analysis').body(body).status(type).send(); } catch(e) {}
+            try { new FilamentNotification().title('AI Analysis').body(body).status(type).send(); } catch(e) {}
+        },
+
+        simpleMd(text) {
+            if (!text) return '';
+            let html = text
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;margin:10px 0 4px;color:#1e293b;">$1</h4>')
+                .replace(/^## (.+)$/gm, '<h3 style="font-size:14px;font-weight:700;margin:12px 0 6px;color:#0f172a;">$1</h3>')
+                .replace(/^# (.+)$/gm, '<h2 style="font-size:15px;font-weight:700;margin:14px 0 6px;color:#0f172a;">$1</h2>')
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/`([^`]+)`/g, '<code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;font-size:11px;">$1</code>')
+                .replace(/^\- (.+)$/gm, '<li style="margin-left:16px;">$1</li>')
+                .replace(/^\d+\. (.+)$/gm, '<li style="margin-left:16px;list-style-type:decimal;">$1</li>')
+                .replace(/\n{2,}/g, '</p><p style="margin:6px 0;">')
+                .replace(/\n/g, '<br>');
+            return '<p style="margin:6px 0;">' + html + '</p>';
         },
 
         async rcaFetch(url, body) {
@@ -62,10 +80,10 @@
                 payload.model = this.rcaSelectedModel;
                 const d = await this.rcaFetch('{{ $endpoint }}', payload);
 
-                if (d.success && d.root_cause) {
+                if (d.success && (d.root_cause || d.summary)) {
                     this.rcaResults = d;
                     this.rcaOpen = true;
-                    this.rcaNotify('Root cause analysis complete.', 'success');
+                    this.rcaNotify('Analysis complete.', 'success');
                 } else {
                     this.rcaError = d.error || 'No analysis generated. Add more incident details.';
                     this.rcaNotify(this.rcaError, 'warning');
@@ -81,11 +99,44 @@
             }
         },
 
-        applyRootCause() {
-            if (this.rcaResults?.root_cause) {
-                this.$wire.set('data.root_cause', this.rcaResults.root_cause);
+        async applyAll() {
+            if (!this.rcaResults) return;
+            this.rcaApplying = true;
+            try {
+                // Apply text fields
+                if (this.rcaResults.summary) {
+                    this.$wire.set('data.summary', this.rcaResults.summary);
+                }
+                if (this.rcaResults.root_cause) {
+                    this.$wire.set('data.root_cause', this.rcaResults.root_cause);
+                }
+                if (this.rcaResults.remark) {
+                    this.$wire.set('data.remark', this.rcaResults.remark);
+                }
+
+                // Apply labels
+                const allLabels = [
+                    ...(this.rcaResults.labels_matched || []),
+                    ...(this.rcaResults.labels_suggested || []),
+                ];
+                if (allLabels.length > 0) {
+                    try {
+                        const resp = await this.rcaFetch('{{ $applyLabelsEndpoint }}', {
+                            matched: this.rcaResults.labels_matched || [],
+                            new_labels: this.rcaResults.labels_suggested || [],
+                        });
+                        if (resp.success && resp.label_ids?.length) {
+                            const cur = await this.$wire.get('data.labels') || [];
+                            const merged = [...new Set([...cur, ...resp.label_ids.map(String)])];
+                            this.$wire.set('data.labels', merged);
+                        }
+                    } catch(e) { console.warn('Label apply failed:', e); }
+                }
+
                 this.rcaOpen = false;
-                this.rcaNotify('Root cause applied to form.', 'success');
+                this.rcaNotify('All fields applied to form.', 'success');
+            } finally {
+                this.rcaApplying = false;
             }
         }
     }"
@@ -101,7 +152,7 @@
         <button type="button" class="sl-trigger" style="background: linear-gradient(135deg, #7c3aed, #6d28d9);" @click="{{ $hasMultipleModels ? 'rcaShowModelPicker = !rcaShowModelPicker' : 'analyze()' }}" :disabled="rcaLoading">
             <span x-show="!rcaLoading" x-transition class="sl-trigger__idle">
                 <svg class="sl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 2 2 3 2 6H14c0-3 2-4 2-6a4 4 0 0 0-4-4Z"/><path d="M10 16h4"/><path d="M10 19h4"/><path d="M10 22h2"/><path d="M12 12v-2"/></svg>
-                <span x-text="{{ $hasMultipleModels ? "'AI Root Cause (' + rcaSelectedModel + ')'" : "'AI Root Cause Analysis'" }}"></span>
+                <span x-text="{{ $hasMultipleModels ? "'AI Analysis (' + rcaSelectedModel + ')'" : "'AI Full Analysis'" }}"></span>
             </span>
             <span x-show="rcaLoading" x-transition class="sl-trigger__loading">
                 <svg class="sl-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
@@ -143,21 +194,45 @@
         <div class="sl-panel__header" style="background: linear-gradient(135deg, rgba(124,58,237,.06), #f8fafc);">
             <div class="sl-panel__header-left">
                 <svg class="sl-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 2 2 3 2 6H14c0-3 2-4 2-6a4 4 0 0 0-4-4Z"/><path d="M10 16h4"/><path d="M10 19h4"/><path d="M10 22h2"/></svg>
-                <span class="sl-panel__title">AI Root Cause Analysis</span>
+                <span class="sl-panel__title">AI Full Analysis</span>
             </div>
             <button type="button" @click="rcaOpen=false" class="sl-panel__close">&times;</button>
         </div>
-        <div class="sl-panel__body">
+        <div class="sl-panel__body" style="max-height:480px;overflow-y:auto;">
+            {{-- Summary --}}
+            <template x-if="rcaResults?.summary">
+                <div class="sl-section">
+                    <div class="sl-section-label" style="color:#2563eb;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2Z"/></svg>
+                        Summary
+                    </div>
+                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#eff6ff;padding:10px 12px;border-radius:6px;border:1px solid #bfdbfe;" x-html="simpleMd(rcaResults.summary)"></div>
+                </div>
+            </template>
+
+            {{-- Root Cause --}}
             <template x-if="rcaResults?.root_cause">
                 <div class="sl-section">
                     <div class="sl-section-label" style="color:#7c3aed;">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
-                        Root Cause
+                        Root Cause Analysis
                     </div>
-                    <div style="font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;background:#f8fafc;padding:8px 10px;border-radius:6px;border:1px solid #e2e8f0;" x-text="rcaResults.root_cause"></div>
+                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#f5f3ff;padding:10px 12px;border-radius:6px;border:1px solid #ddd6fe;" x-html="simpleMd(rcaResults.root_cause)"></div>
                 </div>
             </template>
 
+            {{-- Remark --}}
+            <template x-if="rcaResults?.remark">
+                <div class="sl-section">
+                    <div class="sl-section-label" style="color:#7c3aed;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3l-4 4Z"/></svg>
+                        Remarks
+                    </div>
+                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#f8fafc;padding:10px 12px;border-radius:6px;border:1px solid #e2e8f0;" x-html="simpleMd(rcaResults.remark)"></div>
+                </div>
+            </template>
+
+            {{-- Categories --}}
             <template x-if="rcaResults?.categories?.length > 0">
                 <div class="sl-section">
                     <div class="sl-section-label" style="color:#7c3aed;">
@@ -172,6 +247,7 @@
                 </div>
             </template>
 
+            {{-- Contributing Factors --}}
             <template x-if="rcaResults?.contributing_factors?.length > 0">
                 <div class="sl-section">
                     <div class="sl-section-label" style="color:#7c3aed;">
@@ -186,21 +262,45 @@
                 </div>
             </template>
 
+            {{-- Recommendation --}}
             <template x-if="rcaResults?.recommendation">
                 <div class="sl-section">
                     <div class="sl-section-label" style="color:#059669;">
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Z"/><path d="m9 12 2 2 4-4"/></svg>
                         Recommendation
                     </div>
-                    <div style="font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;background:#f0fdf4;padding:8px 10px;border-radius:6px;border:1px solid #bbf7d0;" x-text="rcaResults.recommendation"></div>
+                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#f0fdf4;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0;" x-html="simpleMd(rcaResults.recommendation)"></div>
+                </div>
+            </template>
+
+            {{-- Labels --}}
+            <template x-if="rcaResults?.labels_matched?.length > 0 || rcaResults?.labels_suggested?.length > 0">
+                <div class="sl-section">
+                    <div class="sl-section-label" style="color:#0d9488;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2.5"><path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 0 1 0 2.828l-7 7a2 2 0 0 1-2.828 0l-7-7A2 2 0 0 1 3 12V7a4 4 0 0 1 4-4Z"/></svg>
+                        Suggested Labels
+                    </div>
+                    <div class="sl-tags">
+                        <template x-for="(label, idx) in rcaResults.labels_matched" :key="'lm-'+idx">
+                            <span class="sl-tag sl-tag--matched" style="border-left-color:#0d9488;background:#f0fdfa;" x-text="label"></span>
+                        </template>
+                        <template x-for="(label, idx) in rcaResults.labels_suggested" :key="'ls-'+idx">
+                            <span class="sl-tag" style="border-left-color:#f59e0b;background:#fffbeb;color:#92400e;" x-text="label + ' (new)'"></span>
+                        </template>
+                    </div>
                 </div>
             </template>
         </div>
         <div class="sl-panel__footer">
             <span class="sl-count">AI-generated analysis</span>
-            <button type="button" class="sl-apply" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);" @click="applyRootCause()">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m4.5 12.75 6 6 9-13.5"/></svg>
-                Apply Root Cause
+            <button type="button" class="sl-apply" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);" :disabled="rcaApplying" @click="applyAll()">
+                <template x-if="!rcaApplying">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m4.5 12.75 6 6 9-13.5"/></svg>
+                </template>
+                <template x-if="rcaApplying">
+                    <svg class="sl-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                </template>
+                <span x-text="rcaApplying ? 'Applying...' : 'Apply All'"></span>
             </button>
         </div>
     </div>
