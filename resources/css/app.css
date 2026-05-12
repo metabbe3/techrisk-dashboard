@@ -1891,3 +1891,21 @@
 
 .ai-trends-spin { animation: ai-trends-rotate 0.8s linear infinite; }
 @keyframes ai-trends-rotate { to { transform: rotate(360deg); } }
+
+/* ── Analytics Page ── */
+.analytics-chart-container {
+    position: relative;
+    height: 400px;
+    width: 100%;
+    background: var(--tr-slate-50, #f8fafc);
+    border: 1px solid var(--tr-slate-200, #e2e8f0);
+    border-radius: 12px;
+    padding: 20px;
+    transition: border-color 0.2s;
+}
+.analytics-chart-container:hover { border-color: var(--tr-slate-300, #cbd5e1); }
+:root.dark .analytics-chart-container {
+    background: var(--tr-slate-800, #1e293b);
+    border-color: var(--tr-slate-600, #475569);
+}
+:root.dark .analytics-chart-container:hover { border-color: var(--tr-slate-500, #64748b); }
