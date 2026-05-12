@@ -655,7 +655,7 @@ class AiTextService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 2000,
+                    'max_tokens' => 4096,
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
@@ -759,11 +759,8 @@ class AiTextService
 
     protected function cleanResponse(string $text): string
     {
-        $text = preg_replace('/\*{1,3}([^*]+)\*{1,3}/', '$1', $text);
-        $text = preg_replace('/~~([^~]+)~~/', '$1', $text);
-        $text = preg_replace('/^#{1,6}\s+(.+)$/m', '$1:', $text);
         $text = preg_replace('/^[-*_]{3,}\s*$/m', '', $text);
-        $text = preg_replace('/^[•\-*]\s+/m', '- ', $text);
+        $text = preg_replace('/^[•]\s+/m', '- ', $text);
         $text = preg_replace('/\n{3,}/', "\n\n", $text);
 
         return trim($text);

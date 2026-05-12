@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Ai;
 
-use App\Models\Incident;
 use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
 use Illuminate\Http\JsonResponse;
@@ -17,7 +16,8 @@ class WarRoomCreateController
     public function __invoke(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'incident_id' => 'required|exists:incidents,id',
+            'incident_ids' => 'required|array|min:1',
+            'incident_ids.*' => 'exists:incidents,id',
             'selected_agents' => 'required|array|min:1',
             'selected_agents.*' => 'string',
             'max_rounds' => 'integer|min:1|max:5',
@@ -27,28 +27,29 @@ class WarRoomCreateController
             'user_instructions' => 'nullable|string|max:2000',
         ]);
 
-        $incident = Incident::findOrFail($validated['incident_id']);
+        $incidentIds = $validated['incident_ids'];
 
-        // Check for existing non-failed session on this incident
-        $existing = WarRoomSession::forIncident($incident->id)
-            ->where('status', '!=', 'failed')
-            ->latestFirst()
-            ->first();
+        if (count($incidentIds) === 1) {
+            $existing = WarRoomSession::forIncident($incidentIds[0])
+                ->where('status', '!=', 'failed')
+                ->latestFirst()
+                ->first();
 
-        if ($existing) {
-            return response()->json([
-                'message' => 'This incident already has an active discussion.',
-                'existing_session' => [
-                    'id' => $existing->id,
-                    'title' => $existing->title,
-                    'status' => $existing->status,
-                    'created_at' => $existing->created_at?->toIso8601String(),
-                ],
-            ], 409);
+            if ($existing) {
+                return response()->json([
+                    'message' => 'This incident already has an active discussion.',
+                    'existing_session' => [
+                        'id' => $existing->id,
+                        'title' => $existing->title,
+                        'status' => $existing->status,
+                        'created_at' => $existing->created_at?->toIso8601String(),
+                    ],
+                ], 409);
+            }
         }
 
         $session = $this->warRoomService->createSession(
-            incident: $incident,
+            incidentIds: $incidentIds,
             user: $request->user(),
             selectedAgents: $validated['selected_agents'],
             maxRounds: $validated['max_rounds'] ?? 2,

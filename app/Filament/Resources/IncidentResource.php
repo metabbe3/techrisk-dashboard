@@ -184,22 +184,25 @@ class IncidentResource extends Resource
                                     AiTextarea::make('summary')
                                         ->label('Summary')
                                         ->rows(6)
+                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                                         ->aiFieldType('summary')
                                         ->columnSpanFull(),
                                     AiTextarea::make('root_cause')
                                         ->label('Root Cause')
                                         ->rows(6)
+                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                                         ->aiFieldType('root_cause')
                                         ->columnSpanFull(),
                                     AiTextarea::make('timeline')
                                         ->label('Incident Timeline and Chronology')
                                         ->rows(10)
-                                        ->helperText('Describe the sequence of events chronologically')
+                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                                         ->aiFieldType('timeline')
                                         ->columnSpanFull(),
                                     AiTextarea::make('remark')
                                         ->label('Remark')
                                         ->rows(4)
+                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                                         ->aiFieldType('remark')
                                         ->columnSpanFull(),
                                     Textarea::make('improvements')
@@ -328,22 +331,25 @@ class IncidentResource extends Resource
                     AiTextarea::make('summary')
                         ->label('Summary')
                         ->rows(6)
+                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                         ->aiFieldType('summary')
                         ->columnSpanFull(),
                     AiTextarea::make('root_cause')
                         ->label('Root Cause')
                         ->rows(6)
+                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                         ->aiFieldType('root_cause')
                         ->columnSpanFull(),
                     AiTextarea::make('timeline')
                         ->label('Incident Timeline and Chronology')
                         ->rows(10)
-                        ->helperText('Describe the sequence of events chronologically')
+                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                         ->aiFieldType('timeline')
                         ->columnSpanFull(),
                     AiTextarea::make('remark')
                         ->label('Remark')
                         ->rows(4)
+                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
                         ->aiFieldType('remark')
                         ->columnSpanFull(),
                     Textarea::make('improvements')

@@ -33,6 +33,10 @@ class AgentPromptBuilder
 
         $result = $prompt."\n\n## Incident Data\n\n".$incidentContext;
 
+        if ($session->incidents()->count() > 1) {
+            $result .= "\n\n## Cross-Incident Analysis\n\nMultiple incidents are provided above. You MUST compare and contrast across them: identify common root causes, recurring patterns, shared vulnerabilities, systemic issues, and differences in response effectiveness. Reference specific incidents by their number when making comparisons.";
+        }
+
         if (filled($session->user_instructions)) {
             $result .= "\n\n## User Instructions\n\n".$session->user_instructions;
         }
@@ -44,8 +48,13 @@ class AgentPromptBuilder
     {
         $config = WarRoomAgentConfig::findByRole($role);
         $displayName = $config?->display_name ?? ucfirst($role);
+        $isMultiIncident = ($session->incidents()->count() > 1);
 
         if ($round === 1) {
+            if ($isMultiIncident) {
+                return "As {$displayName}, you have multiple incidents to analyze. First provide your domain-specific analysis for each incident, then a dedicated 'Cross-Incident Analysis' section comparing them: common root causes, shared vulnerabilities, pattern differences, and systemic issues. Be thorough but concise — focus on insights, not repeating raw data. Reference incidents by their number. Structure with markdown headers.";
+            }
+
             return "As {$displayName}, analyze ALL incident data sections comprehensively: summary, timeline (incident_date, discovered_at, stop_bleeding_at), root cause, financial impact (potential/actual/recovered loss), MTTR/MTBF, action items, evidence, status updates, labels, responsible parties. Cross-reference across sections — e.g., does MTTR align with timeline? Do action items address root cause? Does financial impact match severity? Structure with markdown headers. Cite specific data points.";
         }
 

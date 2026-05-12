@@ -2,6 +2,9 @@
 
 namespace App\Services\WarRoom;
 
+use App\Events\WarRoomMessageUpdated;
+use App\Events\WarRoomRoundCompleted;
+use App\Events\WarRoomSessionCompleted;
 use App\Jobs\WarRoom\ProcessWarRoomAgent;
 use App\Jobs\WarRoom\StartWarRoomSession;
 use App\Jobs\WarRoom\SynthesizeWarRoomReport;
@@ -27,7 +30,7 @@ class WarRoomService
     ) {}
 
     public function createSession(
-        Incident $incident,
+        array $incidentIds,
         User $user,
         array $selectedAgents,
         int $maxRounds = 2,
@@ -36,12 +39,22 @@ class WarRoomService
         bool $enableWebSearch = false,
         ?string $userInstructions = null,
     ): WarRoomSession {
-        $context = $this->markdownExporter->generate($incident);
+        $incidents = Incident::whereIn('id', $incidentIds)->orderBy('incident_date', 'desc')->get();
+        $primaryIncident = $incidents->first();
+
+        if ($incidents->count() === 1) {
+            $context = $this->markdownExporter->generate($primaryIncident);
+            $title = "Discussion Forum: {$primaryIncident->no}";
+        } else {
+            $context = $this->markdownExporter->generateForIncidents($incidents);
+            $incidentNos = $incidents->pluck('no')->implode(' vs ');
+            $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
+        }
 
         $session = WarRoomSession::create([
             'user_id' => $user->id,
-            'incident_id' => $incident->id,
-            'title' => "Discussion Forum: {$incident->no}",
+            'incident_id' => $primaryIncident->id,
+            'title' => $title,
             'status' => 'pending',
             'max_rounds' => $maxRounds,
             'model' => $model ?? config('ai.war_room.default_model') ?? AiSetting::get('default_model', config('ai.default_model')),
@@ -52,28 +65,43 @@ class WarRoomService
             'user_instructions' => $userInstructions,
         ]);
 
+        $session->incidents()->sync($incidents->pluck('id')->toArray());
+
         StartWarRoomSession::dispatch($session);
 
         return $session;
     }
 
-    public function reanalyzeSession(WarRoomSession $session, ?string $userInstructions = null): WarRoomSession
-    {
+    public function reanalyzeSession(
+        WarRoomSession $session,
+        ?string $userInstructions = null,
+        ?string $model = null,
+        ?string $moderatorModel = null,
+        ?array $selectedAgents = null,
+    ): WarRoomSession {
         if (! in_array($session->status, ['completed', 'failed'])) {
             throw new \InvalidArgumentException('Only completed or failed sessions can be re-analyzed.');
         }
 
-        // Refresh incident context with latest data
-        $incident = $session->incident;
-        $context = $this->markdownExporter->generate($incident);
+        $incidents = $session->incidents()->get();
 
-        // Clear old data
+        if ($incidents->count() <= 1) {
+            $incident = $incidents->first() ?? $session->incident;
+            $context = $this->markdownExporter->generate($incident);
+            $title = "Discussion Forum: {$incident->no}";
+        } else {
+            $context = $this->markdownExporter->generateForIncidents($incidents);
+            $incidentNos = $incidents->pluck('no')->implode(' vs ');
+            $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
+        }
+
         $session->messages()->delete();
 
-        $session->update([
+        $update = [
             'status' => 'pending',
             'current_round' => 0,
             'incident_context' => $context,
+            'context_summarized' => false,
             'user_instructions' => $userInstructions ?? $session->user_instructions,
             'final_report' => null,
             'final_report_html' => null,
@@ -82,9 +110,20 @@ class WarRoomService
             'failed_at' => null,
             'error_message' => null,
             'tokens_used' => 0,
-            'title' => "Discussion Forum: {$incident->no}",
-        ]);
+            'title' => $title,
+        ];
 
+        if ($model !== null) {
+            $update['model'] = $model;
+        }
+        if ($moderatorModel !== null) {
+            $update['moderator_model'] = $moderatorModel;
+        }
+        if ($selectedAgents !== null) {
+            $update['selected_agents'] = $selectedAgents;
+        }
+
+        $session->update($update);
         $session->refresh();
 
         StartWarRoomSession::dispatch($session);
@@ -141,8 +180,12 @@ class WarRoomService
                 if ($completedCount === 0) {
                     $session->markFailed('All agents failed in round '.$message->round);
 
+                    broadcast(new WarRoomSessionCompleted($session->fresh()));
+
                     return;
                 }
+
+                broadcast(new WarRoomRoundCompleted($session->fresh(), $message->round));
 
                 if ($message->round < $session->max_rounds) {
                     $session->advanceRound();
@@ -167,6 +210,8 @@ class WarRoomService
             ->firstOrFail();
 
         $message->markRunning();
+
+        broadcast(new WarRoomMessageUpdated($session, $message));
 
         $config = WarRoomAgentConfig::findByRole($agentRole);
         $model = $config?->model_override ?? $session->model;
@@ -193,18 +238,31 @@ class WarRoomService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => config('ai.war_room.max_output_tokens', 4000),
+                    'max_tokens' => 65536,
                 ]);
 
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
             $responseData = $response->json();
             $usage = $responseData['usage'] ?? [];
+            $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+
+            Log::info("[WarRoom] Agent {$agentRole} response", [
+                'session_id' => $session->id,
+                'round' => $round,
+                'finish_reason' => $finishReason,
+                'completion_tokens' => $usage['completion_tokens'] ?? 0,
+                'prompt_tokens' => $usage['prompt_tokens'] ?? 0,
+                'total_tokens' => $usage['total_tokens'] ?? 0,
+                'response_time_ms' => $responseTimeMs,
+            ]);
 
             if ($response->failed()) {
                 $errorMsg = 'AI service error (HTTP '.$response->status().')';
                 Log::warning("[WarRoom] Agent {$agentRole} failed", [
                     'session_id' => $session->id,
                     'status' => $response->status(),
+                    'response_time_ms' => $responseTimeMs,
+                    'body' => \Illuminate\Support\Str::limit($response->body(), 500),
                 ]);
                 $message->markFailed($errorMsg);
                 $this->logUsage('war_room_agent', $model, false, $usage, $responseTimeMs, $session, $agentRole, $round, $errorMsg);
@@ -233,6 +291,8 @@ class WarRoomService
             $message->markFailed('Unexpected error: '.$e->getMessage());
             $this->logUsage('war_room_agent', $model, false, [], $responseTimeMs, $session, $agentRole, $round, $e->getMessage());
         }
+
+        broadcast(new WarRoomMessageUpdated($session->fresh(), $message->fresh()));
 
         try {
             $this->onAgentCompleted($session->fresh(), $message->fresh());
@@ -263,7 +323,7 @@ class WarRoomService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => config('ai.war_room.max_output_tokens', 4000) * 2,
+                    'max_tokens' => 65536,
                 ]);
 
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -274,6 +334,8 @@ class WarRoomService
                 $session->markFailed('Report synthesis failed: HTTP '.$response->status());
                 $this->logUsage('war_room_moderator', $model, false, $usage, $responseTimeMs, $session, 'moderator', 0, 'HTTP '.$response->status());
 
+                broadcast(new WarRoomSessionCompleted($session->fresh()));
+
                 return;
             }
 
@@ -282,6 +344,8 @@ class WarRoomService
             if (blank($content)) {
                 $session->markFailed('Report synthesis returned empty response');
                 $this->logUsage('war_room_moderator', $model, false, $usage, $responseTimeMs, $session, 'moderator', 0, 'Empty response');
+
+                broadcast(new WarRoomSessionCompleted($session->fresh()));
 
                 return;
             }
@@ -299,11 +363,15 @@ class WarRoomService
                 'completed_at' => now(),
             ]);
 
+            broadcast(new WarRoomSessionCompleted($session->fresh()));
+
             $this->logUsage('war_room_moderator', $model, true, $usage, $responseTimeMs, $session, 'moderator', 0);
         } catch (\Throwable $e) {
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
             $session->markFailed('Report synthesis error: '.$e->getMessage());
             $this->logUsage('war_room_moderator', $model, false, [], $responseTimeMs, $session, 'moderator', 0, $e->getMessage());
+
+            broadcast(new WarRoomSessionCompleted($session->fresh()));
         }
     }
 
@@ -322,7 +390,7 @@ class WarRoomService
 
     public function getSessionData(WarRoomSession $session): array
     {
-        $session->load('messages', 'user');
+        $session->load('messages', 'user', 'incidents');
 
         $messagesByRound = $session->messages->groupBy('round')->map(function ($roundMessages) {
             return $roundMessages->map(function ($msg) {
@@ -347,9 +415,18 @@ class WarRoomService
             })->values();
         });
 
+        $incidentList = $session->incidents->map(fn ($inc) => [
+            'id' => $inc->id,
+            'no' => $inc->no,
+            'title' => $inc->title,
+            'severity' => $inc->severity,
+            'status' => $inc->incident_status,
+        ]);
+
         return [
             'id' => $session->id,
             'incident_id' => $session->incident_id,
+            'incidents' => $incidentList,
             'user_name' => $session->user?->name,
             'title' => $session->title,
             'status' => $session->status,
@@ -358,6 +435,7 @@ class WarRoomService
             'model' => $session->model,
             'moderator_model' => $session->moderator_model,
             'enable_web_search' => $session->enable_web_search,
+            'context_summarized' => $session->context_summarized,
             'selected_agents' => $session->selected_agents,
             'user_instructions' => $session->user_instructions,
             'tokens_used' => $session->tokens_used,

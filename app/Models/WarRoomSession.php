@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WarRoomSession extends Model
@@ -23,6 +24,7 @@ class WarRoomSession extends Model
         'enable_web_search',
         'selected_agents',
         'incident_context',
+        'context_summarized',
         'user_instructions',
         'final_report',
         'final_report_html',
@@ -38,6 +40,7 @@ class WarRoomSession extends Model
         'incident_context' => 'array',
         'final_report' => 'array',
         'enable_web_search' => 'boolean',
+        'context_summarized' => 'boolean',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'failed_at' => 'datetime',
@@ -54,6 +57,16 @@ class WarRoomSession extends Model
     public function incident(): BelongsTo
     {
         return $this->belongsTo(Incident::class);
+    }
+
+    public function incidents(): BelongsToMany
+    {
+        return $this->belongsToMany(Incident::class, 'war_room_session_incidents', 'session_id', 'incident_id');
+    }
+
+    public function isMultiIncident(): bool
+    {
+        return $this->incidents()->count() > 1;
     }
 
     public function messages(): HasMany
@@ -156,6 +169,7 @@ class WarRoomSession extends Model
 
     public function scopeForIncident($query, string $incidentId)
     {
-        return $query->where('incident_id', $incidentId);
+        return $query->whereHas('incidents', fn ($q) => $q->where('incidents.id', $incidentId))
+            ->orWhere('incident_id', $incidentId);
     }
 }

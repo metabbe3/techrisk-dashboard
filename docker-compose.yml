@@ -121,6 +121,25 @@ services:
       - techrisk-network
     entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php artisan schedule:work"]
 
+  # Reverb WebSocket Service
+  reverb:
+    build:
+      context: .
+      dockerfile: Dockerfile.php
+    container_name: techrisk-reverb
+    restart: unless-stopped
+    command: php artisan reverb:start --host=0.0.0.0 --port=8080
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - app
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    networks:
+      - techrisk-network
+
 networks:
   techrisk-network:
     driver: bridge

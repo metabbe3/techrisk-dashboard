@@ -3,8 +3,16 @@ window.axios = axios;
 
 window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
-/**
- * NOTE: Broadcasting/Real-time features are disabled
- * Echo and Reverb have been removed to eliminate frontend errors
- * Filament will use polling for notifications instead
- */
+import Echo from 'laravel-echo';
+import Pusher from 'pusher-js';
+
+window.Pusher = Pusher;
+
+window.Echo = new Echo({
+    broadcaster: 'reverb',
+    key: import.meta.env.VITE_REVERB_APP_KEY,
+    host: import.meta.env.VITE_REVERB_HOST,
+    port: import.meta.env.VITE_REVERB_PORT ?? 8080,
+    scheme: import.meta.env.VITE_REVERB_SCHEME ?? 'http',
+    enabledTransports: ['ws', 'wss'],
+});

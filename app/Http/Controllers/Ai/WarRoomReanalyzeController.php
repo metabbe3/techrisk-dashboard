@@ -17,6 +17,10 @@ class WarRoomReanalyzeController
     {
         $request->validate([
             'user_instructions' => 'nullable|string|max:2000',
+            'model' => 'nullable|string',
+            'moderator_model' => 'nullable|string',
+            'selected_agents' => 'nullable|array|min:1',
+            'selected_agents.*' => 'string',
         ]);
 
         $session = WarRoomSession::forUser()->findOrFail($id);
@@ -25,6 +29,9 @@ class WarRoomReanalyzeController
             $session = $this->warRoomService->reanalyzeSession(
                 $session,
                 $request->input('user_instructions'),
+                $request->input('model'),
+                $request->input('moderator_model'),
+                $request->input('selected_agents'),
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);

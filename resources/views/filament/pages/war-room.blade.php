@@ -24,6 +24,9 @@ document.addEventListener('alpine:init', () => {
             showReport: false,
             showReanalyzeModal: false,
             reanalyzeInstructions: '',
+            reanalyzeModel: '',
+            reanalyzeModeratorModel: '',
+            reanalyzeAgents: [],
             reanalyzing: false,
             creating: false,
             sessions: [],
@@ -34,7 +37,7 @@ document.addEventListener('alpine:init', () => {
 
             incidentSearch: '',
             incidentResults: [],
-            selectedIncident: null,
+            selectedIncidents: [],
             selectedAgents: [],
             config: { maxRounds: 2, model: '', moderatorModel: '', enableWebSearch: false, userInstructions: '' },
 
@@ -106,9 +109,14 @@ document.addEventListener('alpine:init', () => {
             },
 
             selectIncident(inc) {
-                this.selectedIncident = inc;
+                if (this.selectedIncidents.find(i => i.id === inc.id)) return;
+                this.selectedIncidents.push(inc);
                 this.incidentResults = [];
                 this.incidentSearch = '';
+            },
+
+            removeIncident(idx) {
+                this.selectedIncidents.splice(idx, 1);
             },
 
             toggleAgent(role) {
@@ -118,14 +126,14 @@ document.addEventListener('alpine:init', () => {
             },
 
             async createSession() {
-                if (!this.selectedIncident || this.selectedAgents.length === 0 || this.creating) return;
+                if (this.selectedIncidents.length === 0 || this.selectedAgents.length === 0 || this.creating) return;
                 this.creating = true;
                 try {
                     const res = await fetch('/admin/war-room/sessions', {
                         method: 'POST',
                         headers: this.getHeaders(true),
                         body: JSON.stringify({
-                            incident_id: this.selectedIncident.id,
+                            incident_ids: this.selectedIncidents.map(i => i.id),
                             selected_agents: this.selectedAgents,
                             max_rounds: this.config.maxRounds,
                             model: this.config.model || null,
@@ -179,9 +187,19 @@ document.addEventListener('alpine:init', () => {
 
             startPolling() {
                 this.stopPolling();
-                if (this.activeSession?.status === 'running' || this.activeSession?.status === 'pending') {
-                    this.pollInterval = setInterval(() => this.poll(), 3000);
+                if (!this.activeSession) return;
+                if (this.activeSession.status !== 'running' && this.activeSession.status !== 'pending') return;
+
+                // WebSocket: real-time push
+                if (window.Echo) {
+                    window.Echo.private('war-room.' + this.activeSession.id)
+                        .listen('.message.updated', (e) => this.onMessageUpdated(e))
+                        .listen('.round.completed', (e) => this.onRoundCompleted(e))
+                        .listen('.session.completed', (e) => this.onSessionCompleted(e));
                 }
+
+                // Fallback: slow poll every 15s in case WebSocket drops
+                this.pollInterval = setInterval(() => this.poll(), 15000);
             },
 
             stopPolling() {
@@ -189,6 +207,30 @@ document.addEventListener('alpine:init', () => {
                     clearInterval(this.pollInterval);
                     this.pollInterval = null;
                 }
+                if (window.Echo && this.activeSession) {
+                    window.Echo.leave('war-room.' + this.activeSession.id);
+                }
+            },
+
+            async onMessageUpdated(e) {
+                if (!this.activeSession) return;
+                const prevStatus = this.activeSession.status;
+                await this.loadSession(this.activeSession.id);
+                // If session transitioned from pending → running, start fresh polling
+                if (prevStatus === 'pending' && this.activeSession.status === 'running') {
+                    this.startPolling();
+                }
+            },
+
+            async onRoundCompleted(e) {
+                if (!this.activeSession) return;
+                await this.loadSession(this.activeSession.id);
+            },
+
+            async onSessionCompleted(e) {
+                this.stopPolling();
+                await this.loadSession(this.activeSession.id);
+                await this.loadSessions();
             },
 
             async poll() {
@@ -238,7 +280,6 @@ document.addEventListener('alpine:init', () => {
                         await this.loadSession(this.activeSession.id);
                         await this.loadSessions();
                     } else if (needsReload) {
-                        // A message finished — reload to show its content
                         const sessionId = this.activeSession.id;
                         const res2 = await fetch('/admin/war-room/sessions/' + sessionId, { headers: this.getHeaders() });
                         if (res2.ok) {
@@ -286,20 +327,33 @@ document.addEventListener('alpine:init', () => {
             openReanalyzeModal() {
                 if (!this.activeSession) return;
                 this.reanalyzeInstructions = this.activeSession.user_instructions || '';
+                this.reanalyzeModel = this.activeSession.model || '';
+                this.reanalyzeModeratorModel = this.activeSession.moderator_model || '';
+                this.reanalyzeAgents = [...(this.activeSession.selected_agents || [])];
                 this.showReanalyzeModal = true;
             },
 
+            toggleReanalyzeAgent(role) {
+                const idx = this.reanalyzeAgents.indexOf(role);
+                if (idx === -1) this.reanalyzeAgents.push(role);
+                else this.reanalyzeAgents.splice(idx, 1);
+            },
+
             async submitReanalyze() {
+                if (this.reanalyzeAgents.length === 0) { alert('Select at least one agent.'); return; }
                 this.reanalyzing = true;
                 try {
-                    const body = {};
-                    if (this.reanalyzeInstructions.trim()) {
-                        body.user_instructions = this.reanalyzeInstructions.trim();
-                    }
+                    const body = {
+                        selected_agents: this.reanalyzeAgents,
+                    };
+                    if (this.reanalyzeInstructions.trim()) body.user_instructions = this.reanalyzeInstructions.trim();
+                    if (this.reanalyzeModel) body.model = this.reanalyzeModel;
+                    if (this.reanalyzeModeratorModel) body.moderator_model = this.reanalyzeModeratorModel;
+
                     const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/reanalyze', {
                         method: 'POST',
                         headers: this.getHeaders(true),
-                        body: Object.keys(body).length ? JSON.stringify(body) : undefined,
+                        body: JSON.stringify(body),
                     });
                     if (res.ok) {
                         this.showReanalyzeModal = false;
@@ -518,14 +572,22 @@ document.addEventListener('alpine:init', () => {
                             </template>
                         </div>
 
-                        {{-- Selected incident --}}
-                        <div x-show="selectedIncident" x-transition class="df-selected-inc">
-                            <div class="df-selected-inc__info">
-                                <span class="df-selected-inc__id" x-text="selectedIncident?.no"></span>
-                                <span class="df-selected-inc__sep">&mdash;</span>
-                                <span class="df-selected-inc__title" x-text="selectedIncident?.title"></span>
+                        {{-- Selected incidents --}}
+                        <div x-show="selectedIncidents.length > 0" x-transition class="df-selected-incidents">
+                            <template x-for="(inc, idx) in selectedIncidents" :key="inc.id">
+                                <div class="df-selected-inc">
+                                    <div class="df-selected-inc__info">
+                                        <span class="df-selected-inc__id" x-text="inc.no"></span>
+                                        <span class="df-selected-inc__sep">&mdash;</span>
+                                        <span class="df-selected-inc__title" x-text="inc.title"></span>
+                                    </div>
+                                    <button @click="removeIncident(idx)" class="df-selected-inc__remove">&times;</button>
+                                </div>
+                            </template>
+                            <div x-show="selectedIncidents.length >= 3" class="df-token-warning">
+                                <svg class="df-token-warning__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                                <span x-text="selectedIncidents.length + ' incidents selected — high token usage expected'"></span>
                             </div>
-                            <button @click="selectedIncident = null" class="df-selected-inc__remove">&times;</button>
                         </div>
                     </div>
 
@@ -595,9 +657,9 @@ document.addEventListener('alpine:init', () => {
                             placeholder="Add extra context, focus areas, or specific questions you want the agents to address..."></textarea>
                     </div>
 
-                    <button @click="createSession()" :disabled="!selectedIncident || selectedAgents.length === 0 || creating"
+                    <button @click="createSession()" :disabled="selectedIncidents.length === 0 || selectedAgents.length === 0 || creating"
                             class="df-btn df-btn--launch"
-                            :class="{ 'df-btn--disabled': !selectedIncident || selectedAgents.length === 0 || creating }">
+                            :class="{ 'df-btn--disabled': selectedIncidents.length === 0 || selectedAgents.length === 0 || creating }">
                         <svg x-show="!creating" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
                         </svg>
@@ -727,7 +789,7 @@ document.addEventListener('alpine:init', () => {
 
     {{-- Re-analyze Modal --}}
     <div x-show="showReanalyzeModal" x-transition.opacity class="df-modal-backdrop" @click.self="showReanalyzeModal = false">
-        <div x-show="showReanalyzeModal" x-transition class="df-modal" @click.stop>
+        <div x-show="showReanalyzeModal" x-transition class="df-modal" @click.stop style="max-width: 560px;">
             <div class="df-modal__header">
                 <div class="df-modal__header-icon">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
@@ -737,14 +799,54 @@ document.addEventListener('alpine:init', () => {
                     <p class="df-modal__desc">Re-run with fresh incident data. Previous responses will be cleared.</p>
                 </div>
             </div>
-            <div class="df-modal__body">
-                <label class="df-label">Additional Instructions <span class="df-label__hint">(optional)</span></label>
-                <textarea x-model="reanalyzeInstructions" class="df-textarea" rows="4"
-                    placeholder="Add extra context, focus areas, or specific questions for the agents..."></textarea>
+            <div class="df-modal__body" style="display: flex; flex-direction: column; gap: 16px;">
+                {{-- Model selection --}}
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                    <div>
+                        <label class="df-label">Agent Model</label>
+                        <select x-model="reanalyzeModel" class="df-select" style="width: 100%;">
+                            <option value="">Use current</option>
+                            <template x-for="(label, key) in models" :key="key">
+                                <option :value="key" x-text="label"></option>
+                            </template>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="df-label">Moderator Model</label>
+                        <select x-model="reanalyzeModeratorModel" class="df-select" style="width: 100%;">
+                            <option value="">Use current</option>
+                            <template x-for="(label, key) in models" :key="key">
+                                <option :value="key" x-text="label"></option>
+                            </template>
+                        </select>
+                    </div>
+                </div>
+
+                {{-- Agent selection --}}
+                <div>
+                    <label class="df-label">Specialist Agents <span class="df-label__count" x-text="reanalyzeAgents.length ? reanalyzeAgents.length + ' selected' : ''"></span></label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
+                        <template x-for="agent in availableAgents" :key="agent.role_key">
+                            <button @click="toggleReanalyzeAgent(agent.role_key)"
+                                    class="df-agent-chip"
+                                    :class="{ 'df-agent-chip--selected': reanalyzeAgents.includes(agent.role_key) }"
+                                    :style="'--agent-color:' + getAgentColor(agent.color)">
+                                <span x-text="agent.display_name"></span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                {{-- Instructions --}}
+                <div>
+                    <label class="df-label">Additional Instructions <span class="df-label__hint">(optional)</span></label>
+                    <textarea x-model="reanalyzeInstructions" class="df-textarea" rows="3"
+                        placeholder="Add extra context, focus areas, or specific questions for the agents..."></textarea>
+                </div>
             </div>
             <div class="df-modal__footer">
                 <button @click="showReanalyzeModal = false" class="df-btn df-btn--ghost">Cancel</button>
-                <button @click="submitReanalyze()" :disabled="reanalyzing" class="df-btn df-btn--primary" :class="{ 'df-btn--disabled': reanalyzing }">
+                <button @click="submitReanalyze()" :disabled="reanalyzing || reanalyzeAgents.length === 0" class="df-btn df-btn--primary" :class="{ 'df-btn--disabled': reanalyzing || reanalyzeAgents.length === 0 }">
                     <svg x-show="!reanalyzing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     <svg x-show="reanalyzing" width="14" height="14" class="df-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M6.76 6.76L3.93 3.93"/></svg>
                     <span x-text="reanalyzing ? 'Re-analyzing...' : 'Re-analyze'"></span>
@@ -1464,6 +1566,43 @@ document.addEventListener('alpine:init', () => {
     flex-shrink: 0;
 }
 .df-selected-inc__remove:hover { color: var(--df-text); }
+
+.df-selected-incidents {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.df-token-warning {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #fef3c7;
+    border: 1px solid #fcd34d;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #92400e;
+    margin-top: 2px;
+}
+.df-token-warning__icon { width: 14px; height: 14px; flex-shrink: 0; }
+:root.dark .df-token-warning { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+
+.df-agent-chip {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1.5px solid var(--df-border);
+    background: var(--df-bg);
+    color: var(--df-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.df-agent-chip--selected {
+    border-color: var(--agent-color, var(--df-amber-600));
+    background: color-mix(in srgb, var(--agent-color, var(--df-amber-600)) 12%, transparent);
+    color: var(--agent-color, var(--df-amber-600));
+}
 
 /* --- Agent roster --- */
 .df-label__count {

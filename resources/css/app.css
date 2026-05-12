@@ -1651,3 +1651,243 @@
 
 /* Persona message styling */
 .ai-chat-msg-content.persona-border { padding-left: 14px; }
+
+/* ── AI Trend Insights Widget ── */
+
+.ai-trends-heading-icon { color: var(--tr-indigo, #6366f1); flex-shrink: 0; }
+
+.ai-trends-actions { display: flex; align-items: center; gap: 8px; }
+
+.ai-trends-ts {
+    font-size: 10px;
+    color: var(--tr-slate-400, #94a3b8);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
+
+.ai-trends-refresh {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    border: 1px solid var(--tr-slate-200, #e2e8f0);
+    background: transparent;
+    color: var(--tr-slate-400, #94a3b8);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.ai-trends-refresh:hover { color: var(--tr-indigo, #6366f1); border-color: var(--tr-indigo, #6366f1); }
+.ai-trends-refresh:disabled { opacity: 0.3; cursor: not-allowed; }
+:root.dark .ai-trends-refresh { border-color: var(--tr-slate-600, #475569); }
+
+.ai-trends-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: transparent;
+    color: var(--tr-slate-600, #475569);
+    border: 1px solid var(--tr-slate-200, #e2e8f0);
+    padding: 5px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+.ai-trends-btn:hover { background: var(--tr-slate-50, #f8fafc); border-color: var(--tr-slate-300, #cbd5e1); }
+.ai-trends-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+:root.dark .ai-trends-btn {
+    color: var(--tr-slate-300, #cbd5e1);
+    border-color: var(--tr-slate-600, #475569);
+}
+:root.dark .ai-trends-btn:hover { background: var(--tr-slate-700, #334155); border-color: var(--tr-slate-500, #64748b); }
+
+.ai-trends-btn-wrap { position: relative; }
+
+.ai-trends-mp {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 9999;
+    background: white;
+    border: 1px solid var(--tr-slate-200, #e2e8f0);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    overflow: hidden;
+    min-width: 160px;
+}
+:root.dark .ai-trends-mp {
+    background: var(--tr-slate-800, #1e293b);
+    border-color: var(--tr-slate-600, #475569);
+}
+.ai-trends-mp__head {
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--tr-slate-400, #94a3b8);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--tr-slate-200, #e2e8f0);
+}
+:root.dark .ai-trends-mp__head { border-bottom-color: var(--tr-slate-600, #475569); }
+.ai-trends-mp__item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-family: inherit;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: var(--tr-slate-600, #475569);
+    transition: background 0.1s;
+}
+.ai-trends-mp__item:hover { background: rgba(99,102,241,0.06); }
+.ai-trends-mp__item--active { background: rgba(99,102,241,0.08); font-weight: 600; color: var(--tr-indigo, #6366f1); }
+:root.dark .ai-trends-mp__item { color: var(--tr-slate-300, #cbd5e1); }
+:root.dark .ai-trends-mp__item:hover { background: rgba(99,102,241,0.12); }
+
+.ai-trends-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: rgba(244,63,94,0.06);
+    border-left: 3px solid var(--tr-rose, #f43f5e);
+    border-radius: 0 6px 6px 0;
+    font-size: 12px;
+    color: var(--tr-rose, #f43f5e);
+}
+.ai-trends-error__retry {
+    font-size: 10px;
+    font-weight: 600;
+    font-family: inherit;
+    color: var(--tr-rose, #f43f5e);
+    background: transparent;
+    border: 1px solid var(--tr-rose, #f43f5e);
+    border-radius: 4px;
+    padding: 2px 8px;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+}
+.ai-trends-error__retry:hover { background: var(--tr-rose, #f43f5e); color: white; }
+
+.ai-trends-skel { display: grid; gap: 16px; }
+.ai-trends-skel__section { display: flex; flex-direction: column; gap: 8px; }
+.ai-trends-skel__bar {
+    height: 10px;
+    border-radius: 4px;
+    background: linear-gradient(90deg, var(--tr-slate-200, #e2e8f0) 25%, var(--tr-slate-50, #f8fafc) 50%, var(--tr-slate-200, #e2e8f0) 75%);
+    background-size: 200% 100%;
+    animation: ai-trends-shimmer 1.5s ease-in-out infinite;
+}
+.ai-trends-skel__line {
+    height: 8px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--tr-slate-200, #e2e8f0) 25%, var(--tr-slate-50, #f8fafc) 50%, var(--tr-slate-200, #e2e8f0) 75%);
+    background-size: 200% 100%;
+    animation: ai-trends-shimmer 1.5s ease-in-out infinite;
+    animation-delay: 0.1s;
+}
+@keyframes ai-trends-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+:root.dark .ai-trends-skel__bar,
+:root.dark .ai-trends-skel__line {
+    background: linear-gradient(90deg, #334155 25%, #1e293b 50%, #334155 75%);
+    background-size: 200% 100%;
+    animation: ai-trends-shimmer 1.5s ease-in-out infinite;
+}
+
+.ai-trends-results { display: grid; gap: 12px; }
+
+.ai-trends-card {
+    border-radius: 8px;
+    padding: 14px 16px;
+    border-left: 3px solid transparent;
+}
+.ai-trends-card--trends { background: rgba(99,102,241,0.05); border-left-color: var(--tr-indigo, #6366f1); }
+.ai-trends-card--recurring { background: rgba(245,158,11,0.05); border-left-color: var(--tr-amber, #f59e0b); }
+.ai-trends-card--anomalies { background: rgba(244,63,94,0.05); border-left-color: var(--tr-rose, #f43f5e); }
+.ai-trends-card--recs { background: rgba(16,185,129,0.05); border-left-color: var(--tr-emerald, #10b981); }
+:root.dark .ai-trends-card--trends { background: rgba(99,102,241,0.08); }
+:root.dark .ai-trends-card--recurring { background: rgba(245,158,11,0.08); }
+:root.dark .ai-trends-card--anomalies { background: rgba(244,63,94,0.08); }
+:root.dark .ai-trends-card--recs { background: rgba(16,185,129,0.08); }
+
+.ai-trends-card__head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+}
+.ai-trends-card--trends .ai-trends-card__head { color: var(--tr-indigo, #6366f1); }
+.ai-trends-card--recurring .ai-trends-card__head { color: var(--tr-amber, #f59e0b); }
+.ai-trends-card--anomalies .ai-trends-card__head { color: var(--tr-rose, #f43f5e); }
+.ai-trends-card--recs .ai-trends-card__head { color: var(--tr-emerald, #10b981); }
+
+.ai-trends-card__head span {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.ai-trends-card__list {
+    margin: 0;
+    padding-left: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ai-trends-item {
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--tr-slate-600, #475569);
+    padding-left: 16px;
+    position: relative;
+    opacity: 0;
+    transform: translateY(4px);
+    animation: ai-trends-fadeIn 0.35s ease forwards;
+}
+@keyframes ai-trends-fadeIn {
+    to { opacity: 1; transform: translateY(0); }
+}
+.ai-trends-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 8px;
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+}
+.ai-trends-card--trends .ai-trends-item::before { background: var(--tr-indigo, #6366f1); }
+.ai-trends-card--recurring .ai-trends-item::before { background: var(--tr-amber, #f59e0b); }
+.ai-trends-card--anomalies .ai-trends-item::before { background: var(--tr-rose, #f43f5e); }
+.ai-trends-card--recs .ai-trends-item::before { background: var(--tr-emerald, #10b981); }
+:root.dark .ai-trends-item { color: var(--tr-slate-300, #cbd5e1); }
+
+.ai-trends-empty {
+    padding: 32px 0;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+.ai-trends-empty__icon { color: var(--tr-slate-400, #94a3b8); opacity: 0.4; }
+.ai-trends-empty__title { font-size: 14px; font-weight: 600; color: var(--tr-slate-600, #475569); }
+.ai-trends-empty__desc { font-size: 12px; color: var(--tr-slate-400, #94a3b8); max-width: 320px; line-height: 1.5; }
+:root.dark .ai-trends-empty__title { color: var(--tr-slate-300, #cbd5e1); }
+
+.ai-trends-spin { animation: ai-trends-rotate 0.8s linear infinite; }
+@keyframes ai-trends-rotate { to { transform: rotate(360deg); } }

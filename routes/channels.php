@@ -4,6 +4,8 @@ use App\Models\User;
 use App\Models\WarRoomSession;
 use Illuminate\Support\Facades\Broadcast;
 
+Broadcast::routes(['middleware' => ['auth']]);
+
 /*
 |--------------------------------------------------------------------------
 | Broadcast Channels

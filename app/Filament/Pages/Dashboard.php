@@ -3,6 +3,7 @@
 namespace App\Filament\Pages;
 
 use App\Filament\Widgets\ActionImprovementsOverview;
+use App\Filament\Widgets\AiTrendInsights;
 use App\Filament\Widgets\DashboardStatsOverview;
 use App\Filament\Widgets\FundLossTrendChart;
 use App\Filament\Widgets\IncidentsByLabelChart;
@@ -52,6 +53,9 @@ class Dashboard extends BaseDashboard
             // Row 5: More Analysis
             IncidentsByPicChart::class,
             IncidentsByLabelChart::class,
+
+            // AI Insights
+            AiTrendInsights::class,
         ];
     }
 }

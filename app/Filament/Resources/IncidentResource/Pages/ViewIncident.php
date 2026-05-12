@@ -50,7 +50,7 @@ class ViewIncident extends ViewRecord
                     ->iconColor('primary')
                     ->schema([
                         TextEntry::make('summary')
-                            ->prose()
+                            ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No summary provided'),
                     ])
@@ -62,7 +62,7 @@ class ViewIncident extends ViewRecord
                     ->iconColor('warning')
                     ->schema([
                         TextEntry::make('root_cause')
-                            ->prose()
+                            ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No root cause analysis'),
                         TextEntry::make('root_cause_category')
@@ -84,7 +84,7 @@ class ViewIncident extends ViewRecord
                     ->iconColor('info')
                     ->schema([
                         TextEntry::make('timeline')
-                            ->prose()
+                            ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No timeline recorded'),
                     ])
@@ -96,7 +96,7 @@ class ViewIncident extends ViewRecord
                     ->iconColor('violet')
                     ->schema([
                         TextEntry::make('remark')
-                            ->prose()
+                            ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No remarks'),
                     ])
@@ -225,7 +225,7 @@ class ViewIncident extends ViewRecord
                     ->iconColor('yellow')
                     ->schema([
                         TextEntry::make('evidence')
-                            ->prose()
+                            ->markdown()
                             ->hiddenLabel()
                             ->placeholder('No evidence text'),
                         TextEntry::make('evidence_link')

@@ -40,19 +40,19 @@ return [
             'label' => 'Smart Labeling',
         ],
         'summary' => [
-            'system' => "You are a technical incident analyst. Improve the given incident summary.\n\nYour job:\n- Fix typos, misspellings, and grammar errors.\n- Structure with clear labels: Issue, Impact, Root Cause, Actions Taken.\n- Be concise and factual. Preserve all original details.\n- Keep all technical terms EXACTLY as written: API names, service names, server names, config values, and alphanumeric identifiers. Never rename or translate these.\n- Use line breaks and spacing for readability.\n\nUse plain text only. No markdown, no asterisks, no dashes, no special symbols. No preamble. Output only the improved text.",
+            'system' => "You are a technical incident analyst. Improve the given incident summary.\n\nYour job:\n- Fix typos, misspellings, and grammar errors.\n- Structure with clear Markdown headings: ## Issue, ## Impact, ## Root Cause, ## Actions Taken.\n- Be concise and factual. Preserve all original details.\n- Keep all technical terms EXACTLY as written: API names, service names, server names, config values, and alphanumeric identifiers. Never rename or translate these.\n- Use **bold** for emphasis on key terms, `code` for technical identifiers.\n- Use Markdown tables when comparing data points.\n- Use bullet lists for multiple items.\n\nUse Markdown formatting. No preamble. Output only the improved text.",
             'label' => 'Enhance Summary',
         ],
         'root_cause' => [
-            'system' => "You are a root cause analysis expert. Improve the given root cause analysis.\n\nYour job:\n- Fix typos, misspellings, and grammar errors.\n- Structure with clear sections: Primary Cause, Contributing Factors, Evidence, Recommendation.\n- Be thorough but concise. Preserve all original details.\n- Keep all technical terms EXACTLY as written: API names, Kafka topics, database names, service names, server names, and alphanumeric identifiers. Never rename or translate these.\n- Use numbered lists with plain numbering (1. 2. 3.).\n\nUse plain text only. No markdown, no asterisks, no dashes, no special symbols. No preamble. Output only the improved text.",
+            'system' => "You are a root cause analysis expert. Improve the given root cause analysis.\n\nYour job:\n- Fix typos, misspellings, and grammar errors.\n- Structure with clear Markdown headings: ## Primary Cause, ## Contributing Factors, ## Evidence, ## Recommendation.\n- Be thorough but concise. Preserve all original details.\n- Keep all technical terms EXACTLY as written: API names, Kafka topics, database names, service names, server names, and alphanumeric identifiers. Never rename or translate these.\n- Use **bold** for emphasis on key findings, `code` for technical identifiers.\n- Use numbered lists (1. 2. 3.) for sequential items, bullet lists for groups.\n- Use Markdown tables when presenting structured evidence or comparisons.\n\nUse Markdown formatting. No preamble. Output only the improved text.",
             'label' => 'Enhance Root Cause',
         ],
         'timeline' => [
-            'system' => "You are an incident timeline analyst. Improve the given incident timeline and chronology.\n\nYour job:\n- Fix typos, misspellings, and grammar errors in descriptions.\n- Normalize timestamps to DD/MM/YYYY HH:MM format. If the date is not provided in the input, infer it from context or use the current date.\n- Keep all technical terms EXACTLY as written: API endpoint names, Kafka topics, database specs, server names, service names, config values, IP addresses, and any alphanumeric identifiers. Never rename or translate these.\n- Standardize formatting so every event follows the same pattern.\n- Ensure chronological order is correct.\n- Group related events logically. Add blank lines between distinct phases if helpful.\n- Preserve ALL factual details and timestamps. Do not remove or merge events.\n\nFormat:\nDD/MM/YYYY HH:MM  Event description\n\nUse plain text only. No markdown, no asterisks, no bullet points, no dashes. No preamble. Output only the improved timeline.",
+            'system' => "You are an incident timeline analyst. Improve the given incident timeline and chronology.\n\nYour job:\n- Fix typos, misspellings, and grammar errors in descriptions.\n- Normalize timestamps to DD/MM/YYYY HH:MM format. If the date is not provided in the input, infer it from context or use the current date.\n- Keep all technical terms EXACTLY as written: API endpoint names, Kafka topics, database specs, server names, service names, config values, IP addresses, and any alphanumeric identifiers. Never rename or translate these.\n- Standardize formatting so every event follows the same pattern.\n- Ensure chronological order is correct.\n- Group related events into phases using ### headings (e.g., ### Detection, ### Containment, ### Resolution).\n- Preserve ALL factual details and timestamps. Do not remove or merge events.\n\nUse **bold** for key events, `code` for technical identifiers.\nPresent as a Markdown table with columns: | Timestamp | Event | Details |\nOr use a structured list with **bold timestamps** if tabular format doesn't suit the data.\n\nUse Markdown formatting. No preamble. Output only the improved timeline.",
             'label' => 'Enhance Timeline',
         ],
         'remark' => [
-            'system' => "You are a professional technical writer. Improve the given remark.\n\nRules:\n- Use plain text only. No markdown, no asterisks, no special formatting.\n- Improve clarity, grammar, and professional tone.\n- Keep it concise. Preserve the original meaning.\n- Use simple sentences and paragraphs.\n- Output only the improved text, no preamble.",
+            'system' => "You are a professional technical writer. Improve the given remark.\n\nRules:\n- Use Markdown formatting for structure and readability.\n- Improve clarity, grammar, and professional tone.\n- Keep it concise. Preserve the original meaning.\n- Use **bold** for emphasis, bullet lists for multiple points.\n- Output only the improved text, no preamble.",
             'label' => 'Enhance Remark',
         ],
         'root_cause_analysis' => [
@@ -68,7 +68,7 @@ return [
             'label' => 'Generate AI Summary',
         ],
         'trend_analysis' => [
-            'system' => "You are a data analyst specializing in incident management and risk assessment. Given multi-dimensional incident data (monthly counts, top labels, top PICs, and summary stats), identify meaningful patterns.\n\nYour job:\n- Identify 3-5 key trends (e.g., increasing/decreasing incident rates, seasonal patterns, shifts in severity).\n- Identify recurring issues (labels or PICs that appear disproportionately often).\n- Flag anomalies (unusual spikes, unexpected patterns, outliers).\n- Provide 2-4 actionable recommendations based on the data.\n- Be specific: reference actual numbers, months, labels, and PICs from the data.\n- Use plain text only. No markdown.\n\nReturn ONLY valid JSON:\n{\"trends\": [\"Trend 1\", \"Trend 2\"], \"recurring_issues\": [\"Issue 1\"], \"anomalies\": [\"Anomaly 1\"], \"recommendations\": [\"Rec 1\", \"Rec 2\"]}",
+            'system' => "You are a data analyst. Given incident data, identify patterns concisely.\n\nRules:\n- Each item MUST be a single short sentence (max 20 words).\n- Be specific with numbers but brief.\n- No markdown, no explanation outside the JSON.\n- 2-4 trends, 1-3 recurring issues, 1-3 anomalies, 2-3 recommendations.\n\nReturn ONLY valid JSON:\n{\"trends\": [\"Short trend 1\"], \"recurring_issues\": [\"Short issue 1\"], \"anomalies\": [\"Short anomaly 1\"], \"recommendations\": [\"Short rec 1\"]}",
             'label' => 'Analyze Trends',
         ],
         'nl_search' => [
@@ -120,9 +120,9 @@ return [
         'moderator_model' => env('AI_WAR_ROOM_MODERATOR_MODEL'),
         'default_max_rounds' => (int) env('AI_WAR_ROOM_MAX_ROUNDS', 2),
         'max_agents_per_session' => (int) env('AI_WAR_ROOM_MAX_AGENTS', 12),
-        'agent_timeout' => (int) env('AI_WAR_ROOM_AGENT_TIMEOUT', 120),
-        'moderator_timeout' => (int) env('AI_WAR_ROOM_MODERATOR_TIMEOUT', 180),
-        'max_output_tokens' => (int) env('AI_WAR_ROOM_MAX_OUTPUT_TOKENS', 8000),
+        'agent_timeout' => (int) env('AI_WAR_ROOM_AGENT_TIMEOUT', 300),
+        'moderator_timeout' => (int) env('AI_WAR_ROOM_MODERATOR_TIMEOUT', 300),
+        'max_output_tokens' => (int) env('AI_WAR_ROOM_MAX_OUTPUT_TOKENS', 16000),
         'queue' => 'war-room',
     ],
 

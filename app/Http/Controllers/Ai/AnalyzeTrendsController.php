@@ -9,6 +9,7 @@ use App\Models\Label;
 use App\Services\Ai\AiTextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class AnalyzeTrendsController extends Controller
@@ -23,11 +24,42 @@ class AnalyzeTrendsController extends Controller
             'start_date' => 'nullable|date',
             'end_date' => 'nullable|date',
             'model' => 'nullable|string',
+            'force_refresh' => 'nullable|boolean',
         ]);
 
         $startDate = $validated['start_date'] ?? null;
         $endDate = $validated['end_date'] ?? null;
 
+        $cacheKey = 'ai_trend_insights_'.md5(json_encode([
+            'start_date' => $startDate,
+            'end_date' => $endDate,
+            'model' => $validated['model'] ?? 'default',
+            'v' => Cache::get('dashboard_cache_version', 0),
+        ]));
+
+        if ($request->boolean('force_refresh')) {
+            Cache::forget($cacheKey);
+        }
+
+        $result = Cache::remember($cacheKey, 1800, function () use ($startDate, $endDate, $validated) {
+            return $this->runAnalysis($startDate, $endDate, $validated['model'] ?? null);
+        });
+
+        $fromCache = ! $request->boolean('force_refresh') && Cache::has($cacheKey);
+
+        return response()->json([
+            'success' => true,
+            'trends' => $result['trends'],
+            'recurring_issues' => $result['recurring_issues'],
+            'anomalies' => $result['anomalies'],
+            'recommendations' => $result['recommendations'],
+            'generated_at' => $result['generated_at'],
+            'cached' => $fromCache,
+        ]);
+    }
+
+    private function runAnalysis(?string $startDate, ?string $endDate, ?string $model): array
+    {
         $dateFilter = function ($query) use ($startDate, $endDate) {
             if ($startDate && $endDate) {
                 $query->whereBetween('incident_date', [$startDate, $endDate]);
@@ -86,15 +118,11 @@ class AnalyzeTrendsController extends Controller
                 'avg_mtbf' => $avgMtbf,
                 'fund_loss' => $fundLoss > 0 ? number_format($fundLoss, 0, ',', '.') : null,
             ],
-            model: $validated['model'] ?? null,
+            model: $model,
         );
 
-        return response()->json([
-            'success' => true,
-            'trends' => $result['trends'],
-            'recurring_issues' => $result['recurring_issues'],
-            'anomalies' => $result['anomalies'],
-            'recommendations' => $result['recommendations'],
-        ]);
+        $result['generated_at'] = now()->toIso8601String();
+
+        return $result;
     }
 }
