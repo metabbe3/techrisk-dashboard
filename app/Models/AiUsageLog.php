@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class AiUsageLog extends Model
+class AiUsageLog extends Model implements Auditable
 {
     use HasUuids;
+    use \OwenIt\Auditing\Auditable;
 
     protected $fillable = [
         'user_id',

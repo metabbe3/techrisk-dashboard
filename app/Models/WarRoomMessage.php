@@ -5,10 +5,12 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class WarRoomMessage extends Model
+class WarRoomMessage extends Model implements Auditable
 {
     use HasUuids;
+    use \OwenIt\Auditing\Auditable;
 
     public $timestamps = false;
 

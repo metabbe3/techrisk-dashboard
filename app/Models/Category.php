@@ -4,9 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use OwenIt\Auditing\Contracts\Auditable;
 
-class Category extends Model
+class Category extends Model implements Auditable
 {
+    use \OwenIt\Auditing\Auditable;
     public const TYPE_BUSINESS_CATEGORY = 'business_category';
     public const TYPE_ROOT_CAUSE_CATEGORY = 'root_cause_category';
     public const TYPE_RESPONSIBLE_TEAM = 'responsible_team';

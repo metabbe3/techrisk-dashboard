@@ -117,7 +117,7 @@ return [
     | issues when storing large amounts of data. You can override this by
     | setting allow_array_values to true.
     */
-    'allowed_array_values' => false,
+    'allowed_array_values' => true,
 
     /*
     |--------------------------------------------------------------------------
@@ -179,7 +179,7 @@ return [
     */
 
     'queue' => [
-        'enable' => true,
+        'enable' => false,
         'connection' => 'redis',
         'queue' => 'audits',
         'delay' => 0,
