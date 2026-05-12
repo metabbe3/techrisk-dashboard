@@ -10,153 +10,160 @@
 @endphp
 
 @if($isAvailable)
-<div x-data="{
-        rcaLoading: false,
-        rcaResults: null,
-        rcaError: '',
-        rcaOpen: false,
-        rcaElapsed: 0,
-        rcaTimer: null,
-        rcaSelectedModel: '{{ $defaultModel }}',
-        rcaShowModelPicker: false,
-        rcaApplying: false,
-        rcaApply: { summary: true, root_cause: true, remark: true, recommendation: false },
-        rcaSelectedLabels: [],
+<script>
+if (typeof window.aiRootCauseData === 'undefined') {
+    window.aiRootCauseData = function(config) {
+        return {
+            rcaLoading: false,
+            rcaResults: null,
+            rcaError: '',
+            rcaOpen: false,
+            rcaElapsed: 0,
+            rcaTimer: null,
+            rcaSelectedModel: config.defaultModel,
+            rcaShowModelPicker: false,
+            rcaApplying: false,
+            rcaApply: { summary: true, root_cause: true, remark: true, recommendation: false },
+            rcaSelectedLabels: [],
 
-        rcaNotify(body, type) {
-            try { new FilamentNotification().title('AI Analysis').body(body).status(type).send(); } catch(e) {}
-        },
+            rcaNotify(body, type) {
+                try { new FilamentNotification().title('AI Analysis').body(body).status(type).send(); } catch(e) {}
+            },
 
-        simpleMd(text) {
-            if (!text) return '';
-            let html = text
-                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                .replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;margin:10px 0 4px;color:#1e293b;">$1</h4>')
-                .replace(/^## (.+)$/gm, '<h3 style="font-size:14px;font-weight:700;margin:12px 0 6px;color:#0f172a;">$1</h3>')
-                .replace(/^# (.+)$/gm, '<h2 style="font-size:15px;font-weight:700;margin:14px 0 6px;color:#0f172a;">$1</h2>')
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                .replace(/`([^`]+)`/g, '<code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;font-size:11px;">$1</code>')
-                .replace(/^\- (.+)$/gm, '<li style="margin-left:16px;">$1</li>')
-                .replace(/^\d+\. (.+)$/gm, '<li style="margin-left:16px;list-style-type:decimal;">$1</li>')
-                .replace(/\n{2,}/g, '</p><p style="margin:6px 0;">')
-                .replace(/\n/g, '<br>');
-            return '<p style="margin:6px 0;">' + html + '</p>';
-        },
+            simpleMd(text) {
+                if (!text) return '';
+                let html = text
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;margin:10px 0 4px;color:#1e293b;">$1</h4>')
+                    .replace(/^## (.+)$/gm, '<h3 style="font-size:14px;font-weight:700;margin:12px 0 6px;color:#0f172a;">$1</h3>')
+                    .replace(/^# (.+)$/gm, '<h2 style="font-size:15px;font-weight:700;margin:14px 0 6px;color:#0f172a;">$1</h2>')
+                    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/`([^`]+)`/g, '<code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;font-size:11px;">$1</code>')
+                    .replace(/^\- (.+)$/gm, '<li style="margin-left:16px;">$1</li>')
+                    .replace(/^\d+\. (.+)$/gm, '<li style="margin-left:16px;list-style-type:decimal;">$1</li>')
+                    .replace(/\n{2,}/g, '</p><p style="margin:6px 0;">')
+                    .replace(/\n/g, '<br>');
+                return '<p style="margin:6px 0;">' + html + '</p>';
+            },
 
-        toggleLabel(label) {
-            const idx = this.rcaSelectedLabels.indexOf(label);
-            if (idx > -1) { this.rcaSelectedLabels.splice(idx, 1); }
-            else { this.rcaSelectedLabels.push(label); }
-        },
+            toggleLabel(label) {
+                const idx = this.rcaSelectedLabels.indexOf(label);
+                if (idx > -1) { this.rcaSelectedLabels.splice(idx, 1); }
+                else { this.rcaSelectedLabels.push(label); }
+            },
 
-        isLabelSelected(label) {
-            return this.rcaSelectedLabels.includes(label);
-        },
+            isLabelSelected(label) {
+                return this.rcaSelectedLabels.includes(label);
+            },
 
-        async rcaFetch(url, body) {
-            const r = await fetch(url, {
-                method: 'POST',
-                headers: {'Content-Type':'application/json','X-CSRF-TOKEN':'{{ $csrf }}','Accept':'application/json'},
-                credentials: 'same-origin',
-                body: JSON.stringify(body),
-            });
-            if (r.status === 419) { alert('Session expired. Please refresh.'); throw new Error('419'); }
-            if (!r.ok) throw new Error('Server error (HTTP ' + r.status + ')');
-            return await r.json();
-        },
+            async rcaFetch(url, body) {
+                const r = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': config.csrf, 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                    body: JSON.stringify(body),
+                });
+                if (r.status === 419) { alert('Session expired. Please refresh.'); throw new Error('419'); }
+                if (!r.ok) throw new Error('Server error (HTTP ' + r.status + ')');
+                return await r.json();
+            },
 
-        async analyze(model) {
-            if (model) this.rcaSelectedModel = model;
-            this.rcaError = '';
-            this.rcaShowModelPicker = false;
-            this.rcaLoading = true;
-            this.rcaElapsed = 0;
-            this.rcaTimer = setInterval(() => { this.rcaElapsed++; }, 1000);
+            async analyze(model) {
+                if (model) this.rcaSelectedModel = model;
+                this.rcaError = '';
+                this.rcaShowModelPicker = false;
+                this.rcaLoading = true;
+                this.rcaElapsed = 0;
+                this.rcaTimer = setInterval(() => { this.rcaElapsed++; }, 1000);
 
-            try {
-                const fields = ['summary','timeline','severity','incident_type','business_category','title'];
-                const payload = {};
-                for (const f of fields) {
-                    try {
-                        const v = await this.$wire.get('data.' + f);
-                        if (v && String(v).trim()) payload[f] = String(v).trim();
-                    } catch(err) {}
+                try {
+                    const fields = ['summary','timeline','severity','incident_type','business_category','title'];
+                    const payload = {};
+                    for (const f of fields) {
+                        try {
+                            const v = await this.$wire.get('data.' + f);
+                            if (v && String(v).trim()) payload[f] = String(v).trim();
+                        } catch(err) {}
+                    }
+
+                    if (!Object.keys(payload).length) {
+                        this.rcaError = 'Fill in at least summary or timeline first.';
+                        this.rcaNotify(this.rcaError, 'warning');
+                        return;
+                    }
+
+                    payload.model = this.rcaSelectedModel;
+                    const d = await this.rcaFetch(config.endpoint, payload);
+
+                    if (d.success && (d.root_cause || d.summary)) {
+                        this.rcaResults = d;
+                        this.rcaApply = { summary: true, root_cause: true, remark: true, recommendation: false };
+                        this.rcaSelectedLabels = [...(d.labels_matched || []), ...(d.labels_suggested || [])];
+                        this.rcaOpen = true;
+                        this.rcaNotify('Analysis complete.', 'success');
+                    } else {
+                        this.rcaError = d.error || 'No analysis generated. Add more incident details.';
+                        this.rcaNotify(this.rcaError, 'warning');
+                    }
+                } catch (e) {
+                    if (e.message !== '419') {
+                        this.rcaError = e.message || 'Network error.';
+                        this.rcaNotify(this.rcaError, 'danger');
+                    }
+                } finally {
+                    clearInterval(this.rcaTimer);
+                    this.rcaLoading = false;
                 }
+            },
 
-                if (!Object.keys(payload).length) {
-                    this.rcaError = 'Fill in at least summary or timeline first.';
-                    this.rcaNotify(this.rcaError, 'warning');
-                    return;
-                }
+            async applySelected() {
+                if (!this.rcaResults) return;
+                this.rcaApplying = true;
+                try {
+                    if (this.rcaApply.summary && this.rcaResults.summary) {
+                        this.$wire.set('data.summary', this.rcaResults.summary);
+                    }
+                    if (this.rcaApply.root_cause && this.rcaResults.root_cause) {
+                        this.$wire.set('data.root_cause', this.rcaResults.root_cause);
+                    }
+                    if (this.rcaApply.remark && this.rcaResults.remark) {
+                        this.$wire.set('data.remark', this.rcaResults.remark);
+                    }
+                    if (this.rcaApply.recommendation && this.rcaResults.recommendation) {
+                        const curRemark = await this.$wire.get('data.remark') || '';
+                        const append = (curRemark ? curRemark + '\n\n' : '') + '## Recommendation\n' + this.rcaResults.recommendation;
+                        this.$wire.set('data.remark', append);
+                    }
 
-                payload.model = this.rcaSelectedModel;
-                const d = await this.rcaFetch('{{ $endpoint }}', payload);
+                    const selMatched = (this.rcaResults.labels_matched || []).filter(l => this.rcaSelectedLabels.includes(l));
+                    const selSuggested = (this.rcaResults.labels_suggested || []).filter(l => this.rcaSelectedLabels.includes(l));
 
-                if (d.success && (d.root_cause || d.summary)) {
-                    this.rcaResults = d;
-                    this.rcaApply = { summary: true, root_cause: true, remark: true, recommendation: false };
-                    this.rcaSelectedLabels = [...(d.labels_matched || []), ...(d.labels_suggested || [])];
-                    this.rcaOpen = true;
-                    this.rcaNotify('Analysis complete.', 'success');
-                } else {
-                    this.rcaError = d.error || 'No analysis generated. Add more incident details.';
-                    this.rcaNotify(this.rcaError, 'warning');
+                    if (selMatched.length > 0 || selSuggested.length > 0) {
+                        try {
+                            const resp = await this.rcaFetch(config.applyLabelsEndpoint, {
+                                matched: selMatched,
+                                new_labels: selSuggested,
+                            });
+                            if (resp.success && resp.label_ids?.length) {
+                                const cur = await this.$wire.get('data.labels') || [];
+                                const merged = [...new Set([...cur, ...resp.label_ids.map(String)])];
+                                this.$wire.set('data.labels', merged);
+                            }
+                        } catch(e) { console.warn('Label apply failed:', e); }
+                    }
+
+                    this.rcaOpen = false;
+                    this.rcaNotify('Selected fields applied.', 'success');
+                } finally {
+                    this.rcaApplying = false;
                 }
-            } catch (e) {
-                if (e.message !== '419') {
-                    this.rcaError = e.message || 'Network error.';
-                    this.rcaNotify(this.rcaError, 'danger');
-                }
-            } finally {
-                clearInterval(this.rcaTimer);
-                this.rcaLoading = false;
             }
-        },
+        };
+    };
+}
+</script>
 
-        async applySelected() {
-            if (!this.rcaResults) return;
-            this.rcaApplying = true;
-            try {
-                if (this.rcaApply.summary && this.rcaResults.summary) {
-                    this.$wire.set('data.summary', this.rcaResults.summary);
-                }
-                if (this.rcaApply.root_cause && this.rcaResults.root_cause) {
-                    this.$wire.set('data.root_cause', this.rcaResults.root_cause);
-                }
-                if (this.rcaApply.remark && this.rcaResults.remark) {
-                    this.$wire.set('data.remark', this.rcaResults.remark);
-                }
-                if (this.rcaApply.recommendation && this.rcaResults.recommendation) {
-                    const curRemark = await this.$wire.get('data.remark') || '';
-                    const append = (curRemark ? curRemark + '\n\n' : '') + '## Recommendation\n' + this.rcaResults.recommendation;
-                    this.$wire.set('data.remark', append);
-                }
-
-                // Apply selected labels
-                const selMatched = (this.rcaResults.labels_matched || []).filter(l => this.rcaSelectedLabels.includes(l));
-                const selSuggested = (this.rcaResults.labels_suggested || []).filter(l => this.rcaSelectedLabels.includes(l));
-
-                if (selMatched.length > 0 || selSuggested.length > 0) {
-                    try {
-                        const resp = await this.rcaFetch('{{ $applyLabelsEndpoint }}', {
-                            matched: selMatched,
-                            new_labels: selSuggested,
-                        });
-                        if (resp.success && resp.label_ids?.length) {
-                            const cur = await this.$wire.get('data.labels') || [];
-                            const merged = [...new Set([...cur, ...resp.label_ids.map(String)])];
-                            this.$wire.set('data.labels', merged);
-                        }
-                    } catch(e) { console.warn('Label apply failed:', e); }
-                }
-
-                this.rcaOpen = false;
-                this.rcaNotify('Selected fields applied.', 'success');
-            } finally {
-                this.rcaApplying = false;
-            }
-        }
-    }"
+<div x-data="aiRootCauseData({ endpoint: '{{ $endpoint }}', applyLabelsEndpoint: '{{ $applyLabelsEndpoint }}', csrf: '{{ $csrf }}', defaultModel: '{{ $defaultModel }}' })"
     x-init="
         const rcaCleanup = () => clearInterval($data.rcaTimer);
         document.addEventListener('livewire:navigated', rcaCleanup);
