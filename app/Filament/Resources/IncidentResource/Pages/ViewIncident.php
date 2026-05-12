@@ -80,6 +80,11 @@ class ViewIncident extends ViewRecord
                     ->view('filament.resources.incident-resource.pages.incident-hero')
                     ->columnSpanFull(),
 
+                ViewEntry::make('recurrence_data')
+                    ->view('filament.resources.incident-resource.pages.recurrence-alert')
+                    ->visible(fn ($record) => filled($record->recurrence_data) && ($record->recurrence_data['is_recurring'] ?? false))
+                    ->columnSpanFull(),
+
                 Section::make('Summary')
                     ->icon('heroicon-o-document-text')
                     ->iconColor('primary')

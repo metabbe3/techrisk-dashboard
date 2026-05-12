@@ -89,6 +89,7 @@ class Incident extends Model implements Auditable
         'mtbf_non_tech_loss',
         'mtbf_non_incident',
         'mtbf_all',
+        'recurrence_data',
     ];
 
     protected $casts = [
@@ -121,6 +122,7 @@ class Incident extends Model implements Auditable
         'mtbf_non_tech_loss' => 'decimal:2',
         'mtbf_non_incident' => 'decimal:2',
         'mtbf_all' => 'decimal:2',
+        'recurrence_data' => 'array',
     ];
 
     /**

@@ -348,7 +348,7 @@ class AiTextService
         }
 
         if (! empty($availableLabels)) {
-            $userMessage .= "\nAvailable labels: " . implode(', ', $availableLabels);
+            $userMessage .= "\nAvailable labels: ".implode(', ', $availableLabels);
         } else {
             $userMessage .= "\nAvailable labels: (none — suggest relevant new labels)";
         }
@@ -666,7 +666,7 @@ class AiTextService
         ];
     }
 
-    private function callAiForJson(string $fieldType, string $model, string $systemPrompt, string $userMessage, array $defaultResult): array
+    public function callAiForJson(string $fieldType, string $model, string $systemPrompt, string $userMessage, array $defaultResult): array
     {
         $inputLength = strlen($userMessage);
         $startTime = microtime(true);

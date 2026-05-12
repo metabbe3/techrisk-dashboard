@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Jobs\CalculateIncidentMetrics;
+use App\Jobs\DetectRecurrenceJob;
 use App\Models\Incident;
 use App\Models\User;
 use App\Notifications\AssignedAsPicNotification;
@@ -25,6 +26,9 @@ class IncidentObserver
             shouldAutoLabel: true,
             shouldUpdateAdjacent: true
         ));
+
+        // Dispatch recurrence detection (delayed to allow categories/labels to be saved)
+        DetectRecurrenceJob::dispatch($incident)->delay(now()->addSeconds(30));
 
         // Notify PIC if assigned during creation
         if ($incident->pic_id && $incident->pic) {
@@ -105,6 +109,12 @@ class IncidentObserver
                 shouldUpdateAdjacent: $needsRecalculation || $incident->isDirty('classification'),
                 previousClassification: $previousClassification
             ));
+        }
+
+        // Dispatch recurrence detection when categories change and not yet analyzed
+        if ($incident->wasChanged(['root_cause_category', 'business_category', 'responsible_team'])
+            && $incident->recurrence_data === null) {
+            DetectRecurrenceJob::dispatch($incident);
         }
 
         // Handle status change notification
