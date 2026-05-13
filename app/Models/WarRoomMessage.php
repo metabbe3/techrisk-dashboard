@@ -72,16 +72,22 @@ class WarRoomMessage extends Model implements Auditable
         $this->update(['status' => 'running']);
     }
 
-    public function markCompleted(string $content, array $usage = [], int $responseTimeMs = 0): void
+    public function markCompleted(string $content, array $usage = [], int $responseTimeMs = 0, array $metadata = []): void
     {
-        $this->update([
+        $update = [
             'status' => 'completed',
             'content' => $content,
             'prompt_tokens' => $usage['prompt_tokens'] ?? null,
             'completion_tokens' => $usage['completion_tokens'] ?? null,
             'total_tokens' => $usage['total_tokens'] ?? null,
             'response_time_ms' => $responseTimeMs,
-        ]);
+        ];
+
+        if (! empty($metadata)) {
+            $update['metadata'] = array_merge($this->metadata ?? [], $metadata);
+        }
+
+        $this->update($update);
     }
 
     public function markFailed(string $error): void

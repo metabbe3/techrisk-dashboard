@@ -122,7 +122,7 @@ return [
         'max_agents_per_session' => (int) env('AI_WAR_ROOM_MAX_AGENTS', 12),
         'agent_timeout' => (int) env('AI_WAR_ROOM_AGENT_TIMEOUT', 300),
         'moderator_timeout' => (int) env('AI_WAR_ROOM_MODERATOR_TIMEOUT', 300),
-        'max_output_tokens' => (int) env('AI_WAR_ROOM_MAX_OUTPUT_TOKENS', 16000),
+        'max_output_tokens' => (int) env('AI_WAR_ROOM_MAX_OUTPUT_TOKENS', 65536),
         'queue' => 'war-room',
     ],
 

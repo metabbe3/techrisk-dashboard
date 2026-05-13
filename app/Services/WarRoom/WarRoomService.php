@@ -234,6 +234,8 @@ class WarRoomService
             }
         }
 
+        $maxTokens = (int) config('ai.war_room.max_output_tokens', 16384);
+
         $startTime = microtime(true);
 
         try {
@@ -245,7 +247,8 @@ class WarRoomService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 65536,
+                    'max_tokens' => $maxTokens,
+                    'max_completion_tokens' => $maxTokens,
                 ]);
 
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -257,6 +260,8 @@ class WarRoomService
                 'session_id' => $session->id,
                 'round' => $round,
                 'finish_reason' => $finishReason,
+                'model' => $model,
+                'max_tokens_requested' => $maxTokens,
                 'completion_tokens' => $usage['completion_tokens'] ?? 0,
                 'prompt_tokens' => $usage['prompt_tokens'] ?? 0,
                 'total_tokens' => $usage['total_tokens'] ?? 0,
@@ -280,10 +285,25 @@ class WarRoomService
                     $message->markFailed('AI returned empty response');
                     $this->logUsage('war_room_agent', $model, false, $usage, $responseTimeMs, $session, $agentRole, $round, 'Empty response');
                 } else {
-                    $message->markCompleted($content, $usage, $responseTimeMs);
+                    $metadata = array_merge($message->metadata ?? [], [
+                        'finish_reason' => $finishReason,
+                        'model' => $model,
+                        'max_tokens_requested' => $maxTokens,
+                    ]);
+
+                    $message->markCompleted($content, $usage, $responseTimeMs, $metadata);
 
                     if (isset($usage['total_tokens'])) {
                         $session->addTokens($usage['total_tokens']);
+                    }
+
+                    if ($finishReason === 'length') {
+                        Log::warning("[WarRoom] Agent {$agentRole} response was TRUNCATED (finish_reason=length)", [
+                            'session_id' => $session->id,
+                            'round' => $round,
+                            'completion_tokens' => $usage['completion_tokens'] ?? 0,
+                            'max_tokens_requested' => $maxTokens,
+                        ]);
                     }
 
                     $this->logUsage('war_room_agent', $model, true, $usage, $responseTimeMs, $session, $agentRole, $round);
@@ -319,6 +339,8 @@ class WarRoomService
         $systemPrompt = $this->promptBuilder->buildModeratorPrompt();
         $userMessage = $this->promptBuilder->buildModeratorUserMessage($session);
 
+        $maxTokens = (int) config('ai.war_room.max_output_tokens', 16384);
+
         $startTime = microtime(true);
 
         try {
@@ -330,12 +352,25 @@ class WarRoomService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 65536,
+                    'max_tokens' => $maxTokens,
+                    'max_completion_tokens' => $maxTokens,
                 ]);
 
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
             $responseData = $response->json();
             $usage = $responseData['usage'] ?? [];
+            $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+
+            Log::info('[WarRoom] Moderator response', [
+                'session_id' => $session->id,
+                'finish_reason' => $finishReason,
+                'model' => $model,
+                'max_tokens_requested' => $maxTokens,
+                'completion_tokens' => $usage['completion_tokens'] ?? 0,
+                'prompt_tokens' => $usage['prompt_tokens'] ?? 0,
+                'total_tokens' => $usage['total_tokens'] ?? 0,
+                'response_time_ms' => $responseTimeMs,
+            ]);
 
             if ($response->failed()) {
                 $session->markFailed('Report synthesis failed: HTTP '.$response->status());
@@ -355,6 +390,14 @@ class WarRoomService
                 broadcast(new WarRoomSessionCompleted($session->fresh()));
 
                 return;
+            }
+
+            if ($finishReason === 'length') {
+                Log::warning('[WarRoom] Moderator response was TRUNCATED (finish_reason=length)', [
+                    'session_id' => $session->id,
+                    'completion_tokens' => $usage['completion_tokens'] ?? 0,
+                    'max_tokens_requested' => $maxTokens,
+                ]);
             }
 
             if (isset($usage['total_tokens'])) {
