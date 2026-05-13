@@ -44,17 +44,17 @@ exported_at: {{ now()->format('Y-m-d H:i:s') }}
 | Metric | Amount |
 |--------|--------|
 | **Fund Status** | {{ $incident->fund_status ?? 'N/A' }} |
-| **Potential Fund Loss** | {{ \App\Services\Markdown\MarkdownFormatter::formatMoney($incident->potential_fund_loss) }} |
-| **Recovered Fund** | {{ \App\Services\Markdown\MarkdownFormatter::formatMoney($incident->recovered_fund) }} |
-| **Actual Fund Loss** | {{ \App\Services\Markdown\MarkdownFormatter::formatMoney($incident->fund_loss) }} |
+| **Potential Fund Loss** | {{ \App\Services\Markdown\MarkdownFormatter::formatMoney((float) $incident->potential_fund_loss) }} |
+| **Recovered Fund** | {{ \App\Services\Markdown\MarkdownFormatter::formatMoney((float) $incident->recovered_fund) }} |
+| **Actual Fund Loss** | {{ \App\Services\Markdown\MarkdownFormatter::formatMoney((float) $incident->fund_loss) }} |
 | **Loss Taken By** | {{ $incident->loss_taken_by ?? 'N/A' }} |
 
 ## Performance Metrics
 
 | Metric | Value |
 |--------|-------|
-| **MTTR** | {{ $incident->mttr ? \App\Services\Markdown\MarkdownFormatter::formatDuration($incident->mttr) : 'N/A' }} |
-| **MTBF** | {{ $incident->mtbf ? number_format($incident->mtbf, 2).' days' : 'N/A' }} |
+| **MTTR** | {{ $incident->mttr ? \App\Services\Markdown\MarkdownFormatter::formatDuration((float) $incident->mttr) : 'N/A' }} |
+| **MTBF** | {{ $incident->mtbf ? number_format((float) $incident->mtbf, 2).' days' : 'N/A' }} |
 
 ## Responsible Parties
 

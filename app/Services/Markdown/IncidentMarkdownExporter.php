@@ -11,6 +11,20 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class IncidentMarkdownExporter
 {
+    private static function formatDate(mixed $value, string $format): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        if ($value instanceof \DateTimeInterface) {
+            return $value->format($format);
+        }
+        if (is_string($value)) {
+            return $value;
+        }
+
+        return (string) $value;
+    }
     /**
      * Generate markdown content for an incident.
      */
@@ -59,13 +73,13 @@ class IncidentMarkdownExporter
 
         if ($incident->incident_date || $incident->discovered_at) {
             $lines[] = "\n## Timeline";
-            $lines[] = "- Incident Date: " . ($incident->incident_date?->format('Y-m-d H:i') ?? 'N/A');
-            $lines[] = "- Discovered: " . ($incident->discovered_at?->format('Y-m-d H:i') ?? 'N/A');
+            $lines[] = "- Incident Date: " . (self::formatDate($incident->incident_date, 'Y-m-d H:i') ?? 'N/A');
+            $lines[] = "- Discovered: " . (self::formatDate($incident->discovered_at, 'Y-m-d H:i') ?? 'N/A');
             if ($incident->stop_bleeding_at) {
-                $lines[] = "- Stop Bleeding: " . $incident->stop_bleeding_at->format('Y-m-d H:i');
+                $lines[] = "- Stop Bleeding: " . self::formatDate($incident->stop_bleeding_at, 'Y-m-d H:i');
             }
             if ($incident->entry_date_tech_risk) {
-                $lines[] = "- Entry Date: " . $incident->entry_date_tech_risk->format('Y-m-d H:i');
+                $lines[] = "- Entry Date: " . self::formatDate($incident->entry_date_tech_risk, 'Y-m-d H:i');
             }
         }
 
@@ -88,8 +102,8 @@ class IncidentMarkdownExporter
 
         if ($incident->mttr || $incident->mtbf) {
             $lines[] = "\n## Metrics";
-            if ($incident->mttr) $lines[] = "- MTTR: " . MarkdownFormatter::formatDuration($incident->mttr);
-            if ($incident->mtbf) $lines[] = "- MTBF: " . number_format($incident->mtbf, 2) . ' days';
+            if ($incident->mttr) $lines[] = "- MTTR: " . MarkdownFormatter::formatDuration((float) $incident->mttr);
+            if ($incident->mtbf) $lines[] = "- MTBF: " . number_format((float) $incident->mtbf, 2) . ' days';
         }
 
         if ($incident->labels->isNotEmpty()) {
@@ -103,7 +117,7 @@ class IncidentMarkdownExporter
             $lines[] = "\n## Action Items";
             foreach ($incident->actionImprovements as $action) {
                 $status = $action->is_completed ? 'DONE' : ($action->status ?? 'PENDING');
-                $lines[] = "- **{$action->title}** [{$status}]" . ($action->due_date ? " — Due: {$action->due_date->format('Y-m-d')}" : '');
+                $lines[] = "- **{$action->title}** [{$status}]" . ($action->due_date ? " — Due: " . self::formatDate($action->due_date, 'Y-m-d') : '');
             }
         }
 
@@ -168,7 +182,7 @@ class IncidentMarkdownExporter
     public function generateFilename(Incident $incident): string
     {
         $safeTitle = MarkdownFormatter::sanitizeFilename($incident->summary ?? 'incident');
-        $date = $incident->incident_date?->format('Y-m-d') ?? 'unknown';
+        $date = self::formatDate($incident->incident_date, 'Y-m-d') ?? 'unknown';
 
         return "{$incident->no}_{$date}_{$safeTitle}.md";
     }
