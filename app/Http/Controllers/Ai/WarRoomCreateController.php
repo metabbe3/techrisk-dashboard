@@ -25,6 +25,7 @@ class WarRoomCreateController
             'model' => 'nullable|string',
             'moderator_model' => 'nullable|string',
             'enable_web_search' => 'boolean',
+            'deep_analysis' => 'boolean',
             'user_instructions' => 'nullable|string|max:2000',
         ]);
 
@@ -58,6 +59,7 @@ class WarRoomCreateController
                 model: $validated['model'] ?? null,
                 moderatorModel: $validated['moderator_model'] ?? null,
                 enableWebSearch: $validated['enable_web_search'] ?? false,
+                deepAnalysis: $validated['deep_analysis'] ?? true,
                 userInstructions: $validated['user_instructions'] ?? null,
             );
         } catch (\Throwable $e) {

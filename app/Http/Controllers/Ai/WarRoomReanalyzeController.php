@@ -21,6 +21,7 @@ class WarRoomReanalyzeController
             'moderator_model' => 'nullable|string',
             'selected_agents' => 'nullable|array|min:1',
             'selected_agents.*' => 'string',
+            'deep_analysis' => 'nullable|boolean',
         ]);
 
         $session = WarRoomSession::forUser()->findOrFail($id);
@@ -32,6 +33,7 @@ class WarRoomReanalyzeController
                 $request->input('model'),
                 $request->input('moderator_model'),
                 $request->input('selected_agents'),
+                $request->has('deep_analysis') ? $request->boolean('deep_analysis') : null,
             );
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);

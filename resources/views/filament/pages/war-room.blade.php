@@ -39,7 +39,7 @@ document.addEventListener('alpine:init', () => {
             incidentResults: [],
             selectedIncidents: [],
             selectedAgents: [],
-            config: { maxRounds: 2, model: '', moderatorModel: '', enableWebSearch: false, userInstructions: '' },
+            config: { maxRounds: 2, model: '', moderatorModel: '', enableWebSearch: false, deepAnalysis: true, userInstructions: '' },
             tokenEstimate: null,
             tokenDebounce: null,
 
@@ -137,6 +137,7 @@ document.addEventListener('alpine:init', () => {
                         const params = new URLSearchParams({
                             incident_ids: this.selectedIncidents.map(i => i.id).join(','),
                             model: this.config.model || '',
+                            deep_analysis: this.config.deepAnalysis,
                         });
                         const res = await fetch('/admin/war-room/estimate-tokens?' + params, { headers: this.getHeaders() });
                         if (res.ok) { this.tokenEstimate = await res.json(); }
@@ -158,6 +159,7 @@ document.addEventListener('alpine:init', () => {
                             model: this.config.model || null,
                             moderator_model: this.config.moderatorModel || null,
                             enable_web_search: this.config.enableWebSearch,
+                            deep_analysis: this.config.deepAnalysis,
                             user_instructions: this.config.userInstructions || null,
                         })
                     });
@@ -368,6 +370,7 @@ document.addEventListener('alpine:init', () => {
                     if (this.reanalyzeInstructions.trim()) body.user_instructions = this.reanalyzeInstructions.trim();
                     if (this.reanalyzeModel) body.model = this.reanalyzeModel;
                     if (this.reanalyzeModeratorModel) body.moderator_model = this.reanalyzeModeratorModel;
+                    body.deep_analysis = this.config.deepAnalysis;
 
                     const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/reanalyze', {
                         method: 'POST',
@@ -669,6 +672,10 @@ document.addEventListener('alpine:init', () => {
                     <label class="df-checkbox-row">
                         <input type="checkbox" x-model="config.enableWebSearch" class="df-checkbox" />
                         <span>Enable web search for agents</span>
+                    </label>
+                    <label class="df-checkbox-row">
+                        <input type="checkbox" x-model="config.deepAnalysis" class="df-checkbox" />
+                        <span>Deep analysis (full incident data — uses more tokens)</span>
                     </label>
 
                     <div class="df-form-section">

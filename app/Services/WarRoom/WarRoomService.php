@@ -38,6 +38,7 @@ class WarRoomService
         ?string $model = null,
         ?string $moderatorModel = null,
         bool $enableWebSearch = false,
+        bool $deepAnalysis = true,
         ?string $userInstructions = null,
     ): WarRoomSession {
         $incidents = Incident::whereIn('id', $incidentIds)->orderBy('incident_date', 'desc')->get();
@@ -48,15 +49,17 @@ class WarRoomService
 
         $primaryIncident = $incidents->first();
 
+        $generateMethod = $deepAnalysis ? 'generateCompact' : 'generateMinimal';
+
         if ($incidents->count() === 1) {
-            $markdown = $this->markdownExporter->generateCompact($primaryIncident);
+            $markdown = $this->markdownExporter->$generateMethod($primaryIncident);
             $context = [$markdown];
             $title = "Discussion Forum: {$primaryIncident->no}";
         } else {
             $context = [];
             foreach ($incidents as $inc) {
                 $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
-                $context[] = $this->markdownExporter->generateCompact($inc);
+                $context[] = $this->markdownExporter->$generateMethod($inc);
             }
             $incidentNos = $incidents->pluck('no')->implode(' vs ');
             $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
@@ -71,6 +74,7 @@ class WarRoomService
             'model' => $model ?? config('ai.war_room.default_model') ?? AiSetting::get('default_model', config('ai.default_model')),
             'moderator_model' => $moderatorModel ?? config('ai.war_room.moderator_model') ?? $model ?? AiSetting::get('default_model', config('ai.default_model')),
             'enable_web_search' => $enableWebSearch,
+            'deep_analysis' => $deepAnalysis,
             'selected_agents' => $selectedAgents,
             'incident_context' => $this->compressContext($context, $model ?? config('ai.war_room.default_model') ?? AiSetting::get('default_model', config('ai.default_model')), $incidents),
             'user_instructions' => $userInstructions,
@@ -89,10 +93,13 @@ class WarRoomService
         ?string $model = null,
         ?string $moderatorModel = null,
         ?array $selectedAgents = null,
+        ?bool $deepAnalysis = null,
     ): WarRoomSession {
         if (! in_array($session->status, ['completed', 'failed'])) {
             throw new \InvalidArgumentException('Only completed or failed sessions can be re-analyzed.');
         }
+
+        $deepAnalysis = $deepAnalysis ?? $session->deep_analysis;
 
         // Reset any stuck running messages from previous attempt
         $session->messages()->where('status', 'running')->update([
@@ -101,17 +108,18 @@ class WarRoomService
         ]);
 
         $incidents = $session->incidents()->get();
+        $generateMethod = $deepAnalysis ? 'generateCompact' : 'generateMinimal';
 
         if ($incidents->count() <= 1) {
             $incident = $incidents->first() ?? $session->incident;
-            $markdown = $this->markdownExporter->generateCompact($incident);
+            $markdown = $this->markdownExporter->$generateMethod($incident);
             $context = [$markdown];
             $title = "Discussion Forum: {$incident->no}";
         } else {
             $context = [];
             foreach ($incidents as $inc) {
                 $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
-                $context[] = $this->markdownExporter->generateCompact($inc);
+                $context[] = $this->markdownExporter->$generateMethod($inc);
             }
             $incidentNos = $incidents->pluck('no')->implode(' vs ');
             $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
@@ -135,6 +143,7 @@ class WarRoomService
             'failed_at' => null,
             'error_message' => null,
             'tokens_used' => 0,
+            'deep_analysis' => $deepAnalysis,
             'title' => $title,
         ];
 

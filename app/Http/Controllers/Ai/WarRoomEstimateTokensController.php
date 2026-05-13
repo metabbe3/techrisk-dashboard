@@ -19,16 +19,20 @@ class WarRoomEstimateTokensController
             'incident_ids' => 'required|array|min:1',
             'incident_ids.*' => 'integer|exists:incidents,id',
             'model' => 'nullable|string',
+            'deep_analysis' => 'nullable|boolean',
         ]);
 
         $incidents = Incident::whereIn('id', $request->input('incident_ids'))
             ->orderBy('incident_date', 'desc')
             ->get();
 
+        $deepAnalysis = $request->boolean('deep_analysis', true);
+        $generateMethod = $deepAnalysis ? 'generateCompact' : 'generateMinimal';
+
         $context = [];
         foreach ($incidents as $inc) {
             $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
-            $context[] = $this->exporter->generateCompact($inc);
+            $context[] = $this->exporter->$generateMethod($inc);
         }
 
         $contextText = implode("\n", $context);
