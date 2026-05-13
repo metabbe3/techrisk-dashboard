@@ -39,6 +39,20 @@ class DocumentConverterService
                 $document->original_filename
             );
 
+            // Check if conversion produced usable content
+            if (blank($markdown) || trim(strip_tags($markdown)) === '') {
+                $document->update([
+                    'markdown_conversion_status' => 'failed',
+                ]);
+
+                Log::warning('Document conversion produced empty content', [
+                    'document_id' => $document->id,
+                    'filename' => $document->original_filename,
+                ]);
+
+                throw new \Exception('No text could be extracted from this document. It may be image-based or empty.');
+            }
+
             // Store markdown
             $path = $this->storeMarkdown($document, $markdown);
 

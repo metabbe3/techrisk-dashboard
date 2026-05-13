@@ -177,10 +177,28 @@ class InvestigationDocumentsRelationManager extends RelationManager
                             }
 
                             $markdown = $document->getMarkdownContent();
+
+                            // Try converting first if no markdown exists
+                            if (blank($markdown) && $document->markdown_conversion_status !== 'completed') {
+                                try {
+                                    $converter = app(\App\Services\Markdown\DocumentConverterService::class);
+                                    $converter->convert($document);
+                                    $document->refresh();
+                                    $markdown = $document->getMarkdownContent();
+                                } catch (\Exception $e) {
+                                    Notification::make()
+                                        ->title('Conversion Failed')
+                                        ->body($e->getMessage())
+                                        ->danger()
+                                        ->send();
+                                    return;
+                                }
+                            }
+
                             if (blank($markdown)) {
                                 Notification::make()
                                     ->title('No Content')
-                                    ->body('Document has no Markdown content yet. Wait for conversion or click Reconvert.')
+                                    ->body('Could not extract text from this document. It may be image-based or unsupported.')
                                     ->warning()
                                     ->send();
                                 return;
@@ -254,11 +272,12 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->icon('heroicon-o-arrow-path')
                     ->label('Convert to MD')
                     ->color('warning')
-                    ->action(function ($record) {
+                    ->action(function ($record, \Livewire\Component $livewire) {
                         try {
                             $converter = app(\App\Services\Markdown\DocumentConverterService::class);
                             $result = $converter->convert($record);
                             if ($result) {
+                                $record->refresh();
                                 Notification::make()
                                     ->title('Conversion Complete')
                                     ->body('Document converted to Markdown successfully.')
@@ -272,6 +291,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                     ->send();
                             }
                         } catch (\Exception $e) {
+                            $record->refresh();
                             Notification::make()
                                 ->title('Conversion Failed')
                                 ->body($e->getMessage())
