@@ -667,7 +667,7 @@ class WarRoomService
         return $limits[$model]['input'] ?? config('ai.war_room.default_input_limit', 32000);
     }
 
-    private function compressContext(array $context, string $model, Collection $incidents): array
+    private function compressContext(array $context, string $model, $incidents): array
     {
         $inputLimit = $this->getModelInputLimit($model);
         $targetTokens = (int) ($inputLimit * 0.75);
