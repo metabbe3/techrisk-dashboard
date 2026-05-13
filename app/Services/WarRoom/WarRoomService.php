@@ -40,10 +40,16 @@ class WarRoomService
         ?string $userInstructions = null,
     ): WarRoomSession {
         $incidents = Incident::whereIn('id', $incidentIds)->orderBy('incident_date', 'desc')->get();
+
+        if ($incidents->isEmpty()) {
+            throw new \InvalidArgumentException('No valid incidents found for the provided IDs.');
+        }
+
         $primaryIncident = $incidents->first();
 
         if ($incidents->count() === 1) {
-            $context = $this->markdownExporter->generate($primaryIncident);
+            $markdown = $this->markdownExporter->generate($primaryIncident);
+            $context = [$markdown];
             $title = "Discussion Forum: {$primaryIncident->no}";
         } else {
             $context = $this->markdownExporter->generateForIncidents($incidents);
@@ -87,7 +93,8 @@ class WarRoomService
 
         if ($incidents->count() <= 1) {
             $incident = $incidents->first() ?? $session->incident;
-            $context = $this->markdownExporter->generate($incident);
+            $markdown = $this->markdownExporter->generate($incident);
+            $context = [$markdown];
             $title = "Discussion Forum: {$incident->no}";
         } else {
             $context = $this->markdownExporter->generateForIncidents($incidents);

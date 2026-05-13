@@ -6,6 +6,7 @@ use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class WarRoomCreateController
 {
@@ -48,16 +49,28 @@ class WarRoomCreateController
             }
         }
 
-        $session = $this->warRoomService->createSession(
-            incidentIds: $incidentIds,
-            user: $request->user(),
-            selectedAgents: $validated['selected_agents'],
-            maxRounds: $validated['max_rounds'] ?? 2,
-            model: $validated['model'] ?? null,
-            moderatorModel: $validated['moderator_model'] ?? null,
-            enableWebSearch: $validated['enable_web_search'] ?? false,
-            userInstructions: $validated['user_instructions'] ?? null,
-        );
+        try {
+            $session = $this->warRoomService->createSession(
+                incidentIds: $incidentIds,
+                user: $request->user(),
+                selectedAgents: $validated['selected_agents'],
+                maxRounds: $validated['max_rounds'] ?? 2,
+                model: $validated['model'] ?? null,
+                moderatorModel: $validated['moderator_model'] ?? null,
+                enableWebSearch: $validated['enable_web_search'] ?? false,
+                userInstructions: $validated['user_instructions'] ?? null,
+            );
+        } catch (\Throwable $e) {
+            Log::error('War Room session creation failed', [
+                'incident_ids' => $incidentIds,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 500);
+        }
 
         return response()->json([
             'id' => $session->id,
