@@ -143,6 +143,8 @@ document.addEventListener('alpine:init', () => {
                     } catch (e) { /* silent */ }
                 }, 300);
             },
+
+            async createSession() {
                 if (this.selectedIncidents.length === 0 || this.selectedAgents.length === 0 || this.creating) return;
                 this.creating = true;
                 try {
