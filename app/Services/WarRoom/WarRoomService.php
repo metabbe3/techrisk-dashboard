@@ -48,11 +48,15 @@ class WarRoomService
         $primaryIncident = $incidents->first();
 
         if ($incidents->count() === 1) {
-            $markdown = $this->markdownExporter->generate($primaryIncident);
+            $markdown = $this->markdownExporter->generateCompact($primaryIncident);
             $context = [$markdown];
             $title = "Discussion Forum: {$primaryIncident->no}";
         } else {
-            $context = $this->markdownExporter->generateForIncidents($incidents);
+            $context = [];
+            foreach ($incidents as $inc) {
+                $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
+                $context[] = $this->markdownExporter->generateCompact($inc);
+            }
             $incidentNos = $incidents->pluck('no')->implode(' vs ');
             $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
         }
@@ -93,11 +97,15 @@ class WarRoomService
 
         if ($incidents->count() <= 1) {
             $incident = $incidents->first() ?? $session->incident;
-            $markdown = $this->markdownExporter->generate($incident);
+            $markdown = $this->markdownExporter->generateCompact($incident);
             $context = [$markdown];
             $title = "Discussion Forum: {$incident->no}";
         } else {
-            $context = $this->markdownExporter->generateForIncidents($incidents);
+            $context = [];
+            foreach ($incidents as $inc) {
+                $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
+                $context[] = $this->markdownExporter->generateCompact($inc);
+            }
             $incidentNos = $incidents->pluck('no')->implode(' vs ');
             $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
         }
@@ -235,79 +243,111 @@ class WarRoomService
         }
 
         $maxTokens = (int) config('ai.war_room.max_output_tokens', 16384);
+        $maxContinuations = (int) config('ai.war_room.max_continuations', 3);
 
         $startTime = microtime(true);
 
         try {
-            $response = Http::withHeaders($this->buildHeaders())
-                ->timeout($this->getTimeout())
-                ->post($this->buildUrl(), [
-                    'model' => $model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userMessage],
-                    ],
-                    'max_tokens' => $maxTokens,
-                    'max_completion_tokens' => $maxTokens,
+            $messages = [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userMessage],
+            ];
+
+            $fullContent = '';
+            $totalUsage = ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0];
+            $finalFinishReason = 'unknown';
+
+            for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
+                $response = Http::withHeaders($this->buildHeaders())
+                    ->timeout($this->getTimeout())
+                    ->post($this->buildUrl(), [
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $maxTokens,
+                        'max_completion_tokens' => $maxTokens,
+                    ]);
+
+                $responseData = $response->json();
+                $usage = $responseData['usage'] ?? [];
+                $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+                $finalFinishReason = $finishReason;
+
+                foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
+                    $totalUsage[$key] += $usage[$key] ?? 0;
+                }
+
+                if ($response->failed()) {
+                    $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+                    $errorMsg = 'AI service error (HTTP '.$response->status().')';
+                    Log::warning("[WarRoom] Agent {$agentRole} failed", [
+                        'session_id' => $session->id,
+                        'attempt' => $attempt,
+                        'status' => $response->status(),
+                    ]);
+                    $message->markFailed($errorMsg);
+                    $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, $errorMsg);
+                    $fullContent = '';
+
+                    break;
+                }
+
+                $chunk = $responseData['choices'][0]['message']['content'] ?? '';
+
+                if (blank($chunk) && $attempt === 0) {
+                    $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+                    $message->markFailed('AI returned empty response');
+                    $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, 'Empty response');
+                    $fullContent = '';
+
+                    break;
+                }
+
+                $fullContent .= $chunk;
+
+                if ($finishReason !== 'length') {
+                    break;
+                }
+
+                // Truncated — send continuation request
+                Log::info("[WarRoom] Agent {$agentRole} continuation {$attempt}", [
+                    'session_id' => $session->id,
+                    'round' => $round,
+                    'completion_tokens_so_far' => $totalUsage['completion_tokens'],
+                    'content_length_so_far' => strlen($fullContent),
                 ]);
 
-            $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
-            $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
-            $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+                $messages[] = ['role' => 'assistant', 'content' => $chunk];
+                $messages[] = ['role' => 'user', 'content' => 'Continue your analysis from exactly where you left off. Do not repeat what you already wrote.'];
+            }
 
-            Log::info("[WarRoom] Agent {$agentRole} response", [
+            $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+
+            Log::info("[WarRoom] Agent {$agentRole} final", [
                 'session_id' => $session->id,
                 'round' => $round,
-                'finish_reason' => $finishReason,
+                'finish_reason' => $finalFinishReason,
                 'model' => $model,
-                'max_tokens_requested' => $maxTokens,
-                'completion_tokens' => $usage['completion_tokens'] ?? 0,
-                'prompt_tokens' => $usage['prompt_tokens'] ?? 0,
-                'total_tokens' => $usage['total_tokens'] ?? 0,
+                'continuations' => $finalFinishReason === 'length' ? $maxContinuations : 0,
+                'total_completion_tokens' => $totalUsage['completion_tokens'],
+                'total_prompt_tokens' => $totalUsage['prompt_tokens'],
+                'content_length' => strlen($fullContent),
                 'response_time_ms' => $responseTimeMs,
             ]);
 
-            if ($response->failed()) {
-                $errorMsg = 'AI service error (HTTP '.$response->status().')';
-                Log::warning("[WarRoom] Agent {$agentRole} failed", [
-                    'session_id' => $session->id,
-                    'status' => $response->status(),
-                    'response_time_ms' => $responseTimeMs,
-                    'body' => \Illuminate\Support\Str::limit($response->body(), 500),
+            if (! blank($fullContent)) {
+                $metadata = array_merge($message->metadata ?? [], [
+                    'finish_reason' => $finalFinishReason,
+                    'model' => $model,
+                    'total_completion_tokens' => $totalUsage['completion_tokens'],
                 ]);
-                $message->markFailed($errorMsg);
-                $this->logUsage('war_room_agent', $model, false, $usage, $responseTimeMs, $session, $agentRole, $round, $errorMsg);
-            } else {
-                $content = $responseData['choices'][0]['message']['content'] ?? '';
 
-                if (blank($content)) {
-                    $message->markFailed('AI returned empty response');
-                    $this->logUsage('war_room_agent', $model, false, $usage, $responseTimeMs, $session, $agentRole, $round, 'Empty response');
-                } else {
-                    $metadata = array_merge($message->metadata ?? [], [
-                        'finish_reason' => $finishReason,
-                        'model' => $model,
-                        'max_tokens_requested' => $maxTokens,
-                    ]);
+                $message->markCompleted($fullContent, $totalUsage, $responseTimeMs, $metadata);
 
-                    $message->markCompleted($content, $usage, $responseTimeMs, $metadata);
-
-                    if (isset($usage['total_tokens'])) {
-                        $session->addTokens($usage['total_tokens']);
-                    }
-
-                    if ($finishReason === 'length') {
-                        Log::warning("[WarRoom] Agent {$agentRole} response was TRUNCATED (finish_reason=length)", [
-                            'session_id' => $session->id,
-                            'round' => $round,
-                            'completion_tokens' => $usage['completion_tokens'] ?? 0,
-                            'max_tokens_requested' => $maxTokens,
-                        ]);
-                    }
-
-                    $this->logUsage('war_room_agent', $model, true, $usage, $responseTimeMs, $session, $agentRole, $round);
+                if ($totalUsage['total_tokens'] > 0) {
+                    $session->addTokens($totalUsage['total_tokens']);
                 }
+
+                $this->logUsage('war_room_agent', $model, true, $totalUsage, $responseTimeMs, $session, $agentRole, $round);
             }
         } catch (ConnectionException $e) {
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
