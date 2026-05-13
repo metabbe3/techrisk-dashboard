@@ -168,7 +168,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ->required(),
                         ];
                     })
-                    ->action(function ($record, array $data) use ($aiService, $defaultModel) {
+                    ->action(function ($record, array $data, \Livewire\Component $livewire) use ($aiService, $defaultModel) {
                         try {
                             $document = InvestigationDocument::with('encryptionKey')->find($record->id);
                             if (! $document) {
@@ -236,6 +236,8 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ->danger()
                                 ->send();
                         }
+
+                        $livewire->js('setTimeout(() => $wire.$refresh(), 200)');
                     }),
                 Tables\Actions\Action::make('view_summary')
                     ->icon('heroicon-o-document-text')
@@ -245,6 +247,15 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->modalHeading(fn ($record) => 'AI Summary — ' . $record->original_filename)
                     ->modalDescription(fn ($record) => 'Model: ' . $record->ai_summary_model . ' | Summarized: ' . $record->ai_summary_at?->diffForHumans())
                     ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString(\Illuminate\Support\Str::markdown($record->ai_summary)))
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close'),
+                Tables\Actions\Action::make('view_markdown')
+                    ->icon('heroicon-o-code-bracket')
+                    ->label('View MD')
+                    ->color('gray')
+                    ->visible(fn ($record): bool => $record->markdown_path !== null)
+                    ->modalHeading(fn ($record) => 'Markdown — ' . $record->original_filename)
+                    ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString('<pre style="white-space:pre-wrap;font-size:12px;max-height:500px;overflow-y:auto;background:#f8fafc;padding:16px;border-radius:8px;">' . e(Storage::disk('local')->get($record->markdown_path)) . '</pre>'))
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close'),
                 Tables\Actions\Action::make('download_markdown')
@@ -272,15 +283,22 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->icon('heroicon-o-arrow-path')
                     ->label('Convert to MD')
                     ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('Convert to Markdown')
+                    ->modalDescription(fn ($record) => 'Convert "' . $record->original_filename . '" to Markdown? This may take a moment for large files.')
+                    ->modalSubmitActionLabel('Start Conversion')
                     ->action(function ($record, \Livewire\Component $livewire) {
                         try {
                             $converter = app(\App\Services\Markdown\DocumentConverterService::class);
                             $result = $converter->convert($record);
+                            $record->refresh();
+
                             if ($result) {
-                                $record->refresh();
+                                $chars = number_format(strlen($result));
+                                $words = number_format(str_word_count($result));
                                 Notification::make()
                                     ->title('Conversion Complete')
-                                    ->body('Document converted to Markdown successfully.')
+                                    ->body("Extracted {$chars} characters ({$words} words) from {$record->original_filename}.")
                                     ->success()
                                     ->send();
                             } else {
@@ -298,6 +316,8 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ->danger()
                                 ->send();
                         }
+
+                        $livewire->js('setTimeout(() => $wire.$refresh(), 200)');
                     }),
                 Tables\Actions\Action::make('download')
                     ->icon('heroicon-o-arrow-down-tray')
