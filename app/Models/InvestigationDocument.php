@@ -22,6 +22,9 @@ class InvestigationDocument extends Model implements Auditable
         'description',
         'pic_status',
         'original_filename',
+        'ai_summary',
+        'ai_summary_model',
+        'ai_summary_at',
     ];
 
     /**
@@ -35,5 +38,14 @@ class InvestigationDocument extends Model implements Auditable
     public function encryptionKey(): HasOne
     {
         return $this->hasOne(EncryptionKey::class);
+    }
+
+    public function getMarkdownContent(): ?string
+    {
+        if (! $this->markdown_path) {
+            return null;
+        }
+
+        return \Illuminate\Support\Facades\Storage::disk('local')->get($this->markdown_path);
     }
 }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Ai\AiSearchController;
 use App\Http\Controllers\Ai\MarkAiEnhancedController;
+use App\Http\Controllers\Ai\SummarizeDocumentController;
 use App\Http\Controllers\Ai\AnalyzeRootCauseController;
 use App\Http\Controllers\Ai\AnalyzeTrendsController;
 use App\Http\Controllers\Ai\ApplyLabelsController;
@@ -52,6 +53,10 @@ Route::post('/admin/ai/apply-labels', ApplyLabelsController::class)
 Route::post('/admin/ai/mark-enhanced', MarkAiEnhancedController::class)
     ->middleware(['auth', 'can:manage incidents'])
     ->name('ai.mark-enhanced');
+
+Route::post('/admin/ai/summarize-document', SummarizeDocumentController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.summarize-document');
 
 Route::post('/admin/ai/analyze-root-cause', AnalyzeRootCauseController::class)
     ->middleware(['auth', 'can:manage incidents', 'ai.available:root_cause,categories,contributing_factors,recommendation'])

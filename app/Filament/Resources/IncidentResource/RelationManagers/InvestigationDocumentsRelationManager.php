@@ -43,6 +43,10 @@ class InvestigationDocumentsRelationManager extends RelationManager
 
     public function table(Table $table): Table
     {
+        $aiService = app(\App\Services\Ai\AiTextService::class);
+        $models = $aiService->getAvailableModels();
+        $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
+
         return $table
             ->recordTitleAttribute('description')
             ->columns([
@@ -50,7 +54,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('original_filename')
                     ->label('Document'),
                 Tables\Columns\TextColumn::make('markdown_conversion_status')
-                    ->label('Markdown')
+                    ->label('MD Status')
                     ->badge()
                     ->color(fn ($state): string => match ($state) {
                         'completed' => 'success',
@@ -58,6 +62,14 @@ class InvestigationDocumentsRelationManager extends RelationManager
                         'failed' => 'danger',
                         default => 'gray',
                     }),
+                Tables\Columns\IconColumn::make('ai_summary')
+                    ->label('AI Summary')
+                    ->boolean()
+                    ->trueIcon('heroicon-o-sparkles')
+                    ->falseIcon('heroicon-o-sparkles')
+                    ->trueColor('primary')
+                    ->falseColor('gray')
+                    ->tooltip(fn ($record) => $record->ai_summary ? 'Summarized by ' . $record->ai_summary_model : 'Not summarized'),
                 Tables\Columns\TextColumn::make('created_at')->dateTime(),
             ])
             ->headerActions([
@@ -137,6 +149,69 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     }),
             ])
             ->actions([
+                Tables\Actions\Action::make('ai_summarize')
+                    ->icon('heroicon-o-sparkles')
+                    ->label('AI Summarize')
+                    ->color('primary')
+                    ->visible(fn () => $aiService->isAvailable())
+                    ->form(function () use ($models) {
+                        if (count($models) <= 1) {
+                            return [];
+                        }
+
+                        return [
+                            \Filament\Forms\Components\Select::make('model')
+                                ->label('AI Model')
+                                ->options($models)
+                                ->default(array_key_first($models))
+                                ->required(),
+                        ];
+                    })
+                    ->action(function ($record, array $data) use ($models, $defaultModel) {
+                        try {
+                            $response = \Illuminate\Support\Facades\Http::withHeaders([
+                                'Content-Type' => 'application/json',
+                                'X-CSRF-TOKEN' => csrf_token(),
+                                'Accept' => 'application/json',
+                            ])
+                                ->post(route('ai.summarize-document'), [
+                                    'document_id' => $record->id,
+                                    'model' => $data['model'] ?? $defaultModel,
+                                ]);
+
+                            $result = $response->json();
+
+                            if ($result['success'] ?? false) {
+                                Notification::make()
+                                    ->title('AI Summary Complete')
+                                    ->body('Document summarized using ' . ($result['model'] ?? 'AI'))
+                                    ->success()
+                                    ->send();
+                            } else {
+                                Notification::make()
+                                    ->title('AI Summary Failed')
+                                    ->body($result['error'] ?? 'Unknown error')
+                                    ->danger()
+                                    ->send();
+                            }
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('AI Summary Error')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+                Tables\Actions\Action::make('view_summary')
+                    ->icon('heroicon-o-document-text')
+                    ->label('View Summary')
+                    ->color('info')
+                    ->visible(fn ($record): bool => $record->ai_summary !== null)
+                    ->modalHeading(fn ($record) => 'AI Summary — ' . $record->original_filename)
+                    ->modalDescription(fn ($record) => 'Model: ' . $record->ai_summary_model . ' | Summarized: ' . $record->ai_summary_at?->diffForHumans())
+                    ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString(\Illuminate\Support\Str::markdown($record->ai_summary)))
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close'),
                 Tables\Actions\Action::make('download_markdown')
                     ->icon('heroicon-o-document-arrow-down')
                     ->label('Download MD')

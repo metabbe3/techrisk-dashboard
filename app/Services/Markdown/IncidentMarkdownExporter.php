@@ -115,6 +115,20 @@ class IncidentMarkdownExporter
             $lines[] = "\n## Remarks\n{$incident->remark}";
         }
 
+        if ($incident->investigationDocuments->isNotEmpty()) {
+            $lines[] = "\n## Investigation Documents";
+            foreach ($incident->investigationDocuments as $doc) {
+                $lines[] = "\n### {$doc->original_filename}";
+                if ($doc->description) {
+                    $lines[] = "Description: {$doc->description}";
+                }
+                if ($doc->ai_summary) {
+                    $lines[] = "\n**AI Summary:**";
+                    $lines[] = $doc->ai_summary;
+                }
+            }
+        }
+
         return implode("\n", $lines);
     }
 

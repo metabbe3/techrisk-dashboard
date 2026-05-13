@@ -126,4 +126,14 @@ return [
         'queue' => 'war-room',
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Document Summarization Prompt
+    |--------------------------------------------------------------------------
+    */
+    'document_summarization' => [
+        'system' => 'You are a technical document analyst. Your job is to read document content and produce a concise, structured Markdown summary that captures all key facts, findings, timelines, root causes, and action items. Preserve important details, names, dates, and figures. Use headings and bullet points for clarity.',
+        'user' => "Analyze the following document content and produce a comprehensive Markdown summary.\n\nFocus on:\n- Key findings and facts\n- Root causes or contributing factors mentioned\n- Timeline of events\n- People, teams, or systems involved\n- Action items or recommendations\n- Financial figures or metrics\n\nDocument content:\n\n{content}",
+    ],
+
 ];

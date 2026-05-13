@@ -8,6 +8,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 class AiTextService
 {
@@ -664,6 +665,68 @@ class AiTextService
             'filters' => is_array($result['filters'] ?? null) ? $result['filters'] : [],
             'explanation' => is_string($result['explanation'] ?? null) ? $result['explanation'] : '',
         ];
+    }
+
+    public function summarizeDocument(string $content, string $originalFilename, ?string $model = null): AiTextResult
+    {
+        if (blank($content)) {
+            return AiTextResult::failure('No document content available for summarization.');
+        }
+
+        $prompt = config('ai.document_summarization');
+        if (! $prompt) {
+            return AiTextResult::failure('Document summarization prompt not configured.');
+        }
+
+        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+
+        $userId = auth()->id() ?? 'guest';
+        if (! RateLimiter::attempt("ai-summarize:{$userId}", config('ai.rate_limit_per_minute', 10), fn () => true)) {
+            return AiTextResult::failure('Rate limit exceeded. Please wait a moment.');
+        }
+
+        $truncated = Str::limit($content, 30000);
+        $userMessage = str_replace('{content}', $truncated, $prompt['user']);
+
+        $inputLength = strlen($truncated);
+        $startTime = microtime(true);
+        $result = null;
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout(120)
+                ->post($this->buildUrl(), $this->buildPayload(
+                    $prompt['system'],
+                    $userMessage,
+                    $resolvedModel,
+                ));
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+
+            if ($response->failed()) {
+                Log::warning('AI document summarization failed', ['status' => $response->status(), 'filename' => $originalFilename]);
+                $result = AiTextResult::failure('AI service error. Please try again.', $resolvedModel, $responseTimeMs);
+            } else {
+                $text = $this->parseResponseFromData($responseData) ?? '';
+                if (blank($text)) {
+                    $result = AiTextResult::failure('AI returned empty response.', $resolvedModel, $responseTimeMs);
+                } else {
+                    $result = AiTextResult::success($this->cleanResponse($text), $resolvedModel, $responseTimeMs);
+                }
+            }
+
+            $this->logUsage('document_summary', $resolvedModel, $result, $inputLength);
+
+            return $result;
+        } catch (ConnectionException $e) {
+            Log::error('AI connection timeout during document summarization', ['filename' => $originalFilename]);
+            return AiTextResult::failure('Connection timed out. The document may be too large.', $resolvedModel ?? null, 0);
+        } catch (\Exception $e) {
+            Log::error('Document summarization exception', ['error' => $e->getMessage()]);
+            return AiTextResult::failure('Unexpected error: ' . $e->getMessage(), $resolvedModel ?? null, 0);
+        }
     }
 
     public function callAiForJson(string $fieldType, string $model, string $systemPrompt, string $userMessage, array $defaultResult): array
