@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\IncidentResource\RelationManagers;
 
 use App\Models\Incident;
+use App\Models\InvestigationDocument;
 use App\Services\EncryptionService;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\TextInput;
@@ -167,30 +168,46 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 ->required(),
                         ];
                     })
-                    ->action(function ($record, array $data) use ($models, $defaultModel) {
+                    ->action(function ($record, array $data) use ($aiService, $defaultModel) {
                         try {
-                            $response = \Illuminate\Support\Facades\Http::withHeaders([
-                                'Content-Type' => 'application/json',
-                                'X-CSRF-TOKEN' => csrf_token(),
-                                'Accept' => 'application/json',
-                            ])
-                                ->post(route('ai.summarize-document'), [
-                                    'document_id' => $record->id,
-                                    'model' => $data['model'] ?? $defaultModel,
+                            $document = InvestigationDocument::with('encryptionKey')->find($record->id);
+                            if (! $document) {
+                                Notification::make()->title('Document not found')->danger()->send();
+                                return;
+                            }
+
+                            $markdown = $document->getMarkdownContent();
+                            if (blank($markdown)) {
+                                Notification::make()
+                                    ->title('No Content')
+                                    ->body('Document has no Markdown content yet. Wait for conversion or click Reconvert.')
+                                    ->warning()
+                                    ->send();
+                                return;
+                            }
+
+                            $result = $aiService->summarizeDocument(
+                                content: $markdown,
+                                originalFilename: $document->original_filename,
+                                model: $data['model'] ?? $defaultModel,
+                            );
+
+                            if ($result->success) {
+                                $document->update([
+                                    'ai_summary' => $result->text,
+                                    'ai_summary_model' => $result->model,
+                                    'ai_summary_at' => now(),
                                 ]);
 
-                            $result = $response->json();
-
-                            if ($result['success'] ?? false) {
                                 Notification::make()
                                     ->title('AI Summary Complete')
-                                    ->body('Document summarized using ' . ($result['model'] ?? 'AI'))
+                                    ->body('Document summarized using ' . $result->model)
                                     ->success()
                                     ->send();
                             } else {
                                 Notification::make()
                                     ->title('AI Summary Failed')
-                                    ->body($result['error'] ?? 'Unknown error')
+                                    ->body($result->error)
                                     ->danger()
                                     ->send();
                             }
@@ -235,15 +252,32 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     }),
                 Tables\Actions\Action::make('reconvert')
                     ->icon('heroicon-o-arrow-path')
-                    ->label('Reconvert')
+                    ->label('Convert to MD')
                     ->color('warning')
                     ->action(function ($record) {
-                        $record->update(['markdown_conversion_status' => 'pending']);
-                        \App\Jobs\ConvertDocumentToMarkdown::dispatch($record);
-                        Notification::make()
-                            ->title('Document requeued for conversion')
-                            ->success()
-                            ->send();
+                        try {
+                            $converter = app(\App\Services\Markdown\DocumentConverterService::class);
+                            $result = $converter->convert($record);
+                            if ($result) {
+                                Notification::make()
+                                    ->title('Conversion Complete')
+                                    ->body('Document converted to Markdown successfully.')
+                                    ->success()
+                                    ->send();
+                            } else {
+                                Notification::make()
+                                    ->title('Conversion Skipped')
+                                    ->body('This file type is not supported for conversion (only PDF, DOCX).')
+                                    ->warning()
+                                    ->send();
+                            }
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('Conversion Failed')
+                                ->body($e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
                     }),
                 Tables\Actions\Action::make('download')
                     ->icon('heroicon-o-arrow-down-tray')
