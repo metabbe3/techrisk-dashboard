@@ -40,6 +40,8 @@ document.addEventListener('alpine:init', () => {
             selectedIncidents: [],
             selectedAgents: [],
             config: { maxRounds: 2, model: '', moderatorModel: '', enableWebSearch: false, userInstructions: '' },
+            tokenEstimate: null,
+            tokenDebounce: null,
 
             pollInterval: null,
 
@@ -113,10 +115,12 @@ document.addEventListener('alpine:init', () => {
                 this.selectedIncidents.push(inc);
                 this.incidentResults = [];
                 this.incidentSearch = '';
+                this.fetchTokenEstimate();
             },
 
             removeIncident(idx) {
                 this.selectedIncidents.splice(idx, 1);
+                this.fetchTokenEstimate();
             },
 
             toggleAgent(role) {
@@ -125,7 +129,20 @@ document.addEventListener('alpine:init', () => {
                 else { this.selectedAgents.splice(idx, 1); }
             },
 
-            async createSession() {
+            async fetchTokenEstimate() {
+                if (this.selectedIncidents.length === 0) { this.tokenEstimate = null; return; }
+                clearTimeout(this.tokenDebounce);
+                this.tokenDebounce = setTimeout(async () => {
+                    try {
+                        const params = new URLSearchParams({
+                            incident_ids: this.selectedIncidents.map(i => i.id).join(','),
+                            model: this.config.model || '',
+                        });
+                        const res = await fetch('/admin/war-room/estimate-tokens?' + params, { headers: this.getHeaders() });
+                        if (res.ok) { this.tokenEstimate = await res.json(); }
+                    } catch (e) { /* silent */ }
+                }, 300);
+            },
                 if (this.selectedIncidents.length === 0 || this.selectedAgents.length === 0 || this.creating) return;
                 this.creating = true;
                 try {
@@ -584,9 +601,10 @@ document.addEventListener('alpine:init', () => {
                                     <button @click="removeIncident(idx)" class="df-selected-inc__remove">&times;</button>
                                 </div>
                             </template>
-                            <div x-show="selectedIncidents.length >= 3" class="df-token-warning">
+                            <div x-show="tokenEstimate !== null" x-transition class="df-token-warning"
+                                 :class="{ 'df-token-warning--ok': tokenEstimate?.percentage <= 50, 'df-token-warning--warn': tokenEstimate?.percentage > 50 && tokenEstimate?.percentage <= 75, 'df-token-warning--danger': tokenEstimate?.percentage > 75 }">
                                 <svg class="df-token-warning__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
-                                <span x-text="selectedIncidents.length + ' incidents selected — high token usage expected'"></span>
+                                <span x-text="tokenEstimate ? ('~' + tokenEstimate.estimated_tokens.toLocaleString() + ' / ' + tokenEstimate.input_limit.toLocaleString() + ' tokens (' + tokenEstimate.percentage + '%)' + (tokenEstimate.will_compress ? ' — will auto-compress' : '')) : ''"></span>
                             </div>
                         </div>
                     </div>
@@ -1584,8 +1602,13 @@ document.addEventListener('alpine:init', () => {
     color: #92400e;
     margin-top: 2px;
 }
+.df-token-warning--ok { background: #ecfdf5; border-color: #6ee7b7; color: #065f46; }
+.df-token-warning--warn { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
+.df-token-warning--danger { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
 .df-token-warning__icon { width: 14px; height: 14px; flex-shrink: 0; }
-:root.dark .df-token-warning { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+:root.dark .df-token-warning--ok { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
+:root.dark .df-token-warning--warn { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+:root.dark .df-token-warning--danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: #fca5a5; }
 
 .df-agent-chip {
     padding: 4px 12px;

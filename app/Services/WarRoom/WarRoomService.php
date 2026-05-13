@@ -19,6 +19,7 @@ use App\Services\Ai\WebSearchService;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
 class WarRoomService
@@ -71,7 +72,7 @@ class WarRoomService
             'moderator_model' => $moderatorModel ?? config('ai.war_room.moderator_model') ?? $model ?? AiSetting::get('default_model', config('ai.default_model')),
             'enable_web_search' => $enableWebSearch,
             'selected_agents' => $selectedAgents,
-            'incident_context' => $context,
+            'incident_context' => $this->compressContext($context, $model ?? config('ai.war_room.default_model') ?? AiSetting::get('default_model', config('ai.default_model')), $incidents),
             'user_instructions' => $userInstructions,
         ]);
 
@@ -118,10 +119,13 @@ class WarRoomService
 
         $session->messages()->delete();
 
+        $resolvedModel = $model ?? $session->model;
+        $compressedContext = $this->compressContext($context, $resolvedModel, $incidents);
+
         $update = [
             'status' => 'pending',
             'current_round' => 0,
-            'incident_context' => $context,
+            'incident_context' => $compressedContext,
             'context_summarized' => false,
             'user_instructions' => $userInstructions ?? $session->user_instructions,
             'final_report' => null,
@@ -407,7 +411,8 @@ class WarRoomService
 
             for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
                 $response = Http::withHeaders($this->buildHeaders())
-                    ->timeout(config('ai.war_room.moderator_timeout', 600))
+                    ->timeout((int) AiSetting::get('war_room_moderator_timeout',
+                        config('ai.war_room.moderator_timeout', 600)))
                     ->post($this->buildUrl(), [
                         'model' => $model,
                         'messages' => $messages,
@@ -646,7 +651,82 @@ class WarRoomService
 
     private function getTimeout(): int
     {
-        return config('ai.war_room.agent_timeout', 600);
+        return (int) AiSetting::get('war_room_agent_timeout',
+            config('ai.war_room.agent_timeout', 600));
+    }
+
+    private function estimateTokens(string $text): int
+    {
+        return intdiv(strlen($text), 4);
+    }
+
+    private function getModelInputLimit(string $model): int
+    {
+        $limits = config('ai.war_room.model_limits', []);
+
+        return $limits[$model]['input'] ?? config('ai.war_room.default_input_limit', 32000);
+    }
+
+    private function compressContext(array $context, string $model, Collection $incidents): array
+    {
+        $inputLimit = $this->getModelInputLimit($model);
+        $targetTokens = (int) ($inputLimit * 0.75);
+        $contextText = implode("\n", $context);
+        $estimated = $this->estimateTokens($contextText);
+
+        if ($estimated <= $targetTokens) {
+            return $context;
+        }
+
+        Log::info('[WarRoom] Context exceeds model limit, compressing', [
+            'model' => $model,
+            'estimated_tokens' => $estimated,
+            'input_limit' => $inputLimit,
+            'target_tokens' => $targetTokens,
+        ]);
+
+        // Level 1: Strip investigation doc AI summaries (truncate to 200 chars)
+        $context = array_map(function (string $line) {
+            return preg_replace_callback(
+                '/\*\*AI Summary:\*\*\n(.+)/s',
+                fn ($m) => '**AI Summary:** ' . Str::limit($m[1], 200),
+                $line
+            );
+        }, $context);
+
+        $estimated = $this->estimateTokens(implode("\n", $context));
+        if ($estimated <= $targetTokens) {
+            return $context;
+        }
+
+        // Level 2: Strip investigation docs and evidence sections entirely
+        $context = array_map(function (string $markdown) {
+            $markdown = preg_replace('/\n## Investigation Documents\n.*/s', '', $markdown);
+            $markdown = preg_replace('/\n## Evidence\n.*/s', '', $markdown);
+
+            return $markdown;
+        }, $context);
+
+        $estimated = $this->estimateTokens(implode("\n", $context));
+        if ($estimated <= $targetTokens) {
+            return $context;
+        }
+
+        // Level 3: Use generateMinimal() for each incident
+        $minimalContext = [];
+        foreach ($incidents as $inc) {
+            $minimalContext[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
+            $minimalContext[] = $this->markdownExporter->generateMinimal($inc);
+        }
+
+        $estimated = $this->estimateTokens(implode("\n", $minimalContext));
+        Log::info('[WarRoom] Context compressed (minimal)', [
+            'model' => $model,
+            'estimated_tokens' => $estimated,
+            'original_tokens' => $this->estimateTokens($contextText),
+        ]);
+
+        return $minimalContext;
     }
 
     private function logUsage(

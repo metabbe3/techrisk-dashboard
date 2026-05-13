@@ -125,6 +125,19 @@ return [
         'max_output_tokens' => (int) env('AI_WAR_ROOM_MAX_OUTPUT_TOKENS', 65536),
         'max_continuations' => (int) env('AI_WAR_ROOM_MAX_CONTINUATIONS', 3),
         'queue' => 'war-room',
+
+        'model_limits' => [
+            'qwen3-32b-test' => ['input' => 32000, 'output' => 8192],
+            'qwen3-235b' => ['input' => 128000, 'output' => 8192],
+            'gemini-2.5-flash' => ['input' => 1000000, 'output' => 65536],
+            'gemini-2.5-pro' => ['input' => 2000000, 'output' => 65536],
+            'gpt-4o' => ['input' => 128000, 'output' => 16384],
+            'gpt-4o-mini' => ['input' => 128000, 'output' => 16384],
+            'SMART-MODEL' => ['input' => 128000, 'output' => 16384],
+            'FAST-MODEL' => ['input' => 128000, 'output' => 16384],
+            'REASONING-MODEL' => ['input' => 200000, 'output' => 32768],
+        ],
+        'default_input_limit' => 32000,
     ],
 
     /*

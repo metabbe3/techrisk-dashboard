@@ -176,6 +176,7 @@ Route::prefix('admin/war-room')->middleware(['auth', 'can:access war room'])->gr
     })->name('war-room.incident-search');
 
     Route::get('/agents', WarRoomAvailableAgentsController::class)->name('war-room.agents');
+    Route::get('/estimate-tokens', WarRoomEstimateTokensController::class)->name('war-room.estimate-tokens');
     Route::get('/sessions', WarRoomListController::class)->name('war-room.sessions');
     Route::post('/sessions', WarRoomCreateController::class)->name('war-room.create');
     Route::get('/sessions/{id}', WarRoomShowController::class)->name('war-room.show');

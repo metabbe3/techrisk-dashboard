@@ -7,6 +7,7 @@ namespace App\Services\Markdown;
 use App\Models\Incident;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class IncidentMarkdownExporter
@@ -140,6 +141,66 @@ class IncidentMarkdownExporter
                     $lines[] = "\n**AI Summary:**";
                     $lines[] = $doc->ai_summary;
                 }
+            }
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Generate minimal markdown — only core fields, truncated text.
+     * Used as last-resort compression for models with small context windows.
+     */
+    public function generateMinimal(Incident $incident): string
+    {
+        $incident->load([
+            'incidentType',
+            'pic',
+            'labels',
+            'actionImprovements',
+        ]);
+
+        $lines = [];
+        $lines[] = "# {$incident->no}";
+        $lines[] = "**Title:** {$incident->title}";
+        $lines[] = "**Classification:** {$incident->classification} | **Severity:** {$incident->severity} | **Status:** {$incident->incident_status}";
+        $lines[] = "**Type:** " . ($incident->incidentType?->name ?? 'N/A');
+        $lines[] = "**PIC:** " . ($incident->pic ? "{$incident->pic->name}" : 'N/A');
+
+        if ($incident->summary) {
+            $lines[] = "\n## Summary\n" . Str::limit($incident->summary, 300);
+        }
+
+        if ($incident->incident_date || $incident->discovered_at) {
+            $lines[] = "\n## Timeline";
+            $lines[] = "- Incident Date: " . (self::formatDate($incident->incident_date, 'Y-m-d H:i') ?? 'N/A');
+            $lines[] = "- Discovered: " . (self::formatDate($incident->discovered_at, 'Y-m-d H:i') ?? 'N/A');
+        }
+
+        if ($incident->root_cause) {
+            $lines[] = "\n## Root Cause\n" . Str::limit($incident->root_cause, 500);
+        }
+
+        if ($incident->potential_fund_loss || $incident->recovered_fund || $incident->fund_loss) {
+            $lines[] = "\n## Financial Impact";
+            if ($incident->fund_status) $lines[] = "- Fund Status: {$incident->fund_status}";
+            if ($incident->potential_fund_loss) $lines[] = "- Potential Loss: " . MarkdownFormatter::formatMoney((float) $incident->potential_fund_loss);
+            if ($incident->recovered_fund) $lines[] = "- Recovered: " . MarkdownFormatter::formatMoney((float) $incident->recovered_fund);
+            if ($incident->fund_loss) $lines[] = "- Actual Loss: " . MarkdownFormatter::formatMoney((float) $incident->fund_loss);
+        }
+
+        if ($incident->labels->isNotEmpty()) {
+            $lines[] = "\n## Labels";
+            foreach ($incident->labels as $label) {
+                $lines[] = "- `{$label->name}`";
+            }
+        }
+
+        if ($incident->actionImprovements->isNotEmpty()) {
+            $lines[] = "\n## Action Items";
+            foreach ($incident->actionImprovements as $action) {
+                $status = $action->is_completed ? 'DONE' : ($action->status ?? 'PENDING');
+                $lines[] = "- **{$action->title}** [{$status}]";
             }
         }
 

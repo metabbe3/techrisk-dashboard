@@ -17,12 +17,13 @@ class SynthesizeWarRoomReport implements ShouldQueue
 
     public $tries = 2;
 
-    public $timeout = 600;
+    public $timeout;
 
     public function __construct(
         public WarRoomSession $session
     ) {
         $this->onQueue('war-room');
+        $this->timeout = (int) config('ai.war_room.moderator_timeout', 600);
     }
 
     public function handle(WarRoomService $warRoomService): void
