@@ -401,7 +401,7 @@ class WarRoomService
 
             for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
                 $response = Http::withHeaders($this->buildHeaders())
-                    ->timeout(config('ai.war_room.moderator_timeout', 180))
+                    ->timeout(config('ai.war_room.moderator_timeout', 600))
                     ->post($this->buildUrl(), [
                         'model' => $model,
                         'messages' => $messages,
@@ -640,7 +640,7 @@ class WarRoomService
 
     private function getTimeout(): int
     {
-        return config('ai.war_room.agent_timeout', 120);
+        return config('ai.war_room.agent_timeout', 600);
     }
 
     private function logUsage(
