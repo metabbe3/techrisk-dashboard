@@ -80,9 +80,9 @@ class IncidentMarkdownExporter
         if ($incident->potential_fund_loss || $incident->recovered_fund || $incident->fund_loss) {
             $lines[] = "\n## Financial Impact";
             if ($incident->fund_status) $lines[] = "- Fund Status: {$incident->fund_status}";
-            if ($incident->potential_fund_loss) $lines[] = "- Potential Loss: " . MarkdownFormatter::formatMoney($incident->potential_fund_loss);
-            if ($incident->recovered_fund) $lines[] = "- Recovered: " . MarkdownFormatter::formatMoney($incident->recovered_fund);
-            if ($incident->fund_loss) $lines[] = "- Actual Loss: " . MarkdownFormatter::formatMoney($incident->fund_loss);
+            if ($incident->potential_fund_loss) $lines[] = "- Potential Loss: " . MarkdownFormatter::formatMoney((float) $incident->potential_fund_loss);
+            if ($incident->recovered_fund) $lines[] = "- Recovered: " . MarkdownFormatter::formatMoney((float) $incident->recovered_fund);
+            if ($incident->fund_loss) $lines[] = "- Actual Loss: " . MarkdownFormatter::formatMoney((float) $incident->fund_loss);
             if ($incident->loss_taken_by) $lines[] = "- Loss Taken By: {$incident->loss_taken_by}";
         }
 
