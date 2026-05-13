@@ -49,6 +49,10 @@
                 @endif
 
                 @if(!empty($matches))
+                <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    <x-filament::icon icon="heroicon-o-information-circle" class="w-3.5 h-3.5! text-gray-400!" />
+                    <span>Similarity score based on matching root cause, category, team, and severity. <strong class="text-danger-500">Red</strong> = high similarity (6+), <strong class="text-warning-500">Amber</strong> = moderate.</span>
+                </div>
                 <div class="space-y-3">
                     @foreach($matches as $match)
                     @php
