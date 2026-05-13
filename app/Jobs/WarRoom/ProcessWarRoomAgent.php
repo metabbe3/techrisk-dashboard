@@ -18,7 +18,7 @@ class ProcessWarRoomAgent implements ShouldQueue
 
     public $tries = 2;
 
-    public $timeout = 120;
+    public $timeout = 600;
 
     public function __construct(
         public WarRoomSession $session,

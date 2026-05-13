@@ -17,7 +17,7 @@ class SynthesizeWarRoomReport implements ShouldQueue
 
     public $tries = 2;
 
-    public $timeout = 180;
+    public $timeout = 600;
 
     public function __construct(
         public WarRoomSession $session

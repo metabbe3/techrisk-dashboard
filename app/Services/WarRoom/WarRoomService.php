@@ -93,6 +93,12 @@ class WarRoomService
             throw new \InvalidArgumentException('Only completed or failed sessions can be re-analyzed.');
         }
 
+        // Reset any stuck running messages from previous attempt
+        $session->messages()->where('status', 'running')->update([
+            'status' => 'failed',
+            'error_message' => 'Superseded by re-analysis',
+        ]);
+
         $incidents = $session->incidents()->get();
 
         if ($incidents->count() <= 1) {
