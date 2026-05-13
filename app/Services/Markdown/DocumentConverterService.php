@@ -9,6 +9,7 @@ use App\Services\EncryptionService;
 use Iamgerwin\PdfToMarkdown\PdfParser;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 
 class DocumentConverterService
@@ -156,7 +157,7 @@ class DocumentConverterService
         file_put_contents($tempPath, $content);
 
         try {
-            $phpWord = PhpWord::load($tempPath);
+            $phpWord = IOFactory::load($tempPath);
 
             return $this->phpWordToMarkdown($phpWord);
         } finally {
