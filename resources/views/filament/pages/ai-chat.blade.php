@@ -44,7 +44,10 @@
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
             </button>
             <div class="flex-1">
-                <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-200">TechRisk AI</h2>
+                <h2 class="text-sm font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                    TechRisk AI
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,.5)]" :class="loading ? 'animate-pulse' : ''"></span>
+                </h2>
                 <div class="flex items-center gap-2">
                     <p class="text-xs text-gray-400">Ask anything about your incidents, patterns, trends, and data</p>
                     <span class="ai-chat-freshness" x-show="dataFreshness">
@@ -149,16 +152,48 @@
         <div class="ai-chat-messages" x-ref="messageContainer">
             {{-- Empty State --}}
             <div x-show="messages.length === 0 && !loading" class="ai-chat-empty">
-                <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center mb-4">
+                <div class="ai-chat-empty-icon">
                     <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456z"/></svg>
                 </div>
-                <h3 class="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">TechRisk AI</h3>
-                <p class="text-sm text-gray-400 max-w-md">Your intelligent risk & incident analyst. Ask about incidents, patterns, trends, root causes, or financial impact.</p>
-                <div class="flex flex-wrap gap-2 mt-6 justify-center max-w-lg">
-                    <button @click="inputText = '/summary this month'; sendMessage()" class="ai-chat-suggestion">/summary this month</button>
-                    <button @click="inputText = '/risk'; sendMessage()" class="ai-chat-suggestion">/risk</button>
-                    <button @click="inputText = '/search '; $refs.input.focus()" class="ai-chat-suggestion">/search the web</button>
-                    <button @click="inputText = 'What patterns do you see in P1 and P2 incidents?'; sendMessage()" class="ai-chat-suggestion">Analyze severity patterns</button>
+                <h3>TechRisk AI</h3>
+                <p>Your intelligent risk & incident analyst. Ask about incidents, patterns, trends, root causes, or financial impact.</p>
+                <div class="ai-chat-suggestion-grid">
+                    <button @click="inputText = '/summary this month'; sendMessage()" class="ai-chat-suggestion">
+                        <span class="ai-chat-suggestion-icon">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        </span>
+                        <span class="ai-chat-suggestion-text">
+                            <span class="ai-chat-suggestion-label">Monthly Summary</span>
+                            <span class="ai-chat-suggestion-desc">/summary this month</span>
+                        </span>
+                    </button>
+                    <button @click="inputText = '/risk'; sendMessage()" class="ai-chat-suggestion">
+                        <span class="ai-chat-suggestion-icon">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        </span>
+                        <span class="ai-chat-suggestion-text">
+                            <span class="ai-chat-suggestion-label">Risk Overview</span>
+                            <span class="ai-chat-suggestion-desc">/risk</span>
+                        </span>
+                    </button>
+                    <button @click="inputText = '/search '; $nextTick(() => $refs.chatInput?.focus())" class="ai-chat-suggestion">
+                        <span class="ai-chat-suggestion-icon">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                        </span>
+                        <span class="ai-chat-suggestion-text">
+                            <span class="ai-chat-suggestion-label">Web Search</span>
+                            <span class="ai-chat-suggestion-desc">/search the web</span>
+                        </span>
+                    </button>
+                    <button @click="inputText = 'What patterns do you see in P1 and P2 incidents?'; sendMessage()" class="ai-chat-suggestion">
+                        <span class="ai-chat-suggestion-icon">
+                            <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+                        </span>
+                        <span class="ai-chat-suggestion-text">
+                            <span class="ai-chat-suggestion-label">Severity Patterns</span>
+                            <span class="ai-chat-suggestion-desc">Analyze P1 and P2 trends</span>
+                        </span>
+                    </button>
                 </div>
             </div>
 
@@ -182,7 +217,7 @@
                         <template x-if="msg.role === 'user'">
                             <div>
                                 <p class="text-sm" x-text="msg.content"></p>
-                                <p class="text-[10px] text-indigo-200 mt-1.5 opacity-0 hover:opacity-100 transition-opacity" x-text="new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></p>
+                                <p class="ai-chat-msg-time" x-text="new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></p>
                             </div>
                         </template>
                         <template x-if="msg.role === 'assistant'">

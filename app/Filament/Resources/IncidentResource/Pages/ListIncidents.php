@@ -48,6 +48,9 @@ class ListIncidents extends ListRecords
                 ->label('AI Search')
                 ->icon('heroicon-o-sparkles')
                 ->color('violet')
+                ->extraAttributes([
+                    'class' => 'header-btn-ai',
+                ])
                 ->modalHeading('AI-Powered Search')
                 ->modalDescription('Describe what you are looking for in natural language.')
                 ->modalSubmitActionLabel('Apply Filters')
@@ -80,7 +83,10 @@ class ListIncidents extends ListRecords
             Actions\Action::make('export')
                 ->label('Export')
                 ->icon('heroicon-o-document-arrow-down')
-                ->color('primary')
+                ->color('info')
+                ->extraAttributes([
+                    'class' => 'header-btn-export',
+                ])
                 ->form(function () {
                     $columnOptions = self::getColumnOptions();
 
@@ -116,13 +122,10 @@ class ListIncidents extends ListRecords
 
                     $format = $data['format'];
 
-                    // For MTBF/MTTR metrics to be meaningful, sort by incident date
                     $query->orderBy('incident_date', 'asc');
 
                     $totalCases = $query->count();
 
-                    // Calculate MTBF correctly: Total Time Period / Number of Incidents
-                    // Exclude 'Non Incident' and 'G' severities from MTBF calculation
                     $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
                     $mtbfCount = $mtbfQuery->count();
                     $avgMtbf = 0;
@@ -155,9 +158,13 @@ class ListIncidents extends ListRecords
                     );
                 }),
             Actions\Action::make('recalculate_metrics')
-                ->label('Recalculate Metrics')
+                ->label('Recalculate')
                 ->icon('heroicon-o-arrow-path')
                 ->color('warning')
+                ->outlined()
+                ->extraAttributes([
+                    'class' => 'header-btn-recalc',
+                ])
                 ->requiresConfirmation()
                 ->modalHeading('Recalculate MTBF & MTTR')
                 ->modalDescription('This will recalculate all MTBF and MTTR values for every incident. This may take a few seconds.')
@@ -171,6 +178,11 @@ class ListIncidents extends ListRecords
                         ->send();
                 }),
             Actions\CreateAction::make()
+                ->label('New Incident')
+                ->icon('heroicon-o-plus')
+                ->extraAttributes([
+                    'class' => 'header-btn-create',
+                ])
                 ->visible(fn (): bool => auth()->user()->can('manage incidents')),
         ];
     }

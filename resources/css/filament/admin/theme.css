@@ -58,6 +58,7 @@
 .fi-wi-stats-overview-stat-item {
     border-radius: 0.875rem !important;
     border: 1px solid var(--tr-slate-200);
+    border-left: 3px solid var(--tr-indigo);
     transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
     overflow: hidden;
     position: relative;
@@ -69,10 +70,18 @@
     border-color: var(--tr-slate-300);
 }
 
-/* Stat card gradient top borders */
+/* Stat card gradient top accent */
 .fi-wi-stats-overview-stat-item .fi-color-custom.color-primary {
     background: linear-gradient(135deg, var(--tr-indigo) 0%, var(--tr-violet) 100%);
 }
+
+/* Stat card left border colors by stat type */
+.fi-wi-stats-overview-stat-item:nth-child(6n+1) { border-left-color: var(--tr-indigo); }
+.fi-wi-stats-overview-stat-item:nth-child(6n+2) { border-left-color: var(--tr-teal); }
+.fi-wi-stats-overview-stat-item:nth-child(6n+3) { border-left-color: var(--tr-amber); }
+.fi-wi-stats-overview-stat-item:nth-child(6n+4) { border-left-color: var(--tr-rose); }
+.fi-wi-stats-overview-stat-item:nth-child(6n+5) { border-left-color: var(--tr-emerald); }
+.fi-wi-stats-overview-stat-item:nth-child(6n+6) { border-left-color: var(--tr-violet); }
 
 /* --- Chart Widget Cards --- */
 .fi-wi-chart,
@@ -80,6 +89,12 @@
     border-radius: 0.875rem !important;
     border: 1px solid var(--tr-slate-200);
     overflow: hidden;
+    transition: box-shadow 0.2s ease;
+}
+
+.fi-wi-chart:hover,
+.fi-wi-chart-widget:hover {
+    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.08);
 }
 
 .fi-wi-chart > .fi-card > .fi-card-header,
@@ -121,37 +136,7 @@
     border-radius: 0.5rem;
 }
 
-.fi-badge.color-danger {
-    background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%) !important;
-    color: #991b1b !important;
-    border-color: #fca5a5 !important;
-}
-
-.fi-badge.color-warning {
-    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%) !important;
-    color: #92400e !important;
-    border-color: #fcd34d !important;
-}
-
-.fi-badge.color-info,
-.fi-badge.color-primary {
-    background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%) !important;
-    color: #1e40af !important;
-    border-color: #93c5fd !important;
-}
-
-.fi-badge.color-success {
-    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%) !important;
-    color: #065f46 !important;
-    border-color: #6ee7b7 !important;
-}
-
-.fi-badge.color-gray,
-.fi-badge.color-secondary {
-    background: linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) !important;
-    color: #475569 !important;
-    border-color: #cbd5e1 !important;
-}
+/* Badge gradient colors are defined in app.css with full dark mode support */
 
 /* --- Dashboard Page Header --- */
 .fi-main > .fi-page > .fi-page-header {
@@ -195,6 +180,11 @@
 /* --- Dark Mode Overrides --- */
 .dark .fi-wi-stats-overview-stat-item {
     border-color: var(--tr-slate-700);
+    background: linear-gradient(135deg, var(--tr-slate-800) 0%, rgba(30, 41, 59, 0.6) 100%);
+}
+
+.dark .fi-wi-stats-overview-stat-item:hover {
+    border-color: var(--tr-slate-600);
 }
 
 .dark .fi-wi-chart,

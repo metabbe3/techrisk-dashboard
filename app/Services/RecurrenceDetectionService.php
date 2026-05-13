@@ -294,7 +294,7 @@ You are analyzing incident recurrence patterns. Given a new incident and similar
 2. What pattern connects these incidents
 3. What specific overdue/pending actions contributed
 
-Keep it under 3 sentences. Be specific with incident numbers and action titles. Return a JSON object with a single "analysis" field containing your explanation as a string.
+Format your response using markdown. Use **bold** for incident numbers and action titles. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers and action titles. Return a JSON object with a single "analysis" field containing your markdown-formatted explanation as a string.
 PROMPT;
 
             $userMessage = "New incident: [{$incident->no}] {$incident->summary}\n";
@@ -351,7 +351,7 @@ You are analyzing incident recurrence detected via AI similarity matching. Given
 2. Whether past remediation was incomplete (link to overdue/pending actions)
 3. What should be done differently
 
-Keep it under 3 sentences. Be specific with incident numbers. Return a JSON object with a single "analysis" field containing your explanation as a string.
+Format your response using markdown. Use **bold** for incident numbers and key terms. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers. Return a JSON object with a single "analysis" field containing your markdown-formatted explanation as a string.
 PROMPT;
 
             $userMessage = "New incident: [{$incident->no}] {$incident->summary}\n";

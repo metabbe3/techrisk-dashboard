@@ -55,7 +55,7 @@ WORKDIR /var/www/html
 COPY . .
 
 # Create bootstrap/cache directory before composer install
-RUN mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views \
+RUN mkdir -p bootstrap/cache storage/framework/cache storage/framework/sessions storage/framework/views storage/app/temp \
     && chmod -R 777 bootstrap/cache storage
 
 # Install dependencies

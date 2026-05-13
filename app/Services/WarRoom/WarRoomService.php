@@ -275,6 +275,8 @@ class WarRoomService
             $fullContent = '';
             $totalUsage = ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0];
             $finalFinishReason = 'unknown';
+            $reasoningContent = null;
+            $reasoningTokens = null;
 
             for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
                 $response = Http::withHeaders($this->buildHeaders())
@@ -311,6 +313,10 @@ class WarRoomService
                 }
 
                 $chunk = $responseData['choices'][0]['message']['content'] ?? '';
+
+                if ($attempt === 0) {
+                    ['content' => $reasoningContent, 'tokens' => $reasoningTokens] = $this->extractReasoning($responseData);
+                }
 
                 if (blank($chunk) && $attempt === 0) {
                     $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -366,6 +372,13 @@ class WarRoomService
                     'total_completion_tokens' => $totalUsage['completion_tokens'],
                 ]);
 
+                if ($reasoningContent) {
+                    $metadata['reasoning_content'] = $reasoningContent;
+                }
+                if ($reasoningTokens) {
+                    $metadata['reasoning_tokens'] = $reasoningTokens;
+                }
+
                 $message->markCompleted($fullContent, $totalUsage, $responseTimeMs, $metadata);
 
                 if ($totalUsage['total_tokens'] > 0) {
@@ -417,6 +430,8 @@ class WarRoomService
 
             $fullContent = '';
             $totalUsage = ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0];
+            $modReasoningContent = null;
+            $modReasoningTokens = null;
 
             for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
                 $response = Http::withHeaders($this->buildHeaders())
@@ -433,6 +448,12 @@ class WarRoomService
                 $usage = $responseData['usage'] ?? [];
                 $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
 
+                $chunk = $responseData['choices'][0]['message']['content'] ?? '';
+
+                if ($attempt === 0) {
+                    ['content' => $modReasoningContent, 'tokens' => $modReasoningTokens] = $this->extractReasoning($responseData);
+                }
+
                 foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
                     $totalUsage[$key] += $usage[$key] ?? 0;
                 }
@@ -445,8 +466,6 @@ class WarRoomService
 
                     return;
                 }
-
-                $chunk = $responseData['choices'][0]['message']['content'] ?? '';
 
                 if (blank($chunk) && $attempt === 0) {
                     $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -535,9 +554,11 @@ class WarRoomService
     {
         $session->load('messages', 'user', 'incidents');
 
-        $messagesByRound = $session->messages->groupBy('round')->map(function ($roundMessages) {
-            return $roundMessages->map(function ($msg) {
-                $config = WarRoomAgentConfig::findByRole($msg->agent_role);
+        $agentConfigs = WarRoomAgentConfig::all()->keyBy('role_key');
+
+        $messagesByRound = $session->messages->groupBy('round')->map(function ($roundMessages) use ($agentConfigs) {
+            return $roundMessages->map(function ($msg) use ($agentConfigs) {
+                $config = $agentConfigs->get($msg->agent_role);
 
                 return [
                     'id' => $msg->id,
@@ -553,6 +574,8 @@ class WarRoomService
                     'response_time_ms' => $msg->response_time_ms,
                     'total_tokens' => $msg->total_tokens,
                     'error_message' => $msg->error_message,
+                    'reasoning_content' => $msg->metadata['reasoning_content'] ?? null,
+                    'reasoning_tokens' => $msg->metadata['reasoning_tokens'] ?? null,
                     'created_at' => $msg->created_at?->toIso8601String(),
                 ];
             })->values();
@@ -566,9 +589,18 @@ class WarRoomService
             'status' => $inc->incident_status,
         ]);
 
+        $primaryIncident = $session->incidents->first();
+
         return [
             'id' => $session->id,
             'incident_id' => $session->incident_id,
+            'incident' => $primaryIncident ? [
+                'id' => $primaryIncident->id,
+                'no' => $primaryIncident->no,
+                'title' => $primaryIncident->title,
+                'severity' => $primaryIncident->severity,
+                'status' => $primaryIncident->incident_status,
+            ] : null,
             'incidents' => $incidentList,
             'user_name' => $session->user?->name,
             'title' => $session->title,
@@ -579,6 +611,7 @@ class WarRoomService
             'moderator_model' => $session->moderator_model,
             'enable_web_search' => $session->enable_web_search,
             'context_summarized' => $session->context_summarized,
+            'deep_analysis' => $session->deep_analysis,
             'selected_agents' => $session->selected_agents,
             'user_instructions' => $session->user_instructions,
             'tokens_used' => $session->tokens_used,
@@ -646,6 +679,18 @@ class WarRoomService
     private function buildUrl(): string
     {
         return rtrim($this->getBaseUrl(), '/').'/chat/completions';
+    }
+
+    private function extractReasoning(array $responseData): array
+    {
+        $msgData = $responseData['choices'][0]['message'] ?? [];
+
+        return [
+            'content' => $msgData['reasoning_content'] ?? $msgData['thinking'] ?? null,
+            'tokens' => $responseData['usage']['completion_tokens_details']['reasoning_tokens']
+                ?? $responseData['usage']['reasoning_tokens']
+                ?? null,
+        ];
     }
 
     private function getApiKey(): ?string

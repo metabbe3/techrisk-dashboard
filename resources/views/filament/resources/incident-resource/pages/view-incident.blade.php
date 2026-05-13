@@ -25,16 +25,14 @@
     };
 
     $hasFinancials = $inc->potential_fund_loss > 0 || $inc->fund_loss > 0 || $inc->recovered_fund > 0;
-    $recurrenceData = $inc->recurrence_data;
-    $isRecurring = $recurrenceData && ($recurrenceData['is_recurring'] ?? false);
-    $isAnalyzedNoRecurrence = $recurrenceData && !($recurrenceData['is_recurring'] ?? false);
     $inc->loadMissing(['pic', 'labels', 'incidentType', 'latestStatusUpdate']);
 @endphp
 
 <div class="fi-page">
     {{-- Hero Header --}}
-    <div class="rounded-xl overflow-hidden mb-6 bg-gradient-to-r {{ $sevGradient }} shadow-lg">
-        <div class="px-6 py-5">
+    <div class="rounded-xl overflow-hidden mb-6 bg-gradient-to-r {{ $sevGradient }} shadow-lg relative incident-hero-animate">
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,.12),transparent_60%)] pointer-events-none"></div>
+        <div class="px-6 py-5 relative">
             <div class="flex flex-wrap items-center gap-2 mb-3">
                 <span class="text-white/70 text-xs font-mono tracking-wider">{{ $inc->no }}</span>
                 <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-white/20 text-white backdrop-blur-sm">{{ $inc->severity }}</span>
@@ -77,107 +75,52 @@
         </div>
     </div>
 
-    {{-- Recurrence Alert --}}
-    @if($isRecurring)
-    <div class="bg-white dark:bg-gray-800 rounded-xl border border-amber-300 dark:border-amber-800 shadow-sm mb-6 overflow-hidden">
-        <div class="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/30 dark:to-orange-900/30 px-5 py-4 border-b border-amber-200 dark:border-amber-800">
-            <div class="flex items-center gap-3">
-                <div class="w-9 h-9 rounded-lg bg-amber-100 dark:bg-amber-900/50 flex items-center justify-center flex-shrink-0">
-                    <svg class="w-5 h-5 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
-                </div>
-                <div>
-                    <h3 class="text-sm font-bold text-amber-800 dark:text-amber-300">Recurrence Detected</h3>
-                    <p class="text-xs text-amber-600 dark:text-amber-400">This incident matches patterns from similar past incidents</p>
-                </div>
-            </div>
-        </div>
-        <div class="px-5 py-4">
-            @if(!empty($recurrenceData['ai_analysis']))
-            <p class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-4">{!! \Illuminate\Support\Str::markdown($recurrenceData['ai_analysis']) !!}</p>
-            @endif
-
-            <div class="space-y-3">
-                @foreach($recurrenceData['matches'] ?? [] as $match)
-                <div class="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-900/50 rounded-lg border border-gray-100 dark:border-gray-700">
-                    <div class="flex-shrink-0 mt-0.5">
-                        <span class="inline-flex items-center justify-center w-7 h-7 rounded-full text-xs font-bold {{ $match['score'] >= 6 ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400' }}">{{ $match['score'] }}</span>
-                    </div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 mb-1">
-                            <a href="{{ \App\Filament\Resources\IncidentResource::getUrl('view', ['record' => $match['id']]) }}" class="text-sm font-semibold text-primary-600 dark:text-primary-400 hover:underline">{{ $match['no'] }}</a>
-                            <span class="text-xs text-gray-400">•</span>
-                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ $match['incident_date'] }}</span>
-                            @if($match['severity'])
-                                <x-filament::badge color="warning" size="xs">{{ $match['severity'] }}</x-filament::badge>
-                            @endif
-                        </div>
-                        <p class="text-xs text-gray-600 dark:text-gray-400 mb-2">{{ $match['summary'] }}</p>
-                        @if(!empty($match['action_improvements']))
-                        <div class="flex flex-wrap gap-1.5">
-                            @foreach($match['action_improvements'] as $action)
-                                @php
-                                    $isOverdue = in_array($action['status'] ?? '', ['Open', 'In Progress']) && $action['due_date'] && $action['due_date'] < now()->toDateString();
-                                    $isPending = in_array($action['status'] ?? '', ['Open', 'In Progress']) && !$isOverdue;
-                                    $isDone = ($action['status'] ?? '') === 'Done' || ($action['status'] ?? '') === 'Completed';
-                                @endphp
-                                <span class="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border {{ $isOverdue ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800' : ($isPending ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800' : ($isDone ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800' : 'bg-gray-50 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:border-gray-600')) }}">
-                                    @if($isOverdue)
-                                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                    @elseif($isDone)
-                                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
-                                    @endif
-                                    {{ \Illuminate\Support\Str::limit($action['title'], 40) }}
-                                </span>
-                            @endforeach
-                        </div>
-                        @endif
-                    </div>
-                </div>
-                @endforeach
-            </div>
-        </div>
-    </div>
-    @elseif($isAnalyzedNoRecurrence)
-    <div class="flex items-center gap-2 mb-6 px-1">
-        <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-        <span class="text-xs text-gray-400 dark:text-gray-500">Recurrence analysis complete — no similar incidents found</span>
-    </div>
-    @endif
-
     {{-- Financial Impact Cards --}}
     @if($hasFinancials)
     <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
         @if($inc->potential_fund_loss > 0)
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-amber-200 dark:border-amber-900 p-4 shadow-sm">
-            <div class="flex items-center gap-2 mb-2">
-                <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-                    <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        <div class="relative rounded-xl border border-amber-200/80 dark:border-amber-800/50 p-4 shadow-sm overflow-hidden backdrop-blur-sm bg-gradient-to-br from-amber-50/80 to-white dark:from-amber-950/30 dark:to-gray-800/80 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+            <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-amber-400 to-amber-600 rounded-l-xl"></div>
+            <div class="absolute -top-8 -right-8 w-20 h-20 rounded-full bg-amber-200/20 dark:bg-amber-500/10 blur-sm"></div>
+            <div class="relative">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <span class="text-[11px] font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Potential Loss</span>
                 </div>
-                <span class="text-xs font-medium text-amber-700 dark:text-amber-400 uppercase tracking-wider">Potential Loss</span>
+                <p class="text-lg font-bold text-amber-800 dark:text-amber-300 tabular-nums">Rp {{ number_format($inc->potential_fund_loss, 0, ',', '.') }}</p>
             </div>
-            <p class="text-lg font-bold text-amber-800 dark:text-amber-300">Rp {{ number_format($inc->potential_fund_loss, 0, ',', '.') }}</p>
         </div>
         @endif
         @if($inc->fund_loss > 0)
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-red-200 dark:border-red-900 p-4 shadow-sm">
-            <div class="flex items-center gap-2 mb-2">
-                <div class="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
-                    <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
+        <div class="relative rounded-xl border border-red-200/80 dark:border-red-800/50 p-4 shadow-sm overflow-hidden backdrop-blur-sm bg-gradient-to-br from-red-50/80 to-white dark:from-red-950/30 dark:to-gray-800/80 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+            <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-red-400 to-red-600 rounded-l-xl"></div>
+            <div class="absolute -top-8 -right-8 w-20 h-20 rounded-full bg-red-200/20 dark:bg-red-500/10 blur-sm"></div>
+            <div class="relative">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/40 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
+                    </div>
+                    <span class="text-[11px] font-semibold text-red-700 dark:text-red-400 uppercase tracking-wider">Actual Loss</span>
                 </div>
-                <span class="text-xs font-medium text-red-700 dark:text-red-400 uppercase tracking-wider">Actual Loss</span>
+                <p class="text-lg font-bold text-red-700 dark:text-red-300 tabular-nums">Rp {{ number_format($inc->fund_loss, 0, ',', '.') }}</p>
             </div>
-            <p class="text-lg font-bold text-red-700 dark:text-red-300">Rp {{ number_format($inc->fund_loss, 0, ',', '.') }}</p>
         </div>
         @endif
         @if($inc->recovered_fund > 0)
-        <div class="bg-white dark:bg-gray-800 rounded-xl border border-emerald-200 dark:border-emerald-900 p-4 shadow-sm">
-            <div class="flex items-center gap-2 mb-2">
-                <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
-                    <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+        <div class="relative rounded-xl border border-emerald-200/80 dark:border-emerald-800/50 p-4 shadow-sm overflow-hidden backdrop-blur-sm bg-gradient-to-br from-emerald-50/80 to-white dark:from-emerald-950/30 dark:to-gray-800/80 transition-all duration-200 hover:shadow-md hover:-translate-y-0.5">
+            <div class="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-emerald-400 to-emerald-600 rounded-l-xl"></div>
+            <div class="absolute -top-8 -right-8 w-20 h-20 rounded-full bg-emerald-200/20 dark:bg-emerald-500/10 blur-sm"></div>
+            <div class="relative">
+                <div class="flex items-center gap-2 mb-2">
+                    <div class="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+                        <svg class="w-4 h-4 text-emerald-600 dark:text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                    </div>
+                    <span class="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Recovered</span>
                 </div>
-                <span class="text-xs font-medium text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Recovered</span>
+                <p class="text-lg font-bold text-emerald-700 dark:text-emerald-300 tabular-nums">Rp {{ number_format($inc->recovered_fund, 0, ',', '.') }}</p>
             </div>
-            <p class="text-lg font-bold text-emerald-700 dark:text-emerald-300">Rp {{ number_format($inc->recovered_fund, 0, ',', '.') }}</p>
         </div>
         @endif
     </div>

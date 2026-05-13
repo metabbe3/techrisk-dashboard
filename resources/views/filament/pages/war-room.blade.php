@@ -9,6 +9,8 @@ document.addEventListener('alpine:init', () => {
             blue: '#3b82f6', indigo: '#6366f1', purple: '#8b5cf6', green: '#22c55e',
             teal: '#14b8a6', cyan: '#06b6d4', red: '#ef4444', orange: '#f97316',
             amber: '#f59e0b', pink: '#ec4899', emerald: '#10b981', gray: '#6b7280',
+            fuchsia: '#d946ef', rose: '#f43f5e', sky: '#0ea5e9',
+            violet: '#8b5cf6', yellow: '#eab308', lime: '#84cc16',
         };
 
         function hexToRgba(hex, alpha) {
@@ -40,6 +42,7 @@ document.addEventListener('alpine:init', () => {
             selectedIncidents: [],
             selectedAgents: [],
             config: { maxRounds: 2, model: '', moderatorModel: '', enableWebSearch: false, deepAnalysis: true, userInstructions: '' },
+            createTab: 'incident',
             tokenEstimate: null,
             tokenDebounce: null,
 
@@ -58,6 +61,70 @@ document.addEventListener('alpine:init', () => {
             getAgentColor(name, alpha = 1) {
                 const hex = colorMap[name] || colorMap.gray;
                 return alpha === 1 ? hex : hexToRgba(hex, alpha);
+            },
+
+            getTimeColor(ms) {
+                if (!ms) return '';
+                const s = ms / 1000;
+                if (s <= 5) return 'df-metric--ok';
+                if (s <= 15) return 'df-metric--warn';
+                return 'df-metric--danger';
+            },
+
+            getTokenColor(tokens) {
+                if (!tokens) return '';
+                if (tokens <= 1000) return 'df-metric--ok';
+                if (tokens <= 3000) return 'df-metric--warn';
+                return 'df-metric--danger';
+            },
+
+            _agentCache: null,
+
+            buildAgentCache() {
+                if (this._agentCache) return this._agentCache;
+                const lookup = {};
+                const regexes = [];
+                for (const agent of this.availableAgents) {
+                    lookup[agent.display_name] = { color: agent.color, role: agent.role_key, name: agent.display_name };
+                }
+                const names = Object.keys(lookup).sort((a, b) => b.length - a.length);
+                for (const name of names) {
+                    regexes.push({ name, agent: lookup[name], regex: new RegExp(`(?<![\\w\\/])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w])`, 'g') });
+                }
+                this._agentCache = { lookup, regexes };
+                return this._agentCache;
+            },
+
+            processAgentReferences(text) {
+                if (!text) return '';
+                const parts = text.split(/(```[\s\S]*?```|`[^`]+`)/g);
+                const { regexes } = this.buildAgentCache();
+                if (regexes.length === 0) return text;
+
+                return parts.map((part, i) => {
+                    if (i % 2 === 1) return part;
+                    let processed = part;
+                    for (const { name, agent, regex } of regexes) {
+                        const color = this.getAgentColor(agent.color);
+                        processed = processed.replace(regex,
+                            `<span class="df-agent-ref" style="--ref-color:${color}">` +
+                            `<span class="df-agent-ref__dot" style="background:${color}"></span>` +
+                            `${name}</span>`
+                        );
+                    }
+                    return processed;
+                }).join('');
+            },
+
+            renderAgentContent(msg) {
+                const text = msg._expanded ? msg.content : (msg.content || '').substring(0, 300) + ((msg.content || '').length > 300 ? '...' : '');
+                if (!text) return '';
+                const processed = this.processAgentReferences(text);
+                if (typeof marked !== 'undefined') {
+                    try { return marked.parse(processed, { breaks: true, gfm: true }); }
+                    catch { return processed.replace(/\n/g, '<br>'); }
+                }
+                return processed.replace(/\n/g, '<br>');
             },
 
             getAgentInitial(name) {
@@ -88,6 +155,7 @@ document.addEventListener('alpine:init', () => {
                     const res = await fetch('/admin/war-room/agents', { headers: this.getHeaders() });
                     if (!res.ok) { console.error('Load agents failed:', res.status, await res.text()); return; }
                     this.availableAgents = await res.json();
+                    this._agentCache = null;
                 } catch (e) { console.error('Failed to load agents:', e); }
             },
 
@@ -198,7 +266,7 @@ document.addEventListener('alpine:init', () => {
                     this.showReport = false;
 
                     if (this.activeSession.messages) {
-                        Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; });
+                        Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; });
                     }
 
                     this.startPolling();
@@ -274,7 +342,7 @@ document.addEventListener('alpine:init', () => {
                             const fullData = await res2.json();
                             this.activeSession = fullData;
                             if (this.activeSession.messages) {
-                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; });
+                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; });
                             }
                         }
                     }
@@ -307,7 +375,7 @@ document.addEventListener('alpine:init', () => {
                             const fullData = await res2.json();
                             this.activeSession = fullData;
                             if (this.activeSession.messages) {
-                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; });
+                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; });
                             }
                             this.scheduleMermaidRender();
                         }
@@ -484,6 +552,7 @@ document.addEventListener('alpine:init', () => {
                     <div class="df-session-item__meta">
                         <span class="df-status-badge" :class="'df-status-badge--' + session.status" x-text="session.status"></span>
                         <span class="df-session-item__date" x-text="formatDate(session.created_at)"></span>
+                        <span x-show="session.model" class="df-session-item__model" x-text="session.model"></span>
                         <span x-show="session.user_name" class="df-session-item__user" x-text="'by ' + session.user_name"></span>
                     </div>
                     <p class="df-session-item__incident" x-show="session.incident" x-text="session.incident?.no + (session.incident?.severity ? ' · ' + session.incident?.severity : '')"></p>
@@ -514,10 +583,18 @@ document.addEventListener('alpine:init', () => {
                         <span x-show="activeSession" x-text="activeSession?.title || 'Discussion Forum'"></span>
                     </h2>
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'running'">
+                        <span x-show="activeSession?.incident" x-text="activeSession?.incident?.no + ' · '"></span>
                         Round <span x-text="activeSession?.current_round || 0"></span> of <span x-text="activeSession?.max_rounds || 2"></span> in progress
                     </p>
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'pending'">
+                        <span x-show="activeSession?.incident" x-text="activeSession?.incident?.no + ' · '"></span>
                         Preparing agents...
+                    </p>
+                    <p class="df-header__subtitle" x-show="activeSession?.status === 'completed' && activeSession?.incident">
+                        <span x-text="activeSession?.incident?.no"></span> · Analysis Complete
+                    </p>
+                    <p class="df-header__subtitle" x-show="activeSession?.status === 'failed' && activeSession?.incident">
+                        <span x-text="activeSession?.incident?.no"></span> · Failed
                     </p>
                 </div>
             </div>
@@ -525,20 +602,20 @@ document.addEventListener('alpine:init', () => {
             <div class="df-header__actions">
                 <div x-show="activeSession?.status === 'running' || activeSession?.status === 'pending'" class="df-running-indicator">
                     <span class="df-pulse-dot"></span>
-                    <span>Analyzing</span>
+                    <span x-text="activeSession?.status === 'pending' ? 'Preparing...' : 'Analyzing · Round ' + (activeSession?.current_round || 1)"></span>
                 </div>
                 <button x-show="activeSession?.status === 'completed'" @click="showReport = !showReport; scheduleMermaidRender()"
-                        class="df-btn" :class="showReport ? 'df-btn--ghost' : 'df-btn--success'">
+                        class="df-btn" :class="showReport ? 'df-btn--ghost' : 'df-btn--primary'">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path x-show="!showReport" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                        <path x-show="showReport" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                        <path x-show="showReport" d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
                     </svg>
-                    <span x-text="showReport ? 'Show Discussion' : 'View Report'"></span>
+                    <span x-text="showReport ? 'Back to Discussion' : 'View Report'"></span>
                 </button>
                 <a x-show="activeSession?.status === 'completed' && activeSession?.final_report_html"
                    :href="'/admin/war-room/sessions/' + activeSession?.id + '/export-pdf'"
-                   class="df-btn df-btn--ghost" target="_blank">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                   class="df-btn df-btn--ghost df-btn--download" target="_blank">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                     Export PDF
                 </a>
                 <button x-show="activeSession?.status === 'completed' || activeSession?.status === 'failed'" @click="openReanalyzeModal()" class="df-btn df-btn--ghost">
@@ -551,7 +628,7 @@ document.addEventListener('alpine:init', () => {
                 </button>
                 <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-btn df-btn--ghost df-btn--delete">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    Delete
+                    <span>Delete</span>
                 </button>
             </div>
         </header>
@@ -574,127 +651,187 @@ document.addEventListener('alpine:init', () => {
                         </div>
                     </div>
 
-                    <div class="df-form-section">
-                        <label class="df-label">Incident</label>
-                        <div class="df-search-wrapper">
-                            <svg class="df-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-                            <input type="text" class="df-input df-input--search" x-model="incidentSearch" @input.debounce.300ms="searchIncidents()" placeholder="Search by ID, title, or summary..." />
-                        </div>
+                    {{-- Tab navigation --}}
+                    <div class="df-tabs">
+                        <button class="df-tab" :class="{ 'df-tab--active': createTab === 'incident', 'df-tab--done': selectedIncidents.length > 0 && createTab !== 'incident' }" @click="createTab = 'incident'">
+                            <span class="df-tab__step" :class="{ 'df-tab__step--done': selectedIncidents.length > 0 }">
+                                <svg x-show="selectedIncidents.length === 0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                                <svg x-show="selectedIncidents.length > 0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+                            </span>
+                            <span>Incident</span>
+                        </button>
+                        <button class="df-tab" :class="{ 'df-tab--active': createTab === 'agents', 'df-tab--done': selectedAgents.length > 0 && createTab !== 'agents' }" @click="createTab = 'agents'">
+                            <span class="df-tab__step" :class="{ 'df-tab__step--done': selectedAgents.length > 0 }">
+                                <svg x-show="selectedAgents.length === 0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+                                <svg x-show="selectedAgents.length > 0" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+                            </span>
+                            <span>Agents</span>
+                        </button>
+                        <button class="df-tab" :class="{ 'df-tab--active': createTab === 'settings' }" @click="createTab = 'settings'">
+                            <span class="df-tab__step">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+                            </span>
+                            <span>Settings</span>
+                        </button>
+                    </div>
 
-                        {{-- Search results dropdown --}}
-                        <div x-show="incidentResults.length > 0" x-transition class="df-dropdown">
-                            <template x-for="inc in incidentResults" :key="inc.id || inc.no">
-                                <button class="df-dropdown-item" @click="selectIncident(inc)">
-                                    <div class="df-dropdown-item__top">
-                                        <span class="df-severity-badge" :class="'df-severity-badge--' + (inc.severity || 'default')" x-text="inc.severity"></span>
-                                        <span class="df-dropdown-item__id" x-text="inc.no"></span>
-                                    </div>
-                                    <p class="df-dropdown-item__title" x-text="inc.title"></p>
-                                </button>
-                            </template>
-                        </div>
+                    {{-- Tab: Incident --}}
+                    <div x-show="createTab === 'incident'" class="df-tab-panel">
+                        <div class="df-form-section">
+                            <label class="df-label">Search Incident</label>
+                            <div class="df-search-wrapper">
+                                <svg class="df-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+                                <input type="text" class="df-input df-input--search" x-model="incidentSearch" @input.debounce.300ms="searchIncidents()" placeholder="Search by ID, title, or summary..." />
+                            </div>
 
-                        {{-- Selected incidents --}}
-                        <div x-show="selectedIncidents.length > 0" x-transition class="df-selected-incidents">
-                            <template x-for="(inc, idx) in selectedIncidents" :key="inc.id">
-                                <div class="df-selected-inc">
-                                    <div class="df-selected-inc__info">
-                                        <span class="df-selected-inc__id" x-text="inc.no"></span>
-                                        <span class="df-selected-inc__sep">&mdash;</span>
-                                        <span class="df-selected-inc__title" x-text="inc.title"></span>
+                            <div x-show="incidentResults.length > 0" x-transition class="df-dropdown">
+                                <template x-for="inc in incidentResults" :key="inc.id || inc.no">
+                                    <button class="df-dropdown-item" @click="selectIncident(inc)">
+                                        <div class="df-dropdown-item__top">
+                                            <span class="df-severity-badge" :class="'df-severity-badge--' + (inc.severity || 'default')" x-text="inc.severity"></span>
+                                            <span class="df-dropdown-item__id" x-text="inc.no"></span>
+                                        </div>
+                                        <p class="df-dropdown-item__title" x-text="inc.title"></p>
+                                    </button>
+                                </template>
+                            </div>
+
+                            <div x-show="selectedIncidents.length > 0" x-transition class="df-selected-incidents">
+                                <template x-for="(inc, idx) in selectedIncidents" :key="inc.id">
+                                    <div class="df-selected-inc">
+                                        <div class="df-selected-inc__info">
+                                            <span class="df-selected-inc__id" x-text="inc.no"></span>
+                                            <span class="df-selected-inc__sep">&mdash;</span>
+                                            <span class="df-selected-inc__title" x-text="inc.title"></span>
+                                        </div>
+                                        <button @click="removeIncident(idx)" class="df-selected-inc__remove">&times;</button>
                                     </div>
-                                    <button @click="removeIncident(idx)" class="df-selected-inc__remove">&times;</button>
+                                </template>
+                                <div x-show="tokenEstimate !== null" x-transition class="df-token-warning"
+                                     :class="{ 'df-token-warning--ok': tokenEstimate?.percentage <= 50, 'df-token-warning--warn': tokenEstimate?.percentage > 50 && tokenEstimate?.percentage <= 75, 'df-token-warning--danger': tokenEstimate?.percentage > 75 }">
+                                    <svg class="df-token-warning__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
+                                    <div class="df-token-warning__content">
+                                        <span x-text="tokenEstimate ? ('~' + tokenEstimate.estimated_tokens.toLocaleString() + ' / ' + tokenEstimate.input_limit.toLocaleString() + ' tokens (' + tokenEstimate.percentage + '%)' + (tokenEstimate.will_compress ? ' — will auto-compress' : '')) : ''"></span>
+                                        <div class="df-token-bar">
+                                            <div class="df-token-bar__fill" :style="'width:' + Math.min(tokenEstimate?.percentage || 0, 100) + '%'"></div>
+                                        </div>
+                                    </div>
                                 </div>
-                            </template>
-                            <div x-show="tokenEstimate !== null" x-transition class="df-token-warning"
-                                 :class="{ 'df-token-warning--ok': tokenEstimate?.percentage <= 50, 'df-token-warning--warn': tokenEstimate?.percentage > 50 && tokenEstimate?.percentage <= 75, 'df-token-warning--danger': tokenEstimate?.percentage > 75 }">
-                                <svg class="df-token-warning__icon" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.168 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z" clip-rule="evenodd"/></svg>
-                                <span x-text="tokenEstimate ? ('~' + tokenEstimate.estimated_tokens.toLocaleString() + ' / ' + tokenEstimate.input_limit.toLocaleString() + ' tokens (' + tokenEstimate.percentage + '%)' + (tokenEstimate.will_compress ? ' — will auto-compress' : '')) : ''"></span>
                             </div>
                         </div>
+                        <div class="df-tab-actions">
+                            <button @click="createTab = 'agents'" :disabled="selectedIncidents.length === 0" class="df-btn df-btn--primary df-btn--full"
+                                    :class="{ 'df-btn--disabled': selectedIncidents.length === 0 }">
+                                Continue to Agents
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="df-form-section">
-                        <label class="df-label">Specialist Agents <span class="df-label__count" x-text="selectedAgents.length ? selectedAgents.length + ' selected' : ''"></span></label>
-                        <div class="df-agent-roster">
-                            <template x-for="agent in availableAgents" :key="agent.role_key">
-                                <button @click="toggleAgent(agent.role_key)" class="df-agent-card"
-                                        :class="{ 'df-agent-card--selected': selectedAgents.includes(agent.role_key) }"
-                                        :style="'--agent-color:' + getAgentColor(agent.color)">
-                                    <div class="df-agent-card__glow"></div>
-                                    <div class="df-agent-card__inner">
-                                        <div class="df-agent-card__avatar" :style="'--agent-color:' + getAgentColor(agent.color)">
-                                            <span x-text="getAgentInitial(agent.display_name)"></span>
-                                        </div>
-                                        <div class="df-agent-card__body">
-                                            <div class="df-agent-card__header">
-                                                <span class="df-agent-card__name" x-text="agent.display_name"></span>
-                                                <div class="df-agent-card__toggle"
-                                                     :class="selectedAgents.includes(agent.role_key) ? 'df-agent-card__toggle--on' : ''">
-                                                    <svg x-show="selectedAgents.includes(agent.role_key)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 13l4 4L19 7"/></svg>
+                    {{-- Tab: Agents --}}
+                    <div x-show="createTab === 'agents'" class="df-tab-panel">
+                        <div class="df-form-section">
+                            <label class="df-label">Specialist Agents <span class="df-label__count" x-text="selectedAgents.length ? selectedAgents.length + ' selected' : ''"></span></label>
+                            <div class="df-agent-roster">
+                                <template x-for="agent in availableAgents" :key="agent.role_key">
+                                    <button @click="toggleAgent(agent.role_key)" class="df-agent-card"
+                                            :class="{ 'df-agent-card--selected': selectedAgents.includes(agent.role_key) }"
+                                            :style="'--agent-color:' + getAgentColor(agent.color)">
+                                        <div class="df-agent-card__glow"></div>
+                                        <div class="df-agent-card__inner">
+                                            <div class="df-agent-card__avatar" :style="'--agent-color:' + getAgentColor(agent.color)">
+                                                <span x-text="getAgentInitial(agent.display_name)"></span>
+                                            </div>
+                                            <div class="df-agent-card__body">
+                                                <div class="df-agent-card__header">
+                                                    <span class="df-agent-card__name" x-text="agent.display_name"></span>
+                                                    <div class="df-agent-card__toggle"
+                                                         :class="selectedAgents.includes(agent.role_key) ? 'df-agent-card__toggle--on' : ''">
+                                                        <svg x-show="selectedAgents.includes(agent.role_key)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5"><path d="M5 13l4 4L19 7"/></svg>
+                                                    </div>
+                                                </div>
+                                                <p x-show="agent.description" class="df-agent-card__desc" x-text="agent.description"></p>
+                                                <div x-show="agent.skills && agent.skills.length > 0" class="df-agent-card__skills">
+                                                    <template x-for="skill in (agent.skills || []).slice(0, 4)" :key="skill">
+                                                        <span class="df-agent-card__skill" x-text="skill"></span>
+                                                    </template>
+                                                    <span x-show="(agent.skills || []).length > 4" class="df-agent-card__more" x-text="'+' + ((agent.skills || []).length - 4) + ' more'"></span>
                                                 </div>
                                             </div>
-                                            <p x-show="agent.description" class="df-agent-card__desc" x-text="agent.description"></p>
-                                            <div x-show="agent.skills && agent.skills.length > 0" class="df-agent-card__skills">
-                                                <template x-for="skill in (agent.skills || []).slice(0, 4)" :key="skill">
-                                                    <span class="df-agent-card__skill" x-text="skill"></span>
-                                                </template>
-                                                <span x-show="(agent.skills || []).length > 4" class="df-agent-card__more" x-text="'+' + ((agent.skills || []).length - 4) + ' more'"></span>
-                                            </div>
                                         </div>
-                                    </div>
-                                </button>
-                            </template>
-                        </div>
-                        <div x-show="availableAgents.length === 0" class="df-hint">Loading agents...</div>
-                    </div>
-
-                    <div class="df-form-row">
-                        <div class="df-form-field">
-                            <label class="df-label">Discussion Rounds</label>
-                            <select x-model.number="config.maxRounds" class="df-select">
-                                <option value="1">1 round (quick)</option>
-                                <option value="2">2 rounds (standard)</option>
-                                <option value="3">3 rounds (deep)</option>
-                            </select>
-                        </div>
-                        <div class="df-form-field">
-                            <label class="df-label">Agent Model</label>
-                            <select x-model="config.model" class="df-select">
-                                <option value="">Default</option>
-                                <template x-for="(name, id) in models" :key="id">
-                                    <option :value="id" x-text="name"></option>
+                                    </button>
                                 </template>
-                            </select>
+                            </div>
+                            <div x-show="availableAgents.length === 0" class="df-hint">Loading agents...</div>
+                        </div>
+                        <div class="df-tab-actions">
+                            <button @click="createTab = 'incident'" class="df-btn df-btn--ghost">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+                                Back
+                            </button>
+                            <button @click="createTab = 'settings'" :disabled="selectedAgents.length === 0" class="df-btn df-btn--primary"
+                                    :class="{ 'df-btn--disabled': selectedAgents.length === 0 }">
+                                Continue to Settings
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
+                            </button>
                         </div>
                     </div>
 
-                    <label class="df-checkbox-row">
-                        <input type="checkbox" x-model="config.enableWebSearch" class="df-checkbox" />
-                        <span>Enable web search for agents</span>
-                    </label>
-                    <label class="df-checkbox-row">
-                        <input type="checkbox" x-model="config.deepAnalysis" class="df-checkbox" />
-                        <span>Deep analysis (full incident data — uses more tokens)</span>
-                    </label>
+                    {{-- Tab: Settings --}}
+                    <div x-show="createTab === 'settings'" class="df-tab-panel">
+                        <div class="df-form-row">
+                            <div class="df-form-field">
+                                <label class="df-label">Discussion Rounds</label>
+                                <select x-model.number="config.maxRounds" class="df-select">
+                                    <option value="1">1 round (quick)</option>
+                                    <option value="2">2 rounds (standard)</option>
+                                    <option value="3">3 rounds (deep)</option>
+                                </select>
+                            </div>
+                            <div class="df-form-field">
+                                <label class="df-label">Agent Model</label>
+                                <select x-model="config.model" class="df-select">
+                                    <option value="">Default</option>
+                                    <template x-for="(name, id) in models" :key="id">
+                                        <option :value="id" x-text="name"></option>
+                                    </template>
+                                </select>
+                            </div>
+                        </div>
 
-                    <div class="df-form-section">
-                        <label class="df-label">Additional Instructions <span class="df-label__hint">(optional)</span></label>
-                        <textarea x-model="config.userInstructions" class="df-textarea" rows="3"
-                            placeholder="Add extra context, focus areas, or specific questions you want the agents to address..."></textarea>
+                        <label class="df-checkbox-row">
+                            <input type="checkbox" x-model="config.enableWebSearch" class="df-checkbox" />
+                            <span>Enable web search for agents</span>
+                        </label>
+                        <label class="df-checkbox-row">
+                            <input type="checkbox" x-model="config.deepAnalysis" class="df-checkbox" />
+                            <span>Deep analysis (full incident data — uses more tokens)</span>
+                        </label>
+
+                        <div class="df-form-section">
+                            <label class="df-label">Additional Instructions <span class="df-label__hint">(optional)</span></label>
+                            <textarea x-model="config.userInstructions" class="df-textarea" rows="3"
+                                placeholder="Add extra context, focus areas, or specific questions you want the agents to address..."></textarea>
+                        </div>
+
+                        <div class="df-tab-actions">
+                            <button @click="createTab = 'agents'" class="df-btn df-btn--ghost">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 19l-7-7 7-7"/></svg>
+                                Back
+                            </button>
+                            <button @click="createSession()" :disabled="selectedIncidents.length === 0 || selectedAgents.length === 0 || creating"
+                                    class="df-btn df-btn--launch df-btn--launch-inline"
+                                    :class="{ 'df-btn--disabled': selectedIncidents.length === 0 || selectedAgents.length === 0 || creating }">
+                                <svg x-show="!creating" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                                </svg>
+                                <svg x-show="creating" width="16" height="16" class="df-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M6.76 6.76L3.93 3.93"/>
+                                </svg>
+                                <span x-text="creating ? 'Launching...' : 'Launch Discussion'"></span>
+                            </button>
+                        </div>
                     </div>
-
-                    <button @click="createSession()" :disabled="selectedIncidents.length === 0 || selectedAgents.length === 0 || creating"
-                            class="df-btn df-btn--launch"
-                            :class="{ 'df-btn--disabled': selectedIncidents.length === 0 || selectedAgents.length === 0 || creating }">
-                        <svg x-show="!creating" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                        </svg>
-                        <svg x-show="creating" width="16" height="16" class="df-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 2v4m0 12v4m-7.07-3.93l2.83-2.83m8.48-8.48l2.83-2.83M2 12h4m12 0h4m-3.93 7.07l-2.83-2.83M6.76 6.76L3.93 3.93"/>
-                        </svg>
-                        <span x-text="creating ? 'Launching...' : 'Launch Discussion'"></span>
-                    </button>
                 </div>
             </div>
 
@@ -734,20 +871,62 @@ document.addEventListener('alpine:init', () => {
                                 <div class="df-msg" :class="'df-msg--' + msg.status">
                                     <div class="df-msg__accent" :style="'background:' + getAgentColor(msg.agent_color || 'gray')"></div>
                                     <div class="df-msg__body">
+                                        {{-- Header: Agent identity --}}
                                         <div class="df-msg__header">
                                             <div class="df-msg__author">
-                                                <div class="df-msg__avatar" :style="'background:' + getAgentColor(msg.agent_color || 'gray', 0.12) + '; color:' + getAgentColor(msg.agent_color || 'gray')"
+                                                <div class="df-msg__avatar" :style="'background:' + getAgentColor(msg.agent_color || 'gray', 0.15) + '; color:' + getAgentColor(msg.agent_color || 'gray')"
                                                      x-text="getAgentInitial(msg.agent_name)"></div>
-                                                <span class="df-msg__name" x-text="msg.agent_name"></span>
+                                                <div class="df-msg__identity">
+                                                    <span class="df-msg__name" x-text="msg.agent_name"></span>
+                                                    <span class="df-msg__role" x-text="msg.agent_role"></span>
+                                                </div>
                                             </div>
-                                            <div class="df-msg__controls">
-                                                <span x-show="msg.response_time_ms" class="df-msg__time" x-text="(msg.response_time_ms / 1000).toFixed(1) + 's'"></span>
-                                                <button x-show="msg.status === 'completed' && msg.content" @click="msg._expanded = !msg._expanded; scheduleMermaidRender()" class="df-msg__toggle">
-                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                                                         :style="msg._expanded ? 'transform:rotate(180deg)' : ''" style="transition:transform 0.2s">
-                                                        <path d="M19 9l-7 7-7-7"/>
-                                                    </svg>
-                                                </button>
+                                            <button x-show="msg.status === 'completed' && msg.content" @click="msg._expanded = !msg._expanded; scheduleMermaidRender()" class="df-msg__toggle">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                     :style="msg._expanded ? 'transform:rotate(180deg)' : ''" style="transition:transform 0.2s">
+                                                    <path d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </button>
+                                        </div>
+
+                                        {{-- Meta strip: metrics --}}
+                                        <div class="df-msg__meta" x-show="msg.status === 'completed'">
+                                            <span class="df-msg__metric" :class="getTimeColor(msg.response_time_ms)" x-show="msg.response_time_ms">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                                <span x-text="(msg.response_time_ms / 1000).toFixed(1) + 's'"></span>
+                                            </span>
+                                            <span class="df-msg__metric" :class="getTokenColor(msg.total_tokens)" x-show="msg.total_tokens">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7v10a2 2 0 002 2h12a2 2 0 002-2V7M4 7h16"/></svg>
+                                                <span x-text="msg.total_tokens ? msg.total_tokens.toLocaleString() + ' tokens' : ''"></span>
+                                            </span>
+                                            <span class="df-msg__metric" :class="getTokenColor(msg.reasoning_tokens)" x-show="msg.reasoning_tokens">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                                                <span x-text="msg.reasoning_tokens?.toLocaleString() + ' reasoning'"></span>
+                                            </span>
+                                            <span class="df-msg__metric df-msg__metric--model" x-show="msg.model">
+                                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6m-6 4h6"/></svg>
+                                                <span x-text="msg.model"></span>
+                                            </span>
+                                            <span class="df-msg__status-dot" :class="'df-msg__status-dot--' + msg.status">
+                                                <span class="df-msg__status-dot__ring"></span>
+                                                <span x-text="msg.status"></span>
+                                            </span>
+                                        </div>
+
+                                        {{-- Thinking/Reasoning Process --}}
+                                        <div x-show="msg.status === 'completed' && msg.reasoning_content" class="df-msg__thinking">
+                                            <button @click="msg._showThinking = !msg._showThinking" class="df-msg__thinking-toggle">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                                                <span>Thinking Process</span>
+                                                <span class="df-msg__thinking-tokens" x-show="msg.reasoning_tokens"
+                                                      x-text="msg.reasoning_tokens?.toLocaleString() + ' reasoning tokens'"></span>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                     style="transition:transform 0.2s" :style="msg._showThinking ? 'transform:rotate(180deg)' : ''">
+                                                    <path d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </button>
+                                            <div x-show="msg._showThinking" x-transition class="df-msg__thinking-content"
+                                                 x-html="renderMarkdown(msg.reasoning_content || '')">
                                             </div>
                                         </div>
 
@@ -771,7 +950,7 @@ document.addEventListener('alpine:init', () => {
 
                                         {{-- Completed content --}}
                                         <div x-show="msg.status === 'completed' && msg.content"
-                                             x-html="renderMarkdown(msg._expanded ? msg.content : (msg.content || '').substring(0, 300) + ((msg.content || '').length > 300 ? '...' : ''))"
+                                             x-html="renderAgentContent(msg)"
                                              class="df-msg__content"
                                              :class="{ 'df-msg__content--collapsed': !msg._expanded }">
                                         </div>
@@ -792,8 +971,30 @@ document.addEventListener('alpine:init', () => {
                         </svg>
                     </div>
                     <div>
-                        <h2 class="df-report__title">Final Report</h2>
+                        <h2 class="df-report__title">Analysis Report</h2>
                         <p class="df-report__subtitle" x-text="activeSession?.title"></p>
+                        <div class="df-report__meta">
+                            <span x-show="activeSession?.incident" class="df-report__meta-chip">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                                <span x-text="activeSession?.incident?.no + ' · ' + (activeSession?.incident?.severity || '')"></span>
+                            </span>
+                            <span class="df-report__meta-chip">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                <span x-text="formatDate(activeSession?.created_at)"></span>
+                            </span>
+                            <span x-show="activeSession?.model" class="df-report__meta-chip">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6m-6 4h6m-6 4h4"/><path d="M9 1v3M15 1v3"/></svg>
+                                <span x-text="activeSession?.model || 'Default'"></span>
+                            </span>
+                            <span class="df-report__meta-chip">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+                                <span x-text="(activeSession?.selected_agents?.length || 0) + ' agents'"></span>
+                            </span>
+                            <span class="df-report__meta-chip" :class="activeSession?.deep_analysis === false ? 'df-report__meta-chip--muted' : ''">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <span x-text="activeSession?.deep_analysis === false ? 'Quick Discussion' : 'Deep Analysis'"></span>
+                            </span>
+                        </div>
                     </div>
                 </div>
 
@@ -806,8 +1007,23 @@ document.addEventListener('alpine:init', () => {
                     <p>Generating report...</p>
                 </div>
 
-                <div x-show="activeSession?.tokens_used" class="df-report__tokens">
-                    Tokens used: <strong x-text="activeSession?.tokens_used?.toLocaleString()"></strong>
+                <div x-show="activeSession?.tokens_used" class="df-report__footer">
+                    <div class="df-report__footer-item">
+                        <span class="df-report__footer-label">Tokens</span>
+                        <strong x-text="activeSession?.tokens_used?.toLocaleString()"></strong>
+                    </div>
+                    <div class="df-report__footer-item" x-show="activeSession?.model">
+                        <span class="df-report__footer-label">Model</span>
+                        <strong x-text="activeSession?.model || 'Default'"></strong>
+                    </div>
+                    <div class="df-report__footer-item">
+                        <span class="df-report__footer-label">Rounds</span>
+                        <strong x-text="activeSession?.max_rounds || 2"></strong>
+                    </div>
+                    <div class="df-report__footer-item">
+                        <span class="df-report__footer-label">Analysis</span>
+                        <strong x-text="activeSession?.deep_analysis === false ? 'Quick' : 'Deep'"></strong>
+                    </div>
                 </div>
             </div>
 
@@ -976,6 +1192,17 @@ document.addEventListener('alpine:init', () => {
 :root.dark .df-textarea:focus { border-color: var(--df-amber-500); box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15); }
 :root.dark .df-textarea::placeholder { color: #6b7085; }
 
+:root.dark .df-tabs { border-bottom-color: #2e3345; }
+:root.dark .df-tab { color: #6b7085; }
+:root.dark .df-tab:hover { color: #9ca0ad; background: rgba(255,255,255,0.03); }
+:root.dark .df-tab--active { color: #fbbf24; border-bottom-color: #f59e0b; }
+:root.dark .df-tab--done { color: #4ade80; }
+:root.dark .df-tab--done:hover { color: #6ee7b7; }
+:root.dark .df-tab__step { background: #252a38; color: #6b7085; }
+:root.dark .df-tab--active .df-tab__step { background: #f59e0b; color: #1a1d27; }
+:root.dark .df-tab__step--done { background: #22c55e !important; color: white !important; }
+:root.dark .df-tab-actions { border-top-color: #252a38; }
+
 :root.dark .df-dropdown { background: #1a1d27; border-color: #2e3345; }
 :root.dark .df-selected-inc { background: rgba(245, 158, 11, 0.06); border-color: rgba(245, 158, 11, 0.15); }
 :root.dark .df-selected-inc__id { color: #fbbf24; }
@@ -987,7 +1214,19 @@ document.addEventListener('alpine:init', () => {
 :root.dark .df-round__badge { background: #e4e5ea; color: #1a1d27; }
 
 :root.dark .df-msg { background: #1a1d27; border-color: #2e3345; }
-:root.dark .df-msg__toggle:hover { background: #242834; }
+:root.dark .df-msg:hover { border-color: #3a3f52; }
+:root.dark .df-msg__toggle { background: #1a1d27; border-color: #2e3345; }
+:root.dark .df-msg__toggle:hover { background: #242834; border-color: #4a506a; }
+:root.dark .df-msg__metric { background: #242834; color: #6b7085; }
+:root.dark .df-msg__metric--model { background: #242834; color: #9ca0ad; }
+:root.dark .df-msg__status-dot--completed { color: #4ade80; }
+:root.dark .df-msg__status-dot--completed .df-msg__status-dot__ring { background: #4ade80; }
+:root.dark .df-msg__status-dot--running { color: #fbbf24; }
+:root.dark .df-msg__status-dot--running .df-msg__status-dot__ring { background: #fbbf24; }
+:root.dark .df-msg__status-dot--failed { color: #f87171; }
+:root.dark .df-msg__status-dot--failed .df-msg__status-dot__ring { background: #f87171; }
+:root.dark .df-msg__role { color: #6b7085; }
+:root.dark .df-msg__content { border-top-color: #252a38; }
 
 :root.dark .df-msg__content--collapsed::after { background: linear-gradient(transparent, #1a1d27); }
 
@@ -1028,8 +1267,13 @@ document.addEventListener('alpine:init', () => {
 
 :root.dark .df-session-item__delete:hover { background: rgba(239, 68, 68, 0.15); }
 
-.df-btn--delete { color: #ef4444; }
+.df-btn--delete { color: var(--df-red-500); }
+.df-btn--delete:hover { background: var(--df-red-50); color: var(--df-red-700); }
+.df-btn--download { color: var(--df-text-secondary); }
+.df-btn--download:hover { color: var(--df-green-700); background: var(--df-green-50); }
 :root.dark .df-btn--delete { color: #f87171; }
+:root.dark .df-btn--delete:hover { background: rgba(239, 68, 68, 0.1); color: #fca5a5; }
+:root.dark .df-btn--download:hover { color: #4ade80; background: rgba(34, 197, 94, 0.08); }
 
 /* --- Layout --- */
 .df-app {
@@ -1169,6 +1413,15 @@ document.addEventListener('alpine:init', () => {
     opacity: 0.7;
     margin-left: auto;
 }
+
+.df-session-item__model {
+    font-size: 10px;
+    color: var(--df-text-muted);
+    background: var(--df-surface-hover);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+:root.dark .df-session-item__model { background: #242834; color: #6b7085; }
 
 .df-session-item__incident {
     font-size: 11px;
@@ -1357,6 +1610,14 @@ document.addEventListener('alpine:init', () => {
     cursor: not-allowed;
 }
 
+.df-header__actions .df-btn {
+    padding: 7px 16px;
+}
+
+/* --- Download button --- */
+.df-btn--download:hover { color: var(--df-green-700); background: var(--df-green-50); }
+:root.dark .df-btn--download:hover { color: #4ade80; background: rgba(34, 197, 94, 0.08); }
+
 /* --- Mobile toggle --- */
 .df-mobile-toggle {
     display: none;
@@ -1422,6 +1683,101 @@ document.addEventListener('alpine:init', () => {
     color: var(--df-text-secondary);
     margin: 0;
     line-height: 1.5;
+}
+
+/* --- Tab navigation --- */
+.df-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1.5px solid var(--df-border);
+    margin-bottom: 24px;
+    position: relative;
+}
+
+.df-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1.5px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--df-text-muted);
+    cursor: pointer;
+    transition: all var(--df-transition);
+    font-family: inherit;
+}
+.df-tab:hover {
+    color: var(--df-text-secondary);
+    background: var(--df-surface-hover);
+}
+
+.df-tab--active {
+    color: var(--df-amber-600);
+    font-weight: 700;
+    border-bottom-color: var(--df-amber-500);
+}
+
+.df-tab--done {
+    color: var(--df-green-600);
+}
+.df-tab--done:hover {
+    color: var(--df-green-700);
+}
+
+.df-tab__step {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--df-border-light);
+    color: var(--df-text-muted);
+    flex-shrink: 0;
+    transition: all var(--df-transition);
+}
+
+.df-tab--active .df-tab__step {
+    background: var(--df-amber-500);
+    color: white;
+}
+
+.df-tab__step--done {
+    background: var(--df-green-500) !important;
+    color: white !important;
+}
+
+/* --- Tab panels --- */
+.df-tab-panel {
+    padding-top: 4px;
+    min-height: 200px;
+}
+
+/* --- Tab action bar --- */
+.df-tab-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px solid var(--df-border-light);
+}
+
+/* --- Button variants --- */
+.df-btn--full {
+    width: 100%;
+    justify-content: center;
+}
+
+.df-btn--launch-inline {
+    width: auto;
 }
 
 /* --- Form elements --- */
@@ -1615,6 +1971,23 @@ document.addEventListener('alpine:init', () => {
 .df-token-warning--warn { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
 .df-token-warning--danger { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
 .df-token-warning__icon { width: 14px; height: 14px; flex-shrink: 0; }
+.df-token-warning__content { flex: 1; min-width: 0; }
+.df-token-bar {
+    height: 3px;
+    background: var(--df-border-light);
+    border-radius: 2px;
+    margin-top: 4px;
+    overflow: hidden;
+}
+.df-token-bar__fill {
+    height: 100%;
+    border-radius: 2px;
+    transition: width 0.3s ease, background 0.3s ease;
+}
+.df-token-warning--ok .df-token-bar__fill { background: var(--df-green-500); }
+.df-token-warning--warn .df-token-bar__fill { background: var(--df-amber-500); }
+.df-token-warning--danger .df-token-bar__fill { background: var(--df-red-500); }
+:root.dark .df-token-bar { background: #252a38; }
 :root.dark .df-token-warning--ok { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
 :root.dark .df-token-warning--warn { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 :root.dark .df-token-warning--danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: #fca5a5; }
@@ -1997,9 +2370,9 @@ document.addEventListener('alpine:init', () => {
 }
 
 .df-round__messages {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-    gap: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 /* --- Message card --- */
@@ -2011,13 +2384,17 @@ document.addEventListener('alpine:init', () => {
     border: 1px solid var(--df-border);
     overflow: hidden;
     box-shadow: var(--df-shadow-sm);
-    transition: box-shadow var(--df-transition);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
-.df-msg:hover { box-shadow: var(--df-shadow); }
+.df-msg:hover { box-shadow: var(--df-shadow); border-color: color-mix(in srgb, var(--df-border) 60%, var(--df-text-muted)); }
 
 .df-msg__accent {
-    width: 4px;
+    width: 3px;
     flex-shrink: 0;
+}
+
+.df-msg--running .df-msg__accent {
+    animation: df-accent-pulse 2s ease-in-out infinite;
 }
 
 .df-msg__body {
@@ -2029,66 +2406,215 @@ document.addEventListener('alpine:init', () => {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px 14px 10px;
+    padding: 14px 16px 0;
 }
 
 .df-msg__author {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .df-msg__avatar {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 800;
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
     flex-shrink: 0;
+}
+
+.df-msg__identity {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
 }
 
 .df-msg__name {
     font-size: 13px;
     font-weight: 700;
     color: var(--df-text);
+    line-height: 1.2;
 }
 
-.df-msg__controls {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.df-msg__time {
+.df-msg__role {
     font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--df-text-muted);
-    font-variant-numeric: tabular-nums;
 }
 
 .df-msg__toggle {
-    padding: 4px;
-    border: none;
-    background: transparent;
+    padding: 5px;
+    border: 1px solid var(--df-border);
+    background: var(--df-surface);
     cursor: pointer;
     color: var(--df-text-muted);
-    border-radius: 4px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: color var(--df-transition), background var(--df-transition);
+    transition: all 0.15s ease;
 }
-.df-msg__toggle:hover { color: var(--df-text); background: var(--df-surface-hover); }
+.df-msg__toggle:hover {
+    color: var(--df-text);
+    background: var(--df-surface-hover);
+    border-color: var(--df-text-muted);
+}
+
+/* --- Meta strip --- */
+.df-msg__meta {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 16px;
+    flex-wrap: wrap;
+}
+
+.df-msg__metric {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--df-text-muted);
+    padding: 2px 7px;
+    background: var(--df-surface-hover);
+    border-radius: 4px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.01em;
+}
+.df-msg__metric svg {
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+.df-msg__metric--model {
+    color: var(--df-text-secondary);
+    background: var(--df-surface-hover);
+    font-weight: 600;
+}
+
+/* --- Metric heat colors --- */
+.df-metric--ok { color: var(--df-green-700); background: var(--df-green-50); }
+.df-metric--ok svg { opacity: 0.7; }
+.df-metric--warn { color: var(--df-amber-700); background: var(--df-amber-50); }
+.df-metric--warn svg { opacity: 0.7; }
+.df-metric--danger { color: var(--df-red-700); background: var(--df-red-50); }
+.df-metric--danger svg { opacity: 0.7; }
+
+:root.dark .df-metric--ok { color: #6ee7b7; background: rgba(16, 185, 129, 0.1); }
+:root.dark .df-metric--warn { color: #fbbf24; background: rgba(245, 158, 11, 0.1); }
+:root.dark .df-metric--danger { color: #fca5a5; background: rgba(239, 68, 68, 0.1); }
+
+/* --- Status dot in meta --- */
+.df-msg__status-dot {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-left: auto;
+}
+.df-msg__status-dot__ring {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.df-msg__status-dot--completed { color: var(--df-green-700); }
+.df-msg__status-dot--completed .df-msg__status-dot__ring { background: var(--df-green-500); }
+.df-msg__status-dot--running { color: var(--df-amber-700); }
+.df-msg__status-dot--running .df-msg__status-dot__ring { background: var(--df-amber-500); animation: df-pulse 1.5s ease-in-out infinite; }
+.df-msg__status-dot--failed { color: var(--df-red-700); }
+.df-msg__status-dot--failed .df-msg__status-dot__ring { background: var(--df-red-500); }
+.df-msg__status-dot--pending { color: var(--df-text-muted); }
+.df-msg__status-dot--pending .df-msg__status-dot__ring { background: var(--df-text-muted); opacity: 0.5; }
+
+/* --- Thinking/Reasoning section --- */
+.df-msg__thinking {
+    padding: 0 16px;
+}
+
+.df-msg__thinking-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--df-surface-hover);
+    border: 1px solid var(--df-border-light);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--df-text-secondary);
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+.df-msg__thinking-toggle:hover {
+    background: var(--df-border-light);
+    border-color: var(--df-border);
+}
+.df-msg__thinking-toggle svg:first-child {
+    color: var(--df-amber-500);
+    flex-shrink: 0;
+}
+.df-msg__thinking-toggle > span:first-of-type {
+    flex: 1;
+    text-align: left;
+}
+.df-msg__thinking-tokens {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--df-text-muted);
+}
+.df-msg__thinking-toggle > svg:last-child {
+    color: var(--df-text-muted);
+    flex-shrink: 0;
+}
+
+.df-msg__thinking-content {
+    padding: 12px 14px;
+    margin-top: 6px;
+    background: var(--df-surface-hover);
+    border-radius: 6px;
+    border-left: 3px solid var(--df-amber-300);
+    font-size: 12px;
+    line-height: 1.7;
+    color: var(--df-text-secondary);
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+:root.dark .df-msg__thinking-toggle {
+    background: #242834;
+    border-color: #2e3345;
+    color: #9ca0ad;
+}
+:root.dark .df-msg__thinking-toggle:hover {
+    background: #2e3345;
+    border-color: #3a3f52;
+}
+:root.dark .df-msg__thinking-toggle svg:first-child { color: #fbbf24; }
+:root.dark .df-msg__thinking-content {
+    background: #1a1d27;
+    border-left-color: var(--df-amber-600);
+    color: #9ca0ad;
+}
 
 /* --- Message states --- */
 .df-msg__state {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 16px 14px;
+    padding: 20px 16px;
     font-size: 12px;
 }
 .df-msg__state--pending { color: var(--df-text-muted); }
@@ -2097,12 +2623,15 @@ document.addEventListener('alpine:init', () => {
 
 /* --- Message content (markdown) --- */
 .df-msg__content {
-    padding: 0 14px 14px;
+    padding: 0 16px 16px;
     font-size: 13px;
     line-height: 1.75;
     color: var(--df-text);
     max-height: 600px;
     overflow-y: auto;
+    border-top: 1px solid var(--df-border-light);
+    margin-top: 4px;
+    padding-top: 12px;
 }
 .df-msg__content--collapsed {
     max-height: 200px;
@@ -2118,6 +2647,31 @@ document.addEventListener('alpine:init', () => {
     height: 60px;
     background: linear-gradient(transparent, var(--df-surface));
     pointer-events: none;
+}
+
+/* --- Agent reference badges --- */
+.df-agent-ref {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 6px 1px 3px;
+    background: color-mix(in srgb, var(--ref-color, #6b7280) 8%, transparent);
+    border-radius: 4px;
+    font-weight: 600;
+    color: var(--ref-color, #6b7280);
+    white-space: nowrap;
+    font-size: 0.95em;
+    text-decoration: none;
+}
+.df-agent-ref__dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+:root.dark .df-agent-ref {
+    background: color-mix(in srgb, var(--ref-color, #6b7280) 12%, transparent);
 }
 
 /* Headings */
@@ -2311,6 +2865,26 @@ document.addEventListener('alpine:init', () => {
     opacity: 0.7;
 }
 
+.df-report__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 10px;
+}
+
+.df-report__meta-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 3px 8px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 4px;
+    color: rgba(255,255,255,0.7);
+}
+.df-report__meta-chip svg { width: 12px; height: 12px; opacity: 0.6; }
+.df-report__meta-chip--muted { opacity: 0.5; }
+
 .df-report__body {
     font-size: 14px;
     line-height: 1.85;
@@ -2445,13 +3019,33 @@ document.addEventListener('alpine:init', () => {
 }
 .df-report__loading p { margin: 12px 0 0; font-size: 13px; }
 
-.df-report__tokens {
-    margin-top: 20px;
-    text-align: center;
-    font-size: 11px;
-    color: var(--df-text-muted);
+.df-report__footer {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--df-surface);
+    border: 1px solid var(--df-border);
+    border-radius: var(--df-radius);
 }
-.df-report__tokens strong { color: var(--df-text-secondary); }
+.df-report__footer-item {
+    text-align: center;
+}
+.df-report__footer-label {
+    display: block;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--df-text-muted);
+    margin-bottom: 2px;
+}
+.df-report__footer-item strong {
+    font-size: 14px;
+    color: var(--df-text);
+}
+:root.dark .df-report__footer { background: #1a1d27; border-color: #2e3345; }
+:root.dark .df-report__footer-item strong { color: #e4e5ea; }
 
 /* --- Starting state --- */
 .df-starting-state {
@@ -2497,6 +3091,10 @@ document.addEventListener('alpine:init', () => {
 /* --- Animations --- */
 @keyframes df-spin { to { transform: rotate(360deg); } }
 @keyframes df-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes df-accent-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+}
 @keyframes df-fade-up {
     from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
@@ -2514,9 +3112,6 @@ document.addEventListener('alpine:init', () => {
     }
     .df-sidebar--open { transform: translateX(0); }
     .df-mobile-toggle { display: flex; }
-    .df-round__messages {
-        grid-template-columns: 1fr;
-    }
 }
 
 @media (max-width: 640px) {

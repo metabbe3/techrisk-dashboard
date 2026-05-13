@@ -170,21 +170,27 @@ class IssueResource extends Resource
                 \App\Filament\Filters\QuickPeriodFilter::dateRange(),
             ])
             ->actions([
-                Tables\Actions\Action::make('upgrade_to_incident')
-                    ->label('Upgrade to Incident')
-                    ->icon('heroicon-o-arrow-up-circle')
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->modalHeading('Upgrade to Incident')
-                    ->modalDescription('This will reclassify this issue as an incident and assign a new Incident ID.')
-                    ->action(fn (Incident $record) => $record->changeClassification('Incident'))
-                    ->visible(fn (): bool => auth()->user()->can('manage issues')),
                 Tables\Actions\EditAction::make()
+                    ->iconButton()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage issues')),
-                Tables\Actions\DeleteAction::make()
-                    ->databaseTransaction()
-                    ->visible(fn (): bool => auth()->user()->can('manage issues')),
+                Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('upgrade_to_incident')
+                        ->label('Upgrade to Incident')
+                        ->icon('heroicon-o-arrow-up-circle')
+                        ->color('success')
+                        ->requiresConfirmation()
+                        ->modalHeading('Upgrade to Incident')
+                        ->modalDescription('This will reclassify this issue as an incident and assign a new Incident ID.')
+                        ->action(fn (Incident $record) => $record->changeClassification('Incident'))
+                        ->visible(fn (): bool => auth()->user()->can('manage issues')),
+                    Tables\Actions\DeleteAction::make()
+                        ->databaseTransaction()
+                        ->visible(fn (): bool => auth()->user()->can('manage issues')),
+                ])
+                    ->label('')
+                    ->icon('heroicon-o-ellipsis-horizontal')
+                    ->button(),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
