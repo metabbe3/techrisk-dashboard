@@ -23,6 +23,7 @@ use App\Http\Controllers\Ai\TextEnhanceController;
 use App\Http\Controllers\Ai\WarRoomAvailableAgentsController;
 use App\Http\Controllers\Ai\WarRoomCreateController;
 use App\Http\Controllers\Ai\WarRoomDeleteController;
+use App\Http\Controllers\Ai\WarRoomEstimateTokensController;
 use App\Http\Controllers\Ai\WarRoomExportPdfController;
 use App\Http\Controllers\Ai\WarRoomListController;
 use App\Http\Controllers\Ai\WarRoomReanalyzeController;
