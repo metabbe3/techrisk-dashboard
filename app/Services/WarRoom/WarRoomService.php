@@ -304,7 +304,11 @@ class WarRoomService
 
                 $fullContent .= $chunk;
 
-                if ($finishReason !== 'length') {
+                // Detect truncation: explicit (finish_reason=length) or heuristic (doesn't end properly)
+                $trimmedChunk = rtrim($chunk);
+                $looksTruncated = ! preg_match('/[.!?)`\n]$/', $trimmedChunk) && strlen($trimmedChunk) > 100;
+
+                if ($finishReason !== 'length' && ! $looksTruncated) {
                     break;
                 }
 
@@ -312,6 +316,8 @@ class WarRoomService
                 Log::info("[WarRoom] Agent {$agentRole} continuation {$attempt}", [
                     'session_id' => $session->id,
                     'round' => $round,
+                    'finish_reason' => $finishReason,
+                    'looks_truncated' => $looksTruncated,
                     'completion_tokens_so_far' => $totalUsage['completion_tokens'],
                     'content_length_so_far' => strlen($fullContent),
                 ]);
@@ -380,82 +386,109 @@ class WarRoomService
         $userMessage = $this->promptBuilder->buildModeratorUserMessage($session);
 
         $maxTokens = (int) config('ai.war_room.max_output_tokens', 16384);
+        $maxContinuations = (int) config('ai.war_room.max_continuations', 3);
 
         $startTime = microtime(true);
 
         try {
-            $response = Http::withHeaders($this->buildHeaders())
-                ->timeout(config('ai.war_room.moderator_timeout', 180))
-                ->post($this->buildUrl(), [
-                    'model' => $model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userMessage],
-                    ],
-                    'max_tokens' => $maxTokens,
-                    'max_completion_tokens' => $maxTokens,
+            $messages = [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userMessage],
+            ];
+
+            $fullContent = '';
+            $totalUsage = ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0];
+
+            for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
+                $response = Http::withHeaders($this->buildHeaders())
+                    ->timeout(config('ai.war_room.moderator_timeout', 180))
+                    ->post($this->buildUrl(), [
+                        'model' => $model,
+                        'messages' => $messages,
+                        'max_tokens' => $maxTokens,
+                        'max_completion_tokens' => $maxTokens,
+                    ]);
+
+                $responseData = $response->json();
+                $usage = $responseData['usage'] ?? [];
+                $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+
+                foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
+                    $totalUsage[$key] += $usage[$key] ?? 0;
+                }
+
+                if ($response->failed()) {
+                    $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+                    $session->markFailed('Report synthesis failed: HTTP '.$response->status());
+                    $this->logUsage('war_room_moderator', $model, false, $totalUsage, $responseTimeMs, $session, 'moderator', 0, 'HTTP '.$response->status());
+                    broadcast(new WarRoomSessionCompleted($session->fresh()));
+
+                    return;
+                }
+
+                $chunk = $responseData['choices'][0]['message']['content'] ?? '';
+
+                if (blank($chunk) && $attempt === 0) {
+                    $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+                    $session->markFailed('Report synthesis returned empty response');
+                    $this->logUsage('war_room_moderator', $model, false, $totalUsage, $responseTimeMs, $session, 'moderator', 0, 'Empty response');
+                    broadcast(new WarRoomSessionCompleted($session->fresh()));
+
+                    return;
+                }
+
+                $fullContent .= $chunk;
+
+                $trimmedChunk = rtrim($chunk);
+                $looksTruncated = ! preg_match('/[.!?)`\n]$/', $trimmedChunk) && strlen($trimmedChunk) > 100;
+
+                if ($finishReason !== 'length' && ! $looksTruncated) {
+                    break;
+                }
+
+                Log::info("[WarRoom] Moderator continuation {$attempt}", [
+                    'session_id' => $session->id,
+                    'finish_reason' => $finishReason,
+                    'looks_truncated' => $looksTruncated,
+                    'content_length_so_far' => strlen($fullContent),
                 ]);
 
-            $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
-            $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
-            $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+                $messages[] = ['role' => 'assistant', 'content' => $chunk];
+                $messages[] = ['role' => 'user', 'content' => 'Continue the report from exactly where you left off. Do not repeat what you already wrote.'];
+            }
 
-            Log::info('[WarRoom] Moderator response', [
+            $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+
+            Log::info('[WarRoom] Moderator final', [
                 'session_id' => $session->id,
-                'finish_reason' => $finishReason,
-                'model' => $model,
-                'max_tokens_requested' => $maxTokens,
-                'completion_tokens' => $usage['completion_tokens'] ?? 0,
-                'prompt_tokens' => $usage['prompt_tokens'] ?? 0,
-                'total_tokens' => $usage['total_tokens'] ?? 0,
+                'total_completion_tokens' => $totalUsage['completion_tokens'],
+                'content_length' => strlen($fullContent),
                 'response_time_ms' => $responseTimeMs,
             ]);
 
-            if ($response->failed()) {
-                $session->markFailed('Report synthesis failed: HTTP '.$response->status());
-                $this->logUsage('war_room_moderator', $model, false, $usage, $responseTimeMs, $session, 'moderator', 0, 'HTTP '.$response->status());
-
+            if (blank($fullContent)) {
+                $session->markFailed('Report synthesis returned empty content');
                 broadcast(new WarRoomSessionCompleted($session->fresh()));
 
                 return;
             }
 
-            $content = $responseData['choices'][0]['message']['content'] ?? '';
-
-            if (blank($content)) {
-                $session->markFailed('Report synthesis returned empty response');
-                $this->logUsage('war_room_moderator', $model, false, $usage, $responseTimeMs, $session, 'moderator', 0, 'Empty response');
-
-                broadcast(new WarRoomSessionCompleted($session->fresh()));
-
-                return;
+            if ($totalUsage['total_tokens'] > 0) {
+                $session->addTokens($totalUsage['total_tokens']);
             }
 
-            if ($finishReason === 'length') {
-                Log::warning('[WarRoom] Moderator response was TRUNCATED (finish_reason=length)', [
-                    'session_id' => $session->id,
-                    'completion_tokens' => $usage['completion_tokens'] ?? 0,
-                    'max_tokens_requested' => $maxTokens,
-                ]);
-            }
-
-            if (isset($usage['total_tokens'])) {
-                $session->addTokens($usage['total_tokens']);
-            }
-
-            $report = $this->parseReport($content);
+            $report = $this->parseReport($fullContent);
 
             $session->update([
                 'final_report' => $report,
-                'final_report_html' => $content,
+                'final_report_html' => $fullContent,
                 'status' => 'completed',
                 'completed_at' => now(),
             ]);
 
             broadcast(new WarRoomSessionCompleted($session->fresh()));
 
-            $this->logUsage('war_room_moderator', $model, true, $usage, $responseTimeMs, $session, 'moderator', 0);
+            $this->logUsage('war_room_moderator', $model, true, $totalUsage, $responseTimeMs, $session, 'moderator', 0);
         } catch (\Throwable $e) {
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
             $session->markFailed('Report synthesis error: '.$e->getMessage());

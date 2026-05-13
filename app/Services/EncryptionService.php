@@ -37,13 +37,18 @@ class EncryptionService
     {
         $encrypter = new Encrypter($key, self::CIPHER);
 
-        return $encrypter->encrypt($data);
+        return $encrypter->encryptString($data);
     }
 
     public function decrypt(string $encryptedData, string $key): string
     {
         $encrypter = new Encrypter($key, self::CIPHER);
 
-        return $encrypter->decrypt($encryptedData);
+        try {
+            return $encrypter->decryptString($encryptedData);
+        } catch (\Exception $e) {
+            // Fall back to serialized decryption for legacy files
+            return $encrypter->decrypt($encryptedData);
+        }
     }
 }

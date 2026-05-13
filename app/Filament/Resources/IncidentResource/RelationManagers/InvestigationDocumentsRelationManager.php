@@ -245,8 +245,12 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->color('info')
                     ->visible(fn ($record): bool => $record->ai_summary !== null)
                     ->modalHeading(fn ($record) => 'AI Summary — ' . $record->original_filename)
-                    ->modalDescription(fn ($record) => 'Model: ' . $record->ai_summary_model . ' | Summarized: ' . $record->ai_summary_at?->diffForHumans())
-                    ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString(\Illuminate\Support\Str::markdown($record->ai_summary)))
+                    ->modalDescription(fn ($record) => 'Model: ' . $record->ai_summary_model . ' | Summarized: ' . ($record->ai_summary_at?->diffForHumans() ?? 'N/A'))
+                    ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString(
+                        '<div class="prose prose-sm max-w-none dark:prose-invert" style="max-height:500px;overflow-y:auto;">'
+                        . \Illuminate\Support\Str::markdown($record->ai_summary)
+                        . '</div>'
+                    ))
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close'),
                 Tables\Actions\Action::make('view_markdown')

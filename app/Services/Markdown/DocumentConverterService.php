@@ -6,7 +6,7 @@ namespace App\Services\Markdown;
 
 use App\Models\InvestigationDocument;
 use App\Services\EncryptionService;
-use Iamgerwin\PdfToMarkdown\PdfParser;
+use Iamgerwin\PdfToMarkdownParser\PdfToMarkdownParser;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpWord\IOFactory;
@@ -133,21 +133,18 @@ class DocumentConverterService
      */
     private function convertPdf(string $content): string
     {
-        // Ensure temp directory exists
         $tempDir = storage_path('app/temp');
         if (! file_exists($tempDir)) {
             mkdir($tempDir, 0755, true);
         }
 
-        // Save temporary file
         $tempPath = $tempDir.'/'.uniqid().'.pdf';
         file_put_contents($tempPath, $content);
 
         try {
-            $parser = new PdfParser;
-            $markdown = $parser->parse($tempPath);
+            $parser = new PdfToMarkdownParser;
 
-            return $markdown->toMarkdown();
+            return $parser->parseFile($tempPath);
         } finally {
             if (file_exists($tempPath)) {
                 unlink($tempPath);
@@ -160,13 +157,11 @@ class DocumentConverterService
      */
     private function convertDocx(string $content): string
     {
-        // Ensure temp directory exists
         $tempDir = storage_path('app/temp');
         if (! file_exists($tempDir)) {
             mkdir($tempDir, 0755, true);
         }
 
-        // Save temporary file
         $tempPath = $tempDir.'/'.uniqid().'.docx';
         file_put_contents($tempPath, $content);
 
@@ -174,6 +169,15 @@ class DocumentConverterService
             $phpWord = IOFactory::load($tempPath);
 
             return $this->phpWordToMarkdown($phpWord);
+        } catch (\Exception $e) {
+            $msg = $e->getMessage();
+            if (str_contains($msg, 'archive') || str_contains($msg, 'PCLZIP') || str_contains($msg, 'error code')) {
+                throw new \Exception(
+                    'The file appears to be corrupted or in an unsupported format. ' .
+                    'If this is a .doc file, please convert it to .docx first.'
+                );
+            }
+            throw $e;
         } finally {
             if (file_exists($tempPath)) {
                 unlink($tempPath);

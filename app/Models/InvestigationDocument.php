@@ -30,6 +30,11 @@ class InvestigationDocument extends Model implements Auditable
         'ai_summary_at',
     ];
 
+    protected $casts = [
+        'ai_summary_at' => 'datetime',
+        'markdown_converted_at' => 'datetime',
+    ];
+
     /**
      * Mendefinisikan relasi bahwa dokumen ini dimiliki oleh sebuah insiden.
      */

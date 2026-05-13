@@ -695,11 +695,14 @@ class AiTextService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(120)
-                ->post($this->buildUrl(), $this->buildPayload(
-                    $prompt['system'],
-                    $userMessage,
-                    $resolvedModel,
-                ));
+                ->post($this->buildUrl(), [
+                    'model' => $resolvedModel,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $prompt['system']],
+                        ['role' => 'user', 'content' => $userMessage],
+                    ],
+                    'max_tokens' => 8000,
+                ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
             $responseData = $response->json();
