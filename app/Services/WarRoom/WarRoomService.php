@@ -569,6 +569,28 @@ class WarRoomService
         SynthesizeWarRoomReport::dispatch($session);
     }
 
+    public function regenerateReport(WarRoomSession $session): void
+    {
+        $hasCompleted = WarRoomMessage::where('session_id', $session->id)
+            ->where('status', 'completed')
+            ->exists();
+
+        if (! $hasCompleted) {
+            throw new \InvalidArgumentException('No completed agent data to generate report from.');
+        }
+
+        $session->update([
+            'status' => 'running',
+            'error_message' => null,
+            'failed_at' => null,
+            'completed_at' => null,
+            'final_report' => null,
+            'final_report_html' => null,
+        ]);
+
+        SynthesizeWarRoomReport::dispatch($session);
+    }
+
     public function markStuckMessages(WarRoomSession $session): int
     {
         if ($session->status !== 'running') {

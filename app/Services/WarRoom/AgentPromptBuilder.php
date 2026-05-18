@@ -157,14 +157,33 @@ class AgentPromptBuilder
     {
         $allRounds = '';
         $rounds = $session->messages->groupBy('round')->sortKeys();
+        $partialNotice = '';
 
         foreach ($rounds as $round => $messages) {
+            $completed = $messages->where('status', 'completed');
+            $failed = $messages->where('status', 'failed');
+
             $allRounds .= "### Round {$round}\n\n";
-            foreach ($messages->where('status', 'completed') as $msg) {
+            foreach ($completed as $msg) {
                 $config = WarRoomAgentConfig::findByRole($msg->agent_role);
                 $name = $config?->display_name ?? ucfirst($msg->agent_role);
                 $allRounds .= "#### {$name}\n{$msg->content}\n\n---\n\n";
             }
+
+            if ($failed->isNotEmpty()) {
+                $failedNames = $failed->map(function ($msg) {
+                    $cfg = WarRoomAgentConfig::findByRole($msg->agent_role);
+
+                    return $cfg?->display_name ?? ucfirst($msg->agent_role);
+                })->implode(', ');
+                $allRounds .= "*Agents that failed in this round: {$failedNames}*\n\n";
+            }
+        }
+
+        $totalAgents = $session->messages->count();
+        $completedAgents = $session->messages->where('status', 'completed')->count();
+        if ($completedAgents < $totalAgents) {
+            $partialNotice = "\n\n**Note:** This session has partial data. {$completedAgents} of {$totalAgents} agent responses completed successfully. Synthesize the report using available data and note any perspectives that may be missing due to failed agents.";
         }
 
         $message = "Agent analyses from all rounds:\n\n{$allRounds}";
@@ -173,6 +192,7 @@ class AgentPromptBuilder
             $message .= "\n\n## User Instructions\n\n".$session->user_instructions;
         }
 
+        $message .= $partialNotice;
         $message .= "\n\nSynthesize into a final report following the required structure.";
 
         return $message;

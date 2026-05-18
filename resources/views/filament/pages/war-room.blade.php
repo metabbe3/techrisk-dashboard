@@ -428,6 +428,29 @@ document.addEventListener('alpine:init', () => {
                 return !hasFailed;
             },
 
+            canRegenerateReport() {
+                if (!this.activeSession) return false;
+                const status = this.activeSession.status;
+                if (status !== 'completed' && status !== 'failed') return false;
+                const msgs = this.activeSession.messages;
+                if (!msgs) return false;
+                const allRounds = Object.values(msgs).flat();
+                return allRounds.some(m => m.status === 'completed');
+            },
+
+            async regenerateReport() {
+                if (!this.activeSession) return;
+                if (!confirm('Regenerate the report from available agent data?')) return;
+                try {
+                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/regenerate-report', {
+                        method: 'POST',
+                        headers: this.getHeaders(true),
+                    });
+                    if (!res.ok) { const data = await res.json().catch(() => ({})); alert(data.message || 'Regenerate failed'); return; }
+                    await this.loadSession(this.activeSession.id);
+                } catch (e) { console.error('Regenerate exception:', e); alert('Regenerate failed: ' + e.message); }
+            },
+
             async deleteSession(id) {
                 if (!confirm('Delete this discussion session?')) return;
                 try {
@@ -662,6 +685,10 @@ document.addEventListener('alpine:init', () => {
                 <button x-show="canRetryReport()" @click="retryReport()" class="df-btn df-btn--danger">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                     Retry Report
+                </button>
+                <button x-show="canRegenerateReport()" @click="regenerateReport()" class="df-btn df-btn--ghost">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    Regenerate Report
                 </button>
                 <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-btn df-btn--ghost df-btn--delete">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>

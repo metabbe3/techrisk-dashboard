@@ -86,4 +86,23 @@ class WarRoomRetryController
             'message' => 'Retrying report synthesis',
         ]);
     }
+
+    public function regenerateReport(Request $request, string $id): JsonResponse
+    {
+        $session = WarRoomSession::forUser()->findOrFail($id);
+
+        if (! in_array($session->status, ['completed', 'failed'])) {
+            return response()->json(['message' => 'Session must be completed or failed to regenerate report'], 400);
+        }
+
+        try {
+            $this->warRoomService->regenerateReport($session);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 400);
+        }
+
+        return response()->json([
+            'message' => 'Regenerating report from available agent data',
+        ]);
+    }
 }

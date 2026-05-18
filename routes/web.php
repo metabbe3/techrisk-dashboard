@@ -184,6 +184,7 @@ Route::prefix('admin/war-room')->middleware(['auth', 'can:access war room'])->gr
     Route::post('/sessions/{id}/retry', WarRoomRetryController::class)->name('war-room.retry');
     Route::post('/sessions/{id}/retry/{messageId}', [WarRoomRetryController::class, 'retryAgent'])->name('war-room.retry-agent');
     Route::post('/sessions/{id}/retry-report', [WarRoomRetryController::class, 'retryReport'])->name('war-room.retry-report');
+    Route::post('/sessions/{id}/regenerate-report', [WarRoomRetryController::class, 'regenerateReport'])->name('war-room.regenerate-report');
     Route::post('/sessions/{id}/reanalyze', WarRoomReanalyzeController::class)->name('war-room.reanalyze');
     Route::delete('/sessions/{id}', WarRoomDeleteController::class)->name('war-room.delete');
     Route::get('/sessions/{id}/poll', WarRoomPollController::class)->name('war-room.poll');
