@@ -660,6 +660,8 @@ document.addEventListener('alpine:init', () => {
                     <span class="df-pulse-dot"></span>
                     <span x-text="activeSession?.status === 'pending' ? 'Preparing...' : 'Analyzing · Round ' + (activeSession?.current_round || 1)"></span>
                 </div>
+
+                {{-- Primary action: View Report (completed) --}}
                 <button x-show="activeSession?.status === 'completed'" @click="showReport = !showReport; scheduleMermaidRender()"
                         class="df-btn" :class="showReport ? 'df-btn--ghost' : 'df-btn--primary'">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -668,32 +670,50 @@ document.addEventListener('alpine:init', () => {
                     </svg>
                     <span x-text="showReport ? 'Back to Discussion' : 'View Report'"></span>
                 </button>
-                <a x-show="activeSession?.status === 'completed' && activeSession?.final_report_html"
-                   :href="'/admin/war-room/sessions/' + activeSession?.id + '/export-pdf'"
-                   class="df-btn df-btn--ghost df-btn--download" target="_blank">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                    Export PDF
-                </a>
-                <button x-show="activeSession?.status === 'completed' || activeSession?.status === 'failed'" @click="openReanalyzeModal()" class="df-btn df-btn--ghost">
+
+                {{-- Primary action: Retry All (failed) --}}
+                <button x-show="activeSession?.status === 'failed'" @click="retryFailed()" class="df-btn df-btn--primary">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Re-analyze
+                    Retry Failed
                 </button>
-                <button x-show="activeSession?.status === 'failed'" @click="retryFailed()" class="df-btn df-btn--danger">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Retry All
-                </button>
-                <button x-show="canRetryReport()" @click="retryReport()" class="df-btn df-btn--danger">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Retry Report
-                </button>
-                <button x-show="canRegenerateReport()" @click="regenerateReport()" class="df-btn df-btn--ghost">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                    Regenerate Report
-                </button>
-                <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-btn df-btn--ghost df-btn--delete">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    <span>Delete</span>
-                </button>
+
+                {{-- More menu dropdown --}}
+                <div class="df-menu" x-data="{ open: false }" @click.away="open = false" @keydown.escape="open = false">
+                    <button @click="open = !open" class="df-btn df-btn--ghost df-btn--icon" title="More actions">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
+                    </button>
+                    <div class="df-menu__dropdown" x-show="open" x-transition:enter="df-menu-enter" x-transition:leave="df-menu-leave" @click="open = false">
+
+                        <button x-show="canRegenerateReport()" @click="regenerateReport()" class="df-menu__item">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                            Regenerate Report
+                        </button>
+
+                        <button x-show="canRetryReport()" @click="retryReport()" class="df-menu__item">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Retry Report Only
+                        </button>
+
+                        <button x-show="activeSession?.status === 'completed' || activeSession?.status === 'failed'" @click="openReanalyzeModal()" class="df-menu__item">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                            Re-analyze from Scratch
+                        </button>
+
+                        <a x-show="activeSession?.status === 'completed' && activeSession?.final_report_html"
+                           :href="'/admin/war-room/sessions/' + activeSession?.id + '/export-pdf'"
+                           class="df-menu__item" target="_blank">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                            Export PDF
+                        </a>
+
+                        <div x-show="activeSession && activeSession.status !== 'running'" class="df-menu__divider"></div>
+
+                        <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-menu__item df-menu__item--danger">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            Delete Session
+                        </button>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -1680,6 +1700,80 @@ document.addEventListener('alpine:init', () => {
 
 .df-header__actions .df-btn {
     padding: 7px 16px;
+}
+
+/* --- Icon button (for ...) --- */
+.df-btn--icon {
+    padding: 7px 10px;
+    min-width: auto;
+}
+
+/* --- Dropdown menu --- */
+.df-menu {
+    position: relative;
+}
+.df-menu__dropdown {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 220px;
+    background: var(--df-surface);
+    border: 1px solid var(--df-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.04);
+    z-index: 50;
+    padding: 4px;
+    overflow: hidden;
+}
+:root.dark .df-menu__dropdown {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(255,255,255,0.06);
+}
+.df-menu__item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 9px 12px;
+    border: none;
+    background: none;
+    color: var(--df-text);
+    font-size: 13.5px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 7px;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: background 0.12s, color 0.12s;
+}
+.df-menu__item:hover {
+    background: var(--df-surface-hover);
+}
+.df-menu__item svg {
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+.df-menu__item:hover svg {
+    opacity: 0.8;
+}
+.df-menu__item--danger {
+    color: var(--df-red-600);
+}
+.df-menu__item--danger:hover {
+    background: var(--df-red-50);
+    color: var(--df-red-700);
+}
+:root.dark .df-menu__item--danger { color: #f87171; }
+:root.dark .df-menu__item--danger:hover { background: rgba(239,68,68,0.1); color: #fca5a5; }
+.df-menu__divider {
+    height: 1px;
+    background: var(--df-border);
+    margin: 4px 8px;
+}
+.df-menu-enter { animation: dfMenuIn 0.15s ease-out; }
+.df-menu-leave { animation: dfMenuIn 0.1s ease-in reverse; }
+@keyframes dfMenuIn {
+    from { opacity: 0; transform: translateY(-4px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* --- Download button --- */
