@@ -28,6 +28,7 @@ class WarRoomMessage extends Model implements Auditable
         'status',
         'web_search_context',
         'error_message',
+        'retry_count',
         'metadata',
         'created_at',
     ];
@@ -40,6 +41,7 @@ class WarRoomMessage extends Model implements Auditable
         'completion_tokens' => 'integer',
         'total_tokens' => 'integer',
         'response_time_ms' => 'integer',
+        'retry_count' => 'integer',
     ];
 
     public function session(): BelongsTo

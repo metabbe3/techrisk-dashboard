@@ -390,9 +390,42 @@ document.addEventListener('alpine:init', () => {
                         method: 'POST',
                         headers: this.getHeaders(true),
                     });
-                    if (!res.ok) { console.error('Retry failed:', res.status, await res.text()); return; }
+                    if (!res.ok) { const data = await res.json().catch(() => ({})); console.error('Retry failed:', res.status, data); alert(data.message || 'Retry failed'); return; }
                     await this.loadSession(this.activeSession.id);
                 } catch (e) { console.error('Retry exception:', e); alert('Retry failed: ' + e.message); }
+            },
+
+            async retryAgent(messageId) {
+                if (!this.activeSession) return;
+                try {
+                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/retry/' + messageId, {
+                        method: 'POST',
+                        headers: this.getHeaders(true),
+                    });
+                    if (!res.ok) { const data = await res.json().catch(() => ({})); alert(data.message || 'Retry failed'); return; }
+                    await this.loadSession(this.activeSession.id);
+                } catch (e) { console.error('Agent retry exception:', e); alert('Retry failed: ' + e.message); }
+            },
+
+            async retryReport() {
+                if (!this.activeSession) return;
+                try {
+                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/retry-report', {
+                        method: 'POST',
+                        headers: this.getHeaders(true),
+                    });
+                    if (!res.ok) { const data = await res.json().catch(() => ({})); alert(data.message || 'Retry failed'); return; }
+                    await this.loadSession(this.activeSession.id);
+                } catch (e) { console.error('Report retry exception:', e); alert('Retry failed: ' + e.message); }
+            },
+
+            canRetryReport() {
+                if (!this.activeSession || this.activeSession.status !== 'failed') return false;
+                const msgs = this.activeSession.messages;
+                if (!msgs) return false;
+                const allRounds = Object.values(msgs).flat();
+                const hasFailed = allRounds.some(m => m.status === 'failed');
+                return !hasFailed;
             },
 
             async deleteSession(id) {
@@ -624,7 +657,11 @@ document.addEventListener('alpine:init', () => {
                 </button>
                 <button x-show="activeSession?.status === 'failed'" @click="retryFailed()" class="df-btn df-btn--danger">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
-                    Retry
+                    Retry All
+                </button>
+                <button x-show="canRetryReport()" @click="retryReport()" class="df-btn df-btn--danger">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                    Retry Report
                 </button>
                 <button x-show="activeSession && activeSession.status !== 'running'" @click="deleteSession(activeSession.id)" class="df-btn df-btn--ghost df-btn--delete">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
@@ -946,6 +983,10 @@ document.addEventListener('alpine:init', () => {
                                         <div x-show="msg.status === 'failed'" class="df-msg__state df-msg__state--failed">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M15 9l-6 6M9 9l6 6"/></svg>
                                             <span x-text="msg.error_message || 'Agent processing failed'"></span>
+                                            <button @click="retryAgent(msg.id)" class="df-retry-btn" title="Retry this agent">
+                                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                                Retry
+                                            </button>
                                         </div>
 
                                         {{-- Completed content --}}
@@ -2619,7 +2660,9 @@ document.addEventListener('alpine:init', () => {
 }
 .df-msg__state--pending { color: var(--df-text-muted); }
 .df-msg__state--running { color: var(--df-amber-700); }
-.df-msg__state--failed { color: var(--df-red-700); }
+.df-msg__state--failed { color: var(--df-red-700); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.df-retry-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--df-red-300); background: transparent; color: var(--df-red-700); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.df-retry-btn:hover { background: var(--df-red-50); border-color: var(--df-red-500); }
 
 /* --- Message content (markdown) --- */
 .df-msg__content {

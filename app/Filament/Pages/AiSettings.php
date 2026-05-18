@@ -45,6 +45,8 @@ class AiSettings extends Page implements HasForms
             'api_key' => filled(AiSetting::get('api_key')) ? '••••••••' : '',
             'default_model' => AiSetting::get('default_model', config('ai.default_model')),
             'timeout' => AiSetting::get('timeout', config('ai.timeout', 30)),
+            'war_room_agent_timeout' => AiSetting::get('war_room_agent_timeout', config('ai.war_room.agent_timeout', 600)),
+            'war_room_moderator_timeout' => AiSetting::get('war_room_moderator_timeout', config('ai.war_room.moderator_timeout', 600)),
             'rate_limit' => AiSetting::get('rate_limit', config('ai.rate_limit_per_minute', 10)),
             'models' => AiSetting::get('models', config('ai.models', [])),
         ]);
@@ -76,7 +78,23 @@ class AiSettings extends Page implements HasForms
                             ->minValue(5)
                             ->maxValue(600)
                             ->default(30)
-                            ->helperText('Max 600 seconds (10 minutes). War Room agents have their own timeout setting.'),
+                            ->helperText('General AI timeout for chat and text enhancements.'),
+
+                        TextInput::make('war_room_agent_timeout')
+                            ->label('War Room Agent Timeout (seconds)')
+                            ->numeric()
+                            ->minValue(30)
+                            ->maxValue(1800)
+                            ->default(600)
+                            ->helperText('Per-agent timeout in Discussion Forum. Increase if agents timeout with HTTP 504 (the AI gateway may also need its timeout increased).'),
+
+                        TextInput::make('war_room_moderator_timeout')
+                            ->label('War Room Moderator Timeout (seconds)')
+                            ->numeric()
+                            ->minValue(30)
+                            ->maxValue(1800)
+                            ->default(600)
+                            ->helperText('Report synthesis timeout. Can be higher than agent timeout for complex reports.'),
 
                         TextInput::make('rate_limit')
                             ->label('Rate Limit (per user per minute)')
@@ -152,6 +170,14 @@ class AiSettings extends Page implements HasForms
 
         if (filled($data['timeout'] ?? null)) {
             AiSetting::set('timeout', (int) $data['timeout']);
+        }
+
+        if (filled($data['war_room_agent_timeout'] ?? null)) {
+            AiSetting::set('war_room_agent_timeout', (int) $data['war_room_agent_timeout']);
+        }
+
+        if (filled($data['war_room_moderator_timeout'] ?? null)) {
+            AiSetting::set('war_room_moderator_timeout', (int) $data['war_room_moderator_timeout']);
         }
 
         if (filled($data['rate_limit'] ?? null)) {

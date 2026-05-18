@@ -55,30 +55,97 @@ class AgentPromptBuilder
         $isMultiIncident = ($session->incidents()->count() > 1);
 
         if ($round === 1) {
+            $summaryInstruction = "\n\n## Required: Key Findings & Discussion Points\nAfter your full analysis, you MUST include a final section with this exact header: `## Key Findings & Discussion Points`. In this section, provide:\n- 3-5 bullet points of your most critical findings (cite specific data)\n- 1-2 points you want other agents to challenge or discuss in the next round\n- Your top recommendation\nKeep this section concise (200-400 words) — it will be shared with other agents for debate.";
+
             if ($isMultiIncident) {
-                return "As {$displayName}, you have multiple incidents to analyze. This is your primary analysis — be comprehensive and detailed.\n\n## Your Task\n1. **Per-Incident Analysis**: For EACH incident, provide a full domain-specific analysis following your Analysis Structure. Do not skip sections. Reference specific data points (dates, metrics, amounts, names) from each incident.\n2. **Cross-Incident Analysis Section**: After analyzing each incident individually, provide a dedicated comparison section covering:\n   - Common root causes and shared failure patterns\n   - Shared vulnerabilities and systemic weaknesses\n   - Differences in response effectiveness and timeline\n   - Correlated dependencies or affected systems\n   - Whether these incidents indicate a larger systemic issue\n\nReference incidents by their number (e.g., [2026_IN_0013]). Structure with markdown headers. Each incident analysis should be at minimum 400 words. The cross-incident comparison should be at minimum 300 words. Do NOT be brief or summarize — provide full, detailed analysis.";
+                return "As {$displayName}, you have multiple incidents to analyze. This is your primary analysis — be comprehensive and detailed.\n\n## Your Task\n1. **Per-Incident Analysis**: For EACH incident, provide a full domain-specific analysis following your Analysis Structure. Do not skip sections. Reference specific data points (dates, metrics, amounts, names) from each incident.\n2. **Cross-Incident Analysis Section**: After analyzing each incident individually, provide a dedicated comparison section covering:\n   - Common root causes and shared failure patterns\n   - Shared vulnerabilities and systemic weaknesses\n   - Differences in response effectiveness and timeline\n   - Correlated dependencies or affected systems\n   - Whether these incidents indicate a larger systemic issue\n\nReference incidents by their number (e.g., [2026_IN_0013]). Structure with markdown headers. Each incident analysis should be at minimum 400 words. The cross-incident comparison should be at minimum 300 words. Do NOT be brief or summarize — provide full, detailed analysis.{$summaryInstruction}";
             }
 
-            return "As {$displayName}, analyze ALL incident data sections comprehensively. This is your primary analysis — be thorough and detailed.\n\nAnalyze every section: summary, timeline (incident_date, discovered_at, stop_bleeding_at), root cause, financial impact (potential/actual/recovered loss), MTTR/MTBF, action items, evidence, status updates, labels, responsible parties.\n\nCross-reference across sections — e.g., does MTTR align with timeline? Do action items address root cause? Does financial impact match severity?\n\nFollow your full Analysis Structure with markdown headers. Cite specific data points by name and value. Your response should be at minimum 600 words. Do NOT be brief — provide full, detailed analysis with evidence.";
+            return "As {$displayName}, analyze ALL incident data sections comprehensively. This is your primary analysis — be thorough and detailed.\n\nAnalyze every section: summary, timeline (incident_date, discovered_at, stop_bleeding_at), root cause, financial impact (potential/actual/recovered loss), MTTR/MTBF, action items, evidence, status updates, labels, responsible parties.\n\nCross-reference across sections — e.g., does MTTR align with timeline? Do action items address root cause? Does financial impact match severity?\n\nFollow your full Analysis Structure with markdown headers. Cite specific data points by name and value. Your response should be at minimum 600 words. Do NOT be brief — provide full, detailed analysis with evidence.{$summaryInstruction}";
         }
 
-        $previousRoundContext = $this->buildPreviousRoundContext($session, $round - 1);
+        $previousRoundSummary = $this->buildPreviousRoundSummary($session, $round - 1);
 
-        return "Previous round analyses:\n\n{$previousRoundContext}\nAs {$displayName}, review their arguments. For each point: agree/disagree with reasoning, add domain insights, challenge assumptions with evidence, build on strong points, identify blind spots. Cite specific data.";
+        return "## Round 1 Key Findings (summaries)\n\n{$previousRoundSummary}\n## Your Task for Round 2\nAs {$displayName}, review the key findings above from each specialist. For each finding:\n- Agree or disagree with reasoning\n- Add domain-specific insights they may have missed\n- Challenge assumptions with evidence from the incident data\n- Build on strong points with concrete next steps\n- Identify blind spots no one addressed\n\nReference specific agents by name (e.g., \"As the SRE noted...\") when discussing their findings. Cite specific data points from the incident. Be direct — this is a debate, not a summary.";
     }
 
-    public function buildPreviousRoundContext(WarRoomSession $session, int $round): string
+    public function buildPreviousRoundSummary(WarRoomSession $session, int $round): string
     {
         $messages = $session->roundMessages($round)->where('status', 'completed')->get();
-        $context = '';
+        $parts = [];
 
         foreach ($messages as $message) {
             $config = WarRoomAgentConfig::findByRole($message->agent_role);
             $name = $config?->display_name ?? ucfirst($message->agent_role);
-            $context .= "### {$name}\n{$message->content}\n\n---\n\n";
+            $content = $message->content ?? '';
+
+            $summary = $this->extractKeyFindings($content);
+
+            $parts[] = "### {$name}\n{$summary}";
         }
 
-        return $context;
+        return implode("\n\n", $parts);
+    }
+
+    private function extractKeyFindings(string $content): string
+    {
+        $markers = [
+            '## Key Findings & Discussion Points',
+            '## Key Findings and Discussion Points',
+            '## Key Findings',
+            '## Discussion Points',
+            '## Summary of Findings',
+            '## Key findings',
+        ];
+
+        foreach ($markers as $marker) {
+            $pos = stripos($content, $marker);
+            if ($pos !== false) {
+                $summary = trim(substr($content, $pos + strlen($marker)));
+
+                $nextH2 = strpos($summary, "\n## ");
+                if ($nextH2 !== false) {
+                    $summary = substr($summary, 0, $nextH2);
+                }
+
+                if (strlen($summary) > 50) {
+                    return trim($summary);
+                }
+            }
+        }
+
+        return $this->extractTailSection($content, 2000);
+    }
+
+    private function extractTailSection(string $content, int $maxChars): string
+    {
+        $lines = explode("\n", $content);
+        $tail = [];
+        $tailLen = 0;
+        $foundLastSection = false;
+
+        for ($i = count($lines) - 1; $i >= 0; $i--) {
+            $line = $lines[$i];
+            if (preg_match('/^#{2,3}\s/', $line)) {
+                if ($foundLastSection) {
+                    break;
+                }
+                $foundLastSection = true;
+            }
+            array_unshift($tail, $line);
+            $tailLen += strlen($line);
+            if ($tailLen > $maxChars) {
+                break;
+            }
+        }
+
+        $result = trim(implode("\n", $tail));
+
+        if (strlen($result) > $maxChars) {
+            $result = substr($result, 0, $maxChars)."...";
+        }
+
+        return "*[Auto-extracted from full analysis — full report available]*\n\n".$result;
     }
 
     public function buildModeratorPrompt(): string

@@ -541,13 +541,58 @@ class WarRoomService
     {
         $session = $message->session;
 
-        $message->update(['status' => 'pending', 'error_message' => null]);
+        $message->update([
+            'status' => 'pending',
+            'error_message' => null,
+            'retry_count' => $message->retry_count + 1,
+        ]);
 
         if ($session->status === 'failed') {
             $session->update(['status' => 'running', 'error_message' => null]);
         }
 
         ProcessWarRoomAgent::dispatch($session, $message->agent_role, $message->round);
+    }
+
+    public function retryReportSynthesis(WarRoomSession $session): void
+    {
+        if ($session->status !== 'failed') {
+            return;
+        }
+
+        $session->update([
+            'status' => 'running',
+            'error_message' => null,
+            'failed_at' => null,
+        ]);
+
+        SynthesizeWarRoomReport::dispatch($session);
+    }
+
+    public function markStuckMessages(WarRoomSession $session): int
+    {
+        if ($session->status !== 'running') {
+            return 0;
+        }
+
+        $timeoutSeconds = (int) config('ai.war_room.agent_timeout', 600);
+        $cutoff = now()->subSeconds($timeoutSeconds);
+
+        $stuckMessages = WarRoomMessage::where('session_id', $session->id)
+            ->where('status', 'running')
+            ->where('created_at', '<', $cutoff)
+            ->get();
+
+        foreach ($stuckMessages as $message) {
+            $message->markFailed("Agent timed out after {$timeoutSeconds} seconds");
+            broadcast(new WarRoomMessageUpdated($message->load('session')));
+        }
+
+        if ($stuckMessages->isNotEmpty()) {
+            $this->onAgentCompleted($session, $stuckMessages->first()->round);
+        }
+
+        return $stuckMessages->count();
     }
 
     public function getSessionData(WarRoomSession $session): array

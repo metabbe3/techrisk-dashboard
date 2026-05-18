@@ -13,6 +13,11 @@ class WarRoomPollController
     {
         $session = WarRoomSession::forUser()->findOrFail($id);
 
+        if ($session->status === 'running') {
+            app(\App\Services\WarRoom\WarRoomService::class)->markStuckMessages($session);
+            $session->refresh();
+        }
+
         $messages = WarRoomMessage::where('session_id', $session->id)
             ->select('id', 'round', 'agent_role', 'status', 'error_message')
             ->get()
