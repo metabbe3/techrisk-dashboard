@@ -29,12 +29,16 @@ class ChatMessage extends Model implements Auditable
         'feedback',
         'feedback_comment',
         'web_search_used',
+        'tool_calls',
+        'tool_results',
         'created_at',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
         'web_search_used' => 'boolean',
+        'tool_calls' => 'array',
+        'tool_results' => 'array',
     ];
 
     public function conversation(): BelongsTo

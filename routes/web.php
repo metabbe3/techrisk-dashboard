@@ -105,6 +105,12 @@ Route::delete('/admin/ai/chat/conversations/{id}', ChatDeleteController::class)
 Route::post('/admin/ai/chat/messages/{id}/feedback', ChatMessageFeedbackController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.feedback');
+Route::get('/admin/ai/chat/proactive-insights', \App\Http\Controllers\Ai\ChatProactiveInsightsController::class . '@index')
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.proactive-insights');
+Route::post('/admin/ai/chat/proactive-insights/{id}/read', \App\Http\Controllers\Ai\ChatProactiveInsightsController::class . '@markRead')
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.proactive-insights.read');
 Route::get('/admin/ai/chat/conversations/{id}/messages', ChatMessagesController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.messages');

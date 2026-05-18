@@ -6,6 +6,7 @@ use App\Models\AiSetting;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\WarRoomAgentConfig;
+use App\Services\Ai\AgenticChatService;
 use App\Services\Ai\AiChatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -134,8 +135,15 @@ class ChatSendController
             );
         }
 
-        // Default single-response mode
-        $result = $this->chatService->chat($history, $userMessage, $model, logUsage: false, referencedIds: $referencedIds);
+        // Default single-response mode with agentic tool calling
+        $useTools = config('ai.tools.enabled', true);
+        if ($useTools) {
+            $result = app(AgenticChatService::class)->chatWithTools(
+                $history, $userMessage, $model, $referencedIds
+            );
+        } else {
+            $result = $this->chatService->chat($history, $userMessage, $model, logUsage: false, referencedIds: $referencedIds);
+        }
 
         if (! $result->success) {
             return response()->json([
@@ -156,6 +164,8 @@ class ChatSendController
             $responseText = trim(str_replace($followMatch[0], '', $responseText));
         }
 
+        $toolCallsMade = property_exists($result, 'toolCallsMade') ? $result->toolCallsMade : [];
+
         $assistantMessage = ChatMessage::create([
             'conversation_id' => $conversation->id,
             'role' => 'assistant',
@@ -165,6 +175,11 @@ class ChatSendController
             'prompt_tokens' => $result->promptTokens,
             'completion_tokens' => $result->completionTokens,
             'web_search_used' => $searchEnriched,
+            'tool_calls' => ! empty($toolCallsMade) ? $toolCallsMade : null,
+            'tool_results' => ! empty($toolCallsMade) ? collect($toolCallsMade)->map(fn ($tc) => [
+                'name' => $tc['name'],
+                'result_length' => $tc['result_length'],
+            ])->toArray() : null,
             'created_at' => now(),
         ]);
 
@@ -194,6 +209,7 @@ class ChatSendController
             'follow_up_questions' => $followUpQuestions,
             'data_freshness' => $freshness,
             'web_search_used' => $searchEnriched,
+            'tools_used' => ! empty($toolCallsMade) ? collect($toolCallsMade)->pluck('name')->unique()->values()->toArray() : [],
             'mode' => 'default',
             'user_message' => [
                 'id' => (string) $conversation->messages()->where('role', 'user')->latest('created_at')->first()->id,

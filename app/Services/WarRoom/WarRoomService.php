@@ -15,6 +15,7 @@ use App\Models\User;
 use App\Models\WarRoomAgentConfig;
 use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
+use App\Services\Ai\ToolRegistryService;
 use App\Services\Ai\WebSearchService;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Illuminate\Http\Client\ConnectionException;
@@ -276,83 +277,157 @@ class WarRoomService
                 ['role' => 'user', 'content' => $userMessage],
             ];
 
+            // Build tool definitions if agent has them enabled
+            $toolRegistryService = app(ToolRegistryService::class);
+            $enabledTools = $config?->enabled_tools;
+            $tools = $enabledTools ? $toolRegistryService->getToolDefinitions($enabledTools) : [];
+            $toolCallLog = [];
+
             $fullContent = '';
             $totalUsage = ['prompt_tokens' => 0, 'completion_tokens' => 0, 'total_tokens' => 0];
             $finalFinishReason = 'unknown';
             $reasoningContent = null;
             $reasoningTokens = null;
+            $toolIterations = 0;
+            $maxToolIterations = 5;
 
-            for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
-                $response = Http::withHeaders($this->buildHeaders())
-                    ->timeout($this->getTimeout())
-                    ->post($this->buildUrl(), [
+            $done = false;
+            for ($toolIteration = 0; $toolIteration <= $maxToolIterations && ! $done; $toolIteration++) {
+                $iterationHasToolCalls = false;
+                $iterationContent = '';
+
+                for ($attempt = 0; $attempt <= $maxContinuations && ! $done; $attempt++) {
+                    $payload = [
                         'model' => $model,
                         'messages' => $messages,
                         'max_tokens' => $maxTokens,
                         'max_completion_tokens' => $maxTokens,
-                    ]);
+                    ];
 
-                $responseData = $response->json();
-                $usage = $responseData['usage'] ?? [];
-                $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
-                $finalFinishReason = $finishReason;
+                    if (! empty($tools)) {
+                        $payload['tools'] = $tools;
+                    }
 
-                foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
-                    $totalUsage[$key] += $usage[$key] ?? 0;
-                }
+                    $response = Http::withHeaders($this->buildHeaders())
+                        ->timeout($this->getTimeout())
+                        ->post($this->buildUrl(), $payload);
 
-                if ($response->failed()) {
-                    $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
-                    $errorMsg = 'AI service error (HTTP '.$response->status().')';
-                    Log::warning("[WarRoom] Agent {$agentRole} failed", [
+                    $responseData = $response->json();
+                    $usage = $responseData['usage'] ?? [];
+                    $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+                    $finalFinishReason = $finishReason;
+
+                    foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
+                        $totalUsage[$key] += $usage[$key] ?? 0;
+                    }
+
+                    if ($response->failed()) {
+                        $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+                        $errorMsg = 'AI service error (HTTP '.$response->status().')';
+                        Log::warning("[WarRoom] Agent {$agentRole} failed", [
+                            'session_id' => $session->id,
+                            'tool_iteration' => $toolIteration,
+                            'attempt' => $attempt,
+                            'status' => $response->status(),
+                        ]);
+                        $message->markFailed($errorMsg);
+                        $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, $errorMsg);
+                        $fullContent = '';
+                        $done = true;
+
+                        break;
+                    }
+
+                    $responseMessage = $responseData['choices'][0]['message'] ?? [];
+                    $chunk = $responseMessage['content'] ?? '';
+                    $toolCalls = $responseMessage['tool_calls'] ?? [];
+
+                    if ($toolIteration === 0 && $attempt === 0) {
+                        ['content' => $reasoningContent, 'tokens' => $reasoningTokens] = $this->extractReasoning($responseData);
+                    }
+
+                    // Handle tool calls — execute and loop back for another iteration
+                    if (! empty($toolCalls)) {
+                        $iterationHasToolCalls = true;
+
+                        if (! blank($chunk)) {
+                            $iterationContent .= $chunk;
+                        }
+
+                        // Add assistant message with tool_calls to conversation
+                        $assistantMessage = ['role' => 'assistant'];
+                        if (! blank($chunk)) {
+                            $assistantMessage['content'] = $chunk;
+                        }
+                        $assistantMessage['tool_calls'] = $toolCalls;
+                        $messages[] = $assistantMessage;
+
+                        // Execute each tool and append results
+                        foreach ($toolCalls as $toolCall) {
+                            $toolResult = $toolRegistryService->executeToolCall($toolCall);
+                            $messages[] = $toolResult;
+                            $toolCallLog[] = [
+                                'iteration' => $toolIteration,
+                                'name' => $toolCall['function']['name'] ?? 'unknown',
+                                'arguments' => $toolCall['function']['arguments'] ?? '{}',
+                                'result_length' => strlen($toolResult['content'] ?? ''),
+                                'call_id' => $toolCall['id'] ?? '',
+                            ];
+                        }
+
+                        Log::info("[WarRoom] Agent {$agentRole} tool iteration {$toolIteration}", [
+                            'session_id' => $session->id,
+                            'round' => $round,
+                            'tool_count' => count($toolCalls),
+                            'tools' => array_map(fn ($tc) => $tc['function']['name'] ?? 'unknown', $toolCalls),
+                        ]);
+
+                        break; // Break inner loop, continue to next tool iteration
+                    }
+
+                    // Handle completely empty response (no content, no tool calls, first call)
+                    if (blank($chunk) && $attempt === 0 && $toolIteration === 0) {
+                        $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
+                        $message->markFailed('AI returned empty response');
+                        $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, 'Empty response');
+                        $fullContent = '';
+                        $done = true;
+
+                        break;
+                    }
+
+                    $iterationContent .= $chunk;
+
+                    // Detect truncation: explicit (finish_reason=length) or heuristic (doesn't end properly)
+                    $trimmedChunk = rtrim($chunk);
+                    $looksTruncated = ! preg_match('/[.!?)`\n]$/', $trimmedChunk) && strlen($trimmedChunk) > 100;
+
+                    if ($finishReason !== 'length' && ! $looksTruncated) {
+                        $done = true;
+
+                        break;
+                    }
+
+                    // Truncated — send continuation request
+                    Log::info("[WarRoom] Agent {$agentRole} continuation {$attempt}", [
                         'session_id' => $session->id,
-                        'attempt' => $attempt,
-                        'status' => $response->status(),
+                        'round' => $round,
+                        'tool_iteration' => $toolIteration,
+                        'finish_reason' => $finishReason,
+                        'looks_truncated' => $looksTruncated,
+                        'completion_tokens_so_far' => $totalUsage['completion_tokens'],
+                        'content_length_so_far' => strlen($iterationContent),
                     ]);
-                    $message->markFailed($errorMsg);
-                    $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, $errorMsg);
-                    $fullContent = '';
 
-                    break;
+                    $messages[] = ['role' => 'assistant', 'content' => $chunk];
+                    $messages[] = ['role' => 'user', 'content' => 'Continue your analysis from exactly where you left off. Do not repeat what you already wrote.'];
                 }
 
-                $chunk = $responseData['choices'][0]['message']['content'] ?? '';
+                $fullContent .= $iterationContent;
 
-                if ($attempt === 0) {
-                    ['content' => $reasoningContent, 'tokens' => $reasoningTokens] = $this->extractReasoning($responseData);
+                if (! $iterationHasToolCalls) {
+                    break; // No tool calls — we're done
                 }
-
-                if (blank($chunk) && $attempt === 0) {
-                    $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
-                    $message->markFailed('AI returned empty response');
-                    $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, 'Empty response');
-                    $fullContent = '';
-
-                    break;
-                }
-
-                $fullContent .= $chunk;
-
-                // Detect truncation: explicit (finish_reason=length) or heuristic (doesn't end properly)
-                $trimmedChunk = rtrim($chunk);
-                $looksTruncated = ! preg_match('/[.!?)`\n]$/', $trimmedChunk) && strlen($trimmedChunk) > 100;
-
-                if ($finishReason !== 'length' && ! $looksTruncated) {
-                    break;
-                }
-
-                // Truncated — send continuation request
-                Log::info("[WarRoom] Agent {$agentRole} continuation {$attempt}", [
-                    'session_id' => $session->id,
-                    'round' => $round,
-                    'finish_reason' => $finishReason,
-                    'looks_truncated' => $looksTruncated,
-                    'completion_tokens_so_far' => $totalUsage['completion_tokens'],
-                    'content_length_so_far' => strlen($fullContent),
-                ]);
-
-                $messages[] = ['role' => 'assistant', 'content' => $chunk];
-                $messages[] = ['role' => 'user', 'content' => 'Continue your analysis from exactly where you left off. Do not repeat what you already wrote.'];
             }
 
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
@@ -367,6 +442,7 @@ class WarRoomService
                 'total_prompt_tokens' => $totalUsage['prompt_tokens'],
                 'content_length' => strlen($fullContent),
                 'response_time_ms' => $responseTimeMs,
+                'tool_calls_count' => count($toolCallLog),
             ]);
 
             if (! blank($fullContent)) {
@@ -374,6 +450,7 @@ class WarRoomService
                     'finish_reason' => $finalFinishReason,
                     'model' => $model,
                     'total_completion_tokens' => $totalUsage['completion_tokens'],
+                    'tool_iterations' => count($toolCallLog) > 0 ? count(array_unique(array_column($toolCallLog, 'iteration'))) + 1 : 0,
                 ]);
 
                 if ($reasoningContent) {
@@ -381,6 +458,9 @@ class WarRoomService
                 }
                 if ($reasoningTokens) {
                     $metadata['reasoning_tokens'] = $reasoningTokens;
+                }
+                if (! empty($toolCallLog)) {
+                    $metadata['tool_calls_log'] = $toolCallLog;
                 }
 
                 $message->markCompleted($fullContent, $totalUsage, $responseTimeMs, $metadata);

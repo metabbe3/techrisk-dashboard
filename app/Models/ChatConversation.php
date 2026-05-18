@@ -17,6 +17,12 @@ class ChatConversation extends Model implements Auditable
         'user_id',
         'title',
         'model',
+        'summary',
+        'memory_archived_at',
+    ];
+
+    protected $casts = [
+        'memory_archived_at' => 'datetime',
     ];
 
     public function user(): BelongsTo

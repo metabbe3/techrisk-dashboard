@@ -182,4 +182,34 @@ return [
         'user' => "Analyze the following document content and produce a comprehensive Markdown summary.\n\nFocus on:\n- Key findings and facts\n- Root causes or contributing factors mentioned\n- Timeline of events\n- People, teams, or systems involved\n- Action items or recommendations\n- Financial figures or metrics\n\nDocument content:\n\n{content}",
     ],
 
+    'tools' => [
+        'max_iterations' => (int) env('AI_TOOLS_MAX_ITERATIONS', 5),
+        'chat_max_rounds' => (int) env('AI_CHAT_MAX_TOOL_ROUNDS', 3),
+    ],
+
+    'rag' => [
+        'enabled' => env('AI_RAG_ENABLED', true),
+        'max_context_tokens' => (int) env('AI_RAG_MAX_TOKENS', 4000),
+        'default_search_limit' => (int) env('AI_RAG_SEARCH_LIMIT', 10),
+        'reindex_daily' => true,
+    ],
+
+    'perception' => [
+        'enabled' => env('AI_PERCEPTION_ENABLED', true),
+        'proactive_analysis_model' => env('AI_PROACTIVE_MODEL', 'FAST-MODEL'),
+        'feedback_learning' => [
+            'enabled' => env('AI_FEEDBACK_LEARNING', true),
+            'min_samples_for_rule' => (int) env('AI_FEEDBACK_MIN_SAMPLES', 3),
+            'rule_extraction_model' => env('AI_FEEDBACK_MODEL', 'FAST-MODEL'),
+        ],
+    ],
+
+    'memory' => [
+        'enabled' => env('AI_MEMORY_ENABLED', true),
+        'summary_model' => env('AI_MEMORY_SUMMARY_MODEL', 'FAST-MODEL'),
+        'min_messages_for_summary' => (int) env('AI_MEMORY_MIN_MESSAGES', 8),
+        'stale_conversation_minutes' => (int) env('AI_MEMORY_STALE_MINUTES', 30),
+        'max_memories_per_context' => (int) env('AI_MEMORY_MAX_PER_CONTEXT', 3),
+    ],
+
 ];

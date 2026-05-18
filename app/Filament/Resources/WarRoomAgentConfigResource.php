@@ -5,6 +5,7 @@ namespace App\Filament\Resources;
 use App\Filament\Resources\WarRoomAgentConfigResource\Pages;
 use App\Models\WarRoomAgentConfig;
 use App\Services\Ai\AiTextService;
+use App\Services\Ai\ToolRegistryService;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -85,6 +86,21 @@ class WarRoomAgentConfigResource extends Resource
                             ->preload()
                             ->columnSpanFull()
                             ->helperText('Skills assigned to this agent. Full skill content (frameworks, procedures, methodology) is injected into the agent prompt during analysis.'),
+                    ]),
+
+                Forms\Components\Section::make('Tools')
+                    ->schema([
+                        Forms\Components\CheckboxList::make('enabled_tools')
+                            ->label('Enabled Tools')
+                            ->options(function () {
+                                $toolRegistry = app(ToolRegistryService::class);
+
+                                return collect($toolRegistry->getAllToolNames())
+                                    ->mapWithKeys(fn ($name) => [$name => $name]);
+                            })
+                            ->columns(2)
+                            ->columnSpanFull()
+                            ->helperText('Tools this agent can use during analysis. Internal tools search incidents, get details, etc. External tools call configured APIs.'),
                     ]),
 
                 Forms\Components\Section::make('System Prompt')

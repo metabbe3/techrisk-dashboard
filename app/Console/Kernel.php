@@ -21,6 +21,9 @@ class Kernel extends ConsoleKernel
         // Clean up old notifications - runs daily at 2 AM
         $schedule->command('notifications:clean')->dailyAt('02:00');
 
+        // Re-index stale RAG documents daily at 2:30 AM
+        $schedule->command('rag:reindex-stale')->dailyAt('02:30');
+
         $dailyTemplates = ReportTemplate::where('schedule', 'daily')->get();
         foreach ($dailyTemplates as $template) {
             $schedule->command('app:send-report', [$template->id])->daily();

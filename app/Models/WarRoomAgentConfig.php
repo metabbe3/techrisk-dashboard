@@ -19,6 +19,7 @@ class WarRoomAgentConfig extends Model
         'system_prompt',
         'model_override',
         'enable_web_search',
+        'enabled_tools',
         'sort_order',
         'is_active',
     ];
@@ -26,6 +27,7 @@ class WarRoomAgentConfig extends Model
     protected $casts = [
         'skills' => 'array',
         'enable_web_search' => 'boolean',
+        'enabled_tools' => 'array',
         'sort_order' => 'integer',
         'is_active' => 'boolean',
     ];

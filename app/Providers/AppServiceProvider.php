@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Events\IncidentCreatedEvent;
+use App\Events\IncidentEscalatedEvent;
+use App\Listeners\Ai\AnalyzeNewIncident;
 use App\Listeners\CheckTokenInactivity;
 use App\Models\ActionImprovement;
 use App\Models\Incident;
@@ -12,6 +15,7 @@ use App\Observers\ActionImprovementObserver;
 use App\Observers\IncidentObserver;
 use App\Observers\IncidentTypeObserver;
 use App\Observers\LabelObserver;
+use App\Observers\RagDocumentObserver;
 use App\Observers\StatusUpdateObserver;
 use App\Policies\ActionImprovementPolicy;
 use App\Policies\IncidentPolicy;
@@ -74,7 +78,12 @@ class AppServiceProvider extends ServiceProvider
             CheckTokenInactivity::class,
         );
 
+        // AI perception events
+        Event::listen(IncidentCreatedEvent::class, AnalyzeNewIncident::class);
+        Event::listen(IncidentEscalatedEvent::class, AnalyzeNewIncident::class);
+
         Incident::observe(IncidentObserver::class);
+        Incident::observe(RagDocumentObserver::class);
         ActionImprovement::observe(ActionImprovementObserver::class);
         StatusUpdate::observe(StatusUpdateObserver::class);
         Label::observe(LabelObserver::class);

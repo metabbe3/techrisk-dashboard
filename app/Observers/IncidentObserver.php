@@ -2,6 +2,8 @@
 
 namespace App\Observers;
 
+use App\Events\IncidentCreatedEvent;
+use App\Events\IncidentEscalatedEvent;
 use App\Jobs\CalculateIncidentMetrics;
 use App\Jobs\DetectRecurrenceJob;
 use App\Models\Incident;
@@ -41,6 +43,9 @@ class IncidentObserver
         if (in_array($incident->severity, ['P1', 'P2'])) {
             $this->notifyCriticalIncident($incident);
         }
+
+        // Fire event for AI proactive analysis
+        event(new IncidentCreatedEvent($incident));
     }
 
     /**
@@ -134,6 +139,11 @@ class IncidentObserver
             if ($currentUser && $currentUser->id !== $incident->pic_id) {
                 $pic->notify(new IncidentUpdated($incident, $changes));
             }
+        }
+
+        // Fire event for severity escalation to P1/P2
+        if ($incident->isDirty('severity') && in_array($incident->severity, ['P1', 'P2'])) {
+            event(new IncidentEscalatedEvent($incident, $incident->getOriginal('severity')));
         }
     }
 
