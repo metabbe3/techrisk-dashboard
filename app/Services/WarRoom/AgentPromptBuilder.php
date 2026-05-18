@@ -4,6 +4,7 @@ namespace App\Services\WarRoom;
 
 use App\Models\WarRoomAgentConfig;
 use App\Models\WarRoomSession;
+use App\Services\Skills\SkillPromptBuilder;
 
 class AgentPromptBuilder
 {
@@ -19,7 +20,10 @@ class AgentPromptBuilder
 
         $prompt = $basePrompt;
 
-        if (! empty($skills)) {
+        $skillPrompt = app(SkillPromptBuilder::class)->buildSkillPrompt($config);
+        if (filled($skillPrompt)) {
+            $prompt .= "\n\n".$skillPrompt;
+        } elseif (! empty($skills)) {
             $skillList = collect($skills)
                 ->map(fn ($s) => is_array($s) ? ($s['skill'] ?? '') : $s)
                 ->filter(fn ($s) => is_string($s) && filled($s))

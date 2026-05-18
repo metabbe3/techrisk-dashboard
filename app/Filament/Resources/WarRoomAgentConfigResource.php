@@ -78,60 +78,13 @@ class WarRoomAgentConfigResource extends Resource
 
                 Forms\Components\Section::make('Skills')
                     ->schema([
-                        Forms\Components\Repeater::make('skills')
-                            ->schema([
-                                Forms\Components\TextInput::make('skill')->maxLength(50),
-                            ])
-                            ->addable()
-                            ->deletable()
-                            ->reorderable()
+                        Forms\Components\Select::make('skills')
+                            ->relationship('skillRecords', 'display_name')
+                            ->multiple()
+                            ->searchable()
+                            ->preload()
                             ->columnSpanFull()
-                            ->helperText('Actionable capabilities — specific things this agent can do or analyze.')
-                            ->hintActions([
-                                Forms\Components\Actions\Action::make('suggest_skills')
-                                    ->label('AI Suggest')
-                                    ->icon('heroicon-o-sparkles')
-                                    ->color('warning')
-                                    ->requiresConfirmation()
-                                    ->modalHeading('AI Skill Suggestions')
-                                    ->modalDescription('Generate actionable skill suggestions based on this agent\'s role and domain. This will replace current skills.')
-                                    ->modalSubmitActionLabel('Generate Skills')
-                                    ->action(function (Forms\Set $set, Forms\Get $get) {
-                                        $aiService = app(AiTextService::class);
-
-                                        $message = 'Suggest actionable skill capabilities for a Discussion Forum analyst agent.';
-                                        if (filled($get('display_name'))) {
-                                            $message .= "\n\nAgent name: ".$get('display_name');
-                                        }
-                                        if (filled($get('role_key'))) {
-                                            $message .= "\nAgent role: ".$get('role_key');
-                                        }
-                                        if (filled($get('description'))) {
-                                            $message .= "\nDescription: ".$get('description');
-                                        }
-
-                                        $result = $aiService->suggestSkills(userMessage: $message);
-
-                                        if ($result['success'] ?? false) {
-                                            $skills = collect($result['skills'] ?? [])
-                                                ->map(fn ($s) => ['skill' => $s])
-                                                ->toArray();
-                                            $set('skills', $skills);
-
-                                            Notification::make()
-                                                ->success()
-                                                ->title(count($skills).' skills suggested')
-                                                ->body('Using model: '.($result['model'] ?? 'default'))
-                                                ->send();
-                                        } else {
-                                            Notification::make()
-                                                ->danger()
-                                                ->title('Skill suggestion failed')
-                                                ->body($result['error'] ?? 'Unknown error')
-                                                ->send();
-                                        }
-                                    }),
-                            ]),
+                            ->helperText('Skills assigned to this agent. Full skill content (frameworks, procedures, methodology) is injected into the agent prompt during analysis.'),
                     ]),
 
                 Forms\Components\Section::make('System Prompt')

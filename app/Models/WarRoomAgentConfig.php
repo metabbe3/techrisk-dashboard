@@ -45,6 +45,13 @@ class WarRoomAgentConfig extends Model
         return static::where('role_key', $role)->first();
     }
 
+    public function skillRecords()
+    {
+        return $this->belongsToMany(Skill::class, 'agent_skill')
+            ->withTimestamps()
+            ->orderBy('sort_order');
+    }
+
     public static function getActiveAgents()
     {
         return static::active()->ordered()->get();

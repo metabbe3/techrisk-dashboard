@@ -15,9 +15,12 @@ class ChatAgentsController
                 'role_key' => $agent->role_key,
                 'display_name' => $agent->display_name,
                 'description' => $agent->description,
-                'skills' => collect($agent->skills ?? [])
-                    ->map(fn ($s) => is_array($s) ? ($s['skill'] ?? '') : $s)
-                    ->filter(fn ($s) => filled($s))
+                'skills' => $agent->skillRecords()->where('is_active', true)->get()
+                    ->map(fn ($skill) => [
+                        'name' => $skill->name,
+                        'display_name' => $skill->display_name,
+                        'domain' => $skill->domain,
+                    ])
                     ->values()
                     ->toArray(),
                 'icon' => $agent->icon,

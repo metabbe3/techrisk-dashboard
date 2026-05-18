@@ -74,8 +74,9 @@ class AiSettings extends Page implements HasForms
                             ->label('Timeout (seconds)')
                             ->numeric()
                             ->minValue(5)
-                            ->maxValue(120)
-                            ->default(30),
+                            ->maxValue(600)
+                            ->default(30)
+                            ->helperText('Max 600 seconds (10 minutes). War Room agents have their own timeout setting.'),
 
                         TextInput::make('rate_limit')
                             ->label('Rate Limit (per user per minute)')
