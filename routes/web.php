@@ -1,14 +1,13 @@
 <?php
 
 use App\Http\Controllers\Ai\AiSearchController;
-use App\Http\Controllers\Ai\MarkAiEnhancedController;
-use App\Http\Controllers\Ai\SummarizeDocumentController;
 use App\Http\Controllers\Ai\AnalyzeRootCauseController;
 use App\Http\Controllers\Ai\AnalyzeTrendsController;
 use App\Http\Controllers\Ai\ApplyLabelsController;
 use App\Http\Controllers\Ai\ChatAgentsController;
 use App\Http\Controllers\Ai\ChatCreateController;
 use App\Http\Controllers\Ai\ChatDeleteController;
+use App\Http\Controllers\Ai\ChatExportPdfController;
 use App\Http\Controllers\Ai\ChatFinalizeController;
 use App\Http\Controllers\Ai\ChatListController;
 use App\Http\Controllers\Ai\ChatMessageFeedbackController;
@@ -18,7 +17,9 @@ use App\Http\Controllers\Ai\ChatStreamController;
 use App\Http\Controllers\Ai\DetectSimilarController;
 use App\Http\Controllers\Ai\EnhanceAgentPromptController;
 use App\Http\Controllers\Ai\GenerateWeeklySummaryController;
+use App\Http\Controllers\Ai\MarkAiEnhancedController;
 use App\Http\Controllers\Ai\SuggestLabelsController;
+use App\Http\Controllers\Ai\SummarizeDocumentController;
 use App\Http\Controllers\Ai\TextEnhanceController;
 use App\Http\Controllers\Ai\WarRoomAvailableAgentsController;
 use App\Http\Controllers\Ai\WarRoomCreateController;
@@ -26,8 +27,8 @@ use App\Http\Controllers\Ai\WarRoomDeleteController;
 use App\Http\Controllers\Ai\WarRoomEstimateTokensController;
 use App\Http\Controllers\Ai\WarRoomExportPdfController;
 use App\Http\Controllers\Ai\WarRoomListController;
-use App\Http\Controllers\Ai\WarRoomReanalyzeController;
 use App\Http\Controllers\Ai\WarRoomPollController;
+use App\Http\Controllers\Ai\WarRoomReanalyzeController;
 use App\Http\Controllers\Ai\WarRoomRetryController;
 use App\Http\Controllers\Ai\WarRoomShowController;
 use App\Http\Controllers\DownloadDocumentController;
@@ -107,6 +108,9 @@ Route::post('/admin/ai/chat/messages/{id}/feedback', ChatMessageFeedbackControll
 Route::get('/admin/ai/chat/conversations/{id}/messages', ChatMessagesController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.messages');
+Route::get('/admin/ai/chat/conversations/{id}/export-pdf', ChatExportPdfController::class)
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.export-pdf');
 Route::post('/admin/ai/chat/refresh-context', function () {
     app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
 

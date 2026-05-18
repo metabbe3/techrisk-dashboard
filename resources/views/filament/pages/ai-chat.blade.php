@@ -58,6 +58,7 @@
                     </span>
                 </div>
             </div>
+            {{-- Compact "..." Menu --}}
             {{-- Model Picker --}}
             <div class="relative" x-data="{ showModelPicker: false }">
                 <button @click="showModelPicker = !showModelPicker" class="ai-chat-model-btn">
@@ -385,6 +386,14 @@
                     </div>
                 </div>
 
+                {{-- Export PDF --}}
+                <a :href="activeConversationId ? '/admin/ai/chat/conversations/' + activeConversationId + '/export-pdf' : '#'"
+                   :class="{ 'opacity-40 pointer-events-none': !activeConversationId || messages.length === 0 }"
+                   target="_blank"
+                   class="ai-chat-attach-btn"
+                   title="Export conversation to PDF">
+                    <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </a>
                 <button @click="sendMessage()" :disabled="loading || !inputText.trim()" class="ai-chat-send-btn">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
                 </button>
