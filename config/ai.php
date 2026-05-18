@@ -87,9 +87,31 @@ return [
             'system' => "You are an expert AI agent designer specializing in incident analysis teams. Given an agent's role, domain, and description, suggest actionable skill capabilities.\n\nEach skill should be:\n- A short phrase (2-4 words) describing a SPECIFIC analytical capability\n- Actionable — something the agent can DO, not just a domain label\n- Distinct — no overlapping/duplicate skills\n- Relevant to incident analysis in a technical risk management context\n\nGood examples: \"Root Cause Chain Analysis\", \"Financial Impact Quantification\", \"Timeline Event Correlation\", \"MTTR Benchmarking\", \"Compliance Gap Detection\", \"Vulnerability Assessment\", \"Anomaly Pattern Recognition\", \"Stakeholder Impact Mapping\"\n\nBad examples: \"General knowledge\", \"Smart analysis\", \"Problem solving\", \"Good communication\"\n\nReturn ONLY valid JSON:\n{\"skills\": [\"Skill 1\", \"Skill 2\", \"Skill 3\", \"Skill 4\", \"Skill 5\", \"Skill 6\"]}\n\nSuggest 5-8 skills. No markdown, no explanation, only the JSON.",
             'label' => 'Suggest Skills',
         ],
+        'skill_routing' => [
+            'system' => "You are a skill relevance scorer for an incident analysis team. Given an incident context and a list of available skills for a specific agent role, rank the skills by relevance to THIS specific incident.\n\nRules:\n- Consider: the incident type, severity, affected systems, root cause indicators, and financial impact.\n- A skill is relevant if its framework, methodology, or domain knowledge would directly help this agent produce a better analysis for THIS incident.\n- Return ONLY the skill IDs ranked from most relevant to least relevant.\n- Return between 3 and max_skills IDs.\n- If fewer than 3 skills exist, return all of them.\n- Return ONLY valid JSON. No markdown, no explanation.\n\nResponse format:\n{\"selected_skill_ids\": [\"skill-id-1\", \"skill-id-2\", \"skill-id-3\"]}",
+            'label' => 'Skill Routing',
+        ],
     ],
 
     'max_input_length' => env('AI_MAX_INPUT_LENGTH', 5000),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Prompt Optimization
+    |--------------------------------------------------------------------------
+    |
+    | Optimize prompts to reduce token usage without affecting accuracy.
+    | Strategies: whitespace normalization, empty field stripping,
+    | filler phrase removal, markdown artifact cleanup.
+    |
+    | Enabled via AI_PROMPT_OPTIMIZATION=true in .env.
+    | Only applies to prompts exceeding min_length characters.
+    |
+    */
+    'prompt_optimization' => [
+        'enabled' => env('AI_PROMPT_OPTIMIZATION', false),
+        'min_length' => (int) env('AI_PROMPT_OPTIMIZATION_MIN_LENGTH', 2000),
+    ],
 
     'chat_max_history' => env('AI_CHAT_MAX_HISTORY', 20),
 
@@ -126,6 +148,15 @@ return [
         'max_output_tokens' => (int) env('AI_WAR_ROOM_MAX_OUTPUT_TOKENS', 65536),
         'max_continuations' => (int) env('AI_WAR_ROOM_MAX_CONTINUATIONS', 3),
         'queue' => 'war-room',
+
+        'skill_routing' => [
+            'enabled' => env('AI_WAR_ROOM_SKILL_ROUTING', true),
+            'model' => env('AI_WAR_ROOM_SKILL_ROUTING_MODEL', 'FAST-MODEL'),
+            'max_skills_per_agent' => (int) env('AI_WAR_ROOM_SKILL_ROUTING_MAX', 5),
+            'min_skills_to_trigger' => (int) env('AI_WAR_ROOM_SKILL_ROUTING_MIN', 4),
+            'incident_context_max_chars' => 1500,
+            'timeout' => 15,
+        ],
 
         'model_limits' => [
             'qwen3-32b-test' => ['input' => 32000, 'output' => 8192],

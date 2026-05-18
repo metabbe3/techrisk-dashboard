@@ -4,6 +4,7 @@ namespace App\Services\WarRoom;
 
 use App\Models\WarRoomAgentConfig;
 use App\Models\WarRoomSession;
+use App\Services\Ai\PromptOptimizer;
 use App\Services\Skills\SkillPromptBuilder;
 
 class AgentPromptBuilder
@@ -20,7 +21,7 @@ class AgentPromptBuilder
 
         $prompt = $basePrompt;
 
-        $skillPrompt = app(SkillPromptBuilder::class)->buildSkillPrompt($config);
+        $skillPrompt = app(SkillPromptBuilder::class)->buildSkillPrompt($config, $session);
         if (filled($skillPrompt)) {
             $prompt .= "\n\n".$skillPrompt;
         } elseif (! empty($skills)) {
@@ -43,6 +44,10 @@ class AgentPromptBuilder
 
         if (filled($session->user_instructions)) {
             $result .= "\n\n## User Instructions\n\n".$session->user_instructions;
+        }
+
+        if (PromptOptimizer::isEnabled()) {
+            $result = app(PromptOptimizer::class)->optimize($result, 'war_room');
         }
 
         return $result;
@@ -142,7 +147,7 @@ class AgentPromptBuilder
         $result = trim(implode("\n", $tail));
 
         if (strlen($result) > $maxChars) {
-            $result = substr($result, 0, $maxChars)."...";
+            $result = substr($result, 0, $maxChars).'...';
         }
 
         return "*[Auto-extracted from full analysis — full report available]*\n\n".$result;

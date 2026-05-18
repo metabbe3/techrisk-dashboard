@@ -28,6 +28,7 @@ class WarRoomSession extends Model implements Auditable
         'selected_agents',
         'incident_context',
         'context_summarized',
+        'selected_skills',
         'user_instructions',
         'final_report',
         'final_report_html',
@@ -45,6 +46,7 @@ class WarRoomSession extends Model implements Auditable
         'enable_web_search' => 'boolean',
         'deep_analysis' => 'boolean',
         'context_summarized' => 'boolean',
+        'selected_skills' => 'array',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
         'failed_at' => 'datetime',
@@ -105,6 +107,11 @@ class WarRoomSession extends Model implements Auditable
     public function getAgentRoles(): array
     {
         return $this->selected_agents ?? [];
+    }
+
+    public function getSelectedSkillIdsForAgent(string $role): array
+    {
+        return $this->selected_skills[$role] ?? [];
     }
 
     public function getNextRound(): int

@@ -19,8 +19,8 @@ use App\Services\Ai\WebSearchService;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class WarRoomService
 {
@@ -144,6 +144,7 @@ class WarRoomService
             'error_message' => null,
             'tokens_used' => 0,
             'deep_analysis' => $deepAnalysis,
+            'selected_skills' => null,
             'title' => $title,
         ];
 
@@ -168,6 +169,9 @@ class WarRoomService
     public function startSession(WarRoomSession $session): void
     {
         $session->markRunning();
+
+        app(\App\Services\Skills\SkillRoutingService::class)->selectSkillsForSession($session);
+
         $this->dispatchRound($session, 1);
     }
 
@@ -810,7 +814,7 @@ class WarRoomService
         $context = array_map(function (string $line) {
             return preg_replace_callback(
                 '/\*\*AI Summary:\*\*\n(.+)/s',
-                fn ($m) => '**AI Summary:** ' . Str::limit($m[1], 200),
+                fn ($m) => '**AI Summary:** '.Str::limit($m[1], 200),
                 $line
             );
         }, $context);
