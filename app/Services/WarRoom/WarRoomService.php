@@ -727,6 +727,8 @@ class WarRoomService
                     'error_message' => $msg->error_message,
                     'reasoning_content' => $msg->metadata['reasoning_content'] ?? null,
                     'reasoning_tokens' => $msg->metadata['reasoning_tokens'] ?? null,
+                    'tool_calls' => $msg->metadata['tool_calls_log'] ?? [],
+                    'web_search_context' => $msg->web_search_context,
                     'created_at' => $msg->created_at?->toIso8601String(),
                 ];
             })->values();

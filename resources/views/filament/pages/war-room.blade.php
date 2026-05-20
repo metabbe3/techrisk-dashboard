@@ -48,6 +48,45 @@ document.addEventListener('alpine:init', () => {
 
             pollInterval: null,
 
+            sessionSearch: '',
+            sessionStatusFilter: '',
+
+            get filteredSessions() {
+                let list = this.sessions;
+                if (this.sessionStatusFilter) {
+                    list = list.filter(s => s.status === this.sessionStatusFilter);
+                }
+                if (this.sessionSearch.trim()) {
+                    const q = this.sessionSearch.toLowerCase().trim();
+                    list = list.filter(s =>
+                        (s.title || '').toLowerCase().includes(q) ||
+                        (s.incident?.no || '').toLowerCase().includes(q) ||
+                        (s.incident?.title || '').toLowerCase().includes(q)
+                    );
+                }
+                return list;
+            },
+
+            toolLabel(name) {
+                const map = {
+                    search_incidents: 'Searched Incidents',
+                    get_incident_details: 'Fetched Incident Details',
+                    find_similar_incidents: 'Found Similar Incidents',
+                    get_action_items: 'Retrieved Action Items',
+                    web_search: 'Web Search',
+                    get_stats: 'Retrieved Statistics',
+                };
+                return map[name] || name;
+            },
+
+            expandAll(round) {
+                (this.activeSession?.messages?.[round] || []).forEach(m => m._expanded = true);
+                this.scheduleMermaidRender();
+            },
+            collapseAll(round) {
+                (this.activeSession?.messages?.[round] || []).forEach(m => m._expanded = false);
+            },
+
             getHeaders(withContentType = false) {
                 const headers = {
                     'Accept': 'application/json',
@@ -119,7 +158,8 @@ document.addEventListener('alpine:init', () => {
             renderAgentContent(msg) {
                 const text = msg._expanded ? msg.content : (msg.content || '').substring(0, 300) + ((msg.content || '').length > 300 ? '...' : '');
                 if (!text) return '';
-                const processed = this.processAgentReferences(text);
+                let processed = this.processAgentReferences(text);
+                processed = this.processIncidentLinks(processed);
                 if (typeof marked !== 'undefined') {
                     try { return marked.parse(processed, { breaks: true, gfm: true }); }
                     catch { return processed.replace(/\n/g, '<br>'); }
@@ -132,6 +172,44 @@ document.addEventListener('alpine:init', () => {
                 const words = name.trim().split(/\s+/);
                 if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
                 return name.slice(0, 2).toUpperCase();
+            },
+
+            incidentLink(incident, label = '') {
+                if (!incident?.id) return label || incident?.no || '';
+                const text = label || incident.no;
+                return '<a href="/admin/incidents/' + incident.id + '" target="_blank" style="color:#0d9488;text-decoration:none;font-weight:600;">' + text + '</a>';
+            },
+
+            _incidentIdMap: null,
+            buildIncidentIdMap() {
+                const sessionId = this.activeSession?.id;
+                if (this._incidentIdMap && this._incidentIdMap._sessionId === sessionId) return this._incidentIdMap;
+                const map = { _sessionId: sessionId };
+                if (this.activeSession?.incident?.id && this.activeSession?.incident?.no) {
+                    map[this.activeSession.incident.no] = this.activeSession.incident.id;
+                }
+                if (this.activeSession?.related_incidents) {
+                    for (const inc of this.activeSession.related_incidents) {
+                        if (inc.id && inc.no) map[inc.no] = inc.id;
+                    }
+                }
+                this._incidentIdMap = map;
+                return map;
+            },
+
+            processIncidentLinks(text) {
+                if (!text) return '';
+                const parts = text.split(/(```[\s\S]*?```|`[^`]+`)/g);
+                const map = this.buildIncidentIdMap();
+                const regex = /\d{8}_(?:IN|IS)_\d{4}/g;
+                return parts.map((part, i) => {
+                    if (i % 2 === 1) return part;
+                    return part.replace(regex, (match) => {
+                        const id = map[match];
+                        if (!id) return match;
+                        return '<a href="/admin/incidents/' + id + '" target="_blank" style="color:#0d9488;text-decoration:none;font-weight:600;">' + match + '</a>';
+                    });
+                }).join('');
             },
 
             async init() {
@@ -266,7 +344,7 @@ document.addEventListener('alpine:init', () => {
                     this.showReport = false;
 
                     if (this.activeSession.messages) {
-                        Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; });
+                        Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; m._showTools = false; });
                     }
 
                     this.startPolling();
@@ -342,7 +420,7 @@ document.addEventListener('alpine:init', () => {
                             const fullData = await res2.json();
                             this.activeSession = fullData;
                             if (this.activeSession.messages) {
-                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; });
+                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; m._showTools = false; });
                             }
                         }
                     }
@@ -375,7 +453,7 @@ document.addEventListener('alpine:init', () => {
                             const fullData = await res2.json();
                             this.activeSession = fullData;
                             if (this.activeSession.messages) {
-                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; });
+                                Object.values(this.activeSession.messages).flat().forEach(m => { m._expanded = false; m._showThinking = false; m._showTools = false; });
                             }
                             this.scheduleMermaidRender();
                         }
@@ -595,8 +673,22 @@ document.addEventListener('alpine:init', () => {
             </button>
         </div>
 
+        <div class="df-sidebar__filters">
+            <div class="df-sidebar__search">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input type="text" x-model="sessionSearch" placeholder="Search sessions..." class="df-sidebar__search-input">
+                <button x-show="sessionSearch" @click="sessionSearch = ''" class="df-sidebar__search-clear">&times;</button>
+            </div>
+            <div class="df-sidebar__status-chips">
+                <button @click="sessionStatusFilter = ''" :class="sessionStatusFilter === '' ? 'df-sidebar__chip df-sidebar__chip--active' : 'df-sidebar__chip'">All</button>
+                <button @click="sessionStatusFilter = 'running'" :class="sessionStatusFilter === 'running' ? 'df-sidebar__chip df-sidebar__chip--active' : 'df-sidebar__chip'">Running</button>
+                <button @click="sessionStatusFilter = 'completed'" :class="sessionStatusFilter === 'completed' ? 'df-sidebar__chip df-sidebar__chip--active' : 'df-sidebar__chip'">Completed</button>
+                <button @click="sessionStatusFilter = 'failed'" :class="sessionStatusFilter === 'failed' ? 'df-sidebar__chip df-sidebar__chip--active' : 'df-sidebar__chip'">Failed</button>
+            </div>
+        </div>
+
         <div class="df-sidebar__list">
-            <template x-for="session in sessions" :key="session.id">
+            <template x-for="session in filteredSessions" :key="session.id">
                 <div class="df-session-item" :class="{ 'df-session-item--active': activeSession?.id === session.id }"
                         @click="loadSession(session.id); showSidebar = false;">
                     <div class="df-session-item__top">
@@ -611,7 +703,7 @@ document.addEventListener('alpine:init', () => {
                         <span x-show="session.model" class="df-session-item__model" x-text="session.model"></span>
                         <span x-show="session.user_name" class="df-session-item__user" x-text="'by ' + session.user_name"></span>
                     </div>
-                    <p class="df-session-item__incident" x-show="session.incident" x-text="session.incident?.no + (session.incident?.severity ? ' · ' + session.incident?.severity : '')"></p>
+                    <p class="df-session-item__incident" x-show="session.incident" x-html="incidentLink(session.incident, session.incident?.no + (session.incident?.severity ? ' · ' + session.incident?.severity : '') + (session.incident?.title ? ' — ' + session.incident?.title : ''))"></p>
                 </div>
             </template>
 
@@ -639,18 +731,18 @@ document.addEventListener('alpine:init', () => {
                         <span x-show="activeSession" x-text="activeSession?.title || 'Discussion Forum'"></span>
                     </h2>
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'running'">
-                        <span x-show="activeSession?.incident" x-text="activeSession?.incident?.no + ' · '"></span>
+                        <span x-show="activeSession?.incident" x-html="activeSession?.incident ? incidentLink(activeSession.incident, activeSession.incident.no + (activeSession.incident.title ? ' — ' + activeSession.incident.title : '')) + ' · ' : ''"></span>
                         Round <span x-text="activeSession?.current_round || 0"></span> of <span x-text="activeSession?.max_rounds || 2"></span> in progress
                     </p>
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'pending'">
-                        <span x-show="activeSession?.incident" x-text="activeSession?.incident?.no + ' · '"></span>
+                        <span x-show="activeSession?.incident" x-html="activeSession?.incident ? incidentLink(activeSession.incident, activeSession.incident.no + (activeSession.incident.title ? ' — ' + activeSession.incident.title : '')) + ' · ' : ''"></span>
                         Preparing agents...
                     </p>
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'completed' && activeSession?.incident">
-                        <span x-text="activeSession?.incident?.no"></span> · Analysis Complete
+                        <span x-html="incidentLink(activeSession.incident, activeSession.incident.no + (activeSession.incident.title ? ' — ' + activeSession.incident.title : ''))"></span> · Analysis Complete
                     </p>
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'failed' && activeSession?.incident">
-                        <span x-text="activeSession?.incident?.no"></span> · Failed
+                        <span x-html="incidentLink(activeSession.incident, activeSession.incident.no + (activeSession.incident.title ? ' — ' + activeSession.incident.title : ''))"></span> · Failed
                     </p>
                 </div>
             </div>
@@ -947,6 +1039,14 @@ document.addEventListener('alpine:init', () => {
                         <div class="df-round__header">
                             <div class="df-round__badge" x-text="round"></div>
                             <h3 class="df-round__title" x-text="round === 1 ? 'Initial Analysis' : 'Discussion Round ' + round"></h3>
+                            <div class="df-round__actions">
+                                <button @click="expandAll(round)" class="df-round__action-btn" title="Expand all">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 13 5 5 5-5"/><path d="m7 6 5 5 5-5"/></svg>
+                                </button>
+                                <button @click="collapseAll(round)" class="df-round__action-btn" title="Collapse all">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 11 5-5 5 5"/><path d="m7 18 5-5 5 5"/></svg>
+                                </button>
+                            </div>
                             <div class="df-round__line"></div>
                         </div>
 
@@ -995,6 +1095,32 @@ document.addEventListener('alpine:init', () => {
                                                 <span class="df-msg__status-dot__ring"></span>
                                                 <span x-text="msg.status"></span>
                                             </span>
+                                        </div>
+
+                                        {{-- Tool Usage --}}
+                                        <div x-show="msg.status === 'completed' && (msg.tool_calls?.length > 0 || msg.web_search_context)" class="df-msg__tools">
+                                            <button @click="msg._showTools = !msg._showTools" class="df-msg__tools-toggle">
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+                                                <span x-text="(msg.tool_calls?.length || 0) + (msg.web_search_context ? 1 : 0) + ' tool(s) used'"></span>
+                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                                     style="transition:transform 0.2s" :style="msg._showTools ? 'transform:rotate(180deg)' : ''">
+                                                    <path d="M19 9l-7 7-7-7"/>
+                                                </svg>
+                                            </button>
+                                            <div x-show="msg._showTools" x-transition class="df-msg__tools-content">
+                                                <template x-for="(tc, i) in msg.tool_calls || []" :key="'tc-'+i">
+                                                    <div class="df-msg__tool-item">
+                                                        <span class="df-msg__tool-name" x-text="toolLabel(tc.name)"></span>
+                                                        <template x-if="tc.arguments">
+                                                            <span class="df-msg__tool-args" x-text="JSON.parse(tc.arguments || '{}')?.query || JSON.parse(tc.arguments || '{}')?.incident_no || JSON.parse(tc.arguments || '{}')?.incident_id || ''"></span>
+                                                        </template>
+                                                    </div>
+                                                </template>
+                                                <div x-show="msg.web_search_context" class="df-msg__tool-item">
+                                                    <span class="df-msg__tool-name">Web Search Results</span>
+                                                    <span class="df-msg__tool-args" x-text="msg.web_search_context ? (msg.web_search_context.substring(0, 200) + (msg.web_search_context.length > 200 ? '...' : '')) : ''"></span>
+                                                </div>
+                                            </div>
                                         </div>
 
                                         {{-- Thinking/Reasoning Process --}}
@@ -1064,7 +1190,7 @@ document.addEventListener('alpine:init', () => {
                         <div class="df-report__meta">
                             <span x-show="activeSession?.incident" class="df-report__meta-chip">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-                                <span x-text="activeSession?.incident?.no + ' · ' + (activeSession?.incident?.severity || '')"></span>
+                                <span x-html="incidentLink(activeSession?.incident, activeSession?.incident?.no + ' · ' + (activeSession?.incident?.severity || '') + (activeSession?.incident?.title ? ' — ' + activeSession?.incident?.title : ''))"></span>
                             </span>
                             <span class="df-report__meta-chip">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
@@ -3285,6 +3411,154 @@ document.addEventListener('alpine:init', () => {
     .df-form-row { grid-template-columns: 1fr; }
     .df-report__banner { padding: 20px; }
 }
+
+{{-- Session sidebar filters --}}
+.df-sidebar__filters {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--df-border-light);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.df-sidebar__search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    background: var(--df-surface-hover);
+    border: 1px solid var(--df-border-light);
+    border-radius: 6px;
+}
+.df-sidebar__search svg { color: var(--df-text-muted); flex-shrink: 0; }
+.df-sidebar__search-input {
+    flex: 1;
+    border: none;
+    background: none;
+    outline: none;
+    font-size: 12px;
+    color: var(--df-text);
+    font-family: inherit;
+}
+.df-sidebar__search-input::placeholder { color: var(--df-text-muted); }
+.df-sidebar__search-clear {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--df-text-muted);
+    font-size: 14px;
+    padding: 0 2px;
+    line-height: 1;
+}
+:root.dark .df-sidebar__search { background: #242834; border-color: #2e3345; }
+:root.dark .df-sidebar__search-input { color: #e2e4ea; }
+
+.df-sidebar__status-chips {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.df-sidebar__chip {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    border: 1px solid var(--df-border-light);
+    background: transparent;
+    color: var(--df-text-secondary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+}
+.df-sidebar__chip:hover { background: var(--df-surface-hover); }
+.df-sidebar__chip--active { background: var(--df-text); color: white; border-color: var(--df-text); }
+:root.dark .df-sidebar__chip { border-color: #2e3345; color: #9ca0ad; }
+:root.dark .df-sidebar__chip:hover { background: #2e3345; }
+:root.dark .df-sidebar__chip--active { background: #e2e4ea; color: #1a1d27; border-color: #e2e4ea; }
+
+{{-- Round expand/collapse all --}}
+.df-round__actions {
+    display: flex;
+    gap: 2px;
+    margin-left: auto;
+}
+.df-round__action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border: 1px solid var(--df-border-light);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--df-text-muted);
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.df-round__action-btn:hover { background: var(--df-surface-hover); color: var(--df-text); border-color: var(--df-border); }
+:root.dark .df-round__action-btn { border-color: #2e3345; color: #64748b; }
+:root.dark .df-round__action-btn:hover { background: #2e3345; color: #e2e4ea; }
+
+{{-- Tool usage display --}}
+.df-msg__tools {
+    padding: 0 16px;
+}
+.df-msg__tools-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--df-surface-hover);
+    border: 1px solid var(--df-border-light);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--df-text-secondary);
+    transition: all 0.15s ease;
+    font-family: inherit;
+}
+.df-msg__tools-toggle:hover {
+    background: var(--df-border-light);
+    border-color: var(--df-border);
+}
+.df-msg__tools-toggle svg:first-child { color: #6366f1; flex-shrink: 0; }
+.df-msg__tools-toggle > span:first-of-type { flex: 1; text-align: left; }
+.df-msg__tools-toggle > svg:last-child { color: var(--df-text-muted); flex-shrink: 0; }
+.df-msg__tools-content {
+    padding: 8px 12px;
+    margin-top: 6px;
+    background: var(--df-surface-hover);
+    border-radius: 6px;
+    border-left: 3px solid #6366f1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.df-msg__tool-item {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    font-size: 11px;
+    line-height: 1.5;
+}
+.df-msg__tool-name {
+    font-weight: 600;
+    color: #6366f1;
+    white-space: nowrap;
+}
+.df-msg__tool-args {
+    color: var(--df-text-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+:root.dark .df-msg__tools-toggle { background: #242834; border-color: #2e3345; color: #9ca0ad; }
+:root.dark .df-msg__tools-toggle:hover { background: #2e3345; border-color: #3a3f52; }
+:root.dark .df-msg__tools-toggle svg:first-child { color: #818cf8; }
+:root.dark .df-msg__tools-content { background: #1a1d27; border-left-color: #818cf8; }
+:root.dark .df-msg__tool-name { color: #818cf8; }
+:root.dark .df-msg__tool-args { color: #64748b; }
 </style>
 
 </x-filament-panels::page>
