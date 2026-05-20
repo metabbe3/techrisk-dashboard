@@ -433,11 +433,21 @@ class AiTextService
 
         $indexedIncidents = collect($recentIncidents)->keyBy('no');
 
+        Log::info('[DetectSimilar] AI parsed result', [
+            'raw_similar_count' => count($result['similar'] ?? []),
+            'known_nos_sample' => $indexedIncidents->keys()->take(5)->toArray(),
+            'ai_returned_nos' => collect($result['similar'] ?? [])->pluck('incident_no')->toArray(),
+        ]);
+
         $similar = collect($result['similar'] ?? [])
             ->filter(fn ($item) => is_array($item) && isset($item['incident_no']))
             ->map(function ($item) use ($indexedIncidents) {
                 $incident = $indexedIncidents->get($item['incident_no']);
                 if (! $incident) {
+                    Log::info('[DetectSimilar] Incident no mismatch', [
+                        'ai_returned' => $item['incident_no'],
+                    ]);
+
                     return null;
                 }
 
