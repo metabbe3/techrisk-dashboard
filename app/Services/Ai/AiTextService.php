@@ -777,7 +777,7 @@ class AiTextService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 4096,
+                    'max_tokens' => 16384,
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
