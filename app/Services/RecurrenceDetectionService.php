@@ -339,7 +339,8 @@ class RecurrenceDetectionService
         }
 
         try {
-            $resolvedModel = config('ai.similarity_model', 'gemini-2.5-flash');
+            $resolvedModel = config('ai.similarity_model')
+                ?? \App\Models\AiSetting::get('default_model', config('ai.default_model'));
 
             $systemPrompt = <<<'PROMPT'
 You are analyzing incident recurrence patterns. Given a new incident and similar past incidents with their remediation status, provide a concise analysis. Focus on:
@@ -393,7 +394,8 @@ PROMPT;
         }
 
         try {
-            $resolvedModel = config('ai.similarity_model', 'gemini-2.5-flash');
+            $resolvedModel = config('ai.similarity_model')
+                ?? \App\Models\AiSetting::get('default_model', config('ai.default_model'));
 
             $reasons = collect($matchData)->pluck('reason')->filter()->implode('; ');
 

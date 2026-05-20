@@ -386,7 +386,8 @@ class AiTextService
 
     public function detectSimilar(array $incidentData, array $recentIncidents): array
     {
-        $resolvedModel = config('ai.similarity_model', 'gemini-2.5-flash');
+        $resolvedModel = config('ai.similarity_model')
+            ?? AiSetting::get('default_model', config('ai.default_model'));
         $prompt = config('ai.prompts.similar_incident');
 
         if (! $prompt) {
@@ -404,12 +405,13 @@ class AiTextService
             }
         }
 
+        $candidates = array_slice($recentIncidents, 0, 15);
+
         $userMessage .= "\nCandidate incidents from the database:\n";
-        foreach ($recentIncidents as $i => $inc) {
+        foreach ($candidates as $i => $inc) {
             $userMessage .= ($i + 1).'. ['.($inc['no'] ?? '').'] '.($inc['title'] ?? 'Untitled')."\n";
-            $userMessage .= '   Summary: '.Str::limit($inc['summary'] ?? 'N/A', 200)."\n";
-            $userMessage .= '   Root Cause: '.Str::limit($inc['root_cause'] ?? 'Not available', 200)."\n";
-            $userMessage .= '   Timeline: '.Str::limit($inc['timeline'] ?? 'Not available', 150)."\n";
+            $userMessage .= '   Summary: '.Str::limit($inc['summary'] ?? 'N/A', 150)."\n";
+            $userMessage .= '   Root Cause: '.Str::limit($inc['root_cause'] ?? 'Not available', 150)."\n";
 
             $categories = collect([
                 ...(array) ($inc['root_cause_category'] ?? []),
@@ -421,12 +423,9 @@ class AiTextService
             $labels = collect($inc['labels'] ?? [])->pluck('name')->implode(', ');
             $userMessage .= '   Labels: '.($labels ?: 'None')."\n";
 
-            $userMessage .= '   Improvements: '.Str::limit($inc['improvements'] ?? 'None', 150)."\n";
             $userMessage .= '   Severity: '.($inc['severity'] ?? 'N/A');
             $userMessage .= ' | Type: '.($inc['incident_type'] ?? 'N/A');
-            $userMessage .= ' | Classification: '.($inc['classification'] ?? 'N/A');
-            $userMessage .= ' | Date: '.($inc['incident_date'] ?? 'N/A');
-            $userMessage .= ' | Status: '.($inc['incident_status'] ?? 'N/A')."\n";
+            $userMessage .= ' | Date: '.($inc['incident_date'] ?? 'N/A')."\n";
         }
 
         $result = $this->callAiForJson('similar_incident', $resolvedModel, $prompt['system'], $userMessage, ['similar' => []]);
