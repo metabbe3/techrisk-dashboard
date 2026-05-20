@@ -453,7 +453,7 @@ class AiTextService
                 return [
                     'id' => $incident['id'],
                     'no' => $incident['no'],
-                    'summary' => $incident['summary'] ?? '',
+                    'summary' => $incident['summary'] ? Str::limit($incident['summary'], 150) : '',
                     'severity' => $incident['severity'] ?? '',
                     'incident_date' => $incident['incident_date'] ?? '',
                     'incident_status' => $incident['incident_status'] ?? '',

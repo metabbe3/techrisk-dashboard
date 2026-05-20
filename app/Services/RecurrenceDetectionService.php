@@ -131,7 +131,7 @@ class RecurrenceDetectionService
                 return [
                     'id' => $sim['id'],
                     'no' => $sim['no'],
-                    'summary' => $sim['summary'] ? Str::limit($sim['summary'], 120) : '',
+                    'summary' => $sim['summary'] ? Str::limit($sim['summary'], 150) : '',
                     'severity' => $sim['severity'] ?? '',
                     'incident_date' => $sim['incident_date'],
                     'incident_status' => $sim['incident_status'] ?? '',
@@ -319,7 +319,7 @@ class RecurrenceDetectionService
             return [
                 'id' => $match->id,
                 'no' => $match->no,
-                'summary' => $match->summary ? Str::limit($match->summary, 120) : '',
+                'summary' => $match->summary ? Str::limit($match->summary, 150) : '',
                 'severity' => $match->severity,
                 'incident_date' => $match->incident_date?->toDateString(),
                 'incident_status' => $match->incident_status,
