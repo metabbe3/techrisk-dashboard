@@ -21,7 +21,7 @@ class BackfillRecurrenceData extends Command
         $delay = (int) $this->option('delay');
         $force = $this->option('force');
 
-        $query = Incident::where('classification', 'Incident')
+        $query = Incident::whereIn('classification', ['Incident', 'Issue'])
             ->orderByDesc('incident_date');
 
         if (! $force) {
@@ -43,7 +43,7 @@ class BackfillRecurrenceData extends Command
         $incidents = $query->get(['id', 'no', 'title']);
         $processed = 0;
 
-        $this->info("Found {$total} incident(s) to analyze" . ($limit > 0 ? " (processing {$incidents->count()})" : ''));
+        $this->info("Found {$total} incident(s) to analyze".($limit > 0 ? " (processing {$incidents->count()})" : ''));
         $this->newLine();
 
         $bar = $this->output->createProgressBar($incidents->count());

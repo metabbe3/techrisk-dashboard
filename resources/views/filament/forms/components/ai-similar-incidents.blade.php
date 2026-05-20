@@ -2,10 +2,7 @@
     $endpoint = route('ai.detect-similar');
     $csrf = csrf_token();
     $aiService = app(\App\Services\Ai\AiTextService::class);
-    $models = $aiService->getAvailableModels();
-    $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
     $isAvailable = $aiService->isAvailable();
-    $hasMultipleModels = count($models) > 1;
 @endphp
 
 @if($isAvailable)
@@ -16,8 +13,6 @@
         simOpen: false,
         simElapsed: 0,
         simTimer: null,
-        simSelectedModel: '{{ $defaultModel }}',
-        simShowModelPicker: false,
 
         simNotify(body, type) {
             try { new FilamentNotification().title('Similar Incidents').body(body).status(type).send(); } catch(e) {}
@@ -35,16 +30,14 @@
             return await r.json();
         },
 
-        async detect(model) {
-            if (model) this.simSelectedModel = model;
+        async detect() {
             this.simError = '';
-            this.simShowModelPicker = false;
             this.simLoading = true;
             this.simElapsed = 0;
             this.simTimer = setInterval(() => { this.simElapsed++; }, 1000);
 
             try {
-                const fields = ['summary','timeline','severity','incident_type','business_category','root_cause_category','responsible_team','title'];
+                const fields = ['summary','timeline','severity','incident_type','business_category','root_cause_category','responsible_team','title','root_cause','improvements','classification'];
                 const payload = {};
                 for (const f of fields) {
                     try {
@@ -64,7 +57,6 @@
                     return;
                 }
 
-                payload.model = this.simSelectedModel;
                 const d = await this.simFetch('{{ $endpoint }}', payload);
 
                 if (d.success) {
@@ -110,41 +102,17 @@
     class="smart-label-wrapper"
 >
     <div class="sl-trigger-group">
-        <button type="button" class="sl-trigger" style="background: linear-gradient(135deg, #ea580c, #c2410c);" @click="{{ $hasMultipleModels ? 'simShowModelPicker = !simShowModelPicker' : 'detect()' }}" :disabled="simLoading">
+        <button type="button" class="sl-trigger" style="background: linear-gradient(135deg, #ea580c, #c2410c);" @click="detect()" :disabled="simLoading">
             <span x-show="!simLoading" x-transition class="sl-trigger__idle">
                 <svg class="sl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-                <span x-text="{{ $hasMultipleModels ? "'Find Similar (' + simSelectedModel + ')'" : "'Find Similar Incidents'" }}"></span>
+                <span>Find Similar Incidents</span>
             </span>
             <span x-show="simLoading" x-transition class="sl-trigger__loading">
                 <svg class="sl-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                 <span x-text="simElapsed + 's'"></span>
             </span>
-            @if($hasMultipleModels)
-                <span class="sl-trigger__chevron" x-show="!simLoading">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 9 6 6 6-6"/></svg>
-                </span>
-            @endif
         </button>
-        @if($hasMultipleModels)
-            <span class="sl-trigger__hint" x-show="!simLoading">Select model</span>
-        @endif
     </div>
-
-    @if($hasMultipleModels)
-        <div style="position:relative;">
-            <div x-show="simShowModelPicker" @click.away="simShowModelPicker = false" x-transition:enter="sl-fade-in" x-transition:leave="sl-fade-out" x-cloak class="sl-model-picker">
-                <div class="sl-model-picker__header">Choose Model</div>
-                <div class="sl-model-picker__list">
-                    @foreach($models as $modelId => $modelName)
-                        <button type="button" @click="detect('{{ $modelId }}')" class="sl-model-picker__item" :class="{'sl-model-picker__item--active': simSelectedModel === '{{ $modelId }}'}">
-                            <span>{{ $modelName }}</span>
-                            <svg x-show="simSelectedModel === '{{ $modelId }}'" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5"/></svg>
-                        </button>
-                    @endforeach
-                </div>
-            </div>
-        </div>
-    @endif
 
     <div x-show="simError" x-transition.opacity.duration.200ms class="sl-error">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
@@ -192,7 +160,7 @@
             <template x-if="simResults && simResults.length === 0">
                 <div class="sl-empty">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                    No similar incidents found in the last 90 days.
+                    No similar incidents found.
                 </div>
             </template>
         </div>

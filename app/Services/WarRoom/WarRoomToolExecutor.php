@@ -105,9 +105,9 @@ class WarRoomToolExecutor
         }
 
         $parts = [
-            "# {$incident->no} - " . ($incident->title ?? 'Untitled'),
+            "# {$incident->no} - ".($incident->title ?? 'Untitled'),
             "Severity: {$incident->severity} | Status: {$incident->incident_status}",
-            "Date: {$incident->incident_date?->format('Y-m-d')} | PIC: " . ($incident->pic?->name ?? 'Unassigned'),
+            "Date: {$incident->incident_date?->format('Y-m-d')} | PIC: ".($incident->pic?->name ?? 'Unassigned'),
             "Classification: {$incident->classification} | Type: {$incident->incident_type}",
         ];
 
@@ -116,24 +116,24 @@ class WarRoomToolExecutor
         }
 
         if ($incident->root_cause) {
-            $parts[] = "\n## Root Cause\n" . Str::limit($incident->root_cause, 2000);
+            $parts[] = "\n## Root Cause\n".Str::limit($incident->root_cause, 2000);
         }
 
         if ($incident->timeline) {
-            $parts[] = "\n## Timeline\n" . Str::limit($incident->timeline, 1000);
+            $parts[] = "\n## Timeline\n".Str::limit($incident->timeline, 1000);
         }
 
         $fundFields = array_filter([
-            $incident->potential_fund_loss ? "Potential Loss: Rp " . number_format($incident->potential_fund_loss) : null,
-            $incident->fund_loss ? "Actual Loss: Rp " . number_format($incident->fund_loss) : null,
-            $incident->recovered_fund ? "Recovered: Rp " . number_format($incident->recovered_fund) : null,
+            $incident->potential_fund_loss ? 'Potential Loss: Rp '.number_format($incident->potential_fund_loss) : null,
+            $incident->fund_loss ? 'Actual Loss: Rp '.number_format($incident->fund_loss) : null,
+            $incident->recovered_fund ? 'Recovered: Rp '.number_format($incident->recovered_fund) : null,
         ]);
         if (! empty($fundFields)) {
-            $parts[] = "\n## Financial Impact\n" . implode(' | ', $fundFields);
+            $parts[] = "\n## Financial Impact\n".implode(' | ', $fundFields);
         }
 
         if ($incident->actionImprovements->isNotEmpty()) {
-            $actions = $incident->actionImprovements->map(fn ($a) => "- [{$a->status}] {$a->title}" . ($a->due_date ? " (Due: {$a->due_date?->format('Y-m-d')})" : ''))->implode("\n");
+            $actions = $incident->actionImprovements->map(fn ($a) => "- [{$a->status}] {$a->title}".($a->due_date ? " (Due: {$a->due_date?->format('Y-m-d')})" : ''))->implode("\n");
             $parts[] = "\n## Action Items\n{$actions}";
         }
 
@@ -151,17 +151,19 @@ class WarRoomToolExecutor
         $recurrenceService = app(RecurrenceDetectionService::class);
         $limit = min($args['limit'] ?? 5, 10);
 
-        $recurrences = $recurrenceService->detect($incident);
+        $recurrenceData = $recurrenceService->detect($incident);
 
-        if ($recurrences->isEmpty()) {
+        if (empty($recurrenceData['matches'])) {
             return "No similar incidents found for {$args['incident_no']}.";
         }
 
-        return $recurrences->take($limit)->map(fn ($rec) => implode(' | ', [
-            $rec['incident_no'] ?? $rec['no'] ?? 'Unknown',
+        $matches = collect($recurrenceData['matches'])->take($limit);
+
+        return $matches->map(fn ($rec) => implode(' | ', [
+            $rec['no'] ?? 'Unknown',
             $rec['severity'] ?? 'N/A',
-            $rec['title'] ?? 'Untitled',
-            'Score: ' . ($rec['score'] ?? $rec['similarity'] ?? 'N/A'),
+            'Score: '.($rec['score'] ?? $rec['similarity'] ?? 'N/A'),
+            ($rec['reason'] ?? '') ?: ($rec['match_reasons'] ? implode(', ', $rec['match_reasons']) : ''),
         ]))->implode("\n");
     }
 
@@ -256,6 +258,6 @@ class WarRoomToolExecutor
 
         $severityBreakdown = collect($bySeverity)->map(fn ($count, $sev) => "{$sev}: {$count}")->implode(', ');
 
-        return "Period: {$from->format('Y-m-d')} to {$to->format('Y-m-d')}\nTotal Incidents: {$total} | Open: {$open}\nTotal Fund Loss: Rp " . number_format($fundLoss) . "\nBy Severity: {$severityBreakdown}";
+        return "Period: {$from->format('Y-m-d')} to {$to->format('Y-m-d')}\nTotal Incidents: {$total} | Open: {$open}\nTotal Fund Loss: Rp ".number_format($fundLoss)."\nBy Severity: {$severityBreakdown}";
     }
 }

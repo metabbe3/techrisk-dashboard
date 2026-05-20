@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\Incident;
-use App\Models\AiSetting;
 use App\Services\Ai\AiTextService;
+use App\Services\Ai\RagService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -18,13 +18,16 @@ class RecurrenceDetectionService
 
     private const LOOKBACK_MONTHS = 12;
 
+    private const AI_CANDIDATE_LIMIT = 20;
+
     public function __construct(
-        private AiTextService $aiService
+        private AiTextService $aiService,
+        private RagService $ragService,
     ) {}
 
-    public function detect(Incident $incident): void
+    public function detect(Incident $incident): array
     {
-        $incident = $incident->fresh(['labels', 'actionImprovements']);
+        $incident->loadMissing(['labels', 'actionImprovements']);
 
         $incidentCategories = array_filter([
             ...(array) ($incident->root_cause_category ?? []),
@@ -34,27 +37,22 @@ class RecurrenceDetectionService
 
         $incidentLabelNames = $incident->labels->pluck('name')->map('strtolower')->toArray();
 
-        // No categories AND no labels — try AI-based similarity instead of skipping
         if (empty($incidentCategories) && empty($incidentLabelNames)) {
-            $this->detectViaAi($incident);
-
-            return;
+            return $this->detectViaAi($incident);
         }
+
+        $ragScoreMap = $this->getRagScoreMap($incident);
 
         $candidates = $this->fetchCandidates($incident);
 
         if ($candidates->isEmpty()) {
-            $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-
-            return;
+            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
         }
 
-        $scored = $this->scoreCandidates($incident, $candidates, $incidentLabelNames);
+        $scored = $this->scoreCandidates($incident, $candidates, $incidentLabelNames, $ragScoreMap);
 
         if ($scored->isEmpty()) {
-            $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-
-            return;
+            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
         }
 
         $topMatches = $scored->take(self::MAX_MATCHES)->values();
@@ -62,7 +60,7 @@ class RecurrenceDetectionService
 
         $aiAnalysis = $this->generateAiAnalysis($incident, $matchData);
 
-        $this->storeResult($incident, [
+        return $this->storeResult($incident, [
             'is_recurring' => true,
             'detection_method' => 'category_match',
             'matches' => $matchData,
@@ -71,38 +69,20 @@ class RecurrenceDetectionService
         ]);
     }
 
-    /**
-     * AI-based similarity detection when structured categories are missing.
-     * Reuses the same prompt/approach as the "Find Similar" button feature.
-     */
-    private function detectViaAi(Incident $incident): void
+    private function detectViaAi(Incident $incident): array
     {
         if (! $this->aiService->isAvailable()) {
-            $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-
-            return;
+            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
         }
 
-        // Need at least a summary or title to compare
         if (empty($incident->summary) && empty($incident->title)) {
-            $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-
-            return;
+            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
         }
 
-        $candidates = Incident::where('classification', 'Incident')
-            ->where('id', '!=', $incident->id)
-            ->where('incident_date', '>=', now()->subMonths(self::LOOKBACK_MONTHS))
-            ->select(['id', 'no', 'summary', 'severity', 'incident_type', 'incident_date', 'incident_status'])
-            ->latest('incident_date')
-            ->limit(50)
-            ->get()
-            ->toArray();
+        $candidates = $this->fetchAiCandidates($incident);
 
         if (empty($candidates)) {
-            $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-
-            return;
+            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
         }
 
         try {
@@ -112,6 +92,10 @@ class RecurrenceDetectionService
                 'root_cause' => $incident->root_cause,
                 'severity' => $incident->severity,
                 'incident_type' => $incident->incident_type,
+                'business_category' => $incident->business_category,
+                'root_cause_category' => $incident->root_cause_category,
+                'responsible_team' => $incident->responsible_team,
+                'classification' => $incident->classification,
             ], fn ($v) => filled($v));
 
             $result = $this->aiService->detectSimilar(
@@ -122,12 +106,9 @@ class RecurrenceDetectionService
             $similar = $result['similar'] ?? [];
 
             if (empty($similar)) {
-                $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-
-                return;
+                return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
             }
 
-            // Enrich matches with action improvement data
             $matchIds = collect($similar)->pluck('id')->toArray();
             $enrichedIncidents = Incident::whereIn('id', $matchIds)
                 ->with(['actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date'])])
@@ -166,7 +147,7 @@ class RecurrenceDetectionService
 
             $aiAnalysis = $this->generateAiAnalysisForSimilar($incident, $matchData);
 
-            $this->storeResult($incident, [
+            return $this->storeResult($incident, [
                 'is_recurring' => true,
                 'detection_method' => 'ai_similarity',
                 'matches' => $matchData,
@@ -178,23 +159,87 @@ class RecurrenceDetectionService
                 'incident_id' => $incident->id,
                 'error' => $e->getMessage(),
             ]);
-            $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
+
+            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
+        }
+    }
+
+    private function getRagScoreMap(Incident $incident): array
+    {
+        $searchQuery = collect([
+            $incident->title,
+            $incident->summary,
+            $incident->root_cause,
+        ])->filter()->implode(' ');
+
+        if (! filled($searchQuery)) {
+            return [];
+        }
+
+        try {
+            $ragResults = $this->ragService->search($searchQuery, [
+                'date_from' => now()->subMonths(self::LOOKBACK_MONTHS)->toDateString(),
+            ], limit: self::CANDIDATE_LIMIT);
+
+            return $ragResults->keyBy('incident_id')->map->relevance_score->toArray();
+        } catch (\Throwable $e) {
+            Log::warning('[RecurrenceDetection] RAG scoring failed', ['error' => $e->getMessage()]);
+
+            return [];
         }
     }
 
     private function fetchCandidates(Incident $incident)
     {
-        return Incident::where('classification', 'Incident')
+        return Incident::whereIn('classification', ['Incident', 'Issue'])
             ->where('id', '!=', $incident->id)
             ->where('incident_date', '>=', now()->subMonths(self::LOOKBACK_MONTHS))
             ->with(['actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date']), 'labels:id,name'])
-            ->select(['id', 'no', 'summary', 'severity', 'incident_date', 'incident_status',
-                'root_cause_category', 'business_category', 'responsible_team'])
+            ->select(Incident::SIMILARITY_COLUMNS)
             ->limit(self::CANDIDATE_LIMIT)
             ->get();
     }
 
-    private function scoreCandidates(Incident $incident, $candidates, array $incidentLabelNames)
+    private function fetchAiCandidates(Incident $incident): array
+    {
+        $searchQuery = collect([
+            $incident->title,
+            $incident->summary,
+            $incident->root_cause,
+        ])->filter()->implode(' ');
+
+        if (filled($searchQuery)) {
+            $ragResults = $this->ragService->search($searchQuery, [
+                'date_from' => now()->subMonths(self::LOOKBACK_MONTHS)->toDateString(),
+            ], limit: self::AI_CANDIDATE_LIMIT);
+
+            $candidateIds = $ragResults
+                ->where('incident_id', '!=', $incident->id)
+                ->pluck('incident_id')
+                ->take(self::AI_CANDIDATE_LIMIT)
+                ->toArray();
+
+            if (! empty($candidateIds)) {
+                return Incident::whereIn('id', $candidateIds)
+                    ->with(['labels:id,name'])
+                    ->select(Incident::SIMILARITY_COLUMNS)
+                    ->get()
+                    ->toArray();
+            }
+        }
+
+        return Incident::whereIn('classification', ['Incident', 'Issue'])
+            ->where('id', '!=', $incident->id)
+            ->where('incident_date', '>=', now()->subMonths(self::LOOKBACK_MONTHS))
+            ->with(['labels:id,name'])
+            ->select(Incident::SIMILARITY_COLUMNS)
+            ->latest('incident_date')
+            ->limit(self::AI_CANDIDATE_LIMIT)
+            ->get()
+            ->toArray();
+    }
+
+    private function scoreCandidates(Incident $incident, $candidates, array $incidentLabelNames, array $ragScoreMap)
     {
         $incidentRootCause = (array) ($incident->root_cause_category ?? []);
         $incidentBizCat = (array) ($incident->business_category ?? []);
@@ -239,6 +284,14 @@ class RecurrenceDetectionService
 
             if ($incident->severity && $candidate->severity === $incident->severity) {
                 $score += 1;
+            }
+
+            $ragBonus = isset($ragScoreMap[$candidate->id])
+                ? (int) round($ragScoreMap[$candidate->id] * 2)
+                : 0;
+            if ($ragBonus > 0) {
+                $score += $ragBonus;
+                $matchReasons[] = 'text_similarity';
             }
 
             if ($score >= self::SCORE_THRESHOLD) {
@@ -286,7 +339,7 @@ class RecurrenceDetectionService
         }
 
         try {
-            $resolvedModel = AiSetting::get('default_model', config('ai.default_model'));
+            $resolvedModel = config('ai.similarity_model', 'gemini-2.5-flash');
 
             $systemPrompt = <<<'PROMPT'
 You are analyzing incident recurrence patterns. Given a new incident and similar past incidents with their remediation status, provide a concise analysis. Focus on:
@@ -297,10 +350,13 @@ You are analyzing incident recurrence patterns. Given a new incident and similar
 Format your response using markdown. Use **bold** for incident numbers and action titles. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers and action titles. Return a JSON object with a single "analysis" field containing your markdown-formatted explanation as a string.
 PROMPT;
 
-            $userMessage = "New incident: [{$incident->no}] {$incident->summary}\n";
+            $userMessage = "New incident: [{$incident->no}] {$incident->title}\n";
+            $userMessage .= 'Summary: '.Str::limit($incident->summary ?? 'N/A', 300)."\n";
+            $userMessage .= 'Root cause: '.Str::limit($incident->root_cause ?? 'N/A', 300)."\n";
             $userMessage .= 'Root cause categories: '.implode(', ', (array) ($incident->root_cause_category ?? []))."\n";
             $userMessage .= 'Business categories: '.implode(', ', (array) ($incident->business_category ?? []))."\n";
-            $userMessage .= 'Responsible teams: '.implode(', ', (array) ($incident->responsible_team ?? []))."\n\n";
+            $userMessage .= 'Responsible teams: '.implode(', ', (array) ($incident->responsible_team ?? []))."\n";
+            $userMessage .= 'Severity: '.$incident->severity."\n\n";
             $userMessage .= "Similar past incidents:\n";
 
             foreach ($matchData as $i => $match) {
@@ -330,10 +386,6 @@ PROMPT;
         }
     }
 
-    /**
-     * Generate AI analysis for AI-similarity-detected matches.
-     * Uses the similarity reason from the first match as context.
-     */
     private function generateAiAnalysisForSimilar(Incident $incident, array $matchData): string
     {
         if (! $this->aiService->isAvailable()) {
@@ -341,7 +393,7 @@ PROMPT;
         }
 
         try {
-            $resolvedModel = AiSetting::get('default_model', config('ai.default_model'));
+            $resolvedModel = config('ai.similarity_model', 'gemini-2.5-flash');
 
             $reasons = collect($matchData)->pluck('reason')->filter()->implode('; ');
 
@@ -354,14 +406,16 @@ You are analyzing incident recurrence detected via AI similarity matching. Given
 Format your response using markdown. Use **bold** for incident numbers and key terms. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers. Return a JSON object with a single "analysis" field containing your markdown-formatted explanation as a string.
 PROMPT;
 
-            $userMessage = "New incident: [{$incident->no}] {$incident->summary}\n";
+            $userMessage = "New incident: [{$incident->no}] {$incident->title}\n";
+            $userMessage .= 'Summary: '.Str::limit($incident->summary ?? 'N/A', 300)."\n";
+            $userMessage .= 'Root cause: '.Str::limit($incident->root_cause ?? 'N/A', 300)."\n";
             $userMessage .= "AI similarity reasons: {$reasons}\n\n";
             $userMessage .= "Similar past incidents:\n";
 
             foreach ($matchData as $i => $match) {
                 $userMessage .= ($i + 1).". [{$match['no']}] {$match['summary']}\n";
                 $userMessage .= "   Status: {$match['incident_status']}, Severity: {$match['severity']}, Date: {$match['incident_date']}\n";
-                $userMessage .= "   Similarity: ".round(($match['similarity'] ?? 0) * 100)."%, Pending: {$match['pending_actions']}, Overdue: {$match['overdue_actions']}\n";
+                $userMessage .= '   Similarity: '.round(($match['similarity'] ?? 0) * 100)."%\n";
             }
 
             $result = $this->aiService->callAiForJson(
@@ -398,9 +452,11 @@ PROMPT;
         return $analysis;
     }
 
-    private function storeResult(Incident $incident, array $data): void
+    private function storeResult(Incident $incident, array $data): array
     {
         $incident->recurrence_data = $data;
         $incident->saveQuietly();
+
+        return $data;
     }
 }

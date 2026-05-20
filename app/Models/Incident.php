@@ -125,6 +125,13 @@ class Incident extends Model implements Auditable
         'recurrence_data' => 'array',
     ];
 
+    public const SIMILARITY_COLUMNS = [
+        'id', 'no', 'title', 'summary', 'root_cause', 'timeline',
+        'severity', 'incident_type', 'incident_date', 'incident_status',
+        'business_category', 'root_cause_category', 'responsible_team',
+        'improvements', 'classification',
+    ];
+
     /**
      * Get formatted MTTR with appropriate unit.
      * - Fund loss incidents: negative value stored as days, display as "X days"

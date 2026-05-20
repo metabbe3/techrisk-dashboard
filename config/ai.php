@@ -60,7 +60,7 @@ return [
             'label' => 'AI Full Analysis',
         ],
         'similar_incident' => [
-            'system' => "You are an incident similarity analyst. Compare the current incident being reported against a list of recent incidents from the database.\n\nYour job:\n- Compare the current incident against each recent incident.\n- Identify incidents that are genuinely similar based on: similar root cause patterns, affected systems/services, incident types, severity patterns, or recurring issues.\n- For each similar incident found, provide:\n  - The exact incident number (no) from the database list\n  - A similarity score between 0 and 1 (1 = identical, 0.7+ = very similar, 0.4-0.7 = somewhat similar)\n  - A brief reason explaining WHY they are similar\n- Only include incidents with similarity >= 0.4. Skip ones that are clearly unrelated.\n- Limit to the top 5 most similar incidents.\n\nReturn ONLY valid JSON:\n{\"similar\": [{\"incident_no\": \"20260501_INC_0001\", \"similarity\": 0.85, \"reason\": \"Same payment gateway timeout issue\"}]}\n\nIf no similar incidents are found, return: {\"similar\": []}",
+            'system' => "You are an incident similarity analyst. Compare the current incident against a list of candidate incidents from the database.\n\nFor EACH comparison, evaluate these specific patterns:\n1. **Root cause mechanism**: Is the underlying failure mode the same? (e.g., timeout, misconfiguration, authorization bug, capacity overflow, human error)\n2. **Affected systems/services**: Do both incidents mention the same systems, APIs, databases, or infrastructure?\n3. **Failure mode**: Is the way the problem manifested similar? (e.g., cascade failure, latency spike, data corruption, service outage)\n4. **Resolution approach**: Were the same fix types applied? (e.g., config change, rollback, scaling, patch)\n5. **Category overlap**: Do root_cause_category, business_category, or responsible_team overlap?\n6. **Financial impact pattern**: Do both involve fund loss, or both non-financial?\n\nScoring guidance:\n- 0.8-1.0: Nearly identical root cause, same system, same failure mode\n- 0.6-0.8: Same root cause category, overlapping systems, similar pattern\n- 0.4-0.6: Some thematic overlap but different specifics\n- Below 0.4: Not similar enough — exclude\n\nFor each similar incident found, provide:\n- The exact incident number (no) from the database list\n- A similarity score between 0 and 1\n- A brief reason (1-2 sentences) explaining WHICH specific pattern matched (root cause? system? category?)\n\nOnly include incidents with similarity >= 0.4. Limit to top 5 most similar.\n\nReturn ONLY valid JSON:\n{\"similar\": [{\"incident_no\": \"20260501_INC_0001\", \"similarity\": 0.85, \"reason\": \"Same payment gateway timeout — both caused by DB connection pool exhaustion under load\"}]}\n\nIf no similar incidents are found, return: {\"similar\": []}",
             'label' => 'Find Similar Incidents',
         ],
         'weekly_report_summary' => [
@@ -186,6 +186,8 @@ return [
         'max_iterations' => (int) env('AI_TOOLS_MAX_ITERATIONS', 5),
         'chat_max_rounds' => (int) env('AI_CHAT_MAX_TOOL_ROUNDS', 3),
     ],
+
+    'similarity_model' => env('AI_SIMILARITY_MODEL', 'gemini-2.5-flash'),
 
     'rag' => [
         'enabled' => env('AI_RAG_ENABLED', true),

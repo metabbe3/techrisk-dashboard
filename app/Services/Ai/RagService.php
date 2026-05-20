@@ -68,9 +68,8 @@ class RagService
         $this->applyFilters($q, $filters);
 
         if (! empty($query)) {
-            $escapedQuery = addslashes($query);
-            $q->selectRaw('*, MATCH(searchable_content) AGAINST(? IN NATURAL LANGUAGE MODE) AS relevance_score', [$escapedQuery])
-                ->whereRaw('MATCH(searchable_content) AGAINST(? IN NATURAL LANGUAGE MODE)', [$escapedQuery])
+            $q->selectRaw('*, MATCH(searchable_content) AGAINST(? IN NATURAL LANGUAGE MODE) AS relevance_score', [$query])
+                ->whereRaw('MATCH(searchable_content) AGAINST(? IN NATURAL LANGUAGE MODE)', [$query])
                 ->orderByDesc('relevance_score');
         } else {
             $q->orderByDesc('incident_date');
