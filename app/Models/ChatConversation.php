@@ -17,12 +17,17 @@ class ChatConversation extends Model implements Auditable
         'user_id',
         'title',
         'model',
+        'folder',
+        'tags',
         'summary',
         'memory_archived_at',
+        'pinned_at',
     ];
 
     protected $casts = [
         'memory_archived_at' => 'datetime',
+        'pinned_at' => 'datetime',
+        'tags' => 'array',
     ];
 
     public function user(): BelongsTo
@@ -47,6 +52,36 @@ class ChatConversation extends Model implements Auditable
 
     public function scopeLatestFirst($query)
     {
-        return $query->orderBy('updated_at', 'desc');
+        return $query->orderByDesc('pinned_at')->orderBy('updated_at', 'desc');
+    }
+
+    public function scopePinned($query)
+    {
+        return $query->whereNotNull('pinned_at');
+    }
+
+    public function scopeInFolder($query, string $folder)
+    {
+        return $query->where('folder', $folder);
+    }
+
+    public function scopeWithTag($query, string $tag)
+    {
+        return $query->whereJsonContains('tags', $tag);
+    }
+
+    public function isPinned(): bool
+    {
+        return $this->pinned_at !== null;
+    }
+
+    public static function getFolders(): array
+    {
+        return static::where('user_id', auth()->id())
+            ->whereNotNull('folder')
+            ->groupBy('folder')
+            ->orderBy('folder')
+            ->pluck('folder')
+            ->toArray();
     }
 }

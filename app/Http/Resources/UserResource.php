@@ -17,9 +17,7 @@ class UserResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'email' => $this->email,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
+            'email' => $this->when($request->user()?->currentAccessToken()?->can('read:pii'), $this->email),
         ];
     }
 }

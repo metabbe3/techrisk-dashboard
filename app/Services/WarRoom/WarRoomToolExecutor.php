@@ -4,6 +4,8 @@ namespace App\Services\WarRoom;
 
 use App\Models\Incident;
 use App\Services\Ai\WebSearchService;
+use App\Services\IncidentFormatter;
+use App\Services\Markdown\MarkdownFormatter;
 use App\Services\RecurrenceDetectionService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -104,40 +106,7 @@ class WarRoomToolExecutor
             return "Incident not found: {$args['incident_no']}";
         }
 
-        $parts = [
-            "# {$incident->no} - ".($incident->title ?? 'Untitled'),
-            "Severity: {$incident->severity} | Status: {$incident->incident_status}",
-            "Date: {$incident->incident_date?->format('Y-m-d')} | PIC: ".($incident->pic?->name ?? 'Unassigned'),
-            "Classification: {$incident->classification} | Type: {$incident->incident_type}",
-        ];
-
-        if ($incident->summary) {
-            $parts[] = "\n## Summary\n{$incident->summary}";
-        }
-
-        if ($incident->root_cause) {
-            $parts[] = "\n## Root Cause\n".Str::limit($incident->root_cause, 2000);
-        }
-
-        if ($incident->timeline) {
-            $parts[] = "\n## Timeline\n".Str::limit($incident->timeline, 1000);
-        }
-
-        $fundFields = array_filter([
-            $incident->potential_fund_loss ? 'Potential Loss: Rp '.number_format($incident->potential_fund_loss) : null,
-            $incident->fund_loss ? 'Actual Loss: Rp '.number_format($incident->fund_loss) : null,
-            $incident->recovered_fund ? 'Recovered: Rp '.number_format($incident->recovered_fund) : null,
-        ]);
-        if (! empty($fundFields)) {
-            $parts[] = "\n## Financial Impact\n".implode(' | ', $fundFields);
-        }
-
-        if ($incident->actionImprovements->isNotEmpty()) {
-            $actions = $incident->actionImprovements->map(fn ($a) => "- [{$a->status}] {$a->title}".($a->due_date ? " (Due: {$a->due_date?->format('Y-m-d')})" : ''))->implode("\n");
-            $parts[] = "\n## Action Items\n{$actions}";
-        }
-
-        return implode("\n", $parts);
+        return IncidentFormatter::formatFull($incident);
     }
 
     private function findSimilarIncidents(array $args): string
@@ -258,6 +227,6 @@ class WarRoomToolExecutor
 
         $severityBreakdown = collect($bySeverity)->map(fn ($count, $sev) => "{$sev}: {$count}")->implode(', ');
 
-        return "Period: {$from->format('Y-m-d')} to {$to->format('Y-m-d')}\nTotal Incidents: {$total} | Open: {$open}\nTotal Fund Loss: Rp ".number_format($fundLoss)."\nBy Severity: {$severityBreakdown}";
+        return "Period: {$from->format('Y-m-d')} to {$to->format('Y-m-d')}\nTotal Incidents: {$total} | Open: {$open}\nTotal Fund Loss: ".MarkdownFormatter::formatMoney((float) $fundLoss)."\nBy Severity: {$severityBreakdown}";
     }
 }

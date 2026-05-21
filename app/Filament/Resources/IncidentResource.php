@@ -69,190 +69,62 @@ class IncidentResource extends Resource
 
     public static function form(Form $form): Form
     {
-        return $form->schema(static::createFormSchema());
+        return $form->schema(static::getFormSchema('create'));
     }
 
-    public static function editFormSchema(): array
+    public static function getFormSchema(string $context = 'create'): array
     {
-        return [
-            Forms\Components\Tabs::make('EditIncidentTabs')
-                ->tabs([
-                    Forms\Components\Tabs\Tab::make('General')
-                        ->icon('heroicon-o-document-text')
-                        ->schema([
-                            Grid::make(['default' => 1, 'lg' => 3])->schema([
-                                Section::make('Core Details')
-                                    ->icon('heroicon-o-identification')
-                                    ->schema([
-                                        TextInput::make('title')->required()->columnSpanFull(),
-                                        TextInput::make('no')->label('Incident ID')
-                                            ->required()
-                                            ->readOnly()
-                                            ->unique(ignoreRecord: true),
-                                        Select::make('severity')->options(Severity::options())->required(),
-                                        Select::make('classification')->options(IncidentClassification::options())->required(),
-                                        Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
-                                        Select::make('incident_type_id')
-                                            ->label('Incident Type')
-                                            ->relationship('incidentType', 'name')
-                                            ->searchable()
-                                            ->preload(),
-                                        TextInput::make('reported_by')->label('Reported By'),
-                                        Grid::make(['default' => 1, 'sm' => 2])->schema([
-                                            TextInput::make('mttr')->label('MTTR (minutes)')->readOnly(),
-                                            TextInput::make('mtbf')->label('MTBF (days)')->readOnly(),
-                                        ]),
-                                    ])->columnSpan(['default' => 'full', 'lg' => 2]),
+        $isEdit = $context === 'edit';
 
-                                Section::make('Status & Assignment')
-                                    ->icon('heroicon-o-user-group')
-                                    ->schema([
-                                        Select::make('incident_status')
-                                            ->options(IncidentStatus::options())
-                                            ->required()
-                                            ->default('Open')
-                                            ->live(),
-                                        Select::make('incident_source')
-                                            ->options(['Internal' => 'Internal', 'External' => 'External'])
-                                            ->required(),
-                                        Select::make('pic_id')
-                                            ->label('Person In Charge')
-                                            ->relationship('pic', 'name')
-                                            ->searchable()
-                                            ->preload(),
-                                        TextInput::make('checker'),
-                                        TextInput::make('maker'),
-                                    ])->columnSpan(['default' => 'full', 'lg' => 1]),
-                            ]),
-                        ]),
+        $noField = TextInput::make('no')
+            ->label('Incident ID')
+            ->required()
+            ->readOnly()
+            ->unique(ignoreRecord: true);
 
-                    Forms\Components\Tabs\Tab::make('Timeline')
-                        ->icon('heroicon-o-clock')
-                        ->schema([
-                            Section::make('Incident Dates')
-                                ->icon('heroicon-o-calendar')
-                                ->schema([
-                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required(),
-                                    DateTimePicker::make('discovered_at'),
-                                    DateTimePicker::make('stop_bleeding_at'),
-                                    DateTimePicker::make('entry_date_tech_risk')->required(),
-                                ])->columns(['default' => 1, 'sm' => 2, 'lg' => 4]),
+        if (! $isEdit) {
+            $noField->default(fn () => Incident::generateNo('IN'));
+        }
 
-                            Section::make('Categories')
-                                ->icon('heroicon-o-tag')
-                                ->schema([
-                                    Select::make('business_category')
-                                        ->label('Business Category')
-                                        ->multiple()
-                                        ->options(fn () => Category::options(Category::TYPE_BUSINESS_CATEGORY)),
-                                    Select::make('root_cause_category')
-                                        ->label('Root Cause Category')
-                                        ->multiple()
-                                        ->options(fn () => Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY)),
-                                    Select::make('responsible_team')
-                                        ->label('Responsible Team')
-                                        ->multiple()
-                                        ->options(fn () => Category::options(Category::TYPE_RESPONSIBLE_TEAM)),
-                                ])->columns(['default' => 1, 'md' => 3]),
-
-                            Section::make('Financial Impact')
-                                ->icon('heroicon-o-currency-dollar')
-                                ->schema([
-                                    Select::make('fund_status')->options(FundStatus::options()),
-                                    TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0),
-                                    TextInput::make('recovered_fund')->numeric()->prefix('Rp')->default(0)->required(),
-                                    TextInput::make('fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
-                                    TextInput::make('loss_taken_by')->label('Loss Taken By'),
-                                ])->columns(['default' => 1, 'sm' => 2, 'xl' => 5]),
-                        ]),
-
-                    Forms\Components\Tabs\Tab::make('Content & Analysis')
-                        ->icon('heroicon-o-pencil-square')
-                        ->extraAttributes(['style' => 'overflow: visible !important;'])
-                        ->schema([
-                            Section::make('AI Tools')
-                                ->icon('heroicon-o-sparkles')
-                                ->extraAttributes(['style' => 'overflow: visible !important;'])
-                                ->schema([
-                                    Forms\Components\View::make('filament.forms.components.ai-root-cause-analysis')->hiddenLabel(),
-                                    Forms\Components\View::make('filament.forms.components.ai-similar-incidents')->hiddenLabel(),
-                                ])->columns(2),
-
-                            Section::make('Details & Timeline')
-                                ->icon('heroicon-o-document-chart-bar')
-                                ->schema([
-                                    AiTextarea::make('summary')
-                                        ->label('Summary')
-                                        ->rows(6)
-                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
-                                        ->aiFieldType('summary')
-                                        ->columnSpanFull(),
-                                    AiTextarea::make('root_cause')
-                                        ->label('Root Cause')
-                                        ->rows(6)
-                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
-                                        ->aiFieldType('root_cause')
-                                        ->columnSpanFull(),
-                                    AiTextarea::make('timeline')
-                                        ->label('Incident Timeline and Chronology')
-                                        ->rows(10)
-                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
-                                        ->aiFieldType('timeline')
-                                        ->columnSpanFull(),
-                                    AiTextarea::make('remark')
-                                        ->label('Remark')
-                                        ->rows(4)
-                                        ->helperText('Supports Markdown — **bold**, *italic*, # headings, | tables |, - lists')
-                                        ->aiFieldType('remark')
-                                        ->columnSpanFull(),
-                                    Textarea::make('improvements')
-                                        ->label('Improvements')
-                                        ->rows(4)
-                                        ->columnSpanFull()
-                                        ->disabled()->hidden(),
-                                    TextInput::make('evidence_link')->label('Evidence Link')->url()->columnSpanFull()->disabled()->hidden(),
-                                    Textarea::make('evidence')
-                                        ->label('Evidence')
-                                        ->rows(3)
-                                        ->columnSpanFull()
-                                        ->disabled()->hidden(),
-                                    Select::make('labels')
-                                        ->multiple()
-                                        ->relationship('labels', 'name')
-                                        ->preload()
-                                        ->searchable()
-                                        ->id('labels-select'),
-                                    Forms\Components\View::make('filament.forms.components.smart-labels')->hiddenLabel(),
-                                ])->columns(['default' => 1, 'md' => 2]),
-                        ]),
-
-                    Forms\Components\Tabs\Tab::make('Admin')
-                        ->icon('heroicon-o-cog-6-tooth')
-                        ->schema([
-                            Section::make('Upload & Document Status')
-                                ->icon('heroicon-o-check-circle')
-                                ->schema([
-                                    Checkbox::make('goc_upload')->label('GoC Uploaded'),
-                                    Checkbox::make('teams_upload')->label('Teams Uploaded'),
-                                    Checkbox::make('doc_signed')->label('Doc Signed'),
-                                    Checkbox::make('risk_incident_form_cfm')->label('Risk Incident Form CFM'),
-                                    Checkbox::make('glitch_flag')->label('Glitch'),
-                                    TextInput::make('investigation_pic_status')->label('Investigation PIC Status')->disabled()->hidden(),
-                                    TextInput::make('action_improvement_tracking')->label('Action Improvement Tracking')->disabled()->hidden(),
-                                    TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden(),
-                                ])->columns(['default' => 1, 'sm' => 2]),
-                        ]),
-                ])
-                ->activeTab(1)
-                ->persistTabInQueryString()
-                ->columnSpanFull(),
+        $coreDetails = [
+            TextInput::make('title')->required()->columnSpanFull(),
+            $noField,
+            Select::make('severity')->options(Severity::options())->required(),
+            Select::make('classification')->options(IncidentClassification::options())->required(),
+            Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
+            Select::make('incident_type_id')
+                ->label('Incident Type')
+                ->relationship('incidentType', 'name')
+                ->searchable()
+                ->preload(),
+            TextInput::make('reported_by')->label('Reported By'),
         ];
-    }
 
-    public static function createFormSchema(): array
-    {
+        if ($isEdit) {
+            $coreDetails[] = Grid::make(['default' => 1, 'sm' => 2])->schema([
+                TextInput::make('mttr')->label('MTTR (minutes)')->readOnly(),
+                TextInput::make('mtbf')->label('MTBF (days)')->readOnly(),
+            ]);
+        } else {
+            $coreDetails[] = TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden();
+        }
+
+        $adminFields = [
+            Checkbox::make('goc_upload')->label('GoC Uploaded'),
+            Checkbox::make('teams_upload')->label('Teams Uploaded'),
+            Checkbox::make('doc_signed')->label('Doc Signed'),
+            Checkbox::make('risk_incident_form_cfm')->label('Risk Incident Form CFM'),
+            Checkbox::make('glitch_flag')->label('Glitch'),
+            TextInput::make('investigation_pic_status')->label('Investigation PIC Status')->disabled()->hidden(),
+            TextInput::make('action_improvement_tracking')->label('Action Improvement Tracking')->disabled()->hidden(),
+        ];
+
+        if ($isEdit) {
+            $adminFields[] = TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden();
+        }
+
         return [
-            Forms\Components\Tabs::make('CreateIncidentTabs')
+            Forms\Components\Tabs::make($isEdit ? 'EditIncidentTabs' : 'CreateIncidentTabs')
                 ->tabs([
                     Forms\Components\Tabs\Tab::make('General')
                         ->icon('heroicon-o-document-text')
@@ -260,24 +132,8 @@ class IncidentResource extends Resource
                             Grid::make(['default' => 1, 'lg' => 3])->schema([
                                 Section::make('Core Details')
                                     ->icon('heroicon-o-identification')
-                                    ->schema([
-                                        TextInput::make('title')->required()->columnSpanFull(),
-                                        TextInput::make('no')->label('Incident ID')
-                                            ->required()
-                                            ->default(fn () => Incident::generateNo('IN'))
-                                            ->readOnly()
-                                            ->unique(ignoreRecord: true),
-                                        Select::make('severity')->options(Severity::options())->required(),
-                                        Select::make('classification')->options(IncidentClassification::options())->required(),
-                                        Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
-                                        Select::make('incident_type_id')
-                                            ->label('Incident Type')
-                                            ->relationship('incidentType', 'name')
-                                            ->searchable()
-                                            ->preload(),
-                                        TextInput::make('reported_by')->label('Reported By'),
-                                        TextInput::make('third_party_client')->label('3rd Party/Client')->disabled()->hidden(),
-                                    ])->columnSpan(['default' => 'full', 'lg' => 2]),
+                                    ->schema($coreDetails)
+                                    ->columnSpan(['default' => 'full', 'lg' => 2]),
 
                                 Section::make('Status & Assignment')
                                     ->icon('heroicon-o-user-group')
@@ -406,15 +262,8 @@ class IncidentResource extends Resource
                         ->schema([
                             Section::make('Upload & Document Status')
                                 ->icon('heroicon-o-check-circle')
-                                ->schema([
-                                    Checkbox::make('goc_upload')->label('GoC Uploaded'),
-                                    Checkbox::make('teams_upload')->label('Teams Uploaded'),
-                                    Checkbox::make('doc_signed')->label('Doc Signed'),
-                                    Checkbox::make('risk_incident_form_cfm')->label('Risk Incident Form CFM'),
-                                    Checkbox::make('glitch_flag')->label('Glitch'),
-                                    TextInput::make('investigation_pic_status')->label('Investigation PIC Status')->disabled()->hidden(),
-                                    TextInput::make('action_improvement_tracking')->label('Action Improvement Tracking')->disabled()->hidden(),
-                                ])->columns(['default' => 1, 'sm' => 2]),
+                                ->schema($adminFields)
+                                ->columns(['default' => 1, 'sm' => 2]),
                         ]),
                 ])
                 ->activeTab(1)
@@ -781,13 +630,14 @@ class IncidentResource extends Resource
     {
         return [
             'index' => Pages\ListIncidents::route('/'),
+            'board' => Pages\BoardIncidents::route('/board'),
             'create' => Pages\CreateIncident::route('/create'),
             'edit' => Pages\EditIncident::route('/{record}/edit'),
             'view' => Pages\ViewIncident::route('/{record}'),
         ];
     }
 
-    protected static function applyAccessControl(Builder $query): Builder
+    public static function applyAccessControl(Builder $query): Builder
     {
         $query = $query->where('classification', '!=', 'Issue');
 

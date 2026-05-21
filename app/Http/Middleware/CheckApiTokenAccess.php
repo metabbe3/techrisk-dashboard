@@ -16,11 +16,10 @@ class CheckApiTokenAccess
      * Handle an incoming request.
      *
      * Verifies token has access to the requested endpoint.
-     * Token inactivity expiry is handled by CheckTokenInactivity listener.
+     * Token disabled/expired/inactivity checks are handled by CheckTokenInactivity listener.
      */
     public function handle(Request $request, Closure $next): Response
     {
-        // Get the current token from the authenticated request
         $token = $request->user()?->currentAccessToken();
 
         if (! $token) {
@@ -30,9 +29,6 @@ class CheckApiTokenAccess
                 'message' => 'Token not found or invalid.',
             ], 401);
         }
-
-        // Token inactivity expiry is handled by CheckTokenInactivity listener
-        // on the TokenAuthenticated event (fires before Sanctum updates last_used_at).
 
         $requestPath = $request->path();
 

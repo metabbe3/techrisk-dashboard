@@ -17,20 +17,107 @@
             <input type="text" x-model="searchQuery" @input.debounce.300ms="searchConversations()" placeholder="Search conversations..." class="ai-chat-search-input" />
         </div>
         <div class="ai-chat-sidebar-list">
-            <template x-for="conv in conversations" :key="conv.id">
-                <div @click="selectConversation(conv.id)"
-                     class="ai-chat-sidebar-item"
-                     :class="{ 'active': activeConversationId === conv.id }">
-                    <div class="flex-1 min-w-0">
-                        <p class="text-sm font-medium truncate" x-text="conv.title || 'New Chat'"></p>
-                        <p class="text-xs text-gray-400 truncate mt-0.5" x-text="conv.last_message"></p>
+            {{-- Pinned conversations --}}
+            <template x-if="!searchQuery && conversations.filter(c => c.pinned).length > 0">
+                <div>
+                    <div class="px-3 py-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Pinned</div>
+                    <template x-for="conv in conversations.filter(c => c.pinned)" :key="'p-'+conv.id">
+                        <div class="relative">
+                            <div @click="selectConversation(conv.id)"
+                                 class="ai-chat-sidebar-item"
+                                 :class="{ 'active': activeConversationId === conv.id }">
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-medium truncate">
+                                        <span class="text-amber-500 mr-1">&#128204;</span>
+                                        <template x-if="editingTitleId === conv.id">
+                                            <input :id="'title-input-'+conv.id" x-model="editingTitleValue"
+                                                   @keydown.enter.prevent="saveTitle(conv)"
+                                                   @keydown.escape.prevent="cancelEditTitle()"
+                                                   @blur="saveTitle(conv)"
+                                                   @click.stop
+                                                   class="ai-chat-title-input" maxlength="80" />
+                                        </template>
+                                        <template x-if="editingTitleId !== conv.id">
+                                            <span x-text="conv.title || 'New Chat'"></span>
+                                        </template>
+                                    </p>
+                                    <div class="flex items-center gap-1 mt-0.5">
+                                        <p class="text-xs text-gray-400 dark:text-gray-500 truncate" x-text="conv.last_message"></p>
+                                    </div>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <template x-for="tag in (conv.tags || [])" :key="tag">
+                                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500" x-text="tag"></span>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <button @click.stop="startEditTitle(conv)" class="ai-chat-edit-btn" title="Rename">
+                                        <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                    </button>
+                                    <button @click.stop="togglePin(conv)" class="text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300" title="Unpin">
+                                        <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                                    </button>
+                                    <button @click.stop="deleteConversation(conv.id)" class="ai-chat-delete-btn" title="Delete">
+                                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </template>
                     </div>
-                    <button @click.stop="deleteConversation(conv.id)" class="ai-chat-delete-btn" title="Delete">
-                        <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                </template>
+            {{-- Regular conversations (grouped by date) --}}
+            <template x-for="group in groupedConversations" :key="group.label">
+                <div>
+                    <button @click="collapsedGroups[group.label] = !collapsedGroups[group.label]" class="ai-chat-group-header">
+                        <svg class="w-2.5 h-2.5 transition-transform" :class="{ '-rotate-90': collapsedGroups[group.label] }" fill="currentColor" viewBox="0 0 20 20"><path d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"/></svg>
+                        <span x-text="group.label + ' (' + group.items.length + ')'"></span>
                     </button>
-                </div>
-            </template>
-            <div x-show="conversations.length === 0" class="p-4 text-center text-xs text-gray-400">
+                    <div x-show="!collapsedGroups[group.label]" x-transition>
+                        <template x-for="conv in group.items" :key="conv.id">
+                            <div class="relative">
+                                <div @click="selectConversation(conv.id)"
+                                     class="ai-chat-sidebar-item"
+                                     :class="{ 'active': activeConversationId === conv.id }">
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm font-medium truncate">
+                                            <template x-if="editingTitleId === conv.id">
+                                                <input :id="'title-input-'+conv.id" x-model="editingTitleValue"
+                                                       @keydown.enter.prevent="saveTitle(conv)"
+                                                       @keydown.escape.prevent="cancelEditTitle()"
+                                                       @blur="saveTitle(conv)"
+                                                       @click.stop
+                                                       class="ai-chat-title-input" maxlength="80" />
+                                            </template>
+                                            <template x-if="editingTitleId !== conv.id">
+                                                <span x-text="conv.title || 'New Chat'"></span>
+                                            </template>
+                                        </p>
+                                        <div class="flex items-center gap-1 mt-0.5">
+                                            <p class="text-xs text-gray-400 dark:text-gray-500 truncate" x-text="conv.last_message"></p>
+                                        </div>
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            <template x-for="tag in (conv.tags || []).slice(0, 3)" :key="tag">
+                                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500" x-text="tag"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                    <div class="flex items-center gap-1">
+                                        <button @click.stop="startEditTitle(conv)" class="ai-chat-edit-btn" title="Rename">
+                                            <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                        </button>
+                                        <button @click.stop="togglePin(conv)" class="hover:text-amber-500" :class="conv.pinned ? 'text-amber-500' : 'text-gray-300'" title="Pin">
+                                            <svg class="w-3 h-3" :fill="conv.pinned ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
+                                        </button>
+                                        <button @click.stop="deleteConversation(conv.id)" class="ai-chat-delete-btn" title="Delete">
+                                            <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            <div x-show="conversations.length === 0" class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">
                 No conversations yet. Start a new chat!
             </div>
         </div>
@@ -49,7 +136,7 @@
                     <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,.5)]" :class="loading ? 'animate-pulse' : ''"></span>
                 </h2>
                 <div class="flex items-center gap-2">
-                    <p class="text-xs text-gray-400">Ask anything about your incidents, patterns, trends, and data</p>
+                    <p class="text-xs text-gray-400 dark:text-gray-500">Ask anything about your incidents, patterns, trends, and data</p>
                     <span class="ai-chat-freshness" x-show="dataFreshness">
                         <span x-text="dataFreshnessLabel"></span>
                         <button @click="refreshContext()" class="ai-chat-refresh-btn" title="Refresh data">
@@ -226,7 +313,7 @@
                                 <template x-if="msg.persona">
                                     <div class="flex items-center gap-1.5 mb-1.5">
                                         <span class="text-[11px] font-semibold" :style="'color:' + getPersonaColor(msg.persona.color)" x-text="msg.persona.name"></span>
-                                        <span class="text-[10px] text-gray-400">perspective</span>
+                                        <span class="text-[10px] text-gray-400 dark:text-gray-500">perspective</span>
                                     </div>
                                 </template>
                                 <div class="ai-chat-msg-text text-sm prose prose-sm dark:prose-invert max-w-none" x-html="msg.parsedHtml"></div>
@@ -260,7 +347,7 @@
                                             </button>
                                         </div>
                                     </template>
-                                    <span x-show="msg.copied" class="text-[10px] text-green-500">Copied!</span>
+                                    <span x-show="msg.copied" class="text-[10px] text-green-500 dark:text-green-400">Copied!</span>
                                 </div>
                                 {{-- Follow-up suggestions --}}
                                 <div x-show="msg.follow_ups && msg.follow_ups.length > 0" class="ai-chat-followups">
@@ -284,11 +371,11 @@
                                     <span x-text="getAgentInitial(getAgentByKey(roleKey)?.display_name || '?')"></span>
                                 </span>
                                 <div class="ai-chat-typing"><span></span><span></span><span></span></div>
-                                <span class="text-[11px] text-gray-400" x-text="getAgentByKey(roleKey)?.display_name || roleKey"></span>
+                                <span class="text-[11px] text-gray-400 dark:text-gray-500" x-text="getAgentByKey(roleKey)?.display_name || roleKey"></span>
                             </div>
                         </template>
                         <div class="flex items-center gap-2 ml-9">
-                            <span class="text-xs text-gray-400" x-ref="elapsedDisplay" x-show="loading"></span>
+                            <span class="text-xs text-gray-400 dark:text-gray-500" x-ref="elapsedDisplay" x-show="loading"></span>
                             <button @click="stopGeneration()" class="ai-chat-stop-btn">
                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
                                 Stop
@@ -304,7 +391,7 @@
                         <div class="ai-chat-msg-content assistant">
                             <div class="flex items-center gap-2">
                                 <div class="ai-chat-typing"><span></span><span></span><span></span></div>
-                                <span class="text-xs text-gray-400" x-ref="elapsedDisplay2" x-show="loading"></span>
+                                <span class="text-xs text-gray-400 dark:text-gray-500" x-ref="elapsedDisplay2" x-show="loading"></span>
                                 <button @click="stopGeneration()" class="ai-chat-stop-btn">
                                     <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
                                     Stop
@@ -366,6 +453,7 @@
                         <div class="ai-chat-picker-header">
                             <span class="text-xs font-semibold text-gray-600 dark:text-gray-400">Reference Incidents</span>
                         </div>
+
                         <input type="text" x-model="incidentSearch" @input.debounce.300ms="searchIncidents()" placeholder="Search by ID, title, or summary..." class="ai-chat-picker-search" x-ref="incidentSearchInput" />
                         <div class="ai-chat-picker-list">
                             <template x-for="inc in incidentResults" :key="inc.no">
@@ -373,33 +461,52 @@
                                     <span class="ai-chat-ref-severity" :class="'severity-' + (inc.severity || '').toLowerCase().replace(' ', '')" x-text="inc.severity"></span>
                                     <div class="flex-1 min-w-0 text-left">
                                         <p class="text-xs font-medium truncate" x-text="inc.no"></p>
-                                        <p class="text-[11px] text-gray-400 truncate" x-text="inc.title"></p>
+                                        <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate" x-text="inc.title"></p>
                                     </div>
-                                    <span class="text-[10px] text-gray-400" x-text="inc.date"></span>
-                                    <span x-show="isIncidentReferenced(inc.no)" class="text-green-500 text-xs">&#10003;</span>
+                                    <span class="text-[10px] text-gray-400 dark:text-gray-500" x-text="inc.date"></span>
+                                    <span x-show="isIncidentReferenced(inc.no)" class="text-green-500 dark:text-green-400 text-xs">&#10003;</span>
                                 </button>
                             </template>
-                            <div x-show="incidentResults.length === 0 && incidentSearch.length >= 2 && !incidentSearchLoading" class="p-3 text-center text-xs text-gray-400">No incidents found</div>
-                            <div x-show="incidentSearchLoading" class="p-3 text-center text-xs text-gray-400">Searching...</div>
-                            <div x-show="incidentSearch.length < 2" class="p-3 text-center text-xs text-gray-400">Type at least 2 characters to search</div>
+                            <div x-show="incidentResults.length === 0 && incidentSearch.length >= 2 && !incidentSearchLoading" class="p-3 text-center text-xs text-gray-400 dark:text-gray-500">No incidents found</div>
+                            <div x-show="incidentSearchLoading" class="p-3 text-center text-xs text-gray-400 dark:text-gray-500">Searching...</div>
+                            <div x-show="incidentSearch.length < 2" class="p-3 text-center text-xs text-gray-400 dark:text-gray-500">Type at least 2 characters to search</div>
                         </div>
                     </div>
                 </div>
 
-                {{-- Export PDF --}}
-                <a :href="activeConversationId ? '/admin/ai/chat/conversations/' + activeConversationId + '/export-pdf' : '#'"
-                   :class="{ 'opacity-40 pointer-events-none': !activeConversationId || messages.length === 0 }"
-                   target="_blank"
-                   class="ai-chat-attach-btn"
-                   title="Export conversation to PDF">
-                    <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                </a>
+                {{-- Export --}}
+                <div class="relative" x-data="{ showExportMenu: false }">
+                    <button @click="showExportMenu = !showExportMenu" type="button"
+                            :class="{ 'opacity-40 pointer-events-none': !activeConversationId || messages.length === 0 }"
+                            class="ai-chat-attach-btn"
+                            title="Export conversation">
+                        <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                    </button>
+                    <div x-show="showExportMenu" @click.away="showExportMenu = false" x-transition
+                         class="absolute bottom-full right-0 mb-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 min-w-[140px] z-50">
+                        <a :href="activeConversationId ? '/admin/ai/chat/conversations/' + activeConversationId + '/export-pdf?format=pdf' : '#'"
+                           target="_blank" @click="showExportMenu = false"
+                           class="block px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            PDF Document
+                        </a>
+                        <a :href="activeConversationId ? '/admin/ai/chat/conversations/' + activeConversationId + '/export-pdf?format=markdown' : '#'"
+                           target="_blank" @click="showExportMenu = false"
+                           class="block px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            Markdown
+                        </a>
+                        <a :href="activeConversationId ? '/admin/ai/chat/conversations/' + activeConversationId + '/export-pdf?format=json' : '#'"
+                           target="_blank" @click="showExportMenu = false"
+                           class="block px-3 py-1.5 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            JSON
+                        </a>
+                    </div>
+                </div>
                 <button @click="sendMessage()" :disabled="loading || !inputText.trim()" class="ai-chat-send-btn">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
                 </button>
             </div>
-            <p class="text-[10px] text-gray-400 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span></p>
-            <p x-show="selectedPersonas.length >= 3" class="text-[10px] text-amber-500 text-center mt-0.5" x-text="selectedPersonas.length + ' personas will generate separate responses, increasing token usage.'"></p>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span></p>
+            <p x-show="selectedPersonas.length >= 3" class="text-[10px] text-amber-500 dark:text-amber-400 text-center mt-0.5" x-text="selectedPersonas.length + ' personas will generate separate responses, increasing token usage.'"></p>
         </div>
     </div>
 </div>
@@ -460,6 +567,9 @@ function aiChat() {
         availableAgents: [],
         selectedPersonas: [],
         webSearchEnabled: false,
+        editingTitleId: null,
+        editingTitleValue: '',
+        collapsedGroups: {},
 
         get selectedModelLabel() {
             return this.models[this.selectedModel] || this.selectedModel;
@@ -469,6 +579,34 @@ function aiChat() {
             if (!this.dataFreshness) return '';
             if (this.dataFreshness.stats_cached) return 'Data: cached';
             return 'Data: fresh';
+        },
+
+        get groupedConversations() {
+            const nonPinned = this.conversations.filter(c => {
+                if (this.searchQuery) return true;
+                return !c.pinned;
+            });
+            const now = new Date();
+            const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+            const weekStart = new Date(today); weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+            const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+            const groups = [
+                { label: 'Today', cutoff: today, items: [] },
+                { label: 'Yesterday', cutoff: yesterday, items: [] },
+                { label: 'This Week', cutoff: weekStart, items: [] },
+                { label: 'This Month', cutoff: monthStart, items: [] },
+                { label: 'Older', cutoff: null, items: [] },
+            ];
+            for (const conv of nonPinned) {
+                const d = new Date(conv.updated_at);
+                let placed = false;
+                for (const g of groups) {
+                    if (!g.cutoff || d >= g.cutoff) { g.items.push(conv); placed = true; break; }
+                }
+                if (!placed) groups[groups.length - 1].items.push(conv);
+            }
+            return groups.filter(g => g.items.length > 0);
         },
 
         get filteredCommands() {
@@ -493,6 +631,61 @@ function aiChat() {
 
             document.addEventListener('livewire:navigating', () => {
                 if (_timer) clearInterval(_timer);
+            });
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                const mod = e.metaKey || e.ctrlKey;
+                if (!mod) {
+                    if (e.key === 'Escape') {
+                        this.slashActive = false;
+                        this.showIncidentPicker = false;
+                        this.showModelPicker = false;
+                        this.showPersonaPicker = false;
+                    }
+                    return;
+                }
+                // Cmd/Ctrl + N: New conversation
+                if (e.key === 'n' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.newConversation();
+                    this.$nextTick(() => this.$refs.chatInput?.focus());
+                }
+                // Cmd/Ctrl + K: Focus input
+                if (e.key === 'k' && !e.shiftKey) {
+                    e.preventDefault();
+                    this.$refs.chatInput?.focus();
+                }
+                // Cmd/Ctrl + Shift + S: Toggle sidebar
+                if (e.key === 'S' || (e.key === 's' && e.shiftKey)) {
+                    e.preventDefault();
+                    this.showSidebar = !this.showSidebar;
+                }
+                // Cmd/Ctrl + Shift + F: Focus conversation search
+                if (e.key === 'F' || (e.key === 'f' && e.shiftKey)) {
+                    e.preventDefault();
+                    this.showSidebar = true;
+                    this.$nextTick(() => {
+                        const searchEl = this.$el.querySelector('.ai-chat-search-input');
+                        if (searchEl) searchEl.focus();
+                    });
+                }
+                // Cmd/Ctrl + Shift + E: Export PDF
+                if (e.key === 'E' || (e.key === 'e' && e.shiftKey)) {
+                    e.preventDefault();
+                    if (this.activeConversationId && this.messages.length > 0) {
+                        window.open('/admin/ai/chat/conversations/' + this.activeConversationId + '/export-pdf', '_blank');
+                    }
+                }
+                // Cmd/Ctrl + /: Show slash commands
+                if (e.key === '/') {
+                    e.preventDefault();
+                    this.inputText = '/';
+                    this.$nextTick(() => {
+                        this.$refs.chatInput?.focus();
+                        this.onInput();
+                    });
+                }
             });
         },
 
@@ -640,6 +833,55 @@ function aiChat() {
             } catch (e) { console.error(e); }
         },
 
+        async togglePin(conv) {
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.content;
+                const res = await fetch('/admin/ai/chat/conversations/' + conv.id + '/pin', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    this.conversations = this.conversations.map(c =>
+                        c.id === conv.id ? { ...c, pinned: data.pinned } : c
+                    );
+                }
+            } catch (e) { console.error(e); }
+        },
+
+        startEditTitle(conv) {
+            this.editingTitleId = conv.id;
+            this.editingTitleValue = conv.title || '';
+            this.$nextTick(() => {
+                const el = document.getElementById('title-input-' + conv.id);
+                if (el) { el.focus(); el.select(); }
+            });
+        },
+
+        async saveTitle(conv) {
+            const title = this.editingTitleValue.trim();
+            if (!title || title === conv.title) { this.editingTitleId = null; return; }
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.content;
+                const res = await fetch('/admin/ai/chat/conversations/' + conv.id + '/title', {
+                    method: 'PUT',
+                    headers: { 'X-CSRF-TOKEN': token, 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    this.conversations = this.conversations.map(c =>
+                        c.id === conv.id ? { ...c, title: data.title } : c
+                    );
+                }
+            } catch (e) { console.error(e); }
+            this.editingTitleId = null;
+        },
+
+        cancelEditTitle() {
+            this.editingTitleId = null;
+        },
+
         async sendMessage() {
             const text = this.inputText.trim();
             if (!text) return;
@@ -678,6 +920,17 @@ function aiChat() {
             }, 1000);
             this.abortController = new AbortController();
 
+            // Route: streaming personas vs standard JSON
+            await this.sendMessageJson(text, refIds);
+
+            this.loading = false;
+            if (_timer) { clearInterval(_timer); _timer = null; }
+            _elapsed = 0;
+            this.showIncidentPicker = false;
+            this.$nextTick(() => this.scrollToBottom());
+        },
+
+        async sendMessageJson(text, refIds) {
             try {
                 const token = document.querySelector('meta[name="csrf-token"]')?.content;
                 const res = await fetch('/admin/ai/chat/send', {
@@ -733,7 +986,6 @@ function aiChat() {
                             })];
                         }
                     } else if (data.assistant_message) {
-                        // Default single response (backward compatible)
                         this.messages = [...this.messages, withHtml({
                             ...data.assistant_message,
                             web_search_used: searched,
@@ -741,7 +993,6 @@ function aiChat() {
                         })];
                     }
 
-                    // Defer all side effects so Alpine processes the message change cleanly
                     const payload = data;
                     setTimeout(() => {
                         if (!this.activeConversationId && payload.conversation_id) {
@@ -780,12 +1031,6 @@ function aiChat() {
                     model: null,
                     created_at: new Date().toISOString(),
                 })];
-            } finally {
-                this.loading = false;
-                if (_timer) { clearInterval(_timer); _timer = null; }
-                _elapsed = 0;
-                this.showIncidentPicker = false;
-                this.$nextTick(() => this.scrollToBottom());
             }
         },
 

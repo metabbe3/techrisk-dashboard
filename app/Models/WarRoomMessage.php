@@ -11,6 +11,7 @@ class WarRoomMessage extends Model implements Auditable
 {
     use HasUuids;
     use \OwenIt\Auditing\Auditable;
+    use \App\Traits\HasStatusStateMachine;
 
     public $timestamps = false;
 
@@ -49,29 +50,9 @@ class WarRoomMessage extends Model implements Auditable
         return $this->belongsTo(WarRoomSession::class, 'session_id');
     }
 
-    public function isComplete(): bool
-    {
-        return $this->status === 'completed';
-    }
-
     public function isPending(): bool
     {
         return $this->status === 'pending';
-    }
-
-    public function isRunning(): bool
-    {
-        return $this->status === 'running';
-    }
-
-    public function hasFailed(): bool
-    {
-        return $this->status === 'failed';
-    }
-
-    public function markRunning(): void
-    {
-        $this->update(['status' => 'running']);
     }
 
     public function markCompleted(string $content, array $usage = [], int $responseTimeMs = 0, array $metadata = []): void
@@ -90,13 +71,5 @@ class WarRoomMessage extends Model implements Auditable
         }
 
         $this->update($update);
-    }
-
-    public function markFailed(string $error): void
-    {
-        $this->update([
-            'status' => 'failed',
-            'error_message' => $error,
-        ]);
     }
 }

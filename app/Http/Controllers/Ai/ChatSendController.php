@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Ai;
 
-use App\Models\AiSetting;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\WarRoomAgentConfig;
@@ -10,8 +9,6 @@ use App\Services\Ai\AgenticChatService;
 use App\Services\Ai\AiChatService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class ChatSendController
 {
@@ -75,7 +72,7 @@ class ChatSendController
         // If no referenced incidents sent, scan conversation history for previously mentioned IDs
         if (empty($referencedIds)) {
             $historyText = collect($history)->map(fn ($m) => $m['content'])->implode(' ');
-            if (preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $historyText, $historyMatches)) {
+            if (preg_match_all(\App\Models\Incident::ID_PATTERN, $historyText, $historyMatches)) {
                 $referencedIds = array_unique($historyMatches[0]);
             }
         }
@@ -194,7 +191,7 @@ class ChatSendController
 
         $updatedTitle = null;
         if ($isNewConversation && $result->success) {
-            $updatedTitle = $this->generateTitle($request->input('message'));
+            $updatedTitle = $this->chatService->generateTitle($request->input('message'), $responseText);
             if ($updatedTitle) {
                 $conversation->update(['title' => $updatedTitle]);
             }
@@ -339,7 +336,7 @@ class ChatSendController
 
         $updatedTitle = null;
         if ($isNewConversation) {
-            $updatedTitle = $this->generateTitle($rawMessage);
+            $updatedTitle = $this->chatService->generateTitle($rawMessage, $responseText ?? null);
             if ($updatedTitle) {
                 $conversation->update(['title' => $updatedTitle]);
             }
@@ -365,37 +362,4 @@ class ChatSendController
         ]);
     }
 
-    private function generateTitle(string $firstMessage): ?string
-    {
-        try {
-            $baseUrl = rtrim(AiSetting::get('base_url', config('ai.base_url', '')), '/');
-            $apiKey = AiSetting::get('api_key', config('ai.api_key', ''));
-            $model = 'FAST-MODEL';
-
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer '.$apiKey,
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout(10)
-                ->post($baseUrl.'/chat/completions', [
-                    'model' => $model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => config('ai.chat_title_prompt')],
-                        ['role' => 'user', 'content' => $firstMessage],
-                    ],
-                    'max_tokens' => 30,
-                ]);
-
-            if ($response->successful()) {
-                $title = trim($response->json('choices.0.message.content', ''));
-                if ($title && strlen($title) <= 80) {
-                    return $title;
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Failed to generate chat title', ['error' => $e->getMessage()]);
-        }
-
-        return null;
-    }
 }

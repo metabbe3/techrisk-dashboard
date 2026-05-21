@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources\UserResource\RelationManagers;
 
 use App\Enums\ApiEndpoint;
+use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
@@ -21,7 +22,7 @@ class TokensRelationManager extends RelationManager
         return $form
             ->schema([
                 // Tokens are managed through the ApiTokenResource
-                Tables\Columns\TextColumn::make('info')
+                Forms\Components\Placeholder::make('info')
                     ->content('API tokens are managed through the API Tokens resource in the User Management section.'),
             ]);
     }

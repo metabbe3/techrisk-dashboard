@@ -2,25 +2,15 @@
 
 namespace App\Notifications;
 
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Notifications\Notification;
 
-class AdminAnnouncement extends Notification implements ShouldQueue
+class AdminAnnouncement extends BaseNotification
 {
-    use Queueable;
-
     public function __construct(
         public readonly string $title,
         public readonly string $body,
         public readonly ?string $url = null
     ) {}
-
-    public function via(object $notifiable): array
-    {
-        return ['database', 'broadcast', 'mail'];
-    }
 
     public function broadcastType(): string
     {
@@ -29,28 +19,28 @@ class AdminAnnouncement extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        $mail = (new MailMessage)
-            ->subject('[Announcement] '.$this->title)
-            ->greeting('Hello '.$notifiable->name.',')
-            ->line($this->body);
+        $lines = [$this->body, '— Technical Risk Dashboard'];
 
-        if ($this->url) {
-            $mail->action('Learn More', $this->url);
-        }
+        $actionUrl = $this->url ?? route('filament.admin.pages.dashboard');
 
-        return $mail->line('— Technical Risk Dashboard');
+        return $this->buildMailMessage(
+            '[Announcement] '.$this->title,
+            $lines,
+            $actionUrl,
+            $this->url ? 'Learn More' : 'Go to Dashboard',
+            $notifiable
+        );
     }
 
     public function toDatabase(object $notifiable): array
     {
-        return [
+        return $this->filamentDatabaseFormat([
             'title' => $this->title,
             'body' => $this->body,
             'url' => $this->url,
             'icon' => 'heroicon-o-megaphone',
             'icon_color' => 'primary',
             'type' => 'admin_announcement',
-            'format' => 'filament',
-        ];
+        ]);
     }
 }

@@ -40,8 +40,7 @@ class ActionImprovementController extends Controller
      *       "title": "Increase connection pool size",
      *       "detail": "Configure pool to handle 2x peak traffic",
      *       "status": "pending",
-     *       "due_date": "2025-01-20",
-     *       "pic_email": ["john.doe@company.com", "jane.smith@company.com"]
+     *       "due_date": "2025-01-20"
      *     }
      *   ]
      * }
@@ -115,8 +114,7 @@ class ActionImprovementController extends Controller
      *     "title": "Increase connection pool size",
      *     "detail": "Configure pool to handle 2x peak traffic",
      *     "status": "pending",
-     *     "due_date": "2025-01-20",
-     *     "pic_email": ["john.doe@company.com"]
+     *     "due_date": "2025-01-20"
      *   }
      * }
      * @response 404 {

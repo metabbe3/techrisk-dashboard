@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ApiAuditLogResource\Pages\ListApiAuditLogs;
+use App\Filament\Traits\ReadOnlyResource;
 use App\Models\ApiAuditLog;
 use App\Models\UserAuditLogSetting;
 use Filament\Resources\Resource;
@@ -14,10 +15,10 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 
 class ApiAuditLogResource extends Resource
 {
+    use ReadOnlyResource;
     protected static ?string $model = ApiAuditLog::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
@@ -37,26 +38,6 @@ class ApiAuditLogResource extends Resource
 
         // Non-admins need explicit permission
         return $user->can('view audit logs');
-    }
-
-    public static function canCreate(): bool
-    {
-        return false; // Audit logs are read-only
-    }
-
-    public static function canEdit(Model $record): bool
-    {
-        return false; // Audit logs are read-only
-    }
-
-    public static function canDelete(Model $record): bool
-    {
-        return false; // Audit logs are read-only
-    }
-
-    public static function canDeleteAny(): bool
-    {
-        return false; // Audit logs are read-only
     }
 
     public static function table(Table $table): Table

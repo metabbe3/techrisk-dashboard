@@ -128,7 +128,6 @@ class ActionImprovementEndpointTest extends TestCase
                         'title',
                         'detail',
                         'due_date',
-                        'pic_email',
                         'reminder',
                         'reminder_frequency',
                         'status',
@@ -137,6 +136,8 @@ class ActionImprovementEndpointTest extends TestCase
                     ],
                 ],
             ]);
+
+        $this->assertArrayHasKey('pic_email', $response->json('data.0'));
     }
 
     public function test_list_action_improvements_only_returns_improvements_for_given_incident(): void
@@ -230,7 +231,6 @@ class ActionImprovementEndpointTest extends TestCase
                     'title',
                     'detail',
                     'due_date',
-                    'pic_email',
                     'reminder',
                     'reminder_frequency',
                     'status',
@@ -238,6 +238,8 @@ class ActionImprovementEndpointTest extends TestCase
                     'updated_at',
                 ],
             ]);
+
+        $this->assertArrayHasKey('pic_email', $response->json('data'));
     }
 
     public function test_show_action_improvement_with_nonexistent_id_returns_404(): void
@@ -248,7 +250,7 @@ class ActionImprovementEndpointTest extends TestCase
         $response->assertStatus(404);
     }
 
-    public function test_show_action_improvement_pic_email_is_array(): void
+    public function test_show_action_improvement_pic_email_is_array_with_pii_scope(): void
     {
         $incident = Incident::factory()->create();
 
@@ -271,6 +273,28 @@ class ActionImprovementEndpointTest extends TestCase
         $this->assertCount(2, $picEmail);
         $this->assertContains('alice@example.com', $picEmail);
         $this->assertContains('bob@example.com', $picEmail);
+    }
+
+    public function test_pic_email_not_exposed_without_pii_scope(): void
+    {
+        $incident = Incident::factory()->create();
+
+        $action = ActionImprovement::create([
+            'incident_id' => $incident->id,
+            'title' => 'Review logs',
+            'detail' => 'Check log output',
+            'due_date' => '2025-05-01',
+            'pic_email' => ['alice@example.com'],
+            'status' => 'pending',
+        ]);
+
+        $token = $this->user->createToken('no-pii', ['read'])->plainTextToken;
+
+        $response = $this->withHeaders(['Authorization' => 'Bearer '.$token])
+            ->getJson("/api/v1/action-improvements/{$action->id}");
+
+        $response->assertStatus(200);
+        $this->assertArrayNotHasKey('pic_email', $response->json('data'));
     }
 
     // --- Authentication and Authorization ---

@@ -117,7 +117,7 @@ return [
 
     'chat_max_tokens' => env('AI_CHAT_MAX_TOKENS', 4000),
 
-    'chat_title_prompt' => 'Generate a very short title (max 6 words) for a conversation about incident management that starts with the following user message. Reply with ONLY the title text, no quotes, no punctuation at the end.',
+    'chat_title_prompt' => 'Generate a very short title (max 6 words) for a conversation about incident management. You will be given the user message and optionally the AI response. Use the AI response to understand the actual content. Reply with ONLY the title text, no quotes, no punctuation at the end.',
 
     'chat_slash_commands' => [
         'summary' => 'Executive summary of incidents for a period (default: this month)',

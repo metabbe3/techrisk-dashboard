@@ -43,16 +43,16 @@ if (typeof window.aiRootCauseData === 'undefined') {
                 if (!text) return '';
                 let html = text
                     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-                    .replace(/^### (.+)$/gm, '<h4 style="font-size:13px;font-weight:700;margin:10px 0 4px;color:#1e293b;">$1</h4>')
-                    .replace(/^## (.+)$/gm, '<h3 style="font-size:14px;font-weight:700;margin:12px 0 6px;color:#0f172a;">$1</h3>')
-                    .replace(/^# (.+)$/gm, '<h2 style="font-size:15px;font-weight:700;margin:14px 0 6px;color:#0f172a;">$1</h2>')
+                    .replace(/^### (.+)$/gm, '<h4 class="rca-md-h4">$1</h4>')
+                    .replace(/^## (.+)$/gm, '<h3 class="rca-md-h3">$1</h3>')
+                    .replace(/^# (.+)$/gm, '<h2 class="rca-md-h2">$1</h2>')
                     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                    .replace(/`([^`]+)`/g, '<code style="background:#e2e8f0;padding:1px 5px;border-radius:3px;font-size:11px;">$1</code>')
-                    .replace(/^\- (.+)$/gm, '<li style="margin-left:16px;">$1</li>')
-                    .replace(/^\d+\. (.+)$/gm, '<li style="margin-left:16px;list-style-type:decimal;">$1</li>')
-                    .replace(/\n{2,}/g, '</p><p style="margin:6px 0;">')
+                    .replace(/`([^`]+)`/g, '<code class="rca-md-code">$1</code>')
+                    .replace(/^\- (.+)$/gm, '<li class="rca-md-li">$1</li>')
+                    .replace(/^\d+\. (.+)$/gm, '<li class="rca-md-li" style="list-style-type:decimal;">$1</li>')
+                    .replace(/\n{2,}/g, '</p><p class="rca-md-p">')
                     .replace(/\n/g, '<br>');
-                return '<p style="margin:6px 0;">' + html + '</p>';
+                return '<p class="rca-md-p">' + html + '</p>';
             },
 
             toggleLabel(label) {
@@ -347,10 +347,10 @@ if (typeof window.aiRootCauseData === 'undefined') {
                     </div>
                     <div class="sl-tags" style="gap:6px;">
                         <template x-for="(label, idx) in rcaResults.labels_matched" :key="'lm-'+idx">
-                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;border-left-color:#0d9488;transition:all .15s;" :style="isLabelSelected(label) ? 'background:#f0fdfa;color:#0d9488;border:1px solid #99f6e4;' : 'background:#f8fafc;color:#94a3b8;border:1px solid #e2e8f0;opacity:.6;text-decoration:line-through;'" x-text="label"></button>
+                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;border-left-color:#0d9488;transition:all .15s;" :class="isLabelSelected(label) ? 'rca-label--selected' : 'rca-label--unselected'" x-text="label"></button>
                         </template>
                         <template x-for="(label, idx) in rcaResults.labels_suggested" :key="'ls-'+idx">
-                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;border-left-color:#f59e0b;transition:all .15s;" :style="isLabelSelected(label) ? 'background:#fffbeb;color:#92400e;border:1px solid #fcd34d;' : 'background:#f8fafc;color:#94a3b8;border:1px solid #e2e8f0;opacity:.6;text-decoration:line-through;'" x-text="label + ' (new)'"></button>
+                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;border-left-color:#f59e0b;transition:all .15s;" :class="isLabelSelected(label) ? 'rca-label-new--selected' : 'rca-label-new--unselected'" x-text="label + ' (new)'"></button>
                         </template>
                     </div>
                 </div>

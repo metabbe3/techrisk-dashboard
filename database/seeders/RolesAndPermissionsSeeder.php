@@ -36,6 +36,7 @@ class RolesAndPermissionsSeeder extends Seeder
         Permission::firstOrCreate(['name' => 'manage api tokens']);
         Permission::firstOrCreate(['name' => 'view ai usage logs']);
         Permission::firstOrCreate(['name' => 'access ai chat']);
+        Permission::firstOrCreate(['name' => 'manage service accounts']);
 
         // create roles and assign created permissions
         $role = Role::firstOrCreate(['name' => 'user']);

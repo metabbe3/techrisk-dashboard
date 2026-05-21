@@ -379,12 +379,12 @@
                     <div class="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center">
                         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">MTTR</p>
                         <p class="text-lg font-bold text-gray-900 dark:text-white">{{ $inc->mttr ?? '-' }}</p>
-                        <p class="text-xs text-gray-400">minutes</p>
+                        <p class="text-xs text-gray-400 dark:text-gray-500">minutes</p>
                     </div>
                     <div class="bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 text-center">
                         <p class="text-xs text-gray-500 dark:text-gray-400 mb-1">MTBF</p>
                         <p class="text-lg font-bold text-gray-900 dark:text-white">{{ $inc->mtbf ?? '-' }}</p>
-                        <p class="text-xs text-gray-400">days</p>
+                        <p class="text-xs text-gray-400 dark:text-gray-500">days</p>
                     </div>
                 </div>
             </div>

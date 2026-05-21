@@ -2,14 +2,15 @@
 
 namespace App\Services\Ai;
 
-use App\Models\AiSetting;
 use App\Models\ChatMessage;
 use App\Models\UserAiPreference;
+use App\Services\Ai\Concerns\InteractsWithAiApi;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class FeedbackLearningService
 {
+    use InteractsWithAiApi;
     public function processFeedback(ChatMessage $message, string $feedback, ?string $comment): void
     {
         if (! config('ai.perception.feedback_learning.enabled', true)) {
@@ -68,12 +69,9 @@ class FeedbackLearningService
         $model = config('ai.perception.feedback_learning.rule_extraction_model', 'FAST-MODEL');
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer '.AiSetting::get('api_key', config('ai.api_key', '')),
-                'Content-Type' => 'application/json',
-            ])
+            $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(15)
-                ->post(rtrim(AiSetting::get('base_url', config('ai.base_url', '')), '/').'/chat/completions', [
+                ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
                         ['role' => 'system', 'content' => 'You analyze user feedback patterns and extract concise preference rules. Return a JSON array of 1-3 short preference rules (each under 50 words). Each rule should describe what the user prefers in AI responses. Return only the JSON array, no markdown.'],

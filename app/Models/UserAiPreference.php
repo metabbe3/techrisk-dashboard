@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class UserAiPreference extends Model
 {
+    use \App\Traits\HasActiveScope;
+
     protected $fillable = [
         'user_id',
         'preference_rule',
@@ -23,11 +25,6 @@ class UserAiPreference extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
     }
 
     public function scopeForUser($query, int $userId)

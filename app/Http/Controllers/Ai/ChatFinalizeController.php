@@ -2,15 +2,12 @@
 
 namespace App\Http\Controllers\Ai;
 
-use App\Models\AiSetting;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Services\Ai\AiChatService;
 use App\Services\Ai\AiTextResult;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
 class ChatFinalizeController
 {
@@ -80,7 +77,7 @@ class ChatFinalizeController
         // Generate title for new conversations
         $updatedTitle = null;
         if ($request->boolean('is_new') && $request->input('first_message')) {
-            $updatedTitle = $this->generateTitle($request->input('first_message'));
+            $updatedTitle = $this->chatService->generateTitle($request->input('first_message'), $responseText);
             if ($updatedTitle) {
                 $conversation->update(['title' => $updatedTitle]);
             }
@@ -105,36 +102,4 @@ class ChatFinalizeController
         ]);
     }
 
-    private function generateTitle(string $firstMessage): ?string
-    {
-        try {
-            $baseUrl = rtrim(AiSetting::get('base_url', config('ai.base_url', '')), '/');
-            $apiKey = AiSetting::get('api_key', config('ai.api_key', ''));
-
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer '.$apiKey,
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout(10)
-                ->post($baseUrl.'/chat/completions', [
-                    'model' => 'FAST-MODEL',
-                    'messages' => [
-                        ['role' => 'system', 'content' => config('ai.chat_title_prompt')],
-                        ['role' => 'user', 'content' => $firstMessage],
-                    ],
-                    'max_tokens' => 30,
-                ]);
-
-            if ($response->successful()) {
-                $title = trim($response->json('choices.0.message.content', ''));
-                if ($title && strlen($title) <= 80) {
-                    return $title;
-                }
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Failed to generate chat title', ['error' => $e->getMessage()]);
-        }
-
-        return null;
-    }
 }

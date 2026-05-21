@@ -31,6 +31,8 @@ class AccessRequest extends Model
         'created_user_id',
     ];
 
+    protected $hidden = ['password'];
+
     protected $casts = [
         'requested_years' => 'array',
         'approved_at' => 'datetime',

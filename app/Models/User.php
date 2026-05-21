@@ -15,14 +15,19 @@ use Laravel\Sanctum\HasApiTokens;
 use OwenIt\Auditing\Contracts\Auditable;
 use Spatie\Permission\Traits\HasRoles;
 
-class User extends Authenticatable implements FilamentUser, Auditable
+class User extends Authenticatable implements Auditable, FilamentUser
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasApiTokens, HasFactory, HasRoles, Notifiable;
+
     use \OwenIt\Auditing\Auditable;
 
     public function canAccessPanel(Panel $panel): bool
     {
+        if ($this->is_service_account) {
+            return false;
+        }
+
         // Check if user's access has expired
         if ($this->isAccessExpired()) {
             return false;
@@ -174,6 +179,7 @@ class User extends Authenticatable implements FilamentUser, Auditable
         'email',
         'password',
         'access_expiry',
+        'is_service_account',
     ];
 
     /**
@@ -197,6 +203,17 @@ class User extends Authenticatable implements FilamentUser, Auditable
             'email_verified_at' => 'datetime',
             'access_expiry' => 'datetime',
             'password' => 'hashed',
+            'is_service_account' => 'boolean',
         ];
+    }
+
+    public function scopeServiceAccounts($query): void
+    {
+        $query->where('is_service_account', true);
+    }
+
+    public function scopeHumanUsers($query): void
+    {
+        $query->where('is_service_account', false);
     }
 }

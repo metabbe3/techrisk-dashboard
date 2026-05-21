@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class AgentTool extends Model
 {
+    use \App\Traits\HasActiveScope;
+
     protected $fillable = [
         'name',
         'display_name',
@@ -25,16 +27,6 @@ class AgentTool extends Model
         'is_active' => 'boolean',
         'sort_order' => 'integer',
     ];
-
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-
-    public function scopeOrdered($query)
-    {
-        return $query->orderBy('sort_order')->orderBy('name');
-    }
 
     public function scopeByCategory($query, string $category)
     {

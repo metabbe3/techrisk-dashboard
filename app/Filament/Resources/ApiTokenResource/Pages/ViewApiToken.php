@@ -13,48 +13,44 @@ class ViewApiToken extends ViewRecord
 {
     protected static string $resource = ApiTokenResource::class;
 
-    protected ?string $plainTextToken = null;
+    public ?string $plainTextToken = null;
 
     public function mount(int|string $record): void
     {
         parent::mount($record);
 
-        // Try to get the plain token from session (only available once after creation)
         $this->plainTextToken = session('api_token_plain_'.$record);
-
-        // Clear from session immediately
         session()->forget('api_token_plain_'.$record);
     }
 
     protected function getHeaderActions(): array
     {
-        $actions = [
+        return [
+            Actions\EditAction::make(),
+
+            Action::make('regenerateToken')
+                ->label('Regenerate Token')
+                ->icon('heroicon-o-arrow-path')
+                ->color('warning')
+                ->requiresConfirmation()
+                ->modalHeading('Regenerate API Token')
+                ->modalDescription('This will generate a new token value. The current token will stop working immediately.')
+                ->modalSubmitActionLabel('Regenerate')
+                ->action(function () {
+                    $plainText = bin2hex(random_bytes(32));
+                    $this->record->forceFill([
+                        'token' => hash('sha256', $plainText),
+                    ])->save();
+
+                    $this->plainTextToken = $this->record->id.'|'.$plainText;
+                }),
+
             Actions\DeleteAction::make()
                 ->requiresConfirmation()
                 ->modalHeading('Revoke API Token')
                 ->modalDescription('Are you sure you want to revoke this token? This action cannot be undone.')
                 ->modalSubmitActionLabel('Revoke Token'),
         ];
-
-        // Only show copy button if we have the plain text token
-        if ($this->plainTextToken) {
-            $actions[] = Action::make('copyToken')
-                ->label('Copy Token')
-                ->icon('heroicon-o-clipboard-document')
-                ->color('success')
-                ->action(function () {
-                    $this->dispatchBrowserEvent('copy-to-clipboard', [
-                        'text' => $this->plainTextToken,
-                    ]);
-
-                    \Filament\Notifications\Notification::make()
-                        ->title('Token copied to clipboard')
-                        ->success()
-                        ->send();
-                });
-        }
-
-        return $actions;
     }
 
     public function getViewData(): array

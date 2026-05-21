@@ -15,46 +15,47 @@ class CreateApiToken extends CreateRecord
 
     public ?string $plainTextToken = null;
 
-    /**
-     * Override create to capture the plain token before it's hashed
-     */
     protected function handleRecordCreation(array $data): Model
     {
-        // Get the user
         $user = User::findOrFail($data['tokenable_id']);
 
-        // Prepare endpoint access
         $allowedEndpoints = $data['allowed_endpoints'] ?? null;
-        unset($data['allowed_endpoints']);
-
-        // Create the token using Sanctum
+        $expiresAt = $data['expires_at'] ?? now()->addMonths(6);
+        $renewalMinutes = $data['renewal_minutes'] ?? 43200;
         $abilities = $data['abilities'] ?? ['*'];
         $tokenName = $data['name'];
 
-        // Store the plain text token
-        $this->plainTextToken = $user->createToken($tokenName, $abilities)->plainTextToken;
+        unset($data['allowed_endpoints'], $data['expires_at'], $data['renewal_minutes']);
 
-        // Get the created token model
-        $token = $user->tokens()->where('name', $tokenName)->latest()->first();
+        $newToken = $user->createToken($tokenName, $abilities);
+        $this->plainTextToken = $newToken->plainTextToken;
 
-        // Update with endpoint access
-        if ($allowedEndpoints !== null) {
-            $token->forceFill([
-                'allowed_endpoints' => ! empty($allowedEndpoints) ? $allowedEndpoints : null,
-            ])->save();
-        }
+        $token = $newToken->accessToken;
+        $token->forceFill([
+            'expires_at' => $expiresAt,
+            'renewal_minutes' => $renewalMinutes,
+            'allowed_endpoints' => ! empty($allowedEndpoints) ? $allowedEndpoints : null,
+        ])->save();
 
         return $token;
     }
 
-    /**
-     * Redirect to the view page to show the token
-     */
+    protected function getCreatedNotificationTitle(): ?string
+    {
+        return 'Token created — copy it below';
+    }
+
     protected function getRedirectUrl(): string
     {
-        // Store the plain text token in session for display
-        session(['api_token_plain_'.$this->record->id => $this->plainTextToken]);
+        return $this->getResource()::getUrl('view', ['record' => $this->record]);
+    }
 
-        return ApiTokenResource::getUrl('view', ['record' => $this->record]);
+    protected function getFormActions(): array
+    {
+        if ($this->plainTextToken) {
+            return [];
+        }
+
+        return parent::getFormActions();
     }
 }

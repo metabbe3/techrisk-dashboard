@@ -13,6 +13,7 @@ class WarRoomSession extends Model implements Auditable
 {
     use HasUuids;
     use \OwenIt\Auditing\Auditable;
+    use \App\Traits\HasStatusStateMachine;
 
     protected $fillable = [
         'user_id',
@@ -72,7 +73,7 @@ class WarRoomSession extends Model implements Auditable
 
     public function isMultiIncident(): bool
     {
-        return $this->incidents()->count() > 1;
+        return $this->incidents->count() > 1;
     }
 
     public function messages(): HasMany
@@ -87,21 +88,6 @@ class WarRoomSession extends Model implements Auditable
         return $this->hasMany(WarRoomMessage::class, 'session_id')
             ->where('round', $round)
             ->orderBy('created_at');
-    }
-
-    public function isComplete(): bool
-    {
-        return $this->status === 'completed';
-    }
-
-    public function isRunning(): bool
-    {
-        return $this->status === 'running';
-    }
-
-    public function hasFailed(): bool
-    {
-        return $this->status === 'failed';
     }
 
     public function getAgentRoles(): array

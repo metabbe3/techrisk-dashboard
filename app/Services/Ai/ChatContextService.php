@@ -8,6 +8,8 @@ use App\Models\Category;
 use App\Models\Incident;
 use App\Models\Label;
 use App\Models\WarRoomAgentConfig;
+use App\Services\IncidentFormatter;
+use App\Services\Markdown\MarkdownFormatter;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
@@ -35,8 +37,8 @@ class ChatContextService
         $prompt = str_replace('{current_date}', now()->format('Y-m-d'), $prompt);
 
         $enriched = $this->enrichContext($userMessage, $referencedIds);
-        $hasReferenced = ! empty($referencedIds) || preg_match('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
-        $refCount = count($referencedIds) + preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
+        $hasReferenced = ! empty($referencedIds) || preg_match(Incident::ID_PATTERN, $userMessage);
+        $refCount = count($referencedIds) + preg_match_all(Incident::ID_PATTERN, $userMessage);
 
         // When 2+ incidents referenced OR smart search fired, skip recent incidents to save tokens
         $skipRecent = ($hasReferenced && $refCount >= 2) || str_contains($enriched, '## Smart Search Results');
@@ -101,8 +103,8 @@ class ChatContextService
             ."Do NOT append follow-up questions in HTML comments.\n\n";
 
         $enriched = $this->enrichContext($userMessage, $referencedIds);
-        $hasReferenced = ! empty($referencedIds) || preg_match('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
-        $refCount = count($referencedIds) + preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage);
+        $hasReferenced = ! empty($referencedIds) || preg_match(Incident::ID_PATTERN, $userMessage);
+        $refCount = count($referencedIds) + preg_match_all(Incident::ID_PATTERN, $userMessage);
         $skipRecent = ($hasReferenced && $refCount >= 2) || str_contains($enriched, '## Smart Search Results');
 
         $stats = $this->getQuickStats();
@@ -192,7 +194,7 @@ class ChatContextService
             $lines = [
                 "Total Incidents ({$year}): {$totalIncidents}",
                 "Open/In Progress: {$openIncidents}",
-                'Total Fund Loss: Rp '.number_format($totalFundLoss, 0, ',', '.'),
+                'Total Fund Loss: '.MarkdownFormatter::formatMoney((float) $totalFundLoss),
                 'Avg MTTR: '.number_format($avgMttr ?? 0, 1).' minutes',
             ];
 
@@ -271,27 +273,7 @@ class ChatContextService
                 return 'No incidents found.';
             }
 
-            return $incidents->map(function ($inc) {
-                $labels = $inc->labels->pluck('name')->implode(', ') ?: 'None';
-                $pic = $inc->pic?->name ?? 'Unassigned';
-                $fundLoss = $inc->fund_loss > 0 ? ' | Fund Loss: Rp '.number_format($inc->fund_loss, 0, ',', '.') : '';
-                $potentialLoss = $inc->potential_fund_loss > 0 ? ' | Potential Loss: Rp '.number_format($inc->potential_fund_loss, 0, ',', '.') : '';
-                $rootCause = $inc->root_cause ? ' | Root Cause: '.$inc->root_cause : '';
-                $rootCauseCat = $inc->root_cause_category ? ' | RC Categories: '.implode(', ', $inc->root_cause_category) : '';
-                $team = $inc->responsible_team ? ' | Team: '.implode(', ', $inc->responsible_team) : '';
-                $bizCat = $inc->business_category ? ' | Biz Category: '.(is_array($inc->business_category) ? implode(', ', $inc->business_category) : $inc->business_category) : '';
-                $summary = $inc->summary ? ' | Summary: '.$inc->summary : '';
-
-                $actions = $inc->actionImprovements->isNotEmpty()
-                    ? ' | Actions: '.$inc->actionImprovements->map(fn ($a) => "[{$a->status}] {$a->title}".($a->due_date ? ' (due: '.(is_string($a->due_date) ? $a->due_date : $a->due_date->format('Y-m-d')).')' : ''))->implode('; ')
-                    : '';
-
-                $docs = $inc->investigationDocuments->isNotEmpty()
-                    ? ' | Docs: '.$inc->investigationDocuments->map(fn ($d) => "\"{$d->original_filename}\"")->implode(', ')
-                    : '';
-
-                return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | id:{$inc->id} | {$inc->classification} | {$inc->incident_type} | Severity: {$inc->severity} | Status: {$inc->incident_status} | PIC: {$pic} | Date: {$inc->incident_date?->format('Y-m-d')}{$fundLoss}{$potentialLoss} | MTTR: {$inc->mttr} | MTBF: {$inc->mtbf} | Labels: {$labels}{$summary}{$rootCause}{$rootCauseCat}{$team}{$bizCat}{$actions}{$docs}";
-            })->implode("\n");
+            return $incidents->map(fn ($inc) => IncidentFormatter::formatInline($inc))->implode("\n");
         });
     }
 
@@ -301,7 +283,7 @@ class ChatContextService
         $msg = strtolower($userMessage);
 
         // Detect ALL incident IDs from message text (format: YYYYMMDD_IN/IS_NNNN)
-        preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $userMessage, $textMatches);
+        preg_match_all(Incident::ID_PATTERN, $userMessage, $textMatches);
         $allIncidentNos = array_unique(array_merge($textMatches[0], $referencedIds));
 
         if (! empty($allIncidentNos)) {
@@ -334,9 +316,9 @@ class ChatContextService
                     .'Responsible Team: '.($incident->responsible_team ? implode(', ', $incident->responsible_team) : 'N/A')."\n"
                     .'Timeline: '.($incident->timeline ?? 'N/A')."\n"
                     ."MTTR: {$incident->mttr} | MTBF: {$incident->mtbf}\n"
-                    .'Potential Loss: Rp '.number_format((float) ($incident->potential_fund_loss ?? 0), 0, ',', '.')."\n"
-                    .'Actual Loss: Rp '.number_format((float) ($incident->fund_loss ?? 0), 0, ',', '.')."\n"
-                    .'Recovered: Rp '.number_format((float) ($incident->recovered_fund ?? 0), 0, ',', '.')."\n"
+                    .'Potential Loss: '.MarkdownFormatter::formatMoney((float) ($incident->potential_fund_loss ?? 0))."\n"
+                    .'Actual Loss: '.MarkdownFormatter::formatMoney((float) ($incident->fund_loss ?? 0))."\n"
+                    .'Recovered: '.MarkdownFormatter::formatMoney((float) ($incident->recovered_fund ?? 0))."\n"
                     .'Labels: '.$incident->labels->pluck('name')->implode(', ')."\n"
                     ."Categories: {$cats}"
                     .$actions
@@ -357,7 +339,7 @@ class ChatContextService
                 ->orderBy('m')
                 ->get();
 
-            $parts[] = "## Monthly Trend (this year)\n".$monthly->map(fn ($r) => "Month {$r->m}: {$r->cnt} incidents, Rp ".number_format($r->loss ?? 0, 0, ',', '.').' fund loss')->implode("\n");
+            $parts[] = "## Monthly Trend (this year)\n".$monthly->map(fn ($r) => "Month {$r->m}: {$r->cnt} incidents, ".MarkdownFormatter::formatMoney((float) ($r->loss ?? 0)).' fund loss')->implode("\n");
         }
 
         // Detect similar/pattern questions
@@ -545,7 +527,7 @@ class ChatContextService
     {
         // Collect all incident IDs: from text + from explicit references
         $textIds = [];
-        preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $query, $textIds);
+        preg_match_all(Incident::ID_PATTERN, $query, $textIds);
         $allIds = array_unique(array_merge($textIds[0] ?? [], $referencedIds));
 
         if (empty($allIds)) {
@@ -652,7 +634,7 @@ class ChatContextService
     private function getIncidentSearchContext(array $referencedIds, string $query): array
     {
         $textIds = [];
-        preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $query, $textIds);
+        preg_match_all(Incident::ID_PATTERN, $query, $textIds);
         $allIds = array_unique(array_merge($textIds[0] ?? [], $referencedIds));
 
         if (empty($allIds)) {
@@ -716,7 +698,7 @@ class ChatContextService
     private function cleanSearchQuery(string $query): string
     {
         // Remove incident IDs
-        $clean = preg_replace('/\d{4}_(?:IN|IS)_\d{4}/', '', $query);
+        $clean = preg_replace(Incident::ID_PATTERN, '', $query);
         // Remove brackets
         $clean = preg_replace('/[\[\]]/', '', $clean);
         // Remove slash commands and leading/trailing slashes
@@ -996,8 +978,9 @@ class ChatContextService
      */
     private function detectTopicPhrase(string $message): string
     {
-        // Skip pure incident ID references
-        if (preg_match('/^\s*\d{4}_(?:IN|IS)_\d{4}\s*$/', trim($message))) {
+        // Skip pure incident ID references (e.g. user only typed "20260501_IN_0001")
+        $trimmed = trim($message);
+        if (preg_match(Incident::ID_PATTERN, $trimmed, $m) && $m[0] === $trimmed) {
             return '';
         }
 
@@ -1336,7 +1319,7 @@ class ChatContextService
             $lines = $incidents->map(function ($inc) {
                 $labels = $inc->labels->pluck('name')->implode(', ') ?: 'None';
                 $pic = $inc->pic?->name ?? 'Unassigned';
-                $fundLoss = $inc->fund_loss > 0 ? ' | Fund Loss: Rp '.number_format($inc->fund_loss, 0, ',', '.') : '';
+                $fundLoss = $inc->fund_loss > 0 ? ' | Fund Loss: '.MarkdownFormatter::formatMoney((float) $inc->fund_loss) : '';
                 $bizCat = $inc->business_category ? ' | BizCat: '.implode(', ', $inc->business_category) : '';
                 $team = $inc->responsible_team ? ' | Team: '.implode(', ', $inc->responsible_team) : '';
                 $rcCat = $inc->root_cause_category ? ' | RCCat: '.implode(', ', $inc->root_cause_category) : '';
@@ -1352,7 +1335,7 @@ class ChatContextService
         if ($total <= 50) {
             $lines = $incidents->map(function ($inc) {
                 $pic = $inc->pic?->name ?? 'Unassigned';
-                $fundLoss = $inc->fund_loss > 0 ? ' | Loss: Rp '.number_format($inc->fund_loss, 0, ',', '.') : '';
+                $fundLoss = $inc->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $inc->fund_loss) : '';
                 $criteria = ! empty($inc->match_criteria) ? ' | via: '.implode('+', $inc->match_criteria) : '';
 
                 return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_type} | PIC: {$pic} | {$inc->incident_date?->format('Y-m-d')}{$fundLoss}{$criteria}";
@@ -1372,7 +1355,7 @@ class ChatContextService
             .'Severity: '.$sevDist->map(fn ($c, $s) => "{$s}={$c}")->implode(', ')."\n"
             .'Status: '.$statusDist->map(fn ($c, $s) => "{$s}={$c}")->implode(', ')."\n"
             .'Type: '.$typeDist->map(fn ($c, $t) => "{$t}={$c}")->implode(', ')."\n"
-            .'Total Fund Loss: Rp '.number_format($totalLoss, 0, ',', '.')."\n\n"
+            .'Total Fund Loss: '.MarkdownFormatter::formatMoney((float) $totalLoss)."\n\n"
             ."### Sample (10 most recent):\n"
             .$sample->map(fn ($inc) => "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_date?->format('Y-m-d')}")->implode("\n");
 
@@ -1417,7 +1400,7 @@ class ChatContextService
         $lines = [
             '## Executive Summary Enrichment',
             "This month: {$thisMonthCount} incidents (vs {$lastMonthCount} last month → ".($change >= 0 ? '+' : '')."{$change}%)",
-            'This month fund loss: Rp '.number_format($thisMonthLoss, 0, ',', '.').' (vs last month Rp '.number_format($lastMonthLoss, 0, ',', '.').' → '.($lossChange >= 0 ? '+' : '')."{$lossChange}%)",
+            'This month fund loss: '.MarkdownFormatter::formatMoney((float) $thisMonthLoss).' (vs last month '.MarkdownFormatter::formatMoney((float) $lastMonthLoss).' → '.($lossChange >= 0 ? '+' : '')."{$lossChange}%)",
             'Open P1/P2 incidents: '.$openP1P2->count(),
             "Overdue action improvements: {$overdueActions}",
         ];
@@ -1461,7 +1444,7 @@ class ChatContextService
         $lines = ["## Monthly Comparison Data ({$year})"];
         foreach ($monthly as $row) {
             $sevs = $sevMonthly->where('m', $row->m)->map(fn ($s) => "{$s->severity}={$s->cnt}")->implode(', ');
-            $lines[] = "Month {$row->m}: {$row->cnt} incidents | Fund Loss: Rp ".number_format($row->loss ?? 0, 0, ',', '.').' | Avg MTTR: '.number_format($row->avg_mttr ?? 0, 0)." min | Severity: {$sevs}";
+            $lines[] = "Month {$row->m}: {$row->cnt} incidents | Fund Loss: ".MarkdownFormatter::formatMoney((float) ($row->loss ?? 0)).' | Avg MTTR: '.number_format($row->avg_mttr ?? 0, 0)." min | Severity: {$sevs}";
         }
 
         return implode("\n", $lines);
@@ -1494,13 +1477,13 @@ class ChatContextService
         $lines = ['## Current Risk Overview'];
 
         if ($openP1P2->isNotEmpty()) {
-            $lines[] = "### Open P1/P2 Incidents ({$openP1P2->count()})\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity} | {$i->incident_status} | PIC: ".($i->pic?->name ?? 'Unassigned').($i->fund_loss > 0 ? ' | Loss: Rp '.number_format($i->fund_loss, 0, ',', '.') : ''))->implode("\n");
+            $lines[] = "### Open P1/P2 Incidents ({$openP1P2->count()})\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity} | {$i->incident_status} | PIC: ".($i->pic?->name ?? 'Unassigned').($i->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $i->fund_loss) : ''))->implode("\n");
         } else {
             $lines[] = '### No open P1/P2 incidents. Well done!';
         }
 
         if ($topFundLoss->isNotEmpty()) {
-            $lines[] = "### Top Fund Losses This Year\n".$topFundLoss->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) Rp ".number_format($i->fund_loss, 0, ',', '.')." | {$i->title} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
+            $lines[] = "### Top Fund Losses This Year\n".$topFundLoss->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) ".MarkdownFormatter::formatMoney((float) $i->fund_loss)." | {$i->title} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
         }
 
         if ($overdueActions->isNotEmpty()) {

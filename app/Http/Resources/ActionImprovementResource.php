@@ -19,7 +19,7 @@ class ActionImprovementResource extends JsonResource
             'title' => $this->title,
             'detail' => $this->detail,
             'due_date' => $this->due_date,
-            'pic_email' => $this->pic_email,
+            'pic_email' => $this->when($request->user()?->currentAccessToken()?->can('read:pii'), $this->pic_email),
             'reminder' => $this->reminder,
             'reminder_frequency' => $this->reminder_frequency,
             'status' => $this->status,

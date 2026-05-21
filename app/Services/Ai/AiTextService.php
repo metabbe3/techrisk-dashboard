@@ -3,7 +3,7 @@
 namespace App\Services\Ai;
 
 use App\Models\AiSetting;
-use App\Models\AiUsageLog;
+use App\Services\Ai\Concerns\InteractsWithAiApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -12,6 +12,12 @@ use Illuminate\Support\Str;
 
 class AiTextService
 {
+    use InteractsWithAiApi;
+
+    public function __construct(
+        private AiUsageLogger $usageLogger,
+    ) {}
+
     public function suggestSkills(string $userMessage, ?string $model = null): array
     {
         $prompt = config('ai.prompts.agent_skill_suggest');
@@ -268,26 +274,17 @@ class AiTextService
 
     private function logLabelUsage(?string $model, bool $success, int $inputLength, ?int $outputLength, ?int $promptTokens, ?int $completionTokens, ?int $totalTokens, ?float $responseTimeMs, ?string $apiRequestId, ?string $errorMessage = null): void
     {
-        try {
-            AiUsageLog::create([
-                'user_id' => auth()->id(),
-                'user_email' => auth()->user()?->email,
-                'field_type' => 'label_suggest',
-                'model' => $model,
-                'input_length' => $inputLength,
-                'output_length' => $outputLength,
-                'prompt_tokens' => $promptTokens,
-                'completion_tokens' => $completionTokens,
-                'total_tokens' => $totalTokens,
-                'response_time_ms' => $responseTimeMs ? (int) $responseTimeMs : null,
-                'success' => $success,
-                'error_message' => $errorMessage,
-                'api_request_id' => $apiRequestId,
-                'requested_at' => now(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to write AI usage log', ['error' => $e->getMessage()]);
-        }
+        $this->usageLogger->log(
+            fieldType: 'label_suggest',
+            model: $model,
+            success: $success,
+            inputLength: $inputLength,
+            outputLength: $outputLength,
+            usage: array_filter(['prompt_tokens' => $promptTokens, 'completion_tokens' => $completionTokens, 'total_tokens' => $totalTokens]),
+            responseTimeMs: $responseTimeMs,
+            apiRequestId: $apiRequestId,
+            errorMessage: $errorMessage,
+        );
     }
 
     private function parseLabelSuggestions(string $content, array $availableLabels): array
@@ -471,26 +468,17 @@ class AiTextService
 
     private function logFeatureUsage(string $fieldType, ?string $model, bool $success, int $inputLength, ?int $outputLength, array $usage, ?float $responseTimeMs, ?string $apiRequestId, ?string $errorMessage = null): void
     {
-        try {
-            AiUsageLog::create([
-                'user_id' => auth()->id(),
-                'user_email' => auth()->user()?->email,
-                'field_type' => $fieldType,
-                'model' => $model,
-                'input_length' => $inputLength,
-                'output_length' => $outputLength,
-                'prompt_tokens' => $usage['prompt_tokens'] ?? null,
-                'completion_tokens' => $usage['completion_tokens'] ?? null,
-                'total_tokens' => $usage['total_tokens'] ?? null,
-                'response_time_ms' => $responseTimeMs ? (int) $responseTimeMs : null,
-                'success' => $success,
-                'error_message' => $errorMessage,
-                'api_request_id' => $apiRequestId,
-                'requested_at' => now(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to write AI usage log', ['error' => $e->getMessage()]);
-        }
+        $this->usageLogger->log(
+            fieldType: $fieldType,
+            model: $model,
+            success: $success,
+            inputLength: $inputLength,
+            outputLength: $outputLength,
+            usage: $usage,
+            responseTimeMs: $responseTimeMs,
+            apiRequestId: $apiRequestId,
+            errorMessage: $errorMessage,
+        );
     }
 
     public function generateWeeklySummary(array $weeklyData, array $summaryStats, ?string $model = null): array
@@ -825,35 +813,6 @@ class AiTextService
         return is_array($parsed) ? $parsed : null;
     }
 
-    protected function buildHeaders(): array
-    {
-        return [
-            'Authorization' => 'Bearer '.$this->getApiKey(),
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ];
-    }
-
-    protected function buildUrl(): string
-    {
-        return rtrim($this->getBaseUrl(), '/').'/chat/completions';
-    }
-
-    protected function getApiKey(): ?string
-    {
-        return AiSetting::get('api_key', config('ai.api_key'));
-    }
-
-    protected function getBaseUrl(): ?string
-    {
-        return AiSetting::get('base_url', config('ai.base_url'));
-    }
-
-    protected function getTimeout(): int
-    {
-        return (int) AiSetting::get('timeout', config('ai.timeout', 30));
-    }
-
     protected function buildPayload(string $systemPrompt, string $userText, string $model, ?string $additionalPrompt = null): array
     {
         $userMessage = filled($additionalPrompt)
@@ -890,26 +849,12 @@ class AiTextService
 
     private function logUsage(string $fieldType, ?string $model, AiTextResult $result, int $inputLength, bool $isRefinement = false): void
     {
-        try {
-            AiUsageLog::create([
-                'user_id' => auth()->id(),
-                'user_email' => auth()->user()?->email,
-                'field_type' => $fieldType,
-                'model' => $model,
-                'input_length' => $inputLength,
-                'output_length' => $result->success ? strlen($result->text ?? '') : null,
-                'prompt_tokens' => $result->promptTokens,
-                'completion_tokens' => $result->completionTokens,
-                'total_tokens' => $result->totalTokens,
-                'response_time_ms' => $result->responseTimeMs ? (int) $result->responseTimeMs : null,
-                'success' => $result->success,
-                'error_message' => $result->error,
-                'api_request_id' => $result->apiRequestId,
-                'metadata' => $isRefinement ? ['type' => 'refinement'] : null,
-                'requested_at' => now(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to write AI usage log', ['error' => $e->getMessage()]);
-        }
+        $this->usageLogger->logFromResult(
+            fieldType: $fieldType,
+            model: $model,
+            result: $result,
+            inputLength: $inputLength,
+            metadata: $isRefinement ? ['type' => 'refinement'] : null,
+        );
     }
 }

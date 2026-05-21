@@ -43,7 +43,7 @@
                     </div>
                     <div class="flex items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                         <x-filament::icon icon="heroicon-o-information-circle" class="w-3.5 h-3.5! text-gray-400!" />
-                        <span class="text-xs text-gray-400">AI-generated analysis may be inaccurate. Please verify independently.</span>
+                        <span class="text-xs text-gray-400 dark:text-gray-500">AI-generated analysis may be inaccurate. Please verify independently.</span>
                     </div>
                 </x-filament::section>
                 @endif

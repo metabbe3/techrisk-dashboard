@@ -40,7 +40,7 @@ class IncidentExportResource extends JsonResource
             'reported_by' => $this->reported_by,
             'mttr' => $this->mttr,
             'mtbf' => $this->mtbf,
-            'pic' => $this->pic?->only('name', 'email'),
+            'pic' => $this->pic?->only('name'),
             'labels' => $this->labels->pluck('name'),
             'created_at' => $this->created_at?->format('Y-m-d\TH:i:s'),
         ];

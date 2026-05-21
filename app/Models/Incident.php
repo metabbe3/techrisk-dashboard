@@ -32,6 +32,14 @@ class Incident extends Model implements Auditable
         'Non-Tech Incidents' => 'mtbf_non_tech',
     ];
 
+    /**
+     * Regex pattern matching incident IDs in the format YYYYMMDD_IN/IS_NNNN.
+     * Example: 20260501_IN_0001, 20260501_IS_0002
+     */
+    public const ID_PATTERN = '/\d{4}_(?:IN|IS)_\d{4}/';
+
+    protected $hidden = ['ai_enhanced_fields'];
+
     protected $appends = ['mtbf_display'];
 
     protected $fillable = [
@@ -124,6 +132,17 @@ class Incident extends Model implements Auditable
         'mtbf_all' => 'decimal:2',
         'recurrence_data' => 'array',
     ];
+
+    public function getRecoveryPercentageAttribute(): ?float
+    {
+        if (! $this->potential_fund_loss || $this->potential_fund_loss <= 0) {
+            return null;
+        }
+
+        return round(($this->recovered_fund / $this->potential_fund_loss) * 100, 1);
+    }
+
+    public const FULL_RELATIONS = ['pic', 'statusUpdates', 'investigationDocuments', 'labels', 'actionImprovements'];
 
     public const SIMILARITY_COLUMNS = [
         'id', 'no', 'title', 'summary', 'root_cause', 'timeline',
@@ -282,5 +301,22 @@ class Incident extends Model implements Auditable
     public function shouldCalculateMttrByDays(): bool
     {
         return in_array($this->fund_status, ['Confirmed loss', 'Potential recovery', 'Fully recovered', 'Non Tech Loss']);
+    }
+
+    /**
+     * Mark one or more fields as AI-enhanced with a content hash.
+     *
+     * @param  array<string, string>  $fields  Map of field name => AI-generated text
+     */
+    public function markAiEnhancedFields(array $fields): void
+    {
+        $enhanced = $this->ai_enhanced_fields ?? [];
+        foreach ($fields as $field => $text) {
+            if (blank($text)) {
+                continue;
+            }
+            $enhanced[$field] = ['enhanced' => true, 'hash' => md5(trim($text))];
+        }
+        $this->update(['ai_enhanced_fields' => $enhanced]);
     }
 }

@@ -20,6 +20,18 @@ class ChatListController
             );
         }
 
+        if ($request->filled('folder')) {
+            $query->inFolder($request->input('folder'));
+        }
+
+        if ($request->boolean('pinned')) {
+            $query->pinned();
+        }
+
+        if ($request->filled('tag')) {
+            $query->withTag($request->input('tag'));
+        }
+
         $conversations = $query
             ->with('latestMessage')
             ->latestFirst()
@@ -29,11 +41,19 @@ class ChatListController
                 'id' => (string) $c->id,
                 'title' => $c->title,
                 'model' => $c->model,
+                'folder' => $c->folder,
+                'tags' => $c->tags,
+                'pinned' => $c->isPinned(),
                 'updated_at' => $c->updated_at?->toIso8601String(),
                 'created_at' => $c->created_at?->toIso8601String(),
                 'last_message' => $c->latestMessage ? mb_substr($c->latestMessage->content, 0, 100) : null,
             ]);
 
-        return response()->json(['conversations' => $conversations]);
+        $folders = ChatConversation::getFolders();
+
+        return response()->json([
+            'conversations' => $conversations,
+            'folders' => $folders,
+        ]);
     }
 }

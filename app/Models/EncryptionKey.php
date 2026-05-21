@@ -9,6 +9,8 @@ class EncryptionKey extends Model
 {
     use HasFactory;
 
+    protected $hidden = ['key', 'salt'];
+
     protected $fillable = [
         'investigation_document_id',
         'key',

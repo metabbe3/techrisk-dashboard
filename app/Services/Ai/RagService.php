@@ -4,6 +4,7 @@ namespace App\Services\Ai;
 
 use App\Models\Incident;
 use App\Models\RagDocument;
+use App\Services\IncidentFormatter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
@@ -176,57 +177,7 @@ class RagService
 
     private function buildContextContent(Incident $incident): string
     {
-        $lines = [];
-
-        $lines[] = "## {$incident->no} - ".($incident->title ?? 'Untitled');
-        $meta = collect([
-            "Severity: {$incident->severity}",
-            "Status: {$incident->incident_status}",
-            "Type: {$incident->incident_type}",
-            'Date: '.($incident->incident_date?->format('Y-m-d') ?? 'N/A'),
-        ])->implode(' | ');
-        $lines[] = "- {$meta}";
-
-        if ($incident->pic) {
-            $lines[] = "- PIC: {$incident->pic->name}";
-        }
-
-        if ($incident->fund_loss > 0 || $incident->potential_fund_loss > 0) {
-            $fundParts = [];
-            if ($incident->potential_fund_loss > 0) {
-                $fundParts[] = 'Potential: Rp '.number_format($incident->potential_fund_loss);
-            }
-            if ($incident->fund_loss > 0) {
-                $fundParts[] = 'Actual: Rp '.number_format($incident->fund_loss);
-            }
-            if ($incident->recovered_fund > 0) {
-                $fundParts[] = 'Recovered: Rp '.number_format($incident->recovered_fund);
-            }
-            $lines[] = '- Fund: '.implode(' | ', $fundParts);
-        }
-
-        if ($incident->root_cause) {
-            $lines[] = '- Root Cause: '.str($incident->root_cause)->limit(300);
-        }
-
-        $actions = $incident->actionImprovements;
-        if ($actions && $actions->isNotEmpty()) {
-            $actionStr = $actions->take(5)->map(fn ($a) => ($a->is_completed ? '[DONE]' : '[PENDING]')." {$a->title}")->implode('; ');
-            $lines[] = "- Actions: {$actionStr}";
-        }
-
-        $labels = $incident->labels->pluck('name')->implode(', ');
-        if ($labels) {
-            $lines[] = "- Labels: {$labels}";
-        }
-
-        $categories = collect([$incident->business_category, $incident->root_cause_category, $incident->responsible_team])
-            ->filter()->flatten()->unique()->implode(', ');
-        if ($categories) {
-            $lines[] = "- Categories: {$categories}";
-        }
-
-        return implode("\n", $lines);
+        return IncidentFormatter::formatCompact($incident);
     }
 
     private function applyFilters($query, array $filters): void

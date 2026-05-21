@@ -9,12 +9,13 @@ use App\Jobs\WarRoom\ProcessWarRoomAgent;
 use App\Jobs\WarRoom\StartWarRoomSession;
 use App\Jobs\WarRoom\SynthesizeWarRoomReport;
 use App\Models\AiSetting;
-use App\Models\AiUsageLog;
 use App\Models\Incident;
 use App\Models\User;
 use App\Models\WarRoomAgentConfig;
 use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
+use App\Services\Ai\AiUsageLogger;
+use App\Services\Ai\Concerns\InteractsWithAiApi;
 use App\Services\Ai\ToolRegistryService;
 use App\Services\Ai\WebSearchService;
 use App\Services\Markdown\IncidentMarkdownExporter;
@@ -25,10 +26,13 @@ use Illuminate\Support\Str;
 
 class WarRoomService
 {
+    use InteractsWithAiApi;
+
     public function __construct(
         private IncidentMarkdownExporter $markdownExporter,
         private AgentPromptBuilder $promptBuilder,
         private WebSearchService $webSearchService,
+        private AiUsageLogger $usageLogger,
     ) {}
 
     public function createSession(
@@ -49,22 +53,9 @@ class WarRoomService
         }
 
         $primaryIncident = $incidents->first();
-
-        $generateMethod = $deepAnalysis ? 'generateCompact' : 'generateMinimal';
-
-        if ($incidents->count() === 1) {
-            $markdown = $this->markdownExporter->$generateMethod($primaryIncident);
-            $context = [$markdown];
-            $title = "Discussion Forum: {$primaryIncident->no}";
-        } else {
-            $context = [];
-            foreach ($incidents as $inc) {
-                $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
-                $context[] = $this->markdownExporter->$generateMethod($inc);
-            }
-            $incidentNos = $incidents->pluck('no')->implode(' vs ');
-            $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
-        }
+        $context = $this->buildIncidentContext($incidents, $deepAnalysis);
+        $title = $this->buildSessionTitle($incidents);
+        $resolvedModel = $this->resolveModel($model);
 
         $session = WarRoomSession::create([
             'user_id' => $user->id,
@@ -72,12 +63,12 @@ class WarRoomService
             'title' => $title,
             'status' => 'pending',
             'max_rounds' => $maxRounds,
-            'model' => $model ?? config('ai.war_room.default_model') ?? AiSetting::get('default_model', config('ai.default_model')),
-            'moderator_model' => $moderatorModel ?? config('ai.war_room.moderator_model') ?? $model ?? AiSetting::get('default_model', config('ai.default_model')),
+            'model' => $resolvedModel,
+            'moderator_model' => $moderatorModel ?? config('ai.war_room.moderator_model') ?? $resolvedModel,
             'enable_web_search' => $enableWebSearch,
             'deep_analysis' => $deepAnalysis,
             'selected_agents' => $selectedAgents,
-            'incident_context' => $this->compressContext($context, $model ?? config('ai.war_room.default_model') ?? AiSetting::get('default_model', config('ai.default_model')), $incidents),
+            'incident_context' => $this->compressContext($context, $resolvedModel, $incidents),
             'user_instructions' => $userInstructions,
         ]);
 
@@ -109,22 +100,8 @@ class WarRoomService
         ]);
 
         $incidents = $session->incidents()->get();
-        $generateMethod = $deepAnalysis ? 'generateCompact' : 'generateMinimal';
-
-        if ($incidents->count() <= 1) {
-            $incident = $incidents->first() ?? $session->incident;
-            $markdown = $this->markdownExporter->$generateMethod($incident);
-            $context = [$markdown];
-            $title = "Discussion Forum: {$incident->no}";
-        } else {
-            $context = [];
-            foreach ($incidents as $inc) {
-                $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
-                $context[] = $this->markdownExporter->$generateMethod($inc);
-            }
-            $incidentNos = $incidents->pluck('no')->implode(' vs ');
-            $title = 'Discussion Forum: '.\Illuminate\Support\Str::limit($incidentNos, 80);
-        }
+        $context = $this->buildIncidentContext($incidents, $deepAnalysis);
+        $title = $this->buildSessionTitle($incidents);
 
         $session->messages()->delete();
 
@@ -243,6 +220,8 @@ class WarRoomService
 
     public function processAgent(WarRoomSession $session, string $agentRole, int $round): void
     {
+        $session->loadMissing('incidents');
+
         $message = WarRoomMessage::where('session_id', $session->id)
             ->where('agent_role', $agentRole)
             ->where('round', $round)
@@ -705,7 +684,7 @@ class WarRoomService
     {
         $session->load('messages', 'user', 'incidents');
 
-        $agentConfigs = WarRoomAgentConfig::all()->keyBy('role_key');
+        $agentConfigs = WarRoomAgentConfig::allCached();
 
         $messagesByRound = $session->messages->groupBy('round')->map(function ($roundMessages) use ($agentConfigs) {
             return $roundMessages->map(function ($msg) use ($agentConfigs) {
@@ -820,20 +799,6 @@ class WarRoomService
         return '';
     }
 
-    private function buildHeaders(): array
-    {
-        return [
-            'Authorization' => 'Bearer '.$this->getApiKey(),
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ];
-    }
-
-    private function buildUrl(): string
-    {
-        return rtrim($this->getBaseUrl(), '/').'/chat/completions';
-    }
-
     private function extractReasoning(array $responseData): array
     {
         $msgData = $responseData['choices'][0]['message'] ?? [];
@@ -844,16 +809,6 @@ class WarRoomService
                 ?? $responseData['usage']['reasoning_tokens']
                 ?? null,
         ];
-    }
-
-    private function getApiKey(): ?string
-    {
-        return AiSetting::get('api_key', config('ai.api_key'));
-    }
-
-    private function getBaseUrl(): ?string
-    {
-        return AiSetting::get('base_url', config('ai.base_url'));
     }
 
     private function getTimeout(): int
@@ -947,27 +902,58 @@ class WarRoomService
         int $round,
         ?string $errorMessage = null,
     ): void {
-        try {
-            AiUsageLog::create([
-                'user_id' => $session->user_id,
-                'user_email' => $session->user?->email,
-                'field_type' => $fieldType,
-                'model' => $model,
-                'prompt_tokens' => $usage['prompt_tokens'] ?? null,
-                'completion_tokens' => $usage['completion_tokens'] ?? null,
-                'total_tokens' => $usage['total_tokens'] ?? null,
-                'response_time_ms' => $responseTimeMs,
-                'success' => $success,
-                'error_message' => $errorMessage,
-                'metadata' => [
-                    'session_id' => $session->id,
-                    'agent_role' => $agentRole,
-                    'round' => $round,
-                ],
-                'requested_at' => now(),
-            ]);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to write War Room usage log', ['error' => $e->getMessage()]);
+        $this->usageLogger->log(
+            fieldType: $fieldType,
+            model: $model,
+            success: $success,
+            usage: $usage,
+            responseTimeMs: $responseTimeMs,
+            errorMessage: $errorMessage,
+            metadata: [
+                'session_id' => $session->id,
+                'agent_role' => $agentRole,
+                'round' => $round,
+            ],
+        );
+    }
+
+    private function buildIncidentContext(Collection $incidents, bool $deepAnalysis): array
+    {
+        $generateMethod = $deepAnalysis ? 'generateCompact' : 'generateMinimal';
+
+        if ($incidents->count() <= 1) {
+            $incident = $incidents->first();
+            $markdown = $incident ? $this->markdownExporter->$generateMethod($incident) : '';
+
+            return [$markdown];
         }
+
+        $context = [];
+        foreach ($incidents as $inc) {
+            $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
+            $context[] = $this->markdownExporter->$generateMethod($inc);
+        }
+
+        return $context;
+    }
+
+    private function buildSessionTitle(Collection $incidents): string
+    {
+        if ($incidents->count() <= 1) {
+            $incident = $incidents->first();
+
+            return "Discussion Forum: {$incident->no}";
+        }
+
+        $incidentNos = $incidents->pluck('no')->implode(' vs ');
+
+        return 'Discussion Forum: '.Str::limit($incidentNos, 80);
+    }
+
+    private function resolveModel(?string $model): string
+    {
+        return $model
+            ?? config('ai.war_room.default_model')
+            ?? AiSetting::get('default_model', config('ai.default_model'));
     }
 }

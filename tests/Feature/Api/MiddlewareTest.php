@@ -78,49 +78,81 @@ class MiddlewareTest extends TestCase
         $this->assertNotEquals(401, $response->getStatusCode());
     }
 
-    public function test_expired_token_returns_401_and_is_deleted(): void
+    public function test_inactive_token_returns_401_and_is_disabled(): void
     {
         $token = $this->userWithAccess->createToken('test', ['*']);
         $tokenId = $token->accessToken->id;
 
-        // Simulate token last used >30 days ago
         $tokenModel = PersonalAccessToken::find($tokenId);
         $tokenModel->forceFill([
-            'last_used_at' => now()->subDays(31),
+            'last_used_at' => now()->subDays(91),
+            'expires_at' => now()->addMonths(6),
         ])->save();
-
-        // Verify the save worked
-        $fresh = PersonalAccessToken::find($tokenId);
-        $this->assertNotNull($fresh->last_used_at, 'last_used_at should be set');
-        $this->assertGreaterThan(30, abs(now()->diffInDays($fresh->last_used_at)),
-            'Token should be older than 30 days: diff='.abs(now()->diffInDays($fresh->last_used_at)));
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
             ->getJson('/api/v1/incidents');
 
         $response->assertStatus(401)
-            ->assertJsonPath('message', 'Token has expired due to inactivity (30 days). Please request a new token.');
+            ->assertJson(fn ($json) => $json->where('status', 'Error')->etc());
 
-        // Verify token was deleted
-        $this->assertDatabaseMissing('personal_access_tokens', [
-            'id' => $tokenId,
-        ]);
+        $this->assertNotNull(PersonalAccessToken::find($tokenId)?->disabled_at);
     }
 
     public function test_token_with_recent_last_used_is_valid(): void
     {
         $token = $this->userWithAccess->createToken('test', ['*']);
-
-        // Token used recently should still work
         $tokenModel = PersonalAccessToken::find($token->accessToken->id);
         $tokenModel->forceFill([
             'last_used_at' => now()->subDays(5),
+            'expires_at' => now()->addMonths(6),
         ])->save();
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
             ->getJson('/api/v1/incidents');
 
         $this->assertNotEquals(401, $response->getStatusCode());
+    }
+
+    public function test_disabled_token_returns_401(): void
+    {
+        $token = $this->userWithAccess->createToken('test', ['*']);
+        $tokenModel = PersonalAccessToken::find($token->accessToken->id);
+        $tokenModel->forceFill(['disabled_at' => now()])->save();
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
+            ->getJson('/api/v1/incidents');
+
+        $response->assertStatus(401);
+    }
+
+    public function test_expired_token_returns_401(): void
+    {
+        $token = $this->userWithAccess->createToken('test', ['*']);
+        $tokenModel = PersonalAccessToken::find($token->accessToken->id);
+        $tokenModel->forceFill(['expires_at' => now()->subDay()])->save();
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
+            ->getJson('/api/v1/incidents');
+
+        $response->assertStatus(401);
+    }
+
+    public function test_auto_renewal_extends_token_expiry(): void
+    {
+        $token = $this->userWithAccess->createToken('test', ['*']);
+        $tokenModel = PersonalAccessToken::find($token->accessToken->id);
+        $originalExpiresAt = now()->addMonths(6);
+        $tokenModel->forceFill([
+            'last_used_at' => now()->subDays(5),
+            'expires_at' => $originalExpiresAt,
+            'renewal_minutes' => 43200, // 30 days
+        ])->save();
+
+        $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
+            ->getJson('/api/v1/incidents');
+
+        $tokenModel->refresh();
+        $this->assertTrue($tokenModel->expires_at->gt($originalExpiresAt));
     }
 
     public function test_never_used_token_is_not_expired(): void

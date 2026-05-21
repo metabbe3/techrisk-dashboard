@@ -13,7 +13,7 @@ class CreateIncident extends CreateRecord
     public function form(Form $form): Form
     {
         return $form
-            ->schema(IncidentResource::createFormSchema())
+            ->schema(IncidentResource::getFormSchema('create'))
             ->columns(12);
     }
 

@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class Skill extends Model
 {
     use HasUuids;
+    use \App\Traits\HasActiveScope;
 
     protected $fillable = [
         'name',
@@ -31,16 +32,6 @@ class Skill extends Model
         'is_active' => 'boolean',
         'sort_order' => 'integer',
     ];
-
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-
-    public function scopeOrdered($query)
-    {
-        return $query->orderBy('sort_order')->orderBy('display_name');
-    }
 
     public function scopeByDomain($query, string $domain)
     {

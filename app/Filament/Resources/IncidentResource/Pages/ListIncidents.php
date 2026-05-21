@@ -38,12 +38,22 @@ class ListIncidents extends ListRecords
             'remark' => 'Remark', 'root_cause' => 'Root Cause', 'improvements' => 'Improvements',
             'evidence' => 'Evidence', 'evidence_link' => 'Evidence Link', 'action_improvement_tracking' => 'Action Improvement Tracking',
             'investigation_pic_status' => 'Investigation PIC Status',
+            'business_category' => 'Business Category',
+            'root_cause_category' => 'Root Cause Category',
+            'responsible_team' => 'Responsible Team',
         ];
     }
 
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('board_view')
+                ->label('Board View')
+                ->icon('heroicon-o-view-columns')
+                ->color('gray')
+                ->outlined()
+                ->url(fn () => IncidentResource::getUrl('board'))
+                ->extraAttributes(['class' => 'header-btn-board']),
             Actions\Action::make('ai_search')
                 ->label('AI Search')
                 ->icon('heroicon-o-sparkles')
@@ -380,5 +390,4 @@ class ListIncidents extends ListRecords
                 ->send();
         }
     }
-
 }

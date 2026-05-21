@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class WarRoomAgentConfig extends Model
 {
     use HasUuids;
+    use \App\Traits\HasActiveScope;
 
     protected $fillable = [
         'role_key',
@@ -32,19 +33,16 @@ class WarRoomAgentConfig extends Model
         'is_active' => 'boolean',
     ];
 
-    public function scopeActive($query)
-    {
-        return $query->where('is_active', true);
-    }
-
-    public function scopeOrdered($query)
-    {
-        return $query->orderBy('sort_order');
-    }
-
     public static function findByRole(string $role): ?self
     {
-        return static::where('role_key', $role)->first();
+        return static::allCached()->get($role);
+    }
+
+    public static function allCached(): \Illuminate\Support\Collection
+    {
+        return cache()->remember('war_room:agent_configs:keyed', now()->addMinutes(5), function () {
+            return static::all()->keyBy('role_key');
+        });
     }
 
     public function skillRecords()

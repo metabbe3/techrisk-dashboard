@@ -3,6 +3,7 @@
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\AiUsageLogResource\Pages\ListAiUsageLogs;
+use App\Filament\Traits\ReadOnlyResource;
 use App\Models\AiUsageLog;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
@@ -14,10 +15,10 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 
 class AiUsageLogResource extends Resource
 {
+    use ReadOnlyResource;
     protected static ?string $model = AiUsageLog::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-sparkles';
@@ -37,26 +38,6 @@ class AiUsageLogResource extends Resource
         $user = auth()->user();
 
         return $user->hasRole('admin') || $user->can('view ai usage logs');
-    }
-
-    public static function canCreate(): bool
-    {
-        return false;
-    }
-
-    public static function canEdit(Model $record): bool
-    {
-        return false;
-    }
-
-    public static function canDelete(Model $record): bool
-    {
-        return false;
-    }
-
-    public static function canDeleteAny(): bool
-    {
-        return false;
     }
 
     public static function table(Table $table): Table

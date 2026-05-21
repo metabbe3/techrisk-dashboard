@@ -38,7 +38,7 @@ class AgentPromptBuilder
 
         $result = $prompt."\n\n## Incident Data\n\n".$incidentContext;
 
-        if ($session->incidents()->count() > 1) {
+        if ($session->incidents->count() > 1) {
             $result .= "\n\n## Cross-Incident Analysis\n\nMultiple incidents are provided above. You MUST compare and contrast across them: identify common root causes, recurring patterns, shared vulnerabilities, systemic issues, and differences in response effectiveness. Reference specific incidents by their number when making comparisons.";
         }
 
@@ -57,7 +57,7 @@ class AgentPromptBuilder
     {
         $config = WarRoomAgentConfig::findByRole($role);
         $displayName = $config?->display_name ?? ucfirst($role);
-        $isMultiIncident = ($session->incidents()->count() > 1);
+        $isMultiIncident = ($session->incidents->count() > 1);
 
         if ($round === 1) {
             $summaryInstruction = "\n\n## Required: Key Findings & Discussion Points\nAfter your full analysis, you MUST include a final section with this exact header: `## Key Findings & Discussion Points`. In this section, provide:\n- 3-5 bullet points of your most critical findings (cite specific data)\n- 1-2 points you want other agents to challenge or discuss in the next round\n- Your top recommendation\nKeep this section concise (200-400 words) — it will be shared with other agents for debate.";

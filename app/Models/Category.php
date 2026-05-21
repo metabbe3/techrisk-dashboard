@@ -15,17 +15,6 @@ class Category extends Model implements Auditable
 
     protected $fillable = ['type', 'name'];
 
-    protected static function booted(): void
-    {
-        static::saved(fn () => Cache::forget('categories:'.static::TYPE_BUSINESS_CATEGORY)
-            && Cache::forget('categories:'.static::TYPE_ROOT_CAUSE_CATEGORY)
-            && Cache::forget('categories:'.static::TYPE_RESPONSIBLE_TEAM));
-
-        static::deleted(fn () => Cache::forget('categories:'.static::TYPE_BUSINESS_CATEGORY)
-            && Cache::forget('categories:'.static::TYPE_ROOT_CAUSE_CATEGORY)
-            && Cache::forget('categories:'.static::TYPE_RESPONSIBLE_TEAM));
-    }
-
     public function scopeOfType($query, string $type)
     {
         return $query->where('type', $type);

@@ -17,7 +17,7 @@ class WebSearchService
      */
     private const CONFIDENTIAL_PATTERNS = [
         // Incident IDs: 20260501_IN_0001, 20260501_IS_0002
-        '/\d{4}_(?:IN|IS)_\d{4}/',
+        Incident::ID_PATTERN,
         // Database IDs referenced as id:123
         '/\bid:\d+\b/i',
         // Indonesian Rupiah amounts: Rp 50.000.000, Rp50jt, 50.000.000

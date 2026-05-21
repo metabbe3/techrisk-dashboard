@@ -7,7 +7,9 @@ use App\Http\Requests\Api\V1\ListIncidentsRequest;
 use App\Http\Requests\Api\V1\StoreIncidentRequest;
 use App\Http\Requests\Api\V1\UpdateIncidentRequest;
 use App\Http\Resources\IncidentApiResource;
+use App\Models\Category;
 use App\Models\Incident;
+use App\Models\User;
 use App\Models\IncidentType;
 use App\Models\Label;
 use App\Traits\ApiResponser;
@@ -110,8 +112,39 @@ class IncidentController extends Controller
                 $query->where('incident_type', $request->validated('type'));
             }
 
+            if ($request->filled('severity')) {
+                $query->where('severity', $request->validated('severity'));
+            }
+
+            if ($request->filled('incident_status')) {
+                $query->where('incident_status', $request->validated('incident_status'));
+            }
+
+            if ($request->filled('classification')) {
+                $query->where('classification', $request->validated('classification'));
+            }
+
+            if ($request->filled('fund_status')) {
+                $query->where('fund_status', $request->validated('fund_status'));
+            }
+
+            if ($request->filled('pic_id')) {
+                $query->where('pic_id', $request->validated('pic_id'));
+            }
+
+            if ($request->filled('search')) {
+                $search = $request->validated('search');
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                        ->orWhere('summary', 'like', "%{$search}%")
+                        ->orWhere('no', 'like', "%{$search}%");
+                });
+            }
+
+            $perPage = $request->validated('per_page', 15);
+
             return $this->successResponse(
-                IncidentApiResource::collection($query->paginate(15)),
+                IncidentApiResource::collection($query->paginate($perPage)),
                 'Incidents retrieved successfully.'
             );
         } catch (Exception $e) {
@@ -188,6 +221,74 @@ class IncidentController extends Controller
         }
     }
 
+    /**
+     * Get all users (PIC lookup)
+     *
+     * Retrieve a list of users with their IDs and names.
+     * Useful for resolving PIC IDs from incident data.
+     *
+     * @authenticated
+     *
+     * @response {
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Users retrieved successfully.",
+     *   "data": [{"id": 1, "name": "John Doe"}, {"id": 2, "name": "Jane Smith"}]
+     * }
+     */
+    public function getUsers()
+    {
+        try {
+            $users = User::select('id', 'name')->orderBy('name')->get();
+
+            return $this->successResponse($users, 'Users retrieved successfully.');
+        } catch (Exception $e) {
+            Log::error('Failed to retrieve users: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse('Failed to retrieve users.', 500);
+        }
+    }
+
+    /**
+     * Get all categories
+     *
+     * Retrieve all available categories grouped by type (business_category, root_cause_category, responsible_team).
+     * Results are cached for 60 minutes.
+     *
+     * @authenticated
+     *
+     * @response {
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Categories retrieved successfully.",
+     *   "data": {
+     *     "business_category": {"Operations": "Operations", "Finance": "Finance"},
+     *     "root_cause_category": {"Human Error": "Human Error", "System Bug": "System Bug"},
+     *     "responsible_team": {"IT Infrastructure": "IT Infrastructure", "DevOps": "DevOps"}
+     *   }
+     * }
+     */
+    public function getCategories()
+    {
+        try {
+            $categories = [
+                'business_category' => Category::options(Category::TYPE_BUSINESS_CATEGORY),
+                'root_cause_category' => Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY),
+                'responsible_team' => Category::options(Category::TYPE_RESPONSIBLE_TEAM),
+            ];
+
+            return $this->successResponse($categories, 'Categories retrieved successfully.');
+        } catch (Exception $e) {
+            Log::error('Failed to retrieve categories: '.$e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return $this->errorResponse('Failed to retrieve categories.', 500);
+        }
+    }
+
     public function store(StoreIncidentRequest $request)
     {
         try {
@@ -226,8 +327,8 @@ class IncidentController extends Controller
      *   "message": "Incident retrieved successfully.",
      *   "data": {
      *     "id": 1,
-     *     "no": "20250115_IN_1234",
-     *     "title": "Payment Gateway Timeout",
+     *     "incident_no": "20250115_IN_1234",
+     *     "incident_name": "Payment Gateway Timeout",
      *     "summary": "5-minute outage during peak hours...",
      *     "root_cause": "Database connection pool exhausted due to high traffic",
      *     "severity": "P1",
@@ -236,32 +337,10 @@ class IncidentController extends Controller
      *     "incident_date": "2025-01-15T10:30:00.000000Z",
      *     "fund_loss": 5000000,
      *     "potential_fund_loss": 15000000,
-     *     "pic": {
-     *       "id": 5,
-     *       "name": "John Doe",
-     *       "email": "john.doe@company.com"
-     *     },
-     *     "labels": [
-     *       {"id": 1, "name": "payment"},
-     *       {"id": 2, "name": "database"}
-     *     ],
-     *     "status_updates": [
-     *       {
-     *         "id": 1,
-     *         "status": "In progress",
-     *         "notes": "Investigating database connection pool settings",
-     *         "updated_at": "2025-01-15T11:00:00.000000Z"
-     *       }
-     *     ],
-     *     "action_improvements": [
-     *       {
-     *         "id": 1,
-     *         "title": "Increase connection pool size",
-     *         "detail": "Configure pool to handle 2x peak traffic",
-     *         "status": "pending",
-     *         "due_date": "2025-01-20"
-     *       }
-     *     ]
+     *     "pic": {"id": 5, "name": "John Doe"},
+     *     "labels": [{"id": 1, "name": "payment"}],
+     *     "status_updates": [{"id": 1, "status": "In progress", "update_date": "2025-01-15"}],
+     *     "action_improvements": [{"id": 1, "title": "Increase pool size", "status": "pending"}]
      *   }
      * }
      * @response 404 {
@@ -275,13 +354,7 @@ class IncidentController extends Controller
     {
         try {
             return $this->successResponse(
-                new IncidentApiResource($incident->load([
-                    'pic',
-                    'statusUpdates',
-                    'investigationDocuments',
-                    'labels',
-                    'actionImprovements',
-                ])),
+                new IncidentApiResource($incident->load(Incident::FULL_RELATIONS)),
                 'Incident retrieved successfully.'
             );
         } catch (ModelNotFoundException $e) {
@@ -335,13 +408,7 @@ class IncidentController extends Controller
             $incident = Incident::where('no', $no)->firstOrFail();
 
             return $this->successResponse(
-                new IncidentApiResource($incident->load([
-                    'pic',
-                    'statusUpdates',
-                    'investigationDocuments',
-                    'labels',
-                    'actionImprovements',
-                ])),
+                new IncidentApiResource($incident->load(Incident::FULL_RELATIONS)),
                 'Incident retrieved successfully.'
             );
         } catch (ModelNotFoundException $e) {
@@ -400,13 +467,7 @@ class IncidentController extends Controller
     {
         try {
             $incident = Incident::where('no', $no)
-                ->with([
-                    'pic',
-                    'statusUpdates',
-                    'investigationDocuments',
-                    'labels',
-                    'actionImprovements',
-                ])
+                ->with(Incident::FULL_RELATIONS)
                 ->firstOrFail();
 
             $markdown = $this->convertToMarkdown($incident);
@@ -475,7 +536,6 @@ class IncidentController extends Controller
             $md[] = '## Person In Charge';
             $md[] = '';
             $md[] = "- **Name:** {$incident->pic->name}";
-            $md[] = "- **Email:** {$incident->pic->email}";
             $md[] = '';
         }
 
@@ -529,10 +589,6 @@ class IncidentController extends Controller
                     $md[] = '- **Due Date:** N/A';
                 }
                 $md[] = "- **Status:** {$action->status}";
-                if ($action->pic_email) {
-                    $picEmails = is_array($action->pic_email) ? $action->pic_email : [$action->pic_email];
-                    $md[] = '- **PIC:** '.implode(', ', $picEmails);
-                }
                 $md[] = '';
             }
         }

@@ -6,7 +6,7 @@
     @if ($this->getViewData()['showToken'])
         <div class="space-y-6">
             <x-slot name="heading">
-                API Token Created Successfully
+                API Token Ready
             </x-slot>
 
             <div class="bg-success-50 dark:bg-success-950 border border-success-200 dark:border-success-800 rounded-lg p-6">
@@ -14,17 +14,17 @@
                     <div class="flex items-center gap-3">
                         <x-heroicon-o-check-circle class="w-6 h-6 text-success-600 dark:text-success-400" />
                         <h3 class="text-lg font-semibold text-success-900 dark:text-success-100">
-                            Token Created - Save It Now
+                            Token Ready - Copy It Now
                         </h3>
                     </div>
 
                     <p class="text-sm text-success-700 dark:text-success-300">
-                        This token will only be shown once. Please save it securely now. You won't be able to see it again.
+                        This token will only be shown once. Please copy and store it securely.
                     </p>
 
                     <div class="bg-white dark:bg-gray-900 rounded-lg p-4 border border-success-200 dark:border-success-800">
                         <label class="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                            Your API Token:
+                            API Token:
                         </label>
                         <div class="flex items-center gap-2">
                             <input
@@ -57,10 +57,10 @@
                             Security Notice
                         </h4>
                         <ul class="text-sm text-amber-800 dark:text-amber-200 space-y-1">
-                            <li>• Store this token securely (e.g., password manager, environment variables)</li>
-                            <li>• Never share this token via email, chat, or version control</li>
-                            <li>• This token will expire after 30 days of inactivity</li>
-                            <li>• Revoke this token immediately if it's compromised</li>
+                            <li>Store this token securely (e.g., password manager, environment variables)</li>
+                            <li>Never share this token via email, chat, or version control</li>
+                            <li>This token will be disabled after 90 days of inactivity</li>
+                            <li>Use <strong>Regenerate Token</strong> above if you need a new value</li>
                         </ul>
                     </div>
                 </div>
@@ -75,7 +75,8 @@
                         Token Hidden
                     </h3>
                     <p class="text-sm text-warning-700 dark:text-warning-300">
-                        This token was already shown during creation. For security reasons, it cannot be displayed again.
+                        For security, the token value is only shown once after creation or regeneration.
+                        Click <strong>Regenerate Token</strong> above to create a new token value if the user lost it.
                     </p>
                 </div>
             </div>
@@ -85,16 +86,4 @@
     <div class="mt-8">
         {{ $this->table }}
     </div>
-
-    @script
-        <script>
-            function copyToClipboard(text) {
-                navigator.clipboard.writeText(text);
-            }
-
-            window.addEventListener('copy-to-clipboard', (event) => {
-                copyToClipboard(event.detail.text);
-            });
-        </script>
-    @endscript
 </x-filament-panels::page>

@@ -2,21 +2,33 @@
 
 namespace App\Services\Ai;
 
-class AgenticChatResult
+class AgenticChatResult extends AiTextResult
 {
     public function __construct(
-        public readonly bool $success,
-        public readonly ?string $text = null,
-        public readonly ?string $error = null,
-        public readonly ?string $model = null,
-        public readonly ?int $promptTokens = null,
-        public readonly ?int $completionTokens = null,
-        public readonly ?int $totalTokens = null,
-        public readonly ?float $responseTimeMs = null,
-        public readonly ?string $apiRequestId = null,
+        bool $success,
+        ?string $text = null,
+        ?string $error = null,
+        ?string $model = null,
+        ?int $promptTokens = null,
+        ?int $completionTokens = null,
+        ?int $totalTokens = null,
+        ?float $responseTimeMs = null,
+        ?string $apiRequestId = null,
         public readonly array $toolCallsMade = [],
         public readonly ?string $toolSummary = null,
-    ) {}
+    ) {
+        parent::__construct(
+            success: $success,
+            text: $text,
+            error: $error,
+            model: $model,
+            promptTokens: $promptTokens,
+            completionTokens: $completionTokens,
+            totalTokens: $totalTokens,
+            responseTimeMs: $responseTimeMs,
+            apiRequestId: $apiRequestId,
+        );
+    }
 
     public static function success(
         string $text,

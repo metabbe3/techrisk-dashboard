@@ -7,11 +7,13 @@ use App\Events\IncidentEscalatedEvent;
 use App\Listeners\Ai\AnalyzeNewIncident;
 use App\Listeners\CheckTokenInactivity;
 use App\Models\ActionImprovement;
+use App\Models\Category;
 use App\Models\Incident;
 use App\Models\IncidentType;
 use App\Models\Label;
 use App\Models\StatusUpdate;
 use App\Observers\ActionImprovementObserver;
+use App\Observers\CategoryObserver;
 use App\Observers\IncidentObserver;
 use App\Observers\IncidentTypeObserver;
 use App\Observers\LabelObserver;
@@ -30,6 +32,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\Sanctum;
 use Livewire\Livewire;
 
 class AppServiceProvider extends ServiceProvider
@@ -48,6 +51,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
+
         // CHANGE THIS LINE: Use $this->app->environment()
         // You can also add 'prod' or 'staging' if your PAAS uses those names
         if ($this->app->environment(['production', 'prod', 'staging'])) {
@@ -88,6 +93,7 @@ class AppServiceProvider extends ServiceProvider
         StatusUpdate::observe(StatusUpdateObserver::class);
         Label::observe(LabelObserver::class);
         IncidentType::observe(IncidentTypeObserver::class);
+        Category::observe(CategoryObserver::class);
 
         Gate::policy(Incident::class, IncidentPolicy::class);
         Gate::policy(ActionImprovement::class, ActionImprovementPolicy::class);

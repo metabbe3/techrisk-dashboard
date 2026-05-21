@@ -45,6 +45,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         $row = [];
         foreach ($this->columnNames as $columnName) {
             $isBoolean = in_array($columnName, ['glitch_flag', 'risk_incident_form_cfm', 'goc_upload', 'teams_upload', 'doc_signed']);
+            $isArray = in_array($columnName, ['business_category', 'root_cause_category', 'responsible_team']);
             if ($columnName === 'mttr') {
                 $row[] = $incident->mttr_formatted;
             } elseif ($columnName === 'mtbf') {
@@ -58,6 +59,9 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
                 }
             } elseif ($isBoolean) {
                 $row[] = $incident->{$columnName} ? 'Yes' : 'No';
+            } elseif ($isArray) {
+                $value = $incident->{$columnName};
+                $row[] = is_array($value) ? implode(', ', $value) : ($value ?? '');
             } else {
                 $row[] = $incident->{$columnName};
             }

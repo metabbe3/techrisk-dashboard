@@ -16,8 +16,11 @@ class InvestigationDocumentResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'document_name' => $this->document_name,
-            'document_path' => $this->document_path,
+            'original_filename' => $this->original_filename,
+            'description' => $this->description,
+            'pic_status' => $this->pic_status,
+            'markdown_conversion_status' => $this->markdown_conversion_status,
+            'ai_summary' => $this->when($this->markdown_conversion_status === 'completed', $this->ai_summary),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];

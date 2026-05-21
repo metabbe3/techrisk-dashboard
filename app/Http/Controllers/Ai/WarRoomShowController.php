@@ -15,7 +15,7 @@ class WarRoomShowController
 
     public function __invoke(Request $request, string $id): JsonResponse
     {
-        $session = WarRoomSession::with('user:id,name')->findOrFail($id);
+        $session = WarRoomSession::forUser()->with('user:id,name')->findOrFail($id);
 
         return response()->json(
             $this->warRoomService->getSessionData($session)

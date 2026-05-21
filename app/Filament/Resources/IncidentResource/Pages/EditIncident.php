@@ -17,7 +17,7 @@ class EditIncident extends EditRecord
     public function form(Form $form): Form
     {
         return $form
-            ->schema(IncidentResource::editFormSchema())
+            ->schema(IncidentResource::getFormSchema('edit'))
             ->columns(12);
     }
 

@@ -247,7 +247,7 @@
                                 <div class="flex flex-col items-center gap-3">
                                     <x-filament::icon
                                         icon="heroicon-o-document-text"
-                                        class="h-12 w-12 text-gray-400"
+                                        class="h-12 w-12 text-gray-400 dark:text-gray-500"
                                     />
                                     <p class="text-sm font-medium text-gray-500 dark:text-gray-400">No incidents found</p>
                                 </div>

@@ -17,6 +17,7 @@ class StatusUpdateResource extends JsonResource
         return [
             'id' => $this->id,
             'status' => $this->status,
+            'notes' => $this->notes,
             'update_date' => $this->update_date,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

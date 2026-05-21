@@ -40,6 +40,12 @@ class AuthController extends Controller
      *   "message": "Invalid credentials.",
      *   "data": null
      * }
+     * @response 403 {
+     *   "code": 403,
+     *   "status": "Error",
+     *   "message": "Service accounts cannot use interactive login.",
+     *   "data": null
+     * }
      * @response 422 {
      *   "code": 422,
      *   "status": "Error",
@@ -56,14 +62,28 @@ class AuthController extends Controller
 
         if (Auth::attempt($credentials)) {
             $user = Auth::user();
-            $token = $user->createToken('api-token-'.$user->id.'-'.now()->format('YmdHis'), ['*'])->plainTextToken;
+
+            if ($user->is_service_account) {
+                Auth::logout();
+                Log::warning('Service account attempted interactive login', [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                ]);
+
+                return $this->errorResponse('Service accounts cannot use interactive login.', 403);
+            }
+
+            $newToken = $user->createToken('api-token-'.$user->id.'-'.now()->format('YmdHis'), ['*']);
+            $newToken->accessToken->forceFill([
+                'expires_at' => now()->addHour(),
+            ])->save();
 
             Log::info('User logged in successfully', [
                 'user_id' => $user->id,
                 'email' => $user->email,
             ]);
 
-            return $this->successResponse(['token' => $token], 'Login successful.');
+            return $this->successResponse(['token' => $newToken->plainTextToken], 'Login successful.');
         }
 
         Log::warning('Failed login attempt', [

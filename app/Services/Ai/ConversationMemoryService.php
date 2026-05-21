@@ -2,14 +2,15 @@
 
 namespace App\Services\Ai;
 
-use App\Models\AiSetting;
 use App\Models\ChatConversation;
+use App\Services\Ai\Concerns\InteractsWithAiApi;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class ConversationMemoryService
 {
+    use InteractsWithAiApi;
     public function summarizeConversation(ChatConversation $conversation): string
     {
         $messages = $conversation->messages()
@@ -25,12 +26,9 @@ class ConversationMemoryService
         $model = config('ai.memory.summary_model', 'FAST-MODEL');
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer '.AiSetting::get('api_key', config('ai.api_key', '')),
-                'Content-Type' => 'application/json',
-            ])
+            $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(20)
-                ->post(rtrim(AiSetting::get('base_url', config('ai.base_url', '')), '/').'/chat/completions', [
+                ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
                         ['role' => 'system', 'content' => 'Summarize this conversation in 2-3 sentences. Focus on: what topics were discussed, what incidents were referenced, and what conclusions or decisions were reached. Be concise.'],

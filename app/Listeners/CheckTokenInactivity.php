@@ -8,29 +8,25 @@ use Laravel\Sanctum\Events\TokenAuthenticated;
 
 class CheckTokenInactivity
 {
-    /**
-     * Handle the event.
-     *
-     * Checks if the token has been inactive for more than 30 days.
-     * If so, deletes the token and throws an exception to prevent authentication.
-     */
     public function handle(TokenAuthenticated $event): void
     {
         $token = $event->token;
 
-        // Never-used tokens are not expired
-        if (! $token->last_used_at) {
-            return;
+        if ($token->isDisabled()) {
+            abort(401, 'Token has been disabled. Contact an administrator to re-enable.');
         }
 
-        $daysSinceLastUse = abs(now()->diffInDays($token->last_used_at));
+        if ($token->isExpired()) {
+            abort(401, 'Token has expired. Please request a new token.');
+        }
 
-        if ($daysSinceLastUse > 30) {
-            // Delete the expired token
-            $token->delete();
+        if ($token->isInactive(90)) {
+            $token->forceFill(['disabled_at' => now()])->save();
+            abort(401, 'Token disabled due to 90 days of inactivity. Contact an administrator to re-enable.');
+        }
 
-            // Abort with 401 to prevent the request from proceeding
-            abort(401, 'Token has expired due to inactivity (30 days). Please request a new token.');
+        if ($token->renewal_minutes) {
+            $token->renew();
         }
     }
 }

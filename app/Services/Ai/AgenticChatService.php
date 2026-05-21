@@ -2,7 +2,7 @@
 
 namespace App\Services\Ai;
 
-use App\Models\AiSetting;
+use App\Services\Ai\Concerns\InteractsWithAiApi;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -10,6 +10,8 @@ use Illuminate\Support\Facades\RateLimiter;
 
 class AgenticChatService
 {
+    use InteractsWithAiApi;
+
     public function __construct(
         private ToolRegistryService $toolRegistry,
     ) {}
@@ -58,7 +60,7 @@ class AgenticChatService
                     ->timeout($this->getTimeout())
                     ->post($this->buildUrl(), $payload);
 
-                $responseTimeMs = (microtime(true) - $startTime) * 1000;
+                $responseTimeMs = $this->elapsedMs($startTime);
                 $responseData = $response->json();
                 $usage = $responseData['usage'] ?? [];
 
@@ -66,18 +68,9 @@ class AgenticChatService
                     $totalUsage[$key] += $usage[$key] ?? 0;
                 }
 
-                if ($response->status() === 429) {
-                    return AgenticChatResult::failure('Rate limit exceeded.', $resolvedModel, $responseTimeMs);
-                }
-
-                if ($response->status() === 401) {
-                    return AgenticChatResult::failure('Authentication failed. Check API key.', $resolvedModel, $responseTimeMs);
-                }
-
-                if ($response->failed()) {
-                    Log::warning('Agentic chat API error', ['status' => $response->status()]);
-
-                    return AgenticChatResult::failure('AI service error (HTTP '.$response->status().').', $resolvedModel, $responseTimeMs);
+                $errorResult = AiResponseHandler::checkErrors($response, $resolvedModel, $startTime);
+                if ($errorResult) {
+                    return AgenticChatResult::failure($errorResult->error, $errorResult->model, $errorResult->responseTimeMs);
                 }
 
                 $responseMessage = $responseData['choices'][0]['message'] ?? [];
@@ -152,43 +145,15 @@ class AgenticChatService
             );
 
         } catch (ConnectionException $e) {
-            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseTimeMs = $this->elapsedMs($startTime);
 
             return AgenticChatResult::failure('Cannot connect to AI service.', $resolvedModel, $responseTimeMs);
         } catch (\Throwable $e) {
-            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseTimeMs = $this->elapsedMs($startTime);
             Log::warning('Agentic chat unexpected error', ['error' => $e->getMessage()]);
 
             return AgenticChatResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
         }
     }
 
-    private function buildHeaders(): array
-    {
-        return [
-            'Authorization' => 'Bearer '.$this->getApiKey(),
-            'Content-Type' => 'application/json',
-            'Accept' => 'application/json',
-        ];
-    }
-
-    private function buildUrl(): string
-    {
-        return rtrim($this->getBaseUrl(), '/').'/chat/completions';
-    }
-
-    private function getBaseUrl(): string
-    {
-        return AiSetting::get('base_url', config('ai.base_url', ''));
-    }
-
-    private function getApiKey(): string
-    {
-        return AiSetting::get('api_key', config('ai.api_key', ''));
-    }
-
-    private function getTimeout(): int
-    {
-        return (int) AiSetting::get('timeout', config('ai.timeout', 60));
-    }
 }

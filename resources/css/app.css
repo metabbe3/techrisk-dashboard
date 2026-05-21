@@ -10,6 +10,8 @@
         'Segoe UI Symbol', 'Noto Color Emoji';
 }
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* --- Sidebar icon colors per resource --- */
 .fi-sidebar-item [href*="/admin/incidents"] .fi-sidebar-item-icon {
     color: #6366f1;
@@ -79,7 +81,86 @@
     color: #6366f1;
 }
 
-/* --- Incident Header Action Buttons --- */
+/* --- Board View Toggle --- */
+.header-btn-board.fi-btn {
+    border: 1px solid #e2e8f0 !important;
+    background: #fff !important;
+    color: #64748b !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03) !important;
+    transition: all .2s cubic-bezier(.4,0,.2,1) !important;
+}
+.header-btn-board.fi-btn:hover {
+    border-color: #6366f1 !important;
+    color: #6366f1 !important;
+    background: #f5f3ff !important;
+    box-shadow: 0 2px 6px rgba(99,102,241,.1) !important;
+}
+:root.dark .header-btn-board.fi-btn {
+    border-color: #334155 !important;
+    background: rgba(30,41,59,.5) !important;
+    color: #94a3b8 !important;
+}
+:root.dark .header-btn-board.fi-btn:hover {
+    border-color: #818cf8 !important;
+    color: #a5b4fc !important;
+    background: rgba(99,102,241,.08) !important;
+}
+
+.header-btn-table.fi-btn {
+    border: 1px solid #e2e8f0 !important;
+    background: #fff !important;
+    color: #64748b !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,.03) !important;
+    transition: all .2s cubic-bezier(.4,0,.2,1) !important;
+}
+.header-btn-table.fi-btn:hover {
+    border-color: #6366f1 !important;
+    color: #6366f1 !important;
+    background: #f5f3ff !important;
+    box-shadow: 0 2px 6px rgba(99,102,241,.1) !important;
+}
+:root.dark .header-btn-table.fi-btn {
+    border-color: #334155 !important;
+    background: rgba(30,41,59,.5) !important;
+    color: #94a3b8 !important;
+}
+:root.dark .header-btn-table.fi-btn:hover {
+    border-color: #818cf8 !important;
+    color: #a5b4fc !important;
+    background: rgba(99,102,241,.08) !important;
+}
+
+/* --- Kanban Board: Badges, Scrollbar --- */
+.kanban-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 7px;
+    font-size: 10px;
+    font-weight: 700;
+    border-radius: 4px;
+    letter-spacing: .02em;
+}
+.kanban-badge--sm { font-size: 9px; padding: 1px 5px; }
+.kanban-badge--danger { background: #fee2e2; color: #b91c1c; border: 1px solid rgba(239,68,68,.15); }
+.kanban-badge--warning { background: #fef3c7; color: #92400e; border: 1px solid rgba(245,158,11,.15); }
+.kanban-badge--info { background: #dbeafe; color: #1e40af; border: 1px solid rgba(59,130,246,.15); }
+.kanban-badge--success { background: #d1fae5; color: #065f46; border: 1px solid rgba(16,185,129,.15); }
+.kanban-badge--primary { background: #e0e7ff; color: #3730a3; border: 1px solid rgba(99,102,241,.15); }
+.kanban-badge--gray { background: #f1f5f9; color: #475569; border: 1px solid rgba(100,116,139,.12); }
+.kanban-badge--teal { background: #ccfbf1; color: #0f766e; border: 1px solid rgba(20,184,166,.15); }
+:root.dark .kanban-badge--danger { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.2); }
+:root.dark .kanban-badge--warning { background: rgba(245,158,11,.12); color: #fcd34d; border-color: rgba(245,158,11,.2); }
+:root.dark .kanban-badge--info { background: rgba(59,130,246,.12); color: #93c5fd; border-color: rgba(59,130,246,.2); }
+:root.dark .kanban-badge--success { background: rgba(16,185,129,.12); color: #6ee7b7; border-color: rgba(16,185,129,.2); }
+:root.dark .kanban-badge--primary { background: rgba(99,102,241,.12); color: #a5b4fc; border-color: rgba(99,102,241,.2); }
+:root.dark .kanban-badge--gray { background: rgba(51,65,85,.4); color: #94a3b8; border-color: rgba(100,116,139,.15); }
+:root.dark .kanban-badge--teal { background: rgba(20,184,166,.12); color: #5eead4; border-color: rgba(20,184,166,.2); }
+
+/* Kanban scrollbar */
+.kanban-scroll::-webkit-scrollbar { width: 4px; }
+.kanban-scroll::-webkit-scrollbar-track { background: transparent; }
+.kanban-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
+:root.dark .kanban-scroll::-webkit-scrollbar-thumb { background: #334155; }
 
 /* AI Search — gradient violet with glow */
 .header-btn-ai.fi-btn {
@@ -733,6 +814,53 @@
 :root.dark .sl-panel p[style*="color:#64748b"] { color: #94a3b8 !important; }
 :root.dark .sl-panel p[style*="color:#475569"] { color: #94a3b8 !important; }
 
+/* Dark overrides for ai-similar-incidents close button */
+:root.dark .sl-panel button[style*="background:#e2e8f0"] { background: #334155 !important; color: #e2e8f0 !important; }
+
+/* Dark overrides for ai-root-cause-analysis inline styles */
+:root.dark .sl-panel div[style*="background:#eff6ff"] { background: rgba(37,99,235,.08) !important; border-color: rgba(37,99,235,.2) !important; color: #e2e8f0 !important; }
+:root.dark .sl-panel div[style*="background:#f5f3ff"] { background: rgba(124,58,237,.08) !important; border-color: rgba(124,58,237,.2) !important; color: #e2e8f0 !important; }
+:root.dark .sl-panel div[style*="background:#f0fdf4"] { background: rgba(5,150,105,.08) !important; border-color: rgba(5,150,105,.2) !important; color: #e2e8f0 !important; }
+:root.dark .sl-panel ul[style*="color:#475569"] { color: #94a3b8 !important; }
+:root.dark .sl-panel div[style*="border:1px solid #e2e8f0"][style*="background:#fff"] { background: #1e293b !important; border-color: #334155 !important; }
+
+/* Dark overrides for ai-weekly-summary inline styles */
+:root.dark .sl-panel ul[style*="color:#991b1b"] { color: #fca5a5 !important; }
+:root.dark .sl-panel ul[style*="color:#92400e"] { color: #fcd34d !important; }
+:root.dark .sl-panel div[style*="background:#faf5ff"] { background: rgba(124,58,237,.08) !important; border-color: rgba(124,58,237,.2) !important; color: #e2e8f0 !important; }
+
+/* Dark overrides for panel header gradients (all AI components) */
+:root.dark .sl-panel div[style*="linear-gradient"][style*="#f8fafc"] { background: linear-gradient(135deg, rgba(234,88,12,.08), #1e293b) !important; }
+
+/* RCA markdown classes (ai-root-cause-analysis simpleMd() output) */
+.rca-md-h2 { font-size: 15px; font-weight: 700; margin: 14px 0 6px; color: #0f172a; }
+.rca-md-h3 { font-size: 14px; font-weight: 700; margin: 12px 0 6px; color: #0f172a; }
+.rca-md-h4 { font-size: 13px; font-weight: 700; margin: 10px 0 4px; color: #1e293b; }
+.rca-md-code { background: #e2e8f0; padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+.rca-md-li { margin-left: 16px; }
+.rca-md-p { margin: 6px 0; }
+:root.dark .rca-md-h2, :root.dark .rca-md-h3 { color: #f1f5f9; }
+:root.dark .rca-md-h4 { color: #e2e8f0; }
+:root.dark .rca-md-code { background: #334155; }
+
+/* RCA label toggle classes */
+.rca-label--selected { background: #f0fdfa; color: #0d9488; border: 1px solid #99f6e4; }
+.rca-label--unselected { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; opacity: .6; text-decoration: line-through; }
+.rca-label-new--selected { background: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+.rca-label-new--unselected { background: #f8fafc; color: #94a3b8; border: 1px solid #e2e8f0; opacity: .6; text-decoration: line-through; }
+:root.dark .rca-label--selected { background: rgba(13,148,136,.12); color: #2dd4bf; border-color: rgba(13,148,136,.3); }
+:root.dark .rca-label--unselected { background: #0f172a; color: #64748b; border-color: #334155; }
+:root.dark .rca-label-new--selected { background: rgba(245,158,11,.12); color: #fbbf24; border-color: rgba(245,158,11,.3); }
+:root.dark .rca-label-new--unselected { background: #0f172a; color: #64748b; border-color: #334155; }
+
+/* Kanban ghost class for SortableJS */
+.kanban-ghost { opacity: 0.3; border: 2px dashed #6366f1; background: #eef2ff; }
+:root.dark .kanban-ghost { background: rgba(99,102,241,.08); border-color: #818cf8; }
+
+/* War room incident link */
+.df-incident-link { color: #0d9488; text-decoration: none; font-weight: 600; }
+:root.dark .df-incident-link { color: #2dd4bf; }
+
 /* --- AI Chat Assistant --- */
 .ai-chat-container {
     display: flex;
@@ -835,6 +963,59 @@
 .ai-chat-sidebar-item:hover .ai-chat-delete-btn { opacity: 1; }
 .ai-chat-delete-btn:hover { color: #ef4444; background: #fef2f2; }
 :root.dark .ai-chat-delete-btn:hover { background: rgba(239,68,68,.1); }
+
+/* Sidebar: Inline title edit */
+.ai-chat-title-input {
+    width: 100%;
+    font-size: 0.875rem;
+    padding: 1px 4px;
+    border: 1px solid #6366f1;
+    border-radius: 4px;
+    background: white;
+    outline: none;
+}
+:root.dark .ai-chat-title-input {
+    background: #1e293b;
+    border-color: #818cf8;
+    color: #e2e8f0;
+}
+
+/* Sidebar: Edit action button */
+.ai-chat-edit-btn {
+    opacity: 0;
+    padding: 4px;
+    border-radius: 4px;
+    color: #94a3b8;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: all .15s;
+    flex-shrink: 0;
+}
+.ai-chat-sidebar-item:hover .ai-chat-edit-btn { opacity: 1; }
+.ai-chat-edit-btn:hover { color: #6366f1; background: #eef2ff; }
+:root.dark .ai-chat-edit-btn:hover { background: rgba(99,102,241,.1); }
+
+/* Sidebar: Date group headers */
+.ai-chat-group-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px 2px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 10px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    transition: color .15s;
+}
+.ai-chat-group-header:hover { color: #6b7280; }
+:root.dark .ai-chat-group-header:hover { color: #d1d5db; }
 
 /* Main Area */
 .ai-chat-main {

@@ -5,6 +5,14 @@
 <script>
 document.addEventListener('alpine:init', () => {
     Alpine.data('warRoom', () => {
+        const routes = {
+            agents: '{{ route("war-room.agents") }}',
+            sessions: '{{ route("war-room.sessions") }}',
+            create: '{{ route("war-room.create") }}',
+            incidentSearch: '{{ route("war-room.incident-search") }}',
+            estimateTokens: '{{ route("war-room.estimate-tokens") }}',
+        };
+
         const colorMap = {
             blue: '#3b82f6', indigo: '#6366f1', purple: '#8b5cf6', green: '#22c55e',
             teal: '#14b8a6', cyan: '#06b6d4', red: '#ef4444', orange: '#f97316',
@@ -29,6 +37,7 @@ document.addEventListener('alpine:init', () => {
             reanalyzeModel: '',
             reanalyzeModeratorModel: '',
             reanalyzeAgents: [],
+            reanalyzeDeepAnalysis: true,
             reanalyzing: false,
             creating: false,
             sessions: [],
@@ -65,6 +74,30 @@ document.addEventListener('alpine:init', () => {
                     );
                 }
                 return list;
+            },
+
+            routeFor(name, ...ids) {
+                let url = '{{ route("war-room.show", ["id" => "PLACEHOLDER"]) }}'.replace('PLACEHOLDER', ids[0] || '');
+                if (name === 'agents') return routes.agents;
+                if (name === 'sessions' || name === 'create') return routes.create;
+                if (name === 'sessionsList') return routes.sessions;
+                if (name === 'incidentSearch') return routes.incidentSearch;
+                if (name === 'estimateTokens') return routes.estimateTokens;
+                const map = {
+                    'show': '{{ route("war-room.show", ["id" => "__ID__"]) }}',
+                    'poll': '{{ route("war-room.poll", ["id" => "__ID__"]) }}',
+                    'retry': '{{ route("war-room.retry", ["id" => "__ID__"]) }}',
+                    'retryAgent': '{{ route("war-room.retry-agent", ["id" => "__ID__", "messageId" => "__MSG__"]) }}',
+                    'retryReport': '{{ route("war-room.retry-report", ["id" => "__ID__"]) }}',
+                    'regenerateReport': '{{ route("war-room.regenerate-report", ["id" => "__ID__"]) }}',
+                    'reanalyze': '{{ route("war-room.reanalyze", ["id" => "__ID__"]) }}',
+                    'delete': '{{ route("war-room.delete", ["id" => "__ID__"]) }}',
+                    'exportPdf': '{{ route("war-room.export-pdf", ["id" => "__ID__"]) }}',
+                };
+                url = map[name] || '';
+                url = url.replace('__ID__', ids[0] || '');
+                if (ids[1]) url = url.replace('__MSG__', ids[1]);
+                return url;
             },
 
             toolLabel(name) {
@@ -177,7 +210,7 @@ document.addEventListener('alpine:init', () => {
             incidentLink(incident, label = '') {
                 if (!incident?.id) return label || incident?.no || '';
                 const text = label || incident.no;
-                return '<a href="/admin/incidents/' + incident.id + '" target="_blank" style="color:#0d9488;text-decoration:none;font-weight:600;">' + text + '</a>';
+                return '<a href="/admin/incidents/' + incident.id + '" target="_blank" class="df-incident-link">' + text + '</a>';
             },
 
             _incidentIdMap: null,
@@ -207,7 +240,7 @@ document.addEventListener('alpine:init', () => {
                     return part.replace(regex, (match) => {
                         const id = map[match];
                         if (!id) return match;
-                        return '<a href="/admin/incidents/' + id + '" target="_blank" style="color:#0d9488;text-decoration:none;font-weight:600;">' + match + '</a>';
+                        return '<a href="/admin/incidents/' + id + '" target="_blank" class="df-incident-link">' + match + '</a>';
                     });
                 }).join('');
             },
@@ -230,7 +263,7 @@ document.addEventListener('alpine:init', () => {
 
             async loadAgents() {
                 try {
-                    const res = await fetch('/admin/war-room/agents', { headers: this.getHeaders() });
+                    const res = await fetch(routes.agents, { headers: this.getHeaders() });
                     if (!res.ok) { console.error('Load agents failed:', res.status, await res.text()); return; }
                     this.availableAgents = await res.json();
                     this._agentCache = null;
@@ -239,7 +272,7 @@ document.addEventListener('alpine:init', () => {
 
             async loadSessions() {
                 try {
-                    const res = await fetch('/admin/war-room/sessions', { headers: this.getHeaders() });
+                    const res = await fetch(routes.sessions, { headers: this.getHeaders() });
                     if (!res.ok) { console.error('Load sessions failed:', res.status, await res.text()); return; }
                     const data = await res.json();
                     this.sessions = data.data || data;
@@ -249,7 +282,7 @@ document.addEventListener('alpine:init', () => {
             async searchIncidents() {
                 if (this.incidentSearch.length < 2) { this.incidentResults = []; return; }
                 try {
-                    const res = await fetch('/admin/war-room/incident-search?q=' + encodeURIComponent(this.incidentSearch), { headers: this.getHeaders() });
+                    const res = await fetch(routes.incidentSearch + '?q=' + encodeURIComponent(this.incidentSearch), { headers: this.getHeaders() });
                     if (!res.ok) { console.error('Search incidents failed:', res.status, await res.text()); return; }
                     const data = await res.json();
                     this.incidentResults = data.incidents || [];
@@ -285,7 +318,7 @@ document.addEventListener('alpine:init', () => {
                             model: this.config.model || '',
                             deep_analysis: this.config.deepAnalysis,
                         });
-                        const res = await fetch('/admin/war-room/estimate-tokens?' + params, { headers: this.getHeaders() });
+                        const res = await fetch(routes.estimateTokens + '?' + params, { headers: this.getHeaders() });
                         if (res.ok) { this.tokenEstimate = await res.json(); }
                     } catch (e) { /* silent */ }
                 }, 300);
@@ -295,7 +328,7 @@ document.addEventListener('alpine:init', () => {
                 if (this.selectedIncidents.length === 0 || this.selectedAgents.length === 0 || this.creating) return;
                 this.creating = true;
                 try {
-                    const res = await fetch('/admin/war-room/sessions', {
+                    const res = await fetch(routes.create, {
                         method: 'POST',
                         headers: this.getHeaders(true),
                         body: JSON.stringify({
@@ -337,7 +370,7 @@ document.addEventListener('alpine:init', () => {
 
             async loadSession(id) {
                 try {
-                    const res = await fetch('/admin/war-room/sessions/' + id, { headers: this.getHeaders() });
+                    const res = await fetch(this.routeFor('show', id), { headers: this.getHeaders() });
                     if (!res.ok) { console.error('Load session failed:', res.status, await res.text()); return; }
                     this.activeSession = await res.json();
                     this.showCreateForm = false;
@@ -406,7 +439,7 @@ document.addEventListener('alpine:init', () => {
                     return;
                 }
                 try {
-                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/poll', { headers: this.getHeaders() });
+                    const res = await fetch(this.routeFor('poll', this.activeSession.id), { headers: this.getHeaders() });
                     const data = await res.json();
                     this.activeSession.status = data.status;
                     this.activeSession.current_round = data.current_round;
@@ -415,7 +448,7 @@ document.addEventListener('alpine:init', () => {
                     // If status changed from pending → running, reload to get new messages
                     if (data.status === 'running' && (!this.activeSession.messages || Object.keys(this.activeSession.messages || {}).length === 0)) {
                         const sessionId = this.activeSession.id;
-                        const res2 = await fetch('/admin/war-room/sessions/' + sessionId, { headers: this.getHeaders() });
+                        const res2 = await fetch(this.routeFor('show', sessionId), { headers: this.getHeaders() });
                         if (res2.ok) {
                             const fullData = await res2.json();
                             this.activeSession = fullData;
@@ -448,7 +481,7 @@ document.addEventListener('alpine:init', () => {
                         await this.loadSessions();
                     } else if (needsReload) {
                         const sessionId = this.activeSession.id;
-                        const res2 = await fetch('/admin/war-room/sessions/' + sessionId, { headers: this.getHeaders() });
+                        const res2 = await fetch(this.routeFor('show', sessionId), { headers: this.getHeaders() });
                         if (res2.ok) {
                             const fullData = await res2.json();
                             this.activeSession = fullData;
@@ -464,7 +497,7 @@ document.addEventListener('alpine:init', () => {
             async retryFailed() {
                 if (!this.activeSession) return;
                 try {
-                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/retry', {
+                    const res = await fetch(this.routeFor('retry', this.activeSession.id), {
                         method: 'POST',
                         headers: this.getHeaders(true),
                     });
@@ -476,7 +509,7 @@ document.addEventListener('alpine:init', () => {
             async retryAgent(messageId) {
                 if (!this.activeSession) return;
                 try {
-                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/retry/' + messageId, {
+                    const res = await fetch(this.routeFor('retryAgent', this.activeSession.id, messageId), {
                         method: 'POST',
                         headers: this.getHeaders(true),
                     });
@@ -488,7 +521,7 @@ document.addEventListener('alpine:init', () => {
             async retryReport() {
                 if (!this.activeSession) return;
                 try {
-                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/retry-report', {
+                    const res = await fetch(this.routeFor('retryReport', this.activeSession.id), {
                         method: 'POST',
                         headers: this.getHeaders(true),
                     });
@@ -520,7 +553,7 @@ document.addEventListener('alpine:init', () => {
                 if (!this.activeSession) return;
                 if (!confirm('Regenerate the report from available agent data?')) return;
                 try {
-                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/regenerate-report', {
+                    const res = await fetch(this.routeFor('regenerateReport', this.activeSession.id), {
                         method: 'POST',
                         headers: this.getHeaders(true),
                     });
@@ -532,7 +565,7 @@ document.addEventListener('alpine:init', () => {
             async deleteSession(id) {
                 if (!confirm('Delete this discussion session?')) return;
                 try {
-                    const res = await fetch('/admin/war-room/sessions/' + id, {
+                    const res = await fetch(this.routeFor('delete', id), {
                         method: 'DELETE',
                         headers: this.getHeaders(true),
                     });
@@ -553,6 +586,7 @@ document.addEventListener('alpine:init', () => {
                 this.reanalyzeModel = this.activeSession.model || '';
                 this.reanalyzeModeratorModel = this.activeSession.moderator_model || '';
                 this.reanalyzeAgents = [...(this.activeSession.selected_agents || [])];
+                this.reanalyzeDeepAnalysis = this.activeSession.deep_analysis ?? true;
                 this.showReanalyzeModal = true;
             },
 
@@ -572,9 +606,9 @@ document.addEventListener('alpine:init', () => {
                     if (this.reanalyzeInstructions.trim()) body.user_instructions = this.reanalyzeInstructions.trim();
                     if (this.reanalyzeModel) body.model = this.reanalyzeModel;
                     if (this.reanalyzeModeratorModel) body.moderator_model = this.reanalyzeModeratorModel;
-                    body.deep_analysis = this.config.deepAnalysis;
+                    body.deep_analysis = this.reanalyzeDeepAnalysis;
 
-                    const res = await fetch('/admin/war-room/sessions/' + this.activeSession.id + '/reanalyze', {
+                    const res = await fetch(this.routeFor('reanalyze', this.activeSession.id), {
                         method: 'POST',
                         headers: this.getHeaders(true),
                         body: JSON.stringify(body),
@@ -792,7 +826,7 @@ document.addEventListener('alpine:init', () => {
                         </button>
 
                         <a x-show="activeSession?.status === 'completed' && activeSession?.final_report_html"
-                           :href="'/admin/war-room/sessions/' + activeSession?.id + '/export-pdf'"
+                           :href="routeFor('exportPdf', activeSession?.id)"
                            class="df-menu__item" target="_blank">
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                             Export PDF
@@ -1165,7 +1199,7 @@ document.addEventListener('alpine:init', () => {
                                         {{-- Completed content --}}
                                         <div x-show="msg.status === 'completed' && msg.content"
                                              x-html="renderAgentContent(msg)"
-                                             class="df-msg__content"
+                                             class="df-markdown df-msg__content"
                                              :class="{ 'df-msg__content--collapsed': !msg._expanded }">
                                         </div>
                                     </div>
@@ -1213,7 +1247,7 @@ document.addEventListener('alpine:init', () => {
                 </div>
 
                 <div x-show="activeSession?.final_report_html" x-html="renderMarkdown(activeSession?.final_report_html || '')"
-                     class="df-report__body">
+                     class="df-markdown df-report__body">
                 </div>
 
                 <div x-show="!activeSession?.final_report_html" class="df-report__loading">
@@ -1280,6 +1314,12 @@ document.addEventListener('alpine:init', () => {
                 </div>
 
                 {{-- Agent selection --}}
+                <div style="margin-bottom: 12px;">
+                    <label class="df-checkbox-row" style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+                        <input type="checkbox" x-model="reanalyzeDeepAnalysis" class="df-checkbox" />
+                        <span style="font-size:13px;font-weight:500;color:var(--df-text);">Deep analysis (full incident data)</span>
+                    </label>
+                </div>
                 <div>
                     <label class="df-label">Specialist Agents <span class="df-label__count" x-text="reanalyzeAgents.length ? reanalyzeAgents.length + ' selected' : ''"></span></label>
                     <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px;">
@@ -1444,30 +1484,16 @@ document.addEventListener('alpine:init', () => {
 
 :root.dark .df-msg__content--collapsed::after { background: linear-gradient(transparent, #1a1d27); }
 
-:root.dark .df-msg__content pre,
-:root.dark .df-report__body pre { background: #0f1117; border-color: #2e3345; }
-
-:root.dark .df-msg__content table,
-:root.dark .df-report__body table { border-color: #2e3345; }
-:root.dark .df-msg__content thead,
-:root.dark .df-report__body thead { background: #242834; }
-:root.dark .df-msg__content th,
-:root.dark .df-report__body th { border-bottom-color: #2e3345; }
-:root.dark .df-msg__content td,
-:root.dark .df-report__body td { border-bottom-color: #252a38; }
-:root.dark .df-msg__content tr:nth-child(even) td { background: rgba(255,255,255, 0.02); }
-:root.dark .df-report__body tr:nth-child(even) td { background: rgba(255,255,255, 0.02); }
-
-:root.dark .df-msg__content h1,
-:root.dark .df-report__body h1 { border-bottom-color: var(--df-amber-500); }
-:root.dark .df-msg__content h2,
-:root.dark .df-report__body h2 { border-bottom-color: #2e3345; }
-
-:root.dark .df-msg__content code,
-:root.dark .df-report__body code { background: rgba(245, 158, 11, 0.1); }
-
-:root.dark .df-msg__content .df-mermaid,
-:root.dark .df-report__body .df-mermaid { background: #0f1117; border-color: #2e3345; }
+:root.dark .df-markdown pre { background: #0f1117; border-color: #2e3345; }
+:root.dark .df-markdown table { border-color: #2e3345; }
+:root.dark .df-markdown thead { background: #242834; }
+:root.dark .df-markdown th { border-bottom-color: #2e3345; }
+:root.dark .df-markdown td { border-bottom-color: #252a38; }
+:root.dark .df-markdown tr:nth-child(even) td { background: rgba(255,255,255, 0.02); }
+:root.dark .df-markdown h1 { border-bottom-color: var(--df-amber-500); }
+:root.dark .df-markdown h2 { border-bottom-color: #2e3345; }
+:root.dark .df-markdown code { background: rgba(245, 158, 11, 0.1); }
+:root.dark .df-markdown .df-mermaid { background: #0f1117; border-color: #2e3345; }
 
 :root.dark .df-report__banner { background: linear-gradient(135deg, #1a1d27 0%, #2e3345 100%); }
 
@@ -2276,6 +2302,7 @@ document.addEventListener('alpine:init', () => {
 .df-token-warning--warn .df-token-bar__fill { background: var(--df-amber-500); }
 .df-token-warning--danger .df-token-bar__fill { background: var(--df-red-500); }
 :root.dark .df-token-bar { background: #252a38; }
+:root.dark .df-token-warning { background: rgba(245,158,11,.1); border-color: rgba(245,158,11,.2); color: #fbbf24; }
 :root.dark .df-token-warning--ok { background: rgba(16, 185, 129, 0.1); border-color: rgba(16, 185, 129, 0.2); color: #6ee7b7; }
 :root.dark .df-token-warning--warn { background: rgba(245, 158, 11, 0.1); border-color: rgba(245, 158, 11, 0.2); color: #fbbf24; }
 :root.dark .df-token-warning--danger { background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.2); color: #fca5a5; }
@@ -2287,7 +2314,7 @@ document.addEventListener('alpine:init', () => {
     font-weight: 600;
     border: 1.5px solid var(--df-border);
     background: var(--df-bg);
-    color: var(--df-muted);
+    color: var(--df-text-muted);
     cursor: pointer;
     transition: all 0.15s;
 }
@@ -2873,7 +2900,7 @@ document.addEventListener('alpine:init', () => {
     margin-top: 6px;
     background: var(--df-surface-hover);
     border-radius: 6px;
-    border-left: 3px solid var(--df-amber-300);
+    border-left: 3px solid var(--df-amber-500);
     font-size: 12px;
     line-height: 1.7;
     color: var(--df-text-secondary);
@@ -2910,6 +2937,8 @@ document.addEventListener('alpine:init', () => {
 .df-msg__state--failed { color: var(--df-red-700); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .df-retry-btn { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--df-red-300); background: transparent; color: var(--df-red-700); font-size: 12px; cursor: pointer; transition: all 0.15s; }
 .df-retry-btn:hover { background: var(--df-red-50); border-color: var(--df-red-500); }
+:root.dark .df-retry-btn { border-color: rgba(239,68,68,.3); }
+:root.dark .df-retry-btn:hover { background: rgba(239,68,68,.15); border-color: #ef4444; }
 
 /* --- Message content (markdown) --- */
 .df-msg__content {
@@ -2964,64 +2993,50 @@ document.addEventListener('alpine:init', () => {
     background: color-mix(in srgb, var(--ref-color, #6b7280) 12%, transparent);
 }
 
-/* Headings */
-.df-msg__content h1 {
+/* Shared markdown rendering (used by message content & report body) */
+.df-markdown h1 {
     font-size: 17px; font-weight: 800; margin: 20px 0 10px;
     color: var(--df-text); line-height: 1.25;
     padding-bottom: 6px; border-bottom: 2px solid var(--df-border);
 }
-.df-msg__content h2 {
+.df-markdown h2 {
     font-size: 15px; font-weight: 700; margin: 18px 0 8px;
     color: var(--df-text); line-height: 1.3;
     padding-bottom: 4px; border-bottom: 1px solid var(--df-border-light);
 }
-.df-msg__content h3 {
+.df-markdown h3 {
     font-size: 14px; font-weight: 700; margin: 14px 0 6px;
     color: var(--df-text);
 }
-.df-msg__content h4 {
+.df-markdown h4 {
     font-size: 13px; font-weight: 700; margin: 12px 0 4px;
     color: var(--df-text-secondary);
 }
-.df-msg__content h1:first-child, .df-msg__content h2:first-child,
-.df-msg__content h3:first-child { margin-top: 0; }
-
-/* Paragraphs */
-.df-msg__content p { margin: 8px 0; }
-.df-msg__content p:first-child { margin-top: 0; }
-.df-msg__content p:last-child { margin-bottom: 0; }
-.df-msg__content strong { font-weight: 700; color: var(--df-text); }
-.df-msg__content em { font-style: italic; color: var(--df-text-secondary); }
-
-/* Lists */
-.df-msg__content ul {
-    list-style: none; padding-left: 0; margin: 8px 0;
-}
-.df-msg__content ul li {
-    position: relative; padding-left: 18px; margin-bottom: 5px;
-}
-.df-msg__content ul li::before {
+.df-markdown h1:first-child, .df-markdown h2:first-child,
+.df-markdown h3:first-child { margin-top: 0; }
+.df-markdown p { margin: 8px 0; }
+.df-markdown p:first-child { margin-top: 0; }
+.df-markdown p:last-child { margin-bottom: 0; }
+.df-markdown strong { font-weight: 700; color: var(--df-text); }
+.df-markdown em { font-style: italic; color: var(--df-text-secondary); }
+.df-markdown ul { list-style: none; padding-left: 0; margin: 8px 0; }
+.df-markdown ul li { position: relative; padding-left: 18px; margin-bottom: 5px; }
+.df-markdown ul li::before {
     content: ''; position: absolute; left: 4px; top: 8px;
     width: 5px; height: 5px; border-radius: 50%;
     background: var(--df-amber-500);
 }
-.df-msg__content ol {
-    list-style: none; counter-reset: df-counter; padding-left: 0; margin: 8px 0;
-}
-.df-msg__content ol li {
-    position: relative; padding-left: 24px; margin-bottom: 5px; counter-increment: df-counter;
-}
-.df-msg__content ol li::before {
+.df-markdown ol { list-style: none; counter-reset: df-counter; padding-left: 0; margin: 8px 0; }
+.df-markdown ol li { position: relative; padding-left: 24px; margin-bottom: 5px; counter-increment: df-counter; }
+.df-markdown ol li::before {
     content: counter(df-counter); position: absolute; left: 0; top: 0;
     font-size: 11px; font-weight: 800; color: var(--df-amber-700);
     background: var(--df-amber-50); min-width: 18px; height: 18px;
     border-radius: 50%; display: flex; align-items: center; justify-content: center;
     line-height: 1;
 }
-.df-msg__content li > ul, .df-msg__content li > ol { margin: 4px 0; }
-
-/* Blockquotes */
-.df-msg__content blockquote {
+.df-markdown li > ul, .df-markdown li > ol { margin: 4px 0; }
+.df-markdown blockquote {
     border-left: 3px solid var(--df-amber-500);
     padding: 10px 14px; margin: 12px 0;
     background: var(--df-amber-50);
@@ -3029,63 +3044,45 @@ document.addEventListener('alpine:init', () => {
     color: var(--df-text-secondary);
     font-style: italic;
 }
-
-/* Inline code */
-.df-msg__content code {
+.df-markdown code {
     background: rgba(217, 119, 6, 0.08);
     padding: 2px 6px; border-radius: 4px;
     font-size: 12px; color: var(--df-amber-700);
     font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 }
-
-/* Code blocks */
-.df-msg__content pre {
+.df-markdown pre {
     background: #1c1917; color: #e7e5e4;
     padding: 16px; border-radius: var(--df-radius);
     overflow-x: auto; font-size: 12px; line-height: 1.6;
     margin: 12px 0; border: 1px solid #292524;
 }
-.df-msg__content pre code {
-    background: none; padding: 0; color: inherit; font-size: inherit;
-}
-
-/* Tables */
-.df-msg__content table {
+.df-markdown pre code { background: none; padding: 0; color: inherit; font-size: inherit; }
+.df-markdown table {
     width: 100%; border-collapse: collapse; margin: 12px 0;
     font-size: 12px; border-radius: var(--df-radius-sm);
     overflow: hidden; border: 1px solid var(--df-border);
 }
-.df-msg__content thead { background: var(--df-surface-hover); }
-.df-msg__content th {
+.df-markdown thead { background: var(--df-surface-hover); }
+.df-markdown th {
     padding: 8px 12px; text-align: left; font-weight: 700;
     color: var(--df-text-secondary); font-size: 11px;
     text-transform: uppercase; letter-spacing: 0.04em;
     border-bottom: 2px solid var(--df-border);
 }
-.df-msg__content td {
+.df-markdown td {
     padding: 8px 12px; border-bottom: 1px solid var(--df-border-light);
     color: var(--df-text);
 }
-.df-msg__content tr:last-child td { border-bottom: none; }
-.df-msg__content tr:nth-child(even) td { background: #faf9f7; }
-
-/* Horizontal rule */
-.df-msg__content hr {
-    border: none; height: 1px; background: var(--df-border);
-    margin: 16px 0;
-}
-
-/* Links */
-.df-msg__content a {
+.df-markdown tr:last-child td { border-bottom: none; }
+.df-markdown tr:nth-child(even) td { background: #faf9f7; }
+.df-markdown hr { border: none; height: 1px; background: var(--df-border); margin: 16px 0; }
+.df-markdown a {
     color: var(--df-amber-700); text-decoration: none;
     font-weight: 600; border-bottom: 1px dashed var(--df-amber-500);
     transition: all 0.15s;
 }
-.df-msg__content a:hover { border-bottom-style: solid; }
-
-/* Mermaid diagrams */
-.df-msg__content .df-mermaid,
-.df-report__body .df-mermaid {
+.df-markdown a:hover { border-bottom-style: solid; }
+.df-markdown .df-mermaid {
     margin: 14px 0; text-align: center;
     background: #faf9f7; border-radius: var(--df-radius);
     padding: 20px; overflow-x: auto; border: 1px solid var(--df-border);
@@ -3186,121 +3183,23 @@ document.addEventListener('alpine:init', () => {
     box-shadow: var(--df-shadow);
 }
 
-/* Report headings */
-.df-report__body h1 {
-    font-size: 22px; font-weight: 800; margin: 32px 0 14px;
-    color: var(--df-text); line-height: 1.2;
-    padding-bottom: 10px; border-bottom: 2px solid var(--df-amber-500);
-}
-.df-report__body h2 {
-    font-size: 18px; font-weight: 700; margin: 28px 0 12px;
-    color: var(--df-text); line-height: 1.3;
-    padding-bottom: 6px; border-bottom: 1px solid var(--df-border);
-}
-.df-report__body h3 {
-    font-size: 15px; font-weight: 700; margin: 20px 0 8px;
-    color: var(--df-text);
-}
-.df-report__body h4 {
-    font-size: 14px; font-weight: 700; margin: 16px 0 6px;
-    color: var(--df-text-secondary);
-}
-.df-report__body h1:first-child, .df-report__body h2:first-child { margin-top: 0; }
-
-/* Report text */
-.df-report__body p { margin: 10px 0; }
-.df-report__body p:first-child { margin-top: 0; }
-.df-report__body strong { font-weight: 700; color: var(--df-text); }
-.df-report__body em { font-style: italic; color: var(--df-text-secondary); }
-
-/* Report lists */
-.df-report__body ul {
-    list-style: none; padding-left: 0; margin: 10px 0;
-}
-.df-report__body ul li {
-    position: relative; padding-left: 20px; margin-bottom: 6px;
-}
-.df-report__body ul li::before {
-    content: ''; position: absolute; left: 4px; top: 9px;
-    width: 6px; height: 6px; border-radius: 50%;
-    background: var(--df-amber-500);
-}
-.df-report__body ol {
-    list-style: none; counter-reset: df-counter; padding-left: 0; margin: 10px 0;
-}
-.df-report__body ol li {
-    position: relative; padding-left: 28px; margin-bottom: 6px; counter-increment: df-counter;
-}
-.df-report__body ol li::before {
-    content: counter(df-counter); position: absolute; left: 0; top: 1px;
-    font-size: 12px; font-weight: 800; color: var(--df-amber-700);
-    background: var(--df-amber-50); min-width: 20px; height: 20px;
-    border-radius: 50%; display: flex; align-items: center; justify-content: center;
-    line-height: 1;
-}
-
-/* Report blockquotes */
-.df-report__body blockquote {
-    border-left: 3px solid var(--df-amber-500);
-    padding: 12px 16px; margin: 14px 0;
-    background: var(--df-amber-50);
-    border-radius: 0 var(--df-radius-sm) var(--df-radius-sm) 0;
-    color: var(--df-text-secondary);
-    font-style: italic;
-}
-
-/* Report inline code */
-.df-report__body code {
-    background: rgba(217, 119, 6, 0.08);
-    padding: 2px 6px; border-radius: 4px;
-    font-size: 12px; color: var(--df-amber-700);
-    font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
-}
-
-/* Report code blocks */
-.df-report__body pre {
-    background: #1c1917; color: #e7e5e4;
-    padding: 18px; border-radius: var(--df-radius);
-    overflow-x: auto; font-size: 13px; line-height: 1.6;
-    margin: 14px 0; border: 1px solid #292524;
-}
-.df-report__body pre code {
-    background: none; padding: 0; color: inherit; font-size: inherit;
-}
-
-/* Report tables */
-.df-report__body table {
-    width: 100%; border-collapse: collapse; margin: 14px 0;
-    font-size: 13px; border-radius: var(--df-radius-sm);
-    overflow: hidden; border: 1px solid var(--df-border);
-}
-.df-report__body thead { background: var(--df-surface-hover); }
-.df-report__body th {
-    padding: 10px 14px; text-align: left; font-weight: 700;
-    color: var(--df-text-secondary); font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.04em;
-    border-bottom: 2px solid var(--df-border);
-}
-.df-report__body td {
-    padding: 10px 14px; border-bottom: 1px solid var(--df-border-light);
-    color: var(--df-text);
-}
-.df-report__body tr:last-child td { border-bottom: none; }
-.df-report__body tr:nth-child(even) td { background: #faf9f7; }
-
-/* Report horizontal rule */
-.df-report__body hr {
-    border: none; height: 1px; background: var(--df-border);
-    margin: 20px 0;
-}
-
-/* Report links */
-.df-report__body a {
-    color: var(--df-amber-700); text-decoration: none;
-    font-weight: 600; border-bottom: 1px dashed var(--df-amber-500);
-    transition: all 0.15s;
-}
-.df-report__body a:hover { border-bottom-style: solid; }
+/* Report-specific markdown size overrides (inherits .df-markdown base styles) */
+.df-report__body.df-markdown h1 { font-size: 22px; margin: 32px 0 14px; padding-bottom: 10px; border-bottom-color: var(--df-amber-500); }
+.df-report__body.df-markdown h2 { font-size: 18px; margin: 28px 0 12px; }
+.df-report__body.df-markdown h3 { font-size: 15px; margin: 20px 0 8px; }
+.df-report__body.df-markdown h4 { font-size: 14px; margin: 16px 0 6px; }
+.df-report__body.df-markdown p { margin: 10px 0; }
+.df-report__body.df-markdown ul { margin: 10px 0; }
+.df-report__body.df-markdown ul li { padding-left: 20px; margin-bottom: 6px; }
+.df-report__body.df-markdown ul li::before { top: 9px; width: 6px; height: 6px; }
+.df-report__body.df-markdown ol { margin: 10px 0; }
+.df-report__body.df-markdown ol li { padding-left: 28px; margin-bottom: 6px; }
+.df-report__body.df-markdown ol li::before { top: 1px; font-size: 12px; min-width: 20px; height: 20px; }
+.df-report__body.df-markdown blockquote { padding: 12px 16px; margin: 14px 0; }
+.df-report__body.df-markdown pre { padding: 18px; font-size: 13px; margin: 14px 0; }
+.df-report__body.df-markdown table { font-size: 13px; margin: 14px 0; }
+.df-report__body.df-markdown th, .df-report__body.df-markdown td { padding: 10px 14px; }
+.df-report__body.df-markdown hr { margin: 20px 0; }
 
 .df-report__loading {
     text-align: center;

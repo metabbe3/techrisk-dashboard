@@ -21,6 +21,94 @@ class ChatExportPdfController
             return response()->json(['message' => 'No messages to export.'], 422);
         }
 
+        $format = $request->input('format', 'pdf');
+
+        if ($format === 'json') {
+            return $this->exportJson($conversation, $messages);
+        }
+
+        if ($format === 'markdown') {
+            return $this->exportMarkdown($conversation, $messages);
+        }
+
+        return $this->exportPdf($conversation, $messages);
+    }
+
+    private function exportJson(ChatConversation $conversation, $messages): \Illuminate\Http\JsonResponse
+    {
+        $titleSlug = \Illuminate\Support\Str::slug($conversation->title ?? 'chat');
+
+        return response()->json([
+            'conversation' => [
+                'id' => (string) $conversation->id,
+                'title' => $conversation->title,
+                'model' => $conversation->model,
+                'created_at' => $conversation->created_at?->toIso8601String(),
+                'exported_at' => now()->toIso8601String(),
+            ],
+            'messages' => $messages->map(fn ($msg) => [
+                'id' => (string) $msg->id,
+                'role' => $msg->role,
+                'content' => $msg->content,
+                'model' => $msg->model,
+                'persona' => $msg->persona_key ? [
+                    'key' => $msg->persona_key,
+                    'name' => $msg->persona_name,
+                    'icon' => $msg->persona_icon,
+                    'color' => $msg->persona_color,
+                ] : null,
+                'tokens_used' => $msg->tokens_used,
+                'prompt_tokens' => $msg->prompt_tokens,
+                'completion_tokens' => $msg->completion_tokens,
+                'web_search_used' => $msg->web_search_used,
+                'feedback' => $msg->feedback,
+                'created_at' => $msg->created_at?->toIso8601String(),
+            ]),
+            'total_tokens' => $messages->sum('tokens_used'),
+        ])->header('Content-Disposition', 'attachment; filename="techrisk-ai-'.$titleSlug.'-'.now()->format('Y-m-d').'.json"');
+    }
+
+    private function exportMarkdown(ChatConversation $conversation, $messages): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $title = $conversation->title ?? 'TechRisk AI Chat';
+        $lines = [
+            '# '.$title,
+            '',
+            '> Exported: '.now()->format('d M Y, H:i').' | Model: '.($conversation->model ?? 'N/A').' | Tokens: '.$messages->sum('tokens_used'),
+            '',
+            '---',
+            '',
+        ];
+
+        foreach ($messages as $msg) {
+            $label = $msg->role === 'user'
+                ? '**User**'
+                : '**'.($msg->persona_name ?? 'TechRisk AI').'**';
+
+            if ($msg->model) {
+                $label .= ' `'.$msg->model.'`';
+            }
+
+            $lines[] = '### '.$label;
+            $lines[] = '';
+            $lines[] = $msg->content;
+            $lines[] = '';
+            $lines[] = '---';
+            $lines[] = '';
+        }
+
+        $markdown = implode("\n", $lines);
+        $titleSlug = \Illuminate\Support\Str::slug($conversation->title ?? 'chat');
+
+        return response()->streamDownload(function () use ($markdown) {
+            echo $markdown;
+        }, "techrisk-ai-{$titleSlug}-".now()->format('Y-m-d').'.md', [
+            'Content-Type' => 'text/markdown; charset=utf-8',
+        ]);
+    }
+
+    private function exportPdf(ChatConversation $conversation, $messages)
+    {
         $parsedown = new Parsedown;
 
         $messages = $messages->map(function ($msg) use ($parsedown) {

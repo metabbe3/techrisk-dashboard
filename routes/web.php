@@ -5,6 +5,7 @@ use App\Http\Controllers\Ai\AnalyzeRootCauseController;
 use App\Http\Controllers\Ai\AnalyzeTrendsController;
 use App\Http\Controllers\Ai\ApplyLabelsController;
 use App\Http\Controllers\Ai\ChatAgentsController;
+use App\Http\Controllers\Ai\ChatConversationUpdateController;
 use App\Http\Controllers\Ai\ChatCreateController;
 use App\Http\Controllers\Ai\ChatDeleteController;
 use App\Http\Controllers\Ai\ChatExportPdfController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\Ai\ChatFinalizeController;
 use App\Http\Controllers\Ai\ChatListController;
 use App\Http\Controllers\Ai\ChatMessageFeedbackController;
 use App\Http\Controllers\Ai\ChatMessagesController;
+use App\Http\Controllers\Ai\ChatPersonaStreamController;
 use App\Http\Controllers\Ai\ChatSendController;
 use App\Http\Controllers\Ai\ChatStreamController;
 use App\Http\Controllers\Ai\DetectSimilarController;
@@ -87,6 +89,9 @@ Route::get('/admin/ai/chat/agents', ChatAgentsController::class)
 Route::post('/admin/ai/chat/stream', ChatStreamController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.stream');
+Route::post('/admin/ai/chat/stream-personas', ChatPersonaStreamController::class)
+    ->middleware(['auth', 'can:access ai chat', 'ai.available:message,conversation_id'])
+    ->name('ai.chat.stream-personas');
 Route::post('/admin/ai/chat/finalize', ChatFinalizeController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.finalize');
@@ -102,13 +107,28 @@ Route::post('/admin/ai/chat/conversations', ChatCreateController::class)
 Route::delete('/admin/ai/chat/conversations/{id}', ChatDeleteController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.delete');
+Route::post('/admin/ai/chat/conversations/{id}/pin', [ChatConversationUpdateController::class, 'pin'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.pin');
+Route::put('/admin/ai/chat/conversations/{id}/folder', [ChatConversationUpdateController::class, 'updateFolder'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.folder');
+Route::put('/admin/ai/chat/conversations/{id}/tags', [ChatConversationUpdateController::class, 'updateTags'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.tags');
+Route::put('/admin/ai/chat/conversations/{id}/title', [ChatConversationUpdateController::class, 'updateTitle'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.title');
+Route::get('/admin/ai/chat/folders', [ChatConversationUpdateController::class, 'folders'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.folders');
 Route::post('/admin/ai/chat/messages/{id}/feedback', ChatMessageFeedbackController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.feedback');
-Route::get('/admin/ai/chat/proactive-insights', \App\Http\Controllers\Ai\ChatProactiveInsightsController::class . '@index')
+Route::get('/admin/ai/chat/proactive-insights', \App\Http\Controllers\Ai\ChatProactiveInsightsController::class.'@index')
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.proactive-insights');
-Route::post('/admin/ai/chat/proactive-insights/{id}/read', \App\Http\Controllers\Ai\ChatProactiveInsightsController::class . '@markRead')
+Route::post('/admin/ai/chat/proactive-insights/{id}/read', \App\Http\Controllers\Ai\ChatProactiveInsightsController::class.'@markRead')
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.proactive-insights.read');
 Route::get('/admin/ai/chat/conversations/{id}/messages', ChatMessagesController::class)

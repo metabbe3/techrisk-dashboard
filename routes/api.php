@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\ActionImprovementController;
 use App\Http\Controllers\Api\Ai\ExportController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IncidentController;
+use App\Http\Controllers\Api\TokenController;
 use Illuminate\Support\Facades\Route;
 
 // Health check endpoint - no auth required
@@ -19,6 +20,10 @@ Route::post('/login', [AuthController::class, 'login'])
     ->middleware('throttle:5,1'); // 5 login attempts per minute
 
 Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access'])->group(function () {
+    // Token management
+    Route::post('/logout', [TokenController::class, 'logout']);
+    Route::get('/v1/token/info', [TokenController::class, 'info']);
+
     // API v1 - Read operations (100 req/min)
     Route::prefix('v1')->middleware('throttle:100,1')->group(function () {
         Route::apiResource('incidents', IncidentController::class)->only(['index', 'show']);
@@ -48,6 +53,8 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     Route::prefix('v1')->middleware('throttle:30,1')->group(function () {
         Route::get('labels', [IncidentController::class, 'getLabels']);
         Route::get('incident-types', [IncidentController::class, 'getIncidentTypes']);
+        Route::get('categories', [IncidentController::class, 'getCategories']);
+        Route::get('users', [IncidentController::class, 'getUsers']);
     });
 
     // Action improvements read (60 req/min)

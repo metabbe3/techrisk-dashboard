@@ -23,20 +23,7 @@ class MarkAiEnhancedController extends Controller
             return response()->json(['success' => false, 'error' => 'Incident not found.'], 404);
         }
 
-        $enhanced = $incident->ai_enhanced_fields ?? [];
-
-        foreach ($validated['fields'] as $field => $text) {
-            if (! is_string($text) || trim($text) === '') {
-                continue;
-            }
-
-            $enhanced[$field] = [
-                'enhanced' => true,
-                'hash' => md5(trim($text)),
-            ];
-        }
-
-        $incident->update(['ai_enhanced_fields' => $enhanced]);
+        $incident->markAiEnhancedFields($validated['fields']);
 
         return response()->json([
             'success' => true,
