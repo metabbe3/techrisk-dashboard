@@ -90,7 +90,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.php
-    container_name: techrisk-worker
     restart: unless-stopped
     command: php artisan queue:work --sleep=3 --tries=3 --queue=war-room,default,document-conversion,api-audit
     volumes:
