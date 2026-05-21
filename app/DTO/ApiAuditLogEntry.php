@@ -25,6 +25,7 @@ class ApiAuditLogEntry
         public ?int $response_time_ms = null,
         public ?int $response_size_bytes = null,
         public ?array $response_data = null,
+        public ?array $response_headers = null,
         public ?string $error_message = null,
         public ?array $metadata = null,
     ) {}
@@ -53,6 +54,7 @@ class ApiAuditLogEntry
             'response_time_ms' => $this->response_time_ms,
             'response_size_bytes' => $this->response_size_bytes,
             'response_data' => $this->response_data,
+            'response_headers' => $this->response_headers,
             'error_message' => $this->error_message,
             'metadata' => $this->metadata,
         ];
@@ -82,6 +84,7 @@ class ApiAuditLogEntry
             response_time_ms: $data['response_time_ms'] ?? null,
             response_size_bytes: $data['response_size_bytes'] ?? null,
             response_data: $data['response_data'] ?? null,
+            response_headers: $data['response_headers'] ?? null,
             error_message: $data['error_message'] ?? null,
             metadata: $data['metadata'] ?? null,
         );

@@ -13,6 +13,8 @@ enum ApiEndpoint: string
     case INCIDENT_TYPES = 'incident-types';
     case ACTION_IMPROVEMENTS = 'action-improvements';
     case AI_EXPORT = 'ai-export';
+    case CATEGORIES = 'categories';
+    case USERS = 'users';
 
     /**
      * Get all endpoints as an array for select options
@@ -35,6 +37,8 @@ enum ApiEndpoint: string
             self::INCIDENT_TYPES => 'Incident Types (Reference Data)',
             self::ACTION_IMPROVEMENTS => 'Action Improvements',
             self::AI_EXPORT => 'AI Bulk Export',
+            self::CATEGORIES => 'Categories (Reference Data)',
+            self::USERS => 'Users (Reference Data)',
         };
     }
 
@@ -51,6 +55,8 @@ enum ApiEndpoint: string
             self::INCIDENT_TYPES => 'api/v1/incident-types',
             self::ACTION_IMPROVEMENTS => 'api/v1/action-improvements',
             self::AI_EXPORT => 'api/v1/ai/export',
+            self::CATEGORIES => 'api/v1/categories',
+            self::USERS => 'api/v1/users',
         };
     }
 

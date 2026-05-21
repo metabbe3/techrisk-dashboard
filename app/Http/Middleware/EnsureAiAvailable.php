@@ -23,9 +23,11 @@ class EnsureAiAvailable
             $extras[$key] = $key === 'matched' || $key === 'suggested' ? [] : null;
         }
 
-        return response()->json(array_merge([
-            'success' => false,
-            'error' => 'AI service is not configured. Run php artisan ai:setup or configure AI settings.',
-        ], $extras));
+        return response()->json([
+            'code' => 503,
+            'status' => 'Error',
+            'message' => 'AI service is not configured. Run php artisan ai:setup or configure AI settings.',
+            'data' => empty($extras) ? null : $extras,
+        ], 503);
     }
 }

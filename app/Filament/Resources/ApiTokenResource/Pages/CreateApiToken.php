@@ -37,6 +37,8 @@ class CreateApiToken extends CreateRecord
             'allowed_endpoints' => ! empty($allowedEndpoints) ? $allowedEndpoints : null,
         ])->save();
 
+        session(['api_token_plain_'.$token->id => $newToken->plainTextToken]);
+
         return $token;
     }
 
@@ -57,5 +59,12 @@ class CreateApiToken extends CreateRecord
         }
 
         return parent::getFormActions();
+    }
+
+    public function getViewData(): array
+    {
+        return [
+            'plainTextToken' => $this->plainTextToken,
+        ];
     }
 }

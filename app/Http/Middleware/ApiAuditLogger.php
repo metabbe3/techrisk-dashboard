@@ -141,18 +141,17 @@ class ApiAuditLogger
         $entry->response_timestamp = now()->toIso8601String();
         $entry->response_status = $response->getStatusCode();
         $entry->response_time_ms = (int) ((microtime(true) - $startTime) * 1000);
+        $entry->response_headers = $this->captureResponseHeaders($response);
 
-        if (! $response->isSuccessful()) {
-            $content = $response->getContent();
-            $entry->response_size_bytes = strlen($content);
-            $decoded = json_decode($content, true);
+        $content = $response->getContent();
+        $entry->response_size_bytes = strlen($content);
+        $decoded = json_decode($content, true);
 
-            if ($response->isClientError() || $response->isServerError()) {
-                $entry->error_message = $this->extractErrorMessage($decoded) ?? $response->statusText();
-            }
-
-            $entry->response_data = $this->captureResponseContent($decoded, $content);
+        if ($response->isClientError() || $response->isServerError()) {
+            $entry->error_message = $this->extractErrorMessage($decoded) ?? $response->statusText();
         }
+
+        $entry->response_data = $this->captureResponseContent($decoded, $content);
     }
 
     private function captureResponseContent(?array $decoded, string $rawContent): ?array
@@ -197,6 +196,26 @@ class ApiAuditLogger
         }
 
         return $value;
+    }
+
+    private function captureResponseHeaders(Response $response): array
+    {
+        $allowedHeaders = [
+            'content-type',
+            'x-trace-id',
+            'cache-control',
+            'x-ratelimit-limit',
+            'x-ratelimit-remaining',
+        ];
+
+        $headers = [];
+        foreach ($allowedHeaders as $header) {
+            if ($response->headers->has($header)) {
+                $headers[$header] = $response->headers->get($header);
+            }
+        }
+
+        return $headers;
     }
 
     private function dispatchAuditLog(ApiAuditLogEntry $entry): void

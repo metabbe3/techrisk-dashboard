@@ -44,7 +44,7 @@
                                     }
                                 }"
                                 @click="copy"
-                                class="px-4 py-2 bg-success-600 hover:bg-success-700 text-white rounded-lg text-sm font-medium transition-colors"
+                                class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition-colors"
                             >
                                 Copy
                             </button>
@@ -82,8 +82,4 @@
             </div>
         </div>
     @endif
-
-    <div class="mt-8">
-        {{ $this->table }}
-    </div>
 </x-filament-panels::page>

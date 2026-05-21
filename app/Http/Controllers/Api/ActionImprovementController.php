@@ -198,6 +198,6 @@ class ActionImprovementController extends Controller
     {
         $actionImprovement->delete();
 
-        return $this->successResponse(null, 'Action improvement deleted successfully.', 204);
+        return response()->noContent();
     }
 }

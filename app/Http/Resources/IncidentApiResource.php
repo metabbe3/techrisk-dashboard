@@ -14,8 +14,6 @@ class IncidentApiResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
-        $hasPiiAccess = $request->user()?->currentAccessToken()?->can('read:pii') ?? false;
-
         return [
             'id' => $this->id,
             'incident_no' => $this->no,
@@ -35,18 +33,6 @@ class IncidentApiResource extends JsonResource
             'incident_status' => $this->incident_status,
             'classification' => $this->classification,
             'glitch_flag' => $this->glitch_flag,
-            'mttr' => $this->mttr,
-            'mttr_formatted' => $this->mttr_formatted,
-            'mtbf' => $this->mtbf,
-            'mtbf_completed' => $this->mtbf_completed,
-            'mtbf_recovered' => $this->mtbf_recovered,
-            'mtbf_fund_loss' => $this->mtbf_fund_loss,
-            'mtbf_non_fund_loss' => $this->mtbf_non_fund_loss,
-            'mtbf_potential_recovery' => $this->mtbf_potential_recovery,
-            'mtbf_fully_recovered' => $this->mtbf_fully_recovered,
-            'mtbf_non_tech_loss' => $this->mtbf_non_tech_loss,
-            'mtbf_non_incident' => $this->mtbf_non_incident,
-            'mtbf_all' => $this->mtbf_all,
             'fund_status' => $this->fund_status,
             'potential_fund_loss' => $this->potential_fund_loss,
             'recovered_fund' => $this->recovered_fund,

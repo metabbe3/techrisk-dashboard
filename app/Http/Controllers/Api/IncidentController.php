@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\ListIncidentsRequest;
 use App\Http\Requests\Api\V1\StoreIncidentRequest;
 use App\Http\Requests\Api\V1\UpdateIncidentRequest;
+use App\Http\Resources\CategoryApiResource;
 use App\Http\Resources\IncidentApiResource;
+use App\Http\Resources\IncidentListApiResource;
 use App\Models\Category;
 use App\Models\Incident;
-use App\Models\User;
 use App\Models\IncidentType;
 use App\Models\Label;
+use App\Models\User;
 use App\Traits\ApiResponser;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -79,7 +81,7 @@ class IncidentController extends Controller
     public function index(ListIncidentsRequest $request)
     {
         try {
-            $query = Incident::with(['labels']);
+            $query = Incident::query();
 
             if ($request->filled('start_date') && $request->filled('end_date')) {
                 $query->whereBetween('incident_date', [$request->validated('start_date'), $request->validated('end_date')]);
@@ -144,7 +146,7 @@ class IncidentController extends Controller
             $perPage = $request->validated('per_page', 15);
 
             return $this->successResponse(
-                IncidentApiResource::collection($query->paginate($perPage)),
+                IncidentListApiResource::collection($query->paginate($perPage)),
                 'Incidents retrieved successfully.'
             );
         } catch (Exception $e) {
@@ -263,23 +265,22 @@ class IncidentController extends Controller
      *   "code": 200,
      *   "status": "Success",
      *   "message": "Categories retrieved successfully.",
-     *   "data": {
-     *     "business_category": {"Operations": "Operations", "Finance": "Finance"},
-     *     "root_cause_category": {"Human Error": "Human Error", "System Bug": "System Bug"},
-     *     "responsible_team": {"IT Infrastructure": "IT Infrastructure", "DevOps": "DevOps"}
-     *   }
+     *   "data": [
+     *     {"id": 1, "type": "business_category", "name": "Operations"},
+     *     {"id": 2, "type": "business_category", "name": "Finance"},
+     *     {"id": 3, "type": "root_cause_category", "name": "Human Error"}
+     *   ]
      * }
      */
     public function getCategories()
     {
         try {
-            $categories = [
-                'business_category' => Category::options(Category::TYPE_BUSINESS_CATEGORY),
-                'root_cause_category' => Category::options(Category::TYPE_ROOT_CAUSE_CATEGORY),
-                'responsible_team' => Category::options(Category::TYPE_RESPONSIBLE_TEAM),
-            ];
+            $categories = Category::orderBy('type')->orderBy('name')->get();
 
-            return $this->successResponse($categories, 'Categories retrieved successfully.');
+            return $this->successResponse(
+                CategoryApiResource::collection($categories),
+                'Categories retrieved successfully.'
+            );
         } catch (Exception $e) {
             Log::error('Failed to retrieve categories: '.$e->getMessage(), [
                 'trace' => $e->getTraceAsString(),
@@ -435,26 +436,10 @@ class IncidentController extends Controller
      * @urlParam no string required The incident number. Example: 20250115_IN_1234
      *
      * @response {
-     *   "# Payment Gateway Timeout",
-     *   "",
-     *   "**Incident ID:** 20250115_IN_1234",
-     *   "",
-     *   "## Basic Information",
-     *   "",
-     *   "| Field | Value |",
-     *   "|-------|-------|",
-     *   "| **Severity** | P1 |",
-     *   "| **Type** | Tech |",
-     *   "| **Source** | Internal |",
-     *   "",
-     *   "## Summary",
-     *   "",
-     *   "5-minute outage during peak hours...",
-     *   "",
-     *   "## Root Cause",
-     *   "",
-     *   "Database connection pool exhausted due to high traffic",
-     *   ""
+     *   "code": 200,
+     *   "status": "Success",
+     *   "message": "Incident markdown retrieved successfully. Decode data with base64 to get markdown content.",
+     *   "data": "IyBQYXltZW50IEdhdGV3YXkgVGltZW91dAoqKkluY2lkZW50IElEOioqIDIwMjUwMTE1X0lOXzEyMzQ="
      * }
      * @response 404 {
      *   "code": 404,
@@ -472,8 +457,10 @@ class IncidentController extends Controller
 
             $markdown = $this->convertToMarkdown($incident);
 
-            return response($markdown, 200)
-                ->header('Content-Type', 'text/markdown');
+            return $this->successResponse(
+                base64_encode($markdown),
+                'Incident markdown retrieved successfully. Decode data with base64 to get markdown content.'
+            );
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {
@@ -642,7 +629,7 @@ class IncidentController extends Controller
         try {
             $incident->delete();
 
-            return $this->successResponse(null, 'Incident deleted successfully.', 204);
+            return response()->noContent();
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Incident not found.', 404);
         } catch (Exception $e) {

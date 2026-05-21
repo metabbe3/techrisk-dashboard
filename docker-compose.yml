@@ -141,6 +141,25 @@ services:
     networks:
       - techrisk-network
 
+  # Database Backup Service (daily mysqldump at 2 AM, 7-day retention)
+  backup:
+    build:
+      context: .
+      dockerfile: Dockerfile.backup
+    container_name: techrisk-backup
+    restart: unless-stopped
+    environment:
+      MYSQL_USER: ${DB_USERNAME:-techrisk}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_DATABASE: ${DB_DATABASE:-techrisk}
+    volumes:
+      - ./storage/backups:/backups
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - techrisk-network
+
 networks:
   techrisk-network:
     driver: bridge

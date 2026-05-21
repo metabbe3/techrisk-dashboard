@@ -29,7 +29,30 @@ echo "6. Clearing Composer cache..."
 docker compose exec app composer clear-cache
 
 echo ""
-echo "7. Restarting Docker containers..."
+echo "7. Checking for pending migrations..."
+PENDING=$(docker compose exec app php artisan migrate:status 2>/dev/null | grep -c "Pending" || true)
+
+if [ "$PENDING" -gt 0 ]; then
+    echo ""
+    echo "  ⚠  $PENDING pending migration(s) detected!"
+    echo ""
+    docker compose exec app php artisan migrate:status 2>/dev/null | grep "Pending"
+    echo ""
+    read -p "  Run pending migrations now? (y/n): " -n 1 -r
+    echo ""
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        echo "  Running migrations..."
+        docker compose exec app php artisan migrate --force
+        echo "  ✓ Migrations completed"
+    else
+        echo "  ⚠  Skipping migrations. Run manually: docker compose exec app php artisan migrate"
+    fi
+else
+    echo "  ✓ No pending migrations"
+fi
+
+echo ""
+echo "8. Restarting Docker containers..."
 docker compose restart
 
 echo ""

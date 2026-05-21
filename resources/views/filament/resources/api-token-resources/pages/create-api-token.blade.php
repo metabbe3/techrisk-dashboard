@@ -81,7 +81,7 @@
         {{ $this->form }}
 
         <x-slot name="actions">
-            {{ $this->form->getActions() }}
+            {{ $this->getFormActions() }}
         </x-slot>
     @endif
 </x-filament-panels::page>

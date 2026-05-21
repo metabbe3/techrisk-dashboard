@@ -95,4 +95,18 @@ return [
     |
     */
     'store_to_db' => env('API_AUDIT_STORE_TO_DB', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | External Audit Endpoint
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for shipping audit logs to an external centralized endpoint.
+    | When enabled, audit logs are POSTed asynchronously via the queue job.
+    |
+    */
+    'external_endpoint' => env('API_AUDIT_EXTERNAL_ENDPOINT', ''),
+    'external_endpoint_enabled' => env('API_AUDIT_EXTERNAL_ENDPOINT_ENABLED', false),
+    'external_endpoint_timeout' => env('API_AUDIT_EXTERNAL_ENDPOINT_TIMEOUT', 5),
+    'external_endpoint_api_key' => env('API_AUDIT_EXTERNAL_API_KEY', ''),
 ];

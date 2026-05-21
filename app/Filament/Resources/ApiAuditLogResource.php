@@ -19,6 +19,7 @@ use Illuminate\Database\Eloquent\Builder;
 class ApiAuditLogResource extends Resource
 {
     use ReadOnlyResource;
+
     protected static ?string $model = ApiAuditLog::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-document-text';
@@ -214,23 +215,26 @@ class ApiAuditLogResource extends Resource
                                     ->label('Response Time (ms)'),
                                 \Filament\Infolists\Components\TextEntry::make('response_size_bytes')
                                     ->label('Response Size (bytes)'),
+                                \Filament\Infolists\Components\ViewEntry::make('response_headers')
+                                    ->label('Response Headers')
+                                    ->view('filament.infolists.components.json-entry'),
                             ])->columns(2),
 
                         \Filament\Infolists\Components\Section::make('Request Data')
                             ->schema([
-                                \Filament\Infolists\Components\TextEntry::make('query_params')
+                                \Filament\Infolists\Components\ViewEntry::make('query_params')
                                     ->label('Query Parameters')
-                                    ->formatStateUsing(fn ($state) => is_array($state) && ! empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : 'No query parameters'),
-                                \Filament\Infolists\Components\TextEntry::make('request_body')
+                                    ->view('filament.infolists.components.json-entry'),
+                                \Filament\Infolists\Components\ViewEntry::make('request_body')
                                     ->label('Request Body')
-                                    ->formatStateUsing(fn ($state) => is_array($state) && ! empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'No request body (GET/HEAD request)' : 'Empty')),
+                                    ->view('filament.infolists.components.json-entry'),
                             ]),
 
                         \Filament\Infolists\Components\Section::make('Response Data')
                             ->schema([
-                                \Filament\Infolists\Components\TextEntry::make('response_data')
+                                \Filament\Infolists\Components\ViewEntry::make('response_data')
                                     ->label('Response')
-                                    ->formatStateUsing(fn ($state) => is_array($state) && ! empty($state) ? json_encode($state, JSON_PRETTY_PRINT) : ($state === null ? 'Not captured (successful responses are not logged)' : 'Empty')),
+                                    ->view('filament.infolists.components.json-entry'),
                             ])->collapsible(),
 
                         \Filament\Infolists\Components\Section::make('Error')

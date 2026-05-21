@@ -29,6 +29,7 @@ class ApiAuditLog extends Model
         'response_time_ms',
         'response_size_bytes',
         'response_data',
+        'response_headers',
         'error_message',
         'environment',
         'app_version',
@@ -41,6 +42,7 @@ class ApiAuditLog extends Model
         'query_params' => 'array',
         'request_body' => 'array',
         'response_data' => 'array',
+        'response_headers' => 'array',
         'metadata' => 'array',
     ];
 

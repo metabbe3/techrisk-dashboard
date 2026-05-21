@@ -39,7 +39,7 @@ class IncidentApiTest extends TestCase
                 'status',
                 'message',
                 'data' => [
-                    '*' => ['id', 'incident_no', 'incident_name'],
+                    '*' => ['incident_no', 'incident_title', 'summary', 'created_at', 'updated_at'],
                 ],
             ]);
     }

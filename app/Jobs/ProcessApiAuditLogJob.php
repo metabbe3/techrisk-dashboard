@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
 class ProcessApiAuditLogJob implements ShouldQueue
@@ -42,6 +43,11 @@ class ProcessApiAuditLogJob implements ShouldQueue
         if (config('api-audit.store_to_db', true)) {
             $this->storeToDatabase($this->auditData);
         }
+
+        // Ship to external endpoint if enabled
+        if (config('api-audit.external_endpoint_enabled', false)) {
+            $this->shipToExternalEndpoint($this->auditData);
+        }
     }
 
     public function failed(\Throwable $exception): void
@@ -51,6 +57,71 @@ class ProcessApiAuditLogJob implements ShouldQueue
             'error' => $exception->getMessage(),
             'trace_id' => $this->auditData['trace_id'] ?? 'unknown',
         ]);
+    }
+
+    private function formatForExternalEndpoint(array $data): array
+    {
+        return [
+            'transaction_metadata' => [
+                'request_id' => $data['request_id'] ?? null,
+                'correlation_id' => $data['trace_id'] ?? null,
+                'timestamp' => $data['request_timestamp'] ?? now()->toIso8601String(),
+                'execution_time_ms' => $data['response_time_ms'] ?? null,
+            ],
+            'request' => [
+                'http_method' => $data['method'] ?? null,
+                'request_uri' => $data['endpoint'] ?? null,
+                'client_ip' => $data['ip_address'] ?? null,
+                'request_headers' => $data['request_headers'] ?? [],
+                'query_parameters' => $data['query_params'] ?? [],
+                'request_body' => $data['request_body'] ?? null,
+            ],
+            'response' => [
+                'http_status_code' => $data['response_status'] ?? null,
+                'response_headers' => $data['response_headers'] ?? [],
+                'response_body' => $data['response_data'] ?? null,
+            ],
+        ];
+    }
+
+    private function shipToExternalEndpoint(array $data): void
+    {
+        try {
+            $endpoint = config('api-audit.external_endpoint');
+
+            if (empty($endpoint)) {
+                return;
+            }
+
+            $timeout = config('api-audit.external_endpoint_timeout', 5);
+            $apiKey = config('api-audit.external_endpoint_api_key');
+
+            $payload = $this->formatForExternalEndpoint($data);
+
+            $http = Http::timeout($timeout);
+
+            if (! empty($apiKey)) {
+                $http = $http->withHeaders([
+                    'Authorization' => 'Bearer '.$apiKey,
+                ]);
+            }
+
+            $response = $http->post($endpoint, $payload);
+
+            if (! $response->successful()) {
+                Log::warning('External audit endpoint returned non-success status', [
+                    'status' => $response->status(),
+                    'trace_id' => $data['trace_id'] ?? 'unknown',
+                    'endpoint' => $endpoint,
+                ]);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to ship audit log to external endpoint', [
+                'error' => $e->getMessage(),
+                'trace_id' => $data['trace_id'] ?? 'unknown',
+                'endpoint' => config('api-audit.external_endpoint'),
+            ]);
+        }
     }
 
     private function formatForElk(array $data): array
@@ -101,6 +172,7 @@ class ProcessApiAuditLogJob implements ShouldQueue
                 'status' => $data['response_status'] ?? null,
                 'time_ms' => $data['response_time_ms'] ?? null,
                 'size_bytes' => $data['response_size_bytes'] ?? null,
+                'headers' => $data['response_headers'] ?? [],
                 'data' => $data['response_data'] ?? null,
             ],
 
@@ -148,6 +220,7 @@ class ProcessApiAuditLogJob implements ShouldQueue
             'response_time_ms' => $data['response_time_ms'],
             'response_size_bytes' => $data['response_size_bytes'],
             'response_data' => $data['response_data'],
+            'response_headers' => $data['response_headers'],
             'error_message' => $data['error_message'] ?? null,
             'environment' => $data['metadata']['environment'] ?? config('app.env'),
             'app_version' => $data['metadata']['app_version'] ?? null,

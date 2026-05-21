@@ -27,6 +27,7 @@ class CheckApiTokenAccess
                 'code' => 401,
                 'status' => 'Error',
                 'message' => 'Token not found or invalid.',
+                'data' => null,
             ], 401);
         }
 
@@ -44,6 +45,7 @@ class CheckApiTokenAccess
                 'code' => 403,
                 'status' => 'Error',
                 'message' => 'This token does not have permission to access this endpoint.',
+                'data' => null,
             ], 403);
         }
 
