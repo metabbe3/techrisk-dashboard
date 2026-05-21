@@ -22,7 +22,7 @@ enum FundStatus: string
     {
         return match ($this) {
             self::ConfirmedLoss => 'danger',
-            self::NonFundLoss => 'success',
+            self::NonFundLoss => 'gray',
             self::PotentialRecovery => 'warning',
             self::FullyRecovered => 'teal',
             self::NonTechLoss => 'gray',

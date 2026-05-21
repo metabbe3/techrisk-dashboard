@@ -50,11 +50,11 @@ class ViewIncident extends ViewRecord
                 }
 
                 return '<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#0d9488;background:#f0fdfa;border:1px solid #ccfbf1;border-radius:999px;padding:2px 10px;font-weight:600;">'
-                    . '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>'
-                    . 'AI Enhanced</span>'
-                    . '<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#94a3b8;margin-left:6px;">'
-                    . '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
-                    . 'AI-generated content may contain inaccuracies</span>';
+                    .'<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="m3 21 9-9"/><path d="M12.2 6.2 11 5"/></svg>'
+                    .'AI Enhanced</span>'
+                    .'<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:#94a3b8;margin-left:6px;">'
+                    .'<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>'
+                    .'AI-generated content may contain inaccuracies</span>';
             })
             ->visible(fn ($record) => $this->isAiEnhanced($record, $field));
     }
@@ -62,6 +62,18 @@ class ViewIncident extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('generate_post_mortem')
+                ->label('Post-Mortem PDF')
+                ->icon('heroicon-o-document-text')
+                ->color('warning')
+                ->requiresConfirmation()
+                ->modalHeading('Generate Post-Mortem Report')
+                ->modalDescription('AI will generate a comprehensive blameless post-mortem. This may take a few seconds.')
+                ->modalSubmitActionLabel('Generate & Download')
+                ->visible(fn (): bool => auth()->user()->can('manage incidents'))
+                ->action(function () {
+                    return redirect()->to(route('ai.post-mortem-pdf', ['incident' => $this->getRecord()->id]));
+                }),
             Actions\Action::make('export_markdown')
                 ->label('Export to Markdown')
                 ->icon('heroicon-o-document-arrow-down')

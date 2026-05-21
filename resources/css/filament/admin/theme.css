@@ -1,8 +1,9 @@
+@reference "tailwindcss";
+
 /* ============================================
-   Technical Risk Dashboard — Custom Theme
+   Technical Risk Dashboard — Compact Sidebar
    ============================================ */
 
-/* --- Rich Color Palette via CSS Variables --- */
 :root {
     --tr-teal: #0d9488;
     --tr-teal-light: #5eead4;
@@ -34,131 +35,25 @@
     --tr-slate-50: #f8fafc;
 }
 
-/* --- Global Panel Enhancements --- */
-.fi-sidebar,
-.fi-topbar {
-    background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%) !important;
-}
-
+/* --- Compact Sidebar --- */
 .fi-sidebar-item > a {
-    border-radius: 0.625rem;
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    @apply py-1 gap-2;
 }
 
-.fi-sidebar-item > a:hover {
-    background: rgba(99, 102, 241, 0.12);
+.fi-sidebar-item-label {
+    @apply text-sm leading-5;
 }
 
-.fi-sidebar-item.-active > a {
-    background: linear-gradient(135deg, rgba(99, 102, 241, 0.18) 0%, rgba(13, 148, 136, 0.12) 100%) !important;
-    border-left: 3px solid var(--tr-indigo);
+.fi-sidebar-item .fi-icon,
+.fi-sidebar-item-icon {
+    @apply w-4 h-4;
 }
 
-/* --- Widget Card Enhancements --- */
-.fi-wi-stats-overview-stat-item {
-    border-radius: 0.875rem !important;
-    border: 1px solid var(--tr-slate-200);
-    border-left: 3px solid var(--tr-indigo);
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-    position: relative;
+.fi-sidebar-group-label {
+    @apply text-xs tracking-wide pb-1 mb-0.5;
 }
 
-.fi-wi-stats-overview-stat-item:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 25px -5px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
-    border-color: var(--tr-slate-300);
-}
-
-/* Stat card gradient top accent */
-.fi-wi-stats-overview-stat-item .fi-color-custom.color-primary {
-    background: linear-gradient(135deg, var(--tr-indigo) 0%, var(--tr-violet) 100%);
-}
-
-/* Stat card left border colors by stat type */
-.fi-wi-stats-overview-stat-item:nth-child(6n+1) { border-left-color: var(--tr-indigo); }
-.fi-wi-stats-overview-stat-item:nth-child(6n+2) { border-left-color: var(--tr-teal); }
-.fi-wi-stats-overview-stat-item:nth-child(6n+3) { border-left-color: var(--tr-amber); }
-.fi-wi-stats-overview-stat-item:nth-child(6n+4) { border-left-color: var(--tr-rose); }
-.fi-wi-stats-overview-stat-item:nth-child(6n+5) { border-left-color: var(--tr-emerald); }
-.fi-wi-stats-overview-stat-item:nth-child(6n+6) { border-left-color: var(--tr-violet); }
-
-/* --- Chart Widget Cards --- */
-.fi-wi-chart,
-.fi-wi-chart-widget {
-    border-radius: 0.875rem !important;
-    border: 1px solid var(--tr-slate-200);
-    overflow: hidden;
-    transition: box-shadow 0.2s ease;
-}
-
-.fi-wi-chart:hover,
-.fi-wi-chart-widget:hover {
-    box-shadow: 0 4px 16px -4px rgba(0, 0, 0, 0.08);
-}
-
-.fi-wi-chart > .fi-card > .fi-card-header,
-.fi-wi-chart-widget > .fi-card > .fi-card-header {
-    border-bottom: 2px solid transparent;
-    border-image: linear-gradient(90deg, var(--tr-indigo), var(--tr-teal), var(--tr-amber)) 1;
-    padding-bottom: 0.75rem;
-}
-
-/* --- Section Cards --- */
-.fi-section {
-    border-radius: 0.875rem !important;
-    border: 1px solid var(--tr-slate-200);
-}
-
-/* --- Table Widgets --- */
-.fi-ta-table-container {
-    border-radius: 0.875rem !important;
-    overflow: hidden;
-    border: 1px solid var(--tr-slate-200);
-}
-
-.fi-ta-table-container table thead {
-    background: linear-gradient(180deg, var(--tr-slate-50) 0%, var(--tr-slate-100) 100%);
-}
-
-.fi-ta-table-container table thead th {
-    font-weight: 700;
-    text-transform: uppercase;
-    font-size: 0.7rem;
-    letter-spacing: 0.08em;
-    color: var(--tr-slate-600);
-}
-
-/* --- Badge Enhancements --- */
-.fi-badge {
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    border-radius: 0.5rem;
-}
-
-/* Badge gradient colors are defined in app.css with full dark mode support */
-
-/* --- Dashboard Page Header --- */
-.fi-main > .fi-page > .fi-page-header {
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #334155 100%);
-    border-radius: 0 0 1.5rem 1.5rem;
-    padding: 1.5rem 2rem;
-    margin: -1.5rem -1.5rem 1.5rem -1.5rem;
-}
-
-/* --- Filter Bar Enhancement --- */
-.fi-fo-fieldset-fields > .fi-fo-grid > div {
-    border-radius: 0.625rem;
-}
-
-/* --- Card Headers with Gradient Underlines --- */
-.fi-card-header {
-    font-weight: 700;
-    font-size: 0.95rem;
-    letter-spacing: 0.01em;
-}
-
-/* --- Scrollbar Styling --- */
+/* --- Scrollbar --- */
 ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -175,117 +70,4 @@
 
 ::-webkit-scrollbar-thumb:hover {
     background: var(--tr-slate-400);
-}
-
-/* --- Dark Mode Overrides --- */
-.dark .fi-wi-stats-overview-stat-item {
-    border-color: var(--tr-slate-700);
-    background: linear-gradient(135deg, var(--tr-slate-800) 0%, rgba(30, 41, 59, 0.6) 100%);
-}
-
-.dark .fi-wi-stats-overview-stat-item:hover {
-    border-color: var(--tr-slate-600);
-}
-
-.dark .fi-wi-chart,
-.dark .fi-wi-chart-widget {
-    border-color: var(--tr-slate-700);
-}
-
-.dark .fi-section {
-    border-color: var(--tr-slate-700);
-}
-
-.dark .fi-ta-table-container {
-    border-color: var(--tr-slate-700);
-}
-
-.dark .fi-ta-table-container table thead {
-    background: linear-gradient(180deg, var(--tr-slate-800) 0%, var(--tr-slate-700) 100%);
-}
-
-.dark .fi-ta-table-container table thead th {
-    color: var(--tr-slate-400);
-}
-
-/* --- Severity Chart Custom Table (Blade Widget) --- */
-.severity-table {
-    border-radius: 0.75rem;
-    overflow: hidden;
-}
-
-.severity-table thead tr {
-    background: linear-gradient(135deg, var(--tr-slate-800) 0%, var(--tr-slate-700) 100%);
-}
-
-.severity-table tbody tr {
-    transition: background-color 0.15s ease;
-}
-
-.severity-table tbody tr:hover {
-    background: rgba(99, 102, 241, 0.06);
-}
-
-.dark .severity-table tbody tr:hover {
-    background: rgba(99, 102, 241, 0.1);
-}
-
-/* Severity progress bar */
-.severity-bar {
-    height: 6px;
-    border-radius: 3px;
-    background: var(--tr-slate-200);
-    overflow: hidden;
-}
-
-.severity-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.severity-bar-fill.severity-p1 {
-    background: linear-gradient(90deg, #ef4444, #f87171);
-}
-
-.severity-bar-fill.severity-p2 {
-    background: linear-gradient(90deg, #f59e0b, #fbbf24);
-}
-
-.severity-bar-fill.severity-p3 {
-    background: linear-gradient(90deg, #3b82f6, #60a5fa);
-}
-
-.severity-bar-fill.severity-p4 {
-    background: linear-gradient(90deg, #10b981, #34d399);
-}
-
-.severity-bar-fill.severity-default {
-    background: linear-gradient(90deg, #6b7280, #9ca3af);
-}
-
-.severity-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 0, 0, 0.15) transparent;
-}
-
-.severity-scroll::-webkit-scrollbar {
-    width: 6px;
-}
-
-.severity-scroll::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.severity-scroll::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.15);
-    border-radius: 3px;
-}
-
-.dark .severity-scroll {
-    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
-}
-
-.dark .severity-scroll::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2);
 }

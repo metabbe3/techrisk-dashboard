@@ -17,6 +17,8 @@ use App\Http\Controllers\Ai\ChatPersonaStreamController;
 use App\Http\Controllers\Ai\ChatSendController;
 use App\Http\Controllers\Ai\ChatStreamController;
 use App\Http\Controllers\Ai\DetectSimilarController;
+use App\Http\Controllers\Ai\ExportPostMortemPdfController;
+use App\Http\Controllers\Ai\GeneratePostMortemController;
 use App\Http\Controllers\Ai\EnhanceAgentPromptController;
 use App\Http\Controllers\Ai\GenerateWeeklySummaryController;
 use App\Http\Controllers\Ai\MarkAiEnhancedController;
@@ -65,6 +67,14 @@ Route::post('/admin/ai/summarize-document', SummarizeDocumentController::class)
 Route::post('/admin/ai/analyze-root-cause', AnalyzeRootCauseController::class)
     ->middleware(['auth', 'can:manage incidents', 'ai.available:root_cause,categories,contributing_factors,recommendation'])
     ->name('ai.analyze-root-cause');
+
+Route::post('/admin/ai/generate-post-mortem', GeneratePostMortemController::class)
+    ->middleware(['auth', 'can:manage incidents', 'ai.available:executive_summary,timeline_analysis,root_cause_deep_dive,impact_assessment,lessons_learned,recommendations,severity_assessment'])
+    ->name('ai.generate-post-mortem');
+
+Route::get('/admin/ai/post-mortem/{incident}/pdf', ExportPostMortemPdfController::class)
+    ->middleware(['auth', 'can:manage incidents'])
+    ->name('ai.post-mortem-pdf');
 
 Route::post('/admin/ai/detect-similar', DetectSimilarController::class)
     ->middleware(['auth', 'can:manage incidents', 'ai.available:similar'])

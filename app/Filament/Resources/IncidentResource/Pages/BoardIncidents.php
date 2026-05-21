@@ -29,11 +29,6 @@ class BoardIncidents extends Page
                 ->outlined()
                 ->url(fn () => IncidentResource::getUrl('index'))
                 ->extraAttributes(['class' => 'header-btn-table']),
-            Actions\CreateAction::make()
-                ->label('New Incident')
-                ->icon('heroicon-o-plus')
-                ->extraAttributes(['class' => 'header-btn-create'])
-                ->visible(fn (): bool => auth()->user()->can('manage incidents')),
         ];
     }
 }

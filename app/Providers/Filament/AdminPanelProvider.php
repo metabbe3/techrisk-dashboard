@@ -27,8 +27,7 @@ class AdminPanelProvider extends PanelProvider
         return $panel
             ->default()
             ->id('admin')
-            ->brandName('Technical Risk Dashboard')
-            ->brandLogo(asset('images/tr-logo.svg'))
+            ->brandName('TechRisk Portal')
             ->sidebarCollapsibleOnDesktop()
             ->databaseNotifications()
             ->globalSearch(true)

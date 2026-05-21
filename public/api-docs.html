@@ -240,15 +240,15 @@
                         </div>
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Returns the API health status. No authentication required.</p>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/health</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{ "status": "ok", "timestamp": "2026-05-21T10:30:00Z" }</code></pre>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mt-4 mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/health</code></pre>
                             </div>
                         </div>
                     </div>
@@ -264,30 +264,30 @@
                         </div>
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Returns metadata about the current API token including expiration, abilities, and endpoint access. No parameters required.</p>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
-  "code": 200,                          // integer
-  "status": "Success",                  // string
-  "data": {
-    "name": "Production Integration",   // string - token name
-    "expires_at": "2026-11-21T00:00:00Z", // string|null - ISO 8601
-    "last_used_at": "2026-05-20T14:30:00Z", // string|null - ISO 8601
-    "allowed_endpoints": ["incidents", "labels"], // string[] - endpoint scopes
-    "abilities": ["*"],                 // string[] - "*" or ["read:pii"]
-    "has_pii_access": true,             // boolean - has read:pii ability
-    "is_expired": false,                // boolean
-    "is_disabled": false                // boolean
-  }
-}</code></pre>
-                            </div>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/token/info \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
+  "code": 200,
+  "status": "Success",
+  "data": {
+    "name": "Production Integration",
+    "expires_at": "2026-11-21T00:00:00Z",
+    "last_used_at": "2026-05-20T14:30:00Z",
+    "allowed_endpoints": ["incidents", "labels"],
+    "abilities": ["*"],
+    "has_pii_access": true,
+    "is_expired": false,
+    "is_disabled": false
+  }
+}</code></pre>
                             </div>
                         </div>
                     </div>
@@ -303,25 +303,6 @@
                         </div>
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Returns a paginated list of incidents with optional filters. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">incidents</code></p>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
-  "code": 200,
-  "status": "Success",
-  "data": [
-    {
-      "incident_no": "TR-2026-001",      // string - incident number
-      "incident_title": "Payment Gateway", // string
-      "summary": "Timeout on gateway...",  // string|null
-      "created_at": "2026-05-20T10:30:00Z", // string - ISO 8601
-      "updated_at": "2026-05-21T08:00:00Z"  // string - ISO 8601
-    }
-  ],
-  "links": { "first": "...", "last": "...", "prev": null, "next": "..." },
-  "meta": { "current_page": 1, "per_page": 15, "total": 150, "last_page": 10 }
-}</code></pre>
-                            </div>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Query Parameters</h4>
                             <div class="overflow-x-auto">
                                 <table class="w-full text-sm mb-4">
@@ -330,17 +311,17 @@
                                         <tr><td class="px-3 py-2 font-mono text-xs">start_date</td><td class="px-3 py-2 text-surface-500">date</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Filter from date (YYYY-MM-DD)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">end_date</td><td class="px-3 py-2 text-surface-500">date</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Filter to date, must be &ge; start_date (YYYY-MM-DD)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">min_fund_loss</td><td class="px-3 py-2 text-surface-500">numeric</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Minimum fund loss (&ge; 0)</td></tr>
-                                                <tr><td class="px-3 py-2 font-mono text-xs">max_fund_loss</td><td class="px-3 py-2 text-surface-500">numeric</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Maximum fund loss (&ge; min:0)</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-xs">max_fund_loss</td><td class="px-3 py-2 text-surface-500">numeric</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Maximum fund loss (&ge; 0)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">min_potential_fund_loss</td><td class="px-3 py-2 text-surface-500">numeric</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Minimum potential fund loss (&ge; 0)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">max_potential_fund_loss</td><td class="px-3 py-2 text-surface-500">numeric</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Maximum potential fund loss (&ge; 0)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">fund_status</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">FundStatus enum value</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">pic_id</td><td class="px-3 py-2 text-surface-500">integer</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Filter by PIC user ID (see <a href="#ep-users" class="text-brand-600 underline">Users endpoint</a>)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">severity</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">One of: <code class="text-xs">P1, P2, P3, P4, G, X1, X2, X3, X4, Non Incident</code></td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-xs">incident_status</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">IncidentStatus enum value (e.g. <code class="text-xs">Open, Investigating, Mitigated, Closed</code>)</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-xs">classification</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Classification enum value (e.g. <code class="text-xs">Incident, Issue, Near Miss</code>)</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-xs">incident_status</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">e.g. <code class="text-xs">Open, Investigating, Mitigated, Closed</code></td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-xs">classification</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">e.g. <code class="text-xs">Incident, Issue, Near Miss</code></td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">type</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">One of: <code class="text-xs">Tech, Non-tech</code></td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-xs">tags</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Comma-separated label names (see <a href="#ep-labels" class="text-brand-600 underline">Labels endpoint</a>). Example: <code class="text-xs">Payment Gateway,API</code></td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-xs">search</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Search incident title, summary, or number (min 2 chars)</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-xs">tags</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Comma-separated label names. Example: <code class="text-xs">Payment Gateway,API</code></td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-xs">search</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Search title, summary, or number (min 2 chars)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">per_page</td><td class="px-3 py-2 text-surface-500">integer</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2 text-surface-500">Items per page (1&ndash;100, default: 15)</td></tr>
                                     </tbody>
                                 </table>
@@ -348,17 +329,45 @@
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code># Basic — list first 15 incidents (default)
-curl "https://techrisk.paas.dana.id/api/v1/incidents" \
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start_date=2026-01-01&end_date=2026-05-31&per_page=10" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Accept: application/json"</code></pre>
                             </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code># Multi-filter — P1 Tech incidents in date range with fund loss
-curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start_date=2026-01-01&end_date=2026-05-31&min_fund_loss=100000&per_page=50" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
+                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
+  "code": 200,
+  "status": "Success",
+  "data": [
+    {
+      "incident_no": "TR-2026-001",
+      "incident_title": "Payment Gateway Timeout",
+      "summary": "Timeout occurred on payment gateway during peak hours",
+      "created_at": "2026-05-20T10:30:00Z",
+      "updated_at": "2026-05-21T08:00:00Z"
+    },
+    {
+      "incident_no": "TR-2026-005",
+      "incident_title": "Mobile Banking Outage",
+      "summary": "Mobile banking app unreachable for 30 minutes",
+      "created_at": "2026-03-15T14:00:00Z",
+      "updated_at": "2026-03-16T09:00:00Z"
+    }
+  ],
+  "links": {
+    "first": "https://techrisk.paas.dana.id/api/v1/incidents?page=1",
+    "last": "https://techrisk.paas.dana.id/api/v1/incidents?page=5",
+    "prev": null,
+    "next": "https://techrisk.paas.dana.id/api/v1/incidents?page=2"
+  },
+  "meta": {
+    "current_page": 1,
+    "per_page": 10,
+    "total": 47,
+    "last_page": 5
+  }
+}</code></pre>
                             </div>
                         </div>
                     </div>
@@ -374,64 +383,76 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                         </div>
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Full incident detail with relations (PIC, status updates, action improvements, labels, investigation documents). Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">incidents</code></p>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
-  "code": 200,
-  "status": "Success",
-  "data": {
-    "id": 42,                              // integer
-    "incident_no": "TR-2026-001",           // string
-    "incident_name": "Payment Gateway Timeout", // string
-    "summary": "Timeout occurred...",        // string|null
-    "root_cause": "Database connection pool", // string|null
-    "remark": null,                          // string|null
-    "improvements": "Add connection retry",   // string|null
-    "timeline": "09:00 Incident detected...", // string|null
-    "severity": "P1",                        // string - P1/P2/P3/P4/G/X1-X4
-    "incident_type": "Tech",                 // string - Tech/Non-tech
-    "incident_source": "Internal",           // string|null
-    "incident_category": "System Failure",    // string|null
-    "business_category": "Payment",           // string|null
-    "root_cause_category": "Infrastructure",  // string|null
-    "responsible_team": "Platform",           // string|null
-    "incident_status": "Closed",              // string
-    "classification": "Incident",             // string
-    "glitch_flag": false,                    // boolean
-    "fund_status": "Loss",                   // string|null
-    "potential_fund_loss": 5000000,           // numeric|null
-    "recovered_fund": 3000000,               // numeric|null
-    "fund_loss": 2000000,                    // numeric|null
-    "loss_taken_by": "Company",              // string|null
-    "recovery_percentage": 60.0,             // float|null - only if potential > 0
-    "incident_date": "2026-05-20",           // string|null - date
-    "entry_date_tech_risk": "2026-05-20",    // string|null - date
-    "discovered_at": "2026-05-20T09:00:00Z", // string|null - ISO 8601
-    "stop_bleeding_at": "2026-05-20T10:30:00Z", // string|null - ISO 8601
-    "reported_by": "John Doe",               // string|null
-    "third_party_client": null,              // string|null
-    "pic": { "id": 1, "name": "Jane Smith" }, // object|null - email only with read:pii
-    "labels": [ { "id": 1, "name": "Payment" } ], // array
-    "status_updates": [ { "id": 1, "status": "Open", "notes": "...", "update_date": "2026-05-20" } ],
-    "action_improvements": [ { "id": 1, "title": "Add retry logic", "status": "Completed" } ],
-    "investigation_documents": [ { "id": 1, "original_filename": "RCA.pdf" } ],
-    "created_at": "2026-05-20T10:00:00Z",    // string - ISO 8601
-    "updated_at": "2026-05-21T08:00:00Z"     // string - ISO 8601
-  }
-}</code></pre>
-                            </div>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Path Parameters</h4>
                             <table class="w-full text-sm mb-4">
                                 <thead class="bg-surface-50"><tr><th class="text-left px-3 py-2 font-medium text-surface-600">Parameter</th><th class="text-left px-3 py-2 font-medium text-surface-600">Type</th><th class="text-left px-3 py-2 font-medium text-surface-600">Required</th><th class="text-left px-3 py-2 font-medium text-surface-600">Description</th></tr></thead>
                                 <tbody class="divide-y divide-surface-100"><tr><td class="px-3 py-2 font-mono text-xs">id</td><td class="px-3 py-2 text-surface-500">integer</td><td class="px-3 py-2"><span class="text-red-600 text-xs font-medium">Yes</span></td><td class="px-3 py-2 text-surface-500">Incident database ID</td></tr></tbody>
                             </table>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/incidents/42 \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
+  "code": 200,
+  "status": "Success",
+  "data": {
+    "id": 42,
+    "incident_no": "TR-2026-001",
+    "incident_name": "Payment Gateway Timeout",
+    "summary": "Timeout occurred on payment gateway during peak hours",
+    "root_cause": "Database connection pool exhausted under high load",
+    "remark": null,
+    "improvements": "Add connection retry logic and increase pool size",
+    "timeline": "09:00 Incident detected\n09:05 Team notified\n09:15 Mitigation applied\n10:30 Fully resolved",
+    "severity": "P1",
+    "incident_type": "Tech",
+    "incident_source": "Internal",
+    "incident_category": "System Failure",
+    "business_category": "Payment",
+    "root_cause_category": "Infrastructure",
+    "responsible_team": "Platform",
+    "incident_status": "Closed",
+    "classification": "Incident",
+    "glitch_flag": false,
+    "fund_status": "Loss",
+    "potential_fund_loss": 5000000,
+    "recovered_fund": 3000000,
+    "fund_loss": 2000000,
+    "loss_taken_by": "Company",
+    "recovery_percentage": 60.0,
+    "incident_date": "2026-05-20",
+    "entry_date_tech_risk": "2026-05-20",
+    "discovered_at": "2026-05-20T09:00:00Z",
+    "stop_bleeding_at": "2026-05-20T10:30:00Z",
+    "reported_by": "John Doe",
+    "third_party_client": null,
+    "pic": { "id": 1, "name": "Jane Smith" },
+    "labels": [
+      { "id": 1, "name": "Payment Gateway" },
+      { "id": 5, "name": "API" }
+    ],
+    "status_updates": [
+      { "id": 1, "status": "Open", "notes": "Incident reported by monitoring", "update_date": "2026-05-20" },
+      { "id": 2, "status": "Mitigated", "notes": "Connection pool increased", "update_date": "2026-05-20" },
+      { "id": 3, "status": "Closed", "notes": "Root cause fixed, monitoring stable", "update_date": "2026-05-21" }
+    ],
+    "action_improvements": [
+      { "id": 1, "title": "Add retry logic", "status": "Completed" },
+      { "id": 2, "title": "Increase pool size", "status": "In Progress" }
+    ],
+    "investigation_documents": [
+      { "id": 1, "original_filename": "RCA-TR-2026-001.pdf" }
+    ],
+    "created_at": "2026-05-20T10:00:00Z",
+    "updated_at": "2026-05-21T08:00:00Z"
+  }
+}</code></pre>
                             </div>
                         </div>
                     </div>
@@ -446,18 +467,38 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                             <span class="ml-auto text-xs bg-brand-50 text-brand-700 px-2 py-1 rounded-full font-medium">Auth</span>
                         </div>
                         <div class="p-6">
-                            <p class="text-sm text-surface-600 mb-4">Same as Get by ID, but uses the human-readable incident number (e.g., <code class="bg-surface-100 px-1 rounded text-xs font-mono">TR-2026-001</code>). Response shape is identical to <a href="#ep-incident-by-id" class="text-brand-600 underline">Get Incident by ID</a>. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">incidents-by-no</code></p>
+                            <p class="text-sm text-surface-600 mb-4">Same as Get by ID, but uses the human-readable incident number. Response shape is identical to <a href="#ep-incident-by-id" class="text-brand-600 underline">Get Incident by ID</a>. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">incidents-by-no</code></p>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Path Parameters</h4>
                             <table class="w-full text-sm mb-4">
                                 <thead class="bg-surface-50"><tr><th class="text-left px-3 py-2 font-medium text-surface-600">Parameter</th><th class="text-left px-3 py-2 font-medium text-surface-600">Type</th><th class="text-left px-3 py-2 font-medium text-surface-600">Required</th><th class="text-left px-3 py-2 font-medium text-surface-600">Description</th></tr></thead>
                                 <tbody class="divide-y divide-surface-100"><tr><td class="px-3 py-2 font-mono text-xs">no</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-red-600 text-xs font-medium">Yes</span></td><td class="px-3 py-2 text-surface-500">Incident number (e.g. <code class="text-xs">TR-2026-001</code>)</td></tr></tbody>
                             </table>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/incidents-by-no/TR-2026-001 \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
+  "code": 200,
+  "status": "Success",
+  "data": {
+    "id": 42,
+    "incident_no": "TR-2026-001",
+    "incident_name": "Payment Gateway Timeout",
+    "summary": "Timeout occurred on payment gateway during peak hours",
+    "severity": "P1",
+    "incident_status": "Closed",
+    "pic": { "id": 1, "name": "Jane Smith" },
+    "labels": [ { "id": 1, "name": "Payment Gateway" } ],
+    "status_updates": [ { "id": 1, "status": "Closed", "notes": "...", "update_date": "2026-05-21" } ],
+    "action_improvements": [ { "id": 1, "title": "Add retry logic", "status": "Completed" } ]
+  }
+}</code></pre>
                             </div>
                         </div>
                     </div>
@@ -472,30 +513,30 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                             <span class="ml-auto text-xs bg-brand-50 text-brand-700 px-2 py-1 rounded-full font-medium">Auth</span>
                         </div>
                         <div class="p-6">
-                            <p class="text-sm text-surface-600 mb-4">Returns the incident as a base64-encoded Markdown document. Decode the <code class="bg-surface-100 px-1 rounded text-xs font-mono">data</code> field with <code class="bg-surface-100 px-1 rounded text-xs font-mono">base64_decode()</code> to get the full Markdown. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">incidents-markdown</code></p>
+                            <p class="text-sm text-surface-600 mb-4">Returns the incident as a base64-encoded Markdown document. Decode the <code class="bg-surface-100 px-1 rounded text-xs font-mono">data</code> field to get the full Markdown. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">incidents-markdown</code></p>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Path Parameters</h4>
                             <table class="w-full text-sm mb-4">
                                 <thead class="bg-surface-50"><tr><th class="text-left px-3 py-2 font-medium text-surface-600">Parameter</th><th class="text-left px-3 py-2 font-medium text-surface-600">Type</th><th class="text-left px-3 py-2 font-medium text-surface-600">Required</th><th class="text-left px-3 py-2 font-medium text-surface-600">Description</th></tr></thead>
                                 <tbody class="divide-y divide-surface-100"><tr><td class="px-3 py-2 font-mono text-xs">no</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-red-600 text-xs font-medium">Yes</span></td><td class="px-3 py-2 text-surface-500">Incident number (e.g. <code class="text-xs">TR-2026-001</code>)</td></tr></tbody>
                             </table>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/incidents-by-no/TR-2026-001/markdown \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
   "code": 200,
   "status": "Success",
-  "data": "IyBUUi0yMDI2LTAwMSBJbmNpZGVudCBUaXRsZQo..."
+  "data": "IyBUUi0yMDI2LTAwMSBQYXltZW50IEdhdGV3YXkgVGltZW91dAoK..."
 }</code></pre>
                             </div>
-                            <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-                                <p class="text-sm text-blue-800"><strong>Tip:</strong> To decode the response in your terminal: <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs font-mono">echo "IyBUUi0y..." | base64 -d</code></p>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/incidents-by-no/TR-2026-001/markdown \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
+                            <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                <p class="text-sm text-blue-800"><strong>Decode:</strong> <code class="bg-blue-100 px-1.5 py-0.5 rounded text-xs font-mono">echo "IyBUUi0y..." | base64 -d</code></p>
                             </div>
                         </div>
                     </div>
@@ -516,34 +557,46 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                                 <thead class="bg-surface-50"><tr><th class="text-left px-3 py-2 font-medium text-surface-600">Parameter</th><th class="text-left px-3 py-2 font-medium text-surface-600">Type</th><th class="text-left px-3 py-2 font-medium text-surface-600">Required</th><th class="text-left px-3 py-2 font-medium text-surface-600">Description</th></tr></thead>
                                 <tbody class="divide-y divide-surface-100"><tr><td class="px-3 py-2 font-mono text-xs">incident</td><td class="px-3 py-2 text-surface-500">integer</td><td class="px-3 py-2"><span class="text-red-600 text-xs font-medium">Yes</span></td><td class="px-3 py-2 text-surface-500">Incident database ID</td></tr></tbody>
                             </table>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/incidents/42/action-improvements \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
   "code": 200,
   "status": "Success",
   "data": [
     {
-      "id": 1,                              // integer
-      "title": "Add connection retry logic", // string
-      "detail": "Implement exponential...",  // string|null
-      "due_date": "2026-06-20",             // string|null - date
-      "pic_email": "jane@dana.id",          // string|null - PII-gated, requires read:pii
-      "reminder": true,                     // boolean
-      "reminder_frequency": "7 days",       // string|null
-      "status": "In Progress",              // string
-      "created_at": "2026-05-20T10:00:00Z", // string - ISO 8601
-      "updated_at": "2026-05-21T08:00:00Z"  // string - ISO 8601
+      "id": 1,
+      "title": "Add connection retry logic",
+      "detail": "Implement exponential backoff for database connection retries",
+      "due_date": "2026-06-20",
+      "pic_email": "jane@dana.id",
+      "reminder": true,
+      "reminder_frequency": "7 days",
+      "status": "In Progress",
+      "created_at": "2026-05-20T10:00:00Z",
+      "updated_at": "2026-05-21T08:00:00Z"
+    },
+    {
+      "id": 2,
+      "title": "Increase connection pool size",
+      "detail": "Raise max pool from 10 to 50 connections",
+      "due_date": "2026-06-15",
+      "pic_email": "john@dana.id",
+      "reminder": false,
+      "reminder_frequency": null,
+      "status": "Completed",
+      "created_at": "2026-05-20T10:30:00Z",
+      "updated_at": "2026-05-22T14:00:00Z"
     }
   ]
 }</code></pre>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/incidents/42/action-improvements \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
                             </div>
                         </div>
                     </div>
@@ -564,32 +617,32 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                                 <thead class="bg-surface-50"><tr><th class="text-left px-3 py-2 font-medium text-surface-600">Parameter</th><th class="text-left px-3 py-2 font-medium text-surface-600">Type</th><th class="text-left px-3 py-2 font-medium text-surface-600">Required</th><th class="text-left px-3 py-2 font-medium text-surface-600">Description</th></tr></thead>
                                 <tbody class="divide-y divide-surface-100"><tr><td class="px-3 py-2 font-mono text-xs">action_improvement</td><td class="px-3 py-2 text-surface-500">integer</td><td class="px-3 py-2"><span class="text-red-600 text-xs font-medium">Yes</span></td><td class="px-3 py-2 text-surface-500">Action improvement database ID</td></tr></tbody>
                             </table>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/action-improvements/1 \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
   "code": 200,
   "status": "Success",
   "data": {
-    "id": 1,                              // integer
-    "title": "Add connection retry logic", // string
-    "detail": "Implement exponential backoff for DB connections", // string|null
-    "due_date": "2026-06-20",             // string|null - date
-    "pic_email": "jane@dana.id",          // string|null - PII-gated
-    "reminder": true,                     // boolean
-    "reminder_frequency": "7 days",       // string|null
-    "status": "In Progress",              // string
-    "created_at": "2026-05-20T10:00:00Z", // string - ISO 8601
-    "updated_at": "2026-05-21T08:00:00Z"  // string - ISO 8601
+    "id": 1,
+    "title": "Add connection retry logic",
+    "detail": "Implement exponential backoff for database connection retries",
+    "due_date": "2026-06-20",
+    "pic_email": "jane@dana.id",
+    "reminder": true,
+    "reminder_frequency": "7 days",
+    "status": "In Progress",
+    "created_at": "2026-05-20T10:00:00Z",
+    "updated_at": "2026-05-21T08:00:00Z"
   }
 }</code></pre>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/action-improvements/15 \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
                             </div>
                         </div>
                     </div>
@@ -605,24 +658,24 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                         </div>
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Returns all available label names. No parameters required. Cached for 60 minutes. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">labels</code></p>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
+                            <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+                                <p class="text-sm text-blue-800"><strong>Usage:</strong> Use these names as the <code class="bg-blue-100 px-1 rounded text-xs font-mono">tags</code> parameter in <a href="#ep-incidents-list" class="text-brand-600 underline">List Incidents</a>: <code class="bg-blue-100 px-1 rounded text-xs font-mono">?tags=Payment Gateway,API</code></p>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/labels \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
   "code": 200,
   "status": "Success",
   "data": ["Payment Gateway", "Mobile Banking", "API", "Authentication"]
 }</code></pre>
-                            </div>
-                            <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-                                <p class="text-sm text-blue-800"><strong>Usage:</strong> Use the returned label names as the <code class="bg-blue-100 px-1 rounded text-xs font-mono">tags</code> parameter in <a href="#ep-incidents-list" class="text-brand-600 underline">List Incidents</a>. Example: <code class="bg-blue-100 px-1 rounded text-xs font-mono">?tags=Payment Gateway,API</code></p>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/labels \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
                             </div>
                         </div>
                     </div>
@@ -639,23 +692,23 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Returns all incident type names. No parameters required. Cached for 60 minutes. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">incident-types</code></p>
                             <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-                                <p class="text-sm text-blue-800"><strong>Usage:</strong> Use the returned type names as the <code class="bg-blue-100 px-1 rounded text-xs font-mono">type</code> parameter in <a href="#ep-incidents-list" class="text-brand-600 underline">List Incidents</a> (only <code class="text-xs">Tech</code> and <code class="text-xs">Non-tech</code> are filterable).</p>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
-  "code": 200,
-  "status": "Success",
-  "data": ["Tech", "Non-tech", "Company Loss"]  // string[] - type names
-}</code></pre>
+                                <p class="text-sm text-blue-800"><strong>Usage:</strong> Use as the <code class="bg-blue-100 px-1 rounded text-xs font-mono">type</code> parameter in <a href="#ep-incidents-list" class="text-brand-600 underline">List Incidents</a> (only <code class="text-xs">Tech</code> and <code class="text-xs">Non-tech</code> are filterable).</p>
                             </div>
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/incident-types \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
+  "code": 200,
+  "status": "Success",
+  "data": ["Tech", "Non-tech", "Company Loss"]
+}</code></pre>
                             </div>
                         </div>
                     </div>
@@ -672,26 +725,27 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Returns incident categories with ID, type, and name. No parameters required. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">categories</code></p>
                             <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-                                <p class="text-sm text-blue-800"><strong>Category types:</strong> <code class="bg-blue-100 px-1 rounded text-xs font-mono">incident_category</code>, <code class="bg-blue-100 px-1 rounded text-xs font-mono">root_cause_category</code>, <code class="bg-blue-100 px-1 rounded text-xs font-mono">business_category</code>. Use the <code class="text-xs">name</code> values to understand incident categorization.</p>
+                                <p class="text-sm text-blue-800"><strong>Category types:</strong> <code class="bg-blue-100 px-1 rounded text-xs font-mono">incident_category</code>, <code class="bg-blue-100 px-1 rounded text-xs font-mono">root_cause_category</code>, <code class="bg-blue-100 px-1 rounded text-xs font-mono">business_category</code></p>
                             </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/categories \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
   "code": 200,
   "status": "Success",
   "data": [
     { "id": 1, "type": "incident_category", "name": "System Failure" },
-    { "id": 2, "type": "root_cause_category", "name": "Human Error" }
+    { "id": 2, "type": "root_cause_category", "name": "Human Error" },
+    { "id": 3, "type": "business_category", "name": "Payment" }
   ]
 }</code></pre>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/categories \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
                             </div>
                         </div>
                     </div>
@@ -708,26 +762,27 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                         <div class="p-6">
                             <p class="text-sm text-surface-600 mb-4">Returns users for PIC (Person in Charge) lookup. No parameters required. Ordered by name. Scope: <code class="bg-surface-100 px-1 rounded text-xs font-mono">users</code></p>
                             <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-                                <p class="text-sm text-blue-800"><strong>Usage:</strong> Use the returned <code class="bg-blue-100 px-1 rounded text-xs font-mono">id</code> values as the <code class="bg-blue-100 px-1 rounded text-xs font-mono">pic_id</code> parameter in <a href="#ep-incidents-list" class="text-brand-600 underline">List Incidents</a>. Example: <code class="bg-blue-100 px-1 rounded text-xs font-mono">?pic_id=1</code></p>
+                                <p class="text-sm text-blue-800"><strong>Usage:</strong> Use the <code class="bg-blue-100 px-1 rounded text-xs font-mono">id</code> as <code class="bg-blue-100 px-1 rounded text-xs font-mono">pic_id</code> in <a href="#ep-incidents-list" class="text-brand-600 underline">List Incidents</a>: <code class="bg-blue-100 px-1 rounded text-xs font-mono">?pic_id=1</code></p>
                             </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Response — 200 OK</h4>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
+                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/users \
+  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
+  -H "Accept: application/json"</code></pre>
+                            </div>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
+                            <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
   "code": 200,
   "status": "Success",
   "data": [
     { "id": 1, "name": "John Doe" },
-    { "id": 2, "name": "Jane Smith" }
+    { "id": 2, "name": "Jane Smith" },
+    { "id": 5, "name": "Ahmad Rizki" }
   ]
 }</code></pre>
-                            </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code>curl https://techrisk.paas.dana.id/api/v1/users \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
                             </div>
                         </div>
                     </div>
@@ -751,7 +806,7 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                                         <tr><td class="px-3 py-2 font-mono text-xs">limit</td><td class="px-3 py-2 text-surface-500">integer</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2">100</td><td class="px-3 py-2 text-surface-500">Max records to return (1&ndash;1000)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">offset</td><td class="px-3 py-2 text-surface-500">integer</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2">0</td><td class="px-3 py-2 text-surface-500">Number of records to skip (&ge; 0)</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">start_date</td><td class="px-3 py-2 text-surface-500">date</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2">-</td><td class="px-3 py-2 text-surface-500">Filter from date (YYYY-MM-DD)</td></tr>
-                                        <tr><td class="px-3 py-2 font-mono text-xs">end_date</td><td class="px-3 py-2 text-surface-500">date</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2">-</td><td class="px-3 py-2 text-surface-500">Filter to date, must be &ge; start_date (YYYY-MM-DD)</td></tr>
+                                        <tr><td class="px-3 py-2 font-mono text-xs">end_date</td><td class="px-3 py-2 text-surface-500">date</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2">-</td><td class="px-3 py-2 text-surface-500">Filter to date, must be &ge; start_date</td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">severity</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2">-</td><td class="px-3 py-2 text-surface-500">One of: <code class="text-xs">P1, P2, P3, P4, G, X1, X2, X3, X4, Non Incident</code></td></tr>
                                         <tr><td class="px-3 py-2 font-mono text-xs">type</td><td class="px-3 py-2 text-surface-500">string</td><td class="px-3 py-2"><span class="text-surface-400 text-xs">No</span></td><td class="px-3 py-2">-</td><td class="px-3 py-2 text-surface-500">One of: <code class="text-xs">Tech, Non-tech, Company Loss</code></td></tr>
                                     </tbody>
@@ -760,22 +815,15 @@ curl "https://techrisk.paas.dana.id/api/v1/incidents?severity=P1&type=Tech&start
                             <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Request</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code># First page — get 50 P1 incidents
-curl "https://techrisk.paas.dana.id/api/v1/ai/export?limit=50&offset=0&severity=P1" \
-  -H "Authorization: Bearer YOUR_TOKEN_HERE" \
-  -H "Accept: application/json"</code></pre>
-                            </div>
-                            <div class="bg-surface-900 rounded-lg p-4 relative group mb-4">
-                                <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
-                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code># Next page — increase offset by limit
-curl "https://techrisk.paas.dana.id/api/v1/ai/export?limit=50&offset=50&severity=P1" \
+                                <pre class="text-sm font-mono text-blue-300 overflow-x-auto"><code># Page 1 — first 50 P1 Tech incidents in 2026
+curl "https://techrisk.paas.dana.id/api/v1/ai/export?limit=50&offset=0&severity=P1&type=Tech&start_date=2026-01-01&end_date=2026-12-31" \
   -H "Authorization: Bearer YOUR_TOKEN_HERE" \
   -H "Accept: application/json"</code></pre>
                             </div>
                             <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
-                                <p class="text-sm text-blue-800"><strong>Pagination:</strong> Keep increasing <code class="bg-blue-100 px-1 rounded text-xs font-mono">offset</code> by <code class="bg-blue-100 px-1 rounded text-xs font-mono">limit</code> until <code class="bg-blue-100 px-1 rounded text-xs font-mono">has_more</code> is <code class="text-xs">false</code>. The <code class="bg-blue-100 px-1 rounded text-xs font-mono">total</code> field tells you the total matching records.</p>
+                                <p class="text-sm text-blue-800"><strong>Pagination:</strong> Keep increasing <code class="bg-blue-100 px-1 rounded text-xs font-mono">offset</code> by <code class="bg-blue-100 px-1 rounded text-xs font-mono">limit</code> until <code class="bg-blue-100 px-1 rounded text-xs font-mono">has_more</code> is <code class="text-xs">false</code>.</p>
                             </div>
-                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mt-4 mb-2">Response — 200 OK</h4>
+                            <h4 class="text-xs font-semibold text-surface-500 uppercase tracking-wider mb-2">Example Response — 200 OK</h4>
                             <div class="bg-surface-900 rounded-lg p-4 relative group">
                                 <button onclick="copyCode(this)" class="copy-btn absolute top-2 right-2 text-surface-400 hover:text-white text-xs bg-surface-800 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition">Copy</button>
                                 <pre class="text-sm font-mono text-green-400 overflow-x-auto"><code>{
@@ -787,7 +835,7 @@ curl "https://techrisk.paas.dana.id/api/v1/ai/export?limit=50&offset=50&severity
         "id": 42,
         "no": "TR-2026-001",
         "title": "Payment Gateway Timeout",
-        "summary": "...",
+        "summary": "Timeout occurred on payment gateway during peak hours",
         "severity": "P1",
         "incident_type": "Tech",
         "pic": { "name": "John Doe" },

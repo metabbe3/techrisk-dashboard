@@ -279,16 +279,18 @@ class IncidentResource extends Resource
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType']))
             ->defaultSort('incident_date', 'desc')
             ->columns([
-                TextColumn::make('no')->label('ID')->searchable()->sortable()->summarize(Count::make()->label('Total Cases')),
+                TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')
                     ->searchable()
                     ->html()
+                    ->width('200px')
                     ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render()),
-                TextColumn::make('mttr_formatted')->label('MTTR')->sortable(query: function (Builder $query, string $direction) {
+                TextColumn::make('mttr_formatted')->label('MTTR')->width('70px')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
                 }),
                 TextColumn::make('mtbf_display')
                     ->label('MTBF (days)')
+                    ->width('80px')
                     ->state(function (Incident $record): int {
                         static $cache = [];
                         $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
@@ -329,14 +331,14 @@ class IncidentResource extends Resource
                     })
                     ->formatStateUsing(fn (int $state): string => number_format($state))
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
-                TextColumn::make('severity')->badge()->color(fn (string $state): string => Severity::tryFrom($state)?->color() ?? 'gray')->sortable(),
-                TextColumn::make('incident_status')->badge()->color(fn (string $state): string => IncidentStatus::tryFrom($state)?->color() ?? 'gray')->sortable(),
-                TextColumn::make('fund_status')->badge()->color(fn (string $state): string => FundStatus::tryFrom($state)?->color() ?? 'gray')->sortable()->toggleable(),
-                TextColumn::make('pic.name')->label('PIC')->sortable()->toggleable(),
-                TextColumn::make('incident_date')->dateTime()->sortable(),
-                TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->summarize(Sum::make()->money('IDR')->label('Total Potential')),
-                TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
-                TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->summarize(Sum::make()->money('IDR')->label('Total Loss')),
+                TextColumn::make('severity')->badge()->color(fn (string $state): string => Severity::tryFrom($state)?->color() ?? 'gray')->sortable()->width('80px'),
+                TextColumn::make('incident_status')->badge()->color(fn (string $state): string => IncidentStatus::tryFrom($state)?->color() ?? 'gray')->sortable()->width('100px'),
+                TextColumn::make('fund_status')->badge()->color(fn (string $state): string => FundStatus::tryFrom($state)?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
+                TextColumn::make('pic.name')->label('PIC')->sortable()->toggleable()->width('100px'),
+                TextColumn::make('incident_date')->dateTime()->sortable()->width('100px'),
+                TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->width('110px')->summarize(Sum::make()->money('IDR')->label('Total Potential')),
+                TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->width('100px')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
+                TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->width('100px')->summarize(Sum::make()->money('IDR')->label('Total Loss')),
                 TextColumn::make('recovery_rate')->label('Recovery %')->state(function (Incident $record): string {
                     if ($record->potential_fund_loss && $record->potential_fund_loss > 0) {
                         $rate = ($record->recovered_fund / $record->potential_fund_loss) * 100;
@@ -345,7 +347,7 @@ class IncidentResource extends Resource
                     }
 
                     return '0%';
-                })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray')),
+                })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray'))->width('80px'),
 
                 TextColumn::make('classification')->sortable()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('incident_type')->label('Area')->sortable()->toggleable(isToggledHiddenByDefault: true),

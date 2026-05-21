@@ -15,6 +15,7 @@ use App\Filament\Widgets\MttrMtbfTrendChart;
 use App\Filament\Widgets\OpenIncidents;
 use App\Filament\Widgets\PotentialFundLoss;
 use App\Filament\Widgets\RecentIncidents;
+use App\Filament\Widgets\RiskHeatMatrixWidget;
 use Filament\Pages\Dashboard as BaseDashboard;
 
 class Dashboard extends BaseDashboard
@@ -36,6 +37,9 @@ class Dashboard extends BaseDashboard
             DashboardStatsOverview::class,        // 9 stats
             ActionImprovementsOverview::class,    // 2 stats
             PotentialFundLoss::class,             // 1 stat
+
+            // Risk Heat Matrix
+            RiskHeatMatrixWidget::class,
 
             // Row 3: Charts (3 charts, 4 columns each = 12 columns total)
             MonthlyIncidentsChart::class,
