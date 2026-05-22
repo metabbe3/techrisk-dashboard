@@ -19,6 +19,7 @@ use App\Services\Ai\Concerns\InteractsWithAiApi;
 use App\Services\Ai\ToolRegistryService;
 use App\Services\Ai\WebSearchService;
 use App\Services\Markdown\IncidentMarkdownExporter;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;

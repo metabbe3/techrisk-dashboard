@@ -737,7 +737,7 @@ document.addEventListener('alpine:init', () => {
                         <span x-show="session.model" class="df-session-item__model" x-text="session.model"></span>
                         <span x-show="session.user_name" class="df-session-item__user" x-text="'by ' + session.user_name"></span>
                     </div>
-                    <p class="df-session-item__incident" x-show="session.incident" x-html="incidentLink(session.incident, session.incident?.no + (session.incident?.severity ? ' · ' + session.incident?.severity : '') + (session.incident?.title ? ' — ' + session.incident?.title : ''))"></p>
+                    <p class="df-session-item__incident" x-show="session.incident" x-text="session.incident?.no + (session.incident?.severity ? ' · ' + session.incident?.severity : '') + (session.incident?.title ? ' — ' + session.incident?.title : '')"></p>
                 </div>
             </template>
 
