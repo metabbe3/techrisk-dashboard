@@ -5,6 +5,7 @@ namespace App\Services\Ai\PlanMode;
 use App\Jobs\Ai\AnalyzePlanGaps;
 use App\Jobs\Ai\SynthesizePlanResults;
 use App\Models\AiSetting;
+use App\Models\ChatMessage;
 use App\Models\ChatPlanSubtask;
 use App\Models\WarRoomAgentConfig;
 use App\Services\Ai\AiUsageLogger;
