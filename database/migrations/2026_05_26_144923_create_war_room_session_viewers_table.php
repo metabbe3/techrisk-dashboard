@@ -14,7 +14,7 @@ return new class extends Migration
         Schema::create('war_room_session_viewers', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->foreignUuid('session_id')->constrained('war_room_sessions')->cascadeOnDelete();
-            $table->foreignUuid('user_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->timestamps();
 
             $table->unique(['session_id', 'user_id']);
