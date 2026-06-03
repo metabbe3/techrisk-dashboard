@@ -126,6 +126,9 @@ Route::post('/admin/ai/chat/stream-plan-resume', ChatPlanResumeController::class
 Route::post('/admin/ai/chat/plan-subtask/{id}/retry', [ChatPlanResumeController::class, 'retrySubtask'])
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.plan-subtask-retry');
+Route::get('/admin/ai/chat/plan-subtask/{id}', [ChatPlanResumeController::class, 'getSubtaskStatus'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.plan-subtask-status');
 Route::post('/admin/ai/chat/finalize', ChatFinalizeController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.finalize');

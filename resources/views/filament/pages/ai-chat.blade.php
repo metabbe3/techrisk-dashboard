@@ -2151,6 +2151,7 @@ window.retryPlanSubtask = async function(subtaskId, btn) {
             const statusSpan = btn.previousElementSibling;
             if (statusSpan) statusSpan.textContent = 'Analyzing...';
             btn.remove();
+            pollSubtaskStatus(subtaskId, card);
         } else {
             const data = await res.json().catch(() => ({}));
             btn.textContent = 'Retry';
@@ -2163,6 +2164,47 @@ window.retryPlanSubtask = async function(subtaskId, btn) {
         console.error('Retry error:', e);
     }
 };
+
+function pollSubtaskStatus(subtaskId, card) {
+    const interval = setInterval(async () => {
+        try {
+            const res = await fetch('/admin/ai/chat/plan-subtask/' + subtaskId);
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.status === 'completed' || data.status === 'failed') {
+                clearInterval(interval);
+                const dot = card?.querySelector('.rounded-full');
+                const labelRow = card?.querySelector('.flex.items-center.gap-2');
+                const statusSpan = labelRow?.querySelector('span.text-\\[10px\\]');
+
+                if (data.status === 'completed' && dot) {
+                    dot.className = 'inline-block w-2 h-2 rounded-full bg-green-500';
+                    if (statusSpan) statusSpan.textContent = 'Done';
+                } else if (data.status === 'failed' && dot) {
+                    dot.className = 'inline-block w-2 h-2 rounded-full bg-red-500';
+                    if (statusSpan) statusSpan.textContent = 'Failed';
+
+                    const retryBtn = document.createElement('button');
+                    retryBtn.textContent = 'Retry';
+                    retryBtn.className = 'text-[10px] text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline cursor-pointer';
+                    retryBtn.onclick = () => window.retryPlanSubtask(subtaskId, retryBtn);
+                    labelRow?.appendChild(retryBtn);
+
+                    if (data.error_message) {
+                        const errP = document.createElement('p');
+                        errP.className = 'text-[10px] text-red-400 dark:text-red-500 mt-0.5';
+                        errP.textContent = data.error_message;
+                        labelRow?.parentElement?.appendChild(errP);
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('Subtask poll error:', e);
+        }
+    }, 3000);
+
+    setTimeout(() => clearInterval(interval), 600000);
+}
 </script>
 </div>
 </x-filament-panels::page>

@@ -100,4 +100,18 @@ class ChatPlanResumeController
             'status' => 'pending',
         ]);
     }
+
+    public function getSubtaskStatus(Request $request, string $id): JsonResponse
+    {
+        $subtask = ChatPlanSubtask::where('id', $id)
+            ->whereHas('conversation', fn ($q) => $q->where('user_id', auth()->id()))
+            ->firstOrFail();
+
+        return response()->json([
+            'id' => $subtask->id,
+            'status' => $subtask->status,
+            'error_message' => $subtask->error_message,
+            'result' => $subtask->result,
+        ]);
+    }
 }
