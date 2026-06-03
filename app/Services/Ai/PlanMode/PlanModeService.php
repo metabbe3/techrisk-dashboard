@@ -511,7 +511,7 @@ class PlanModeService
         $planText = $planMessage?->plan_metadata['plan_text'] ?? '';
         $preAnalysis = $planMessage?->plan_metadata['pre_analysis'] ?? null;
 
-        $synthesisModel = config('ai.plan_mode.synthesis_model') ?? $userModel ?? 'REASONING-MODEL';
+        $synthesisModel = $userModel ?? config('ai.plan_mode.synthesis_model', 'REASONING-MODEL');
         $maxTokens = config('ai.plan_mode.synthesis_max_tokens', 8192);
         $timeout = config('ai.plan_mode.synthesis_timeout', 120);
 
@@ -1016,13 +1016,22 @@ class PlanModeService
 
     private function resolveSubtaskModel(ChatPlanSubtask $subtask, ?string $userModel = null): string
     {
-        $isResearch = ($subtask->metadata['type'] ?? null) === 'research';
-        $domain = $subtask->metadata['domain'] ?? $subtask->getRawOriginal('description') ?? '';
+        // User's explicit model selection takes priority
+        if ($userModel) {
+            return $userModel;
+        }
 
-        // Determine task type for smart routing
-        $taskType = $this->classifySubtaskType($subtask->description, $isResearch);
+        // Per-persona model override
+        if ($subtask->persona_key) {
+            $config = WarRoomAgentConfig::findByRole($subtask->persona_key);
+            if ($config?->model_override) {
+                return $config->model_override;
+            }
+        }
 
         // Check routing config for this task type
+        $isResearch = ($subtask->metadata['type'] ?? null) === 'research';
+        $taskType = $this->classifySubtaskType($subtask->description, $isResearch);
         $routing = config("ai.plan_mode.subtask_model_routing.{$taskType}");
         if ($routing && ! empty($routing['model'])) {
             return $routing['model'];
@@ -1034,15 +1043,7 @@ class PlanModeService
             return $override;
         }
 
-        // Per-persona model override
-        if ($subtask->persona_key) {
-            $config = WarRoomAgentConfig::findByRole($subtask->persona_key);
-            if ($config?->model_override) {
-                return $config->model_override;
-            }
-        }
-
-        return $userModel ?? AiSetting::get('default_model', config('ai.default_model'));
+        return AiSetting::get('default_model', config('ai.default_model'));
     }
 
     private function resolveSubtaskMaxTokens(ChatPlanSubtask $subtask): int
