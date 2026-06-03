@@ -1,4 +1,5 @@
 <x-filament-panels::page>
+<div>
 @push('scripts')
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
@@ -2161,4 +2162,5 @@ window.retryPlanSubtask = async function(subtaskId, btn) {
     }
 };
 </script>
+</div>
 </x-filament-panels::page>
