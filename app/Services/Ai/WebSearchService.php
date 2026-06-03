@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\Log;
 
 class WebSearchService
 {
+    public function __construct(
+        private AiUsageLogger $usageLogger,
+    ) {}
+
     /**
      * Patterns that identify confidential/internal data to strip from search queries.
      * These must never be sent to external search APIs.
@@ -36,7 +40,7 @@ class WebSearchService
         '/\b[\w.-]+\.(topic|queue|exchange)\.?(internal|corp|prod)?\b/i',
     ];
 
-    public function search(string $query, array $incidentContext = []): array
+    public function search(string $query, array $incidentContext = [], ?int $userId = null): array
     {
         $provider = config('ai.search.provider', 'gateway');
 
@@ -50,10 +54,289 @@ class WebSearchService
         }
 
         return match ($provider) {
-            'gemini' => $this->searchViaGemini($sanitized, $incidentContext),
-            'gateway' => $this->searchViaGateway($sanitized, $incidentContext),
+            'gemini' => $this->searchViaGemini($sanitized, $incidentContext, $userId),
+            'gateway' => $this->searchViaGateway($sanitized, $incidentContext, $userId),
             default => ['results' => [], 'context' => '', 'error' => 'Unknown search provider'],
         };
+    }
+
+    /**
+     * Run multiple search queries in parallel and merge results.
+     * Each query is sanitized individually; empty sanitized queries are dropped.
+     */
+    public function searchMulti(array $queries, array $incidentContext = [], ?int $userId = null, int $maxQueries = 3): array
+    {
+        $maxQueries = $maxQueries ?: (int) config('ai.search.max_parallel_queries', 3);
+        $queries = array_slice(array_values($queries), 0, $maxQueries);
+
+        // Sanitize each query and filter out empties
+        $sanitized = [];
+        foreach ($queries as $query) {
+            $clean = $this->sanitizeQuery($query);
+            if (! empty(trim($clean))) {
+                $sanitized[] = ['original' => $query, 'clean' => $clean];
+            }
+        }
+
+        if (empty($sanitized)) {
+            return ['results' => [], 'context' => '', 'error' => 'All queries sanitized to empty'];
+        }
+
+        // Single query — just delegate to search()
+        if (count($sanitized) === 1) {
+            return $this->search($sanitized[0]['original'], $incidentContext, $userId);
+        }
+
+        $provider = config('ai.search.provider', 'gateway');
+        $timeout = (int) config('ai.search.parallel_timeout', 20);
+
+        try {
+            $startTime = microtime(true);
+
+            // Run all queries in parallel
+            $responses = Http::pool(function ($pool) use ($sanitized, $provider, $incidentContext, $timeout) {
+                foreach ($sanitized as $i => $q) {
+                    $method = $provider === 'gemini' ? 'buildGeminiPoolRequest' : 'buildGatewayPoolRequest';
+                    $this->{$method}($pool, $i, $q['clean'], $incidentContext, $timeout);
+                }
+            });
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+
+            // Parse each response
+            $allResults = [];
+            foreach ($sanitized as $i => $q) {
+                $response = $responses[$i] ?? null;
+                if (! $response || ! $response->successful()) {
+                    Log::warning("Parallel search query {$i} failed", ['query' => $q['clean']]);
+                    continue;
+                }
+
+                $parsed = $provider === 'gemini'
+                    ? $this->parseGeminiResponse($response->json())
+                    : $this->parseGatewayResponse($response->json(), $q['clean']);
+
+                $parsed['_label'] = $q['clean'];
+                $allResults[] = $parsed;
+            }
+
+            if (empty($allResults)) {
+                return ['results' => [], 'context' => '', 'error' => 'All parallel queries failed'];
+            }
+
+            // Log aggregate usage
+            $this->usageLogger->log(
+                fieldType: 'web_search_multi',
+                model: config('ai.search.gemini_model', 'gemini-2.5-flash'),
+                success: true,
+                inputLength: array_sum(array_map(fn ($q) => strlen($q['clean']), $sanitized)),
+                responseTimeMs: $responseTimeMs,
+                metadata: ['query_count' => count($sanitized), 'provider' => $provider],
+                userId: $userId,
+            );
+
+            return $this->mergeMultiResults($allResults);
+        } catch (\Throwable $e) {
+            Log::warning('Parallel web search failed', ['error' => $e->getMessage()]);
+
+            return ['results' => [], 'context' => '', 'error' => $e->getMessage()];
+        }
+    }
+
+    private function buildGatewayPoolRequest($pool, int $index, string $query, array $incidentContext, int $timeout): void
+    {
+        $apiKey = config('ai.search.gemini_api_key')
+            ?: AiSetting::get('api_key', config('ai.api_key', ''));
+        $model = config('ai.search.gemini_model', 'gemini-2.5-flash');
+        $baseUrl = rtrim(config('ai.search.gemini_base_url') ?? '', '/')
+            ?: rtrim(AiSetting::get('base_url', config('ai.base_url', '')), '/');
+
+        $pool->as($index)->withHeaders([
+            'Authorization' => 'Bearer '.$apiKey,
+            'Content-Type' => 'application/json',
+        ])->timeout($timeout)->post("{$baseUrl}/chat/completions", [
+            'model' => $model,
+            'messages' => [
+                ['role' => 'system', 'content' => $this->buildGatewaySearchPrompt($incidentContext)],
+                ['role' => 'user', 'content' => "Search the web for: {$query}"],
+            ],
+            'max_tokens' => 2000,
+        ]);
+    }
+
+    private function buildGeminiPoolRequest($pool, int $index, string $query, array $incidentContext, int $timeout): void
+    {
+        $apiKey = config('ai.search.gemini_api_key');
+        $model = config('ai.search.gemini_model', 'gemini-2.5-flash');
+        $baseUrl = rtrim(config('ai.search.gemini_base_url') ?? '', '/');
+
+        $pool->as($index)->withHeaders([
+            'Content-Type' => 'application/json',
+        ])->timeout($timeout)->post("{$baseUrl}/models/{$model}:generateContent?key={$apiKey}", [
+            'contents' => [
+                ['parts' => [['text' => $this->buildGeminiSearchPrompt($query)]]],
+            ],
+            'tools' => [['googleSearch' => (object) []]],
+        ]);
+    }
+
+    /**
+     * Merge results from multiple parallel queries.
+     * Deduplicates sources by URL, combines context under sub-headings.
+     */
+    private function mergeMultiResults(array $allResults): array
+    {
+        $maxResults = (int) config('ai.search.max_results', 8);
+        $seenUrls = [];
+        $mergedSources = [];
+        $contextParts = [];
+        $summaries = [];
+
+        foreach ($allResults as $result) {
+            $label = $result['_label'] ?? 'Unknown query';
+            unset($result['_label']);
+
+            // Collect context under sub-headings
+            if (! empty($result['context'])) {
+                $contextParts[] = "### Query: \"{$label}\"\n{$result['context']}";
+            }
+            if (! empty($result['summary'])) {
+                $summaries[] = $result['summary'];
+            }
+
+            // Deduplicate sources by URL
+            foreach ($result['results'] ?? [] as $source) {
+                $url = $source['url'] ?? '';
+                if ($url && ! isset($seenUrls[$url])) {
+                    $seenUrls[$url] = true;
+                    $mergedSources[] = $source;
+                }
+            }
+        }
+
+        $mergedSources = array_slice($mergedSources, 0, $maxResults);
+
+        // Build combined context with sub-headings
+        $context = implode("\n\n---\n\n", $contextParts);
+
+        // Add unified sources list
+        if (! empty($mergedSources)) {
+            $context .= "\n\n### All Sources\n";
+            foreach ($mergedSources as $i => $source) {
+                $context .= ($i + 1).". [{$source['title']}]({$source['url']})\n";
+            }
+        }
+
+        // Cap context to avoid overwhelming the answering LLM
+        $maxChars = (int) config('ai.search.max_context_chars', 4000);
+        if (strlen($context) > $maxChars) {
+            $context = mb_substr($context, 0, $maxChars)."\n\n[Results truncated to fit context window]";
+        }
+
+        return [
+            'results' => $mergedSources,
+            'context' => $context,
+            'summary' => implode("\n\n", $summaries),
+            'error' => '',
+        ];
+    }
+
+    /**
+     * Filter search results by relevance to the original query and incident context.
+     * Lightweight TF-based scoring — no extra LLM call needed.
+     */
+    public function filterRelevantResults(array $results, string $query, array $incidentContext = []): array
+    {
+        if (empty($results)) {
+            return $results;
+        }
+
+        $threshold = (float) config('ai.search.relevance_threshold', 0.2);
+
+        // Extract key terms from query
+        $queryTerms = $this->extractKeyTerms($query);
+
+        // Extract key terms from incident context
+        $contextTerms = [];
+        foreach ($incidentContext as $ctx) {
+            if (! empty($ctx['root_cause_categories'])) {
+                $contextTerms = array_merge($contextTerms, $ctx['root_cause_categories']);
+            }
+            if (! empty($ctx['safe_title_words'])) {
+                $contextTerms = array_merge($contextTerms, $ctx['safe_title_words']);
+            }
+            if (! empty($ctx['labels'])) {
+                $contextTerms = array_merge($contextTerms, $ctx['labels']);
+            }
+            if (! empty($ctx['technical_keywords'])) {
+                $contextTerms = array_merge($contextTerms, $ctx['technical_keywords']);
+            }
+        }
+        $contextTerms = array_unique(array_map('strtolower', $contextTerms));
+
+        if (empty($queryTerms) && empty($contextTerms)) {
+            return $results;
+        }
+
+        $scored = [];
+        foreach ($results as $result) {
+            $title = strtolower($result['title'] ?? '');
+            $url = strtolower($result['url'] ?? '');
+            $text = $title.' '.$url;
+
+            $queryOverlap = 0;
+            if (! empty($queryTerms)) {
+                $matches = 0;
+                foreach ($queryTerms as $term) {
+                    if (str_contains($text, $term)) {
+                        $matches++;
+                    }
+                }
+                $queryOverlap = $matches / count($queryTerms);
+            }
+
+            $contextOverlap = 0;
+            if (! empty($contextTerms)) {
+                $matches = 0;
+                foreach ($contextTerms as $term) {
+                    if (str_contains($text, $term)) {
+                        $matches++;
+                    }
+                }
+                $contextOverlap = $matches / count($contextTerms);
+            }
+
+            $score = ($queryOverlap * 0.6) + ($contextOverlap * 0.4);
+
+            if ($score >= $threshold) {
+                $scored[] = ['result' => $result, 'score' => $score];
+            }
+        }
+
+        // Sort by relevance descending
+        usort($scored, fn ($a, $b) => $b['score'] <=> $a['score']);
+
+        return array_map(fn ($item) => $item['result'], $scored);
+    }
+
+    /**
+     * Extract meaningful key terms from a string (lowercased, stop words removed).
+     */
+    private function extractKeyTerms(string $text): array
+    {
+        $stopWords = ['the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'is', 'was', 'by', 'with', 'from', 'due', 'not', 'this', 'that', 'it', 'how', 'what', 'why', 'can', 'are', 'be', 'do', 'does', 'has', 'have', 'but', 'if', 'so', 'no', 'all', 'any', 'each', 'every', 'some', 'such'];
+
+        $words = preg_split('/[\s\-_:;,.\(\)\[\]]+/', strtolower($text));
+        $terms = [];
+        foreach ($words as $word) {
+            $word = trim($word);
+            if (strlen($word) < 3 || in_array($word, $stopWords)) {
+                continue;
+            }
+            $terms[] = $word;
+        }
+
+        return array_unique($terms);
     }
 
     /**
@@ -98,7 +381,7 @@ class WebSearchService
         foreach ($names as $name) {
             // Match full name and also individual words that are clearly names
             $escaped = preg_quote($name, '/');
-            $query = preg_replace('/\b' . $escaped . '\b/i', '', $query);
+            $query = preg_replace('/\b'.$escaped.'\b/i', '', $query);
         }
 
         return $query;
@@ -132,7 +415,7 @@ class WebSearchService
     /**
      * Use AI gateway (OpenAI-compatible /chat/completions) with Gemini model.
      */
-    private function searchViaGateway(string $sanitizedQuery, array $incidentContext = []): array
+    private function searchViaGateway(string $sanitizedQuery, array $incidentContext = [], ?int $userId = null): array
     {
         $apiKey = config('ai.search.gemini_api_key')
             ?: AiSetting::get('api_key', config('ai.api_key', ''));
@@ -146,6 +429,8 @@ class WebSearchService
 
             return ['results' => [], 'context' => '', 'error' => 'Search not configured'];
         }
+
+        $startTime = microtime(true);
 
         try {
             $response = Http::withHeaders([
@@ -162,18 +447,63 @@ class WebSearchService
                     'max_tokens' => 2000,
                 ]);
 
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+
             if (! $response->successful()) {
                 Log::warning('Gateway search API error', [
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
 
+                $this->usageLogger->log(
+                    fieldType: 'web_search',
+                    model: $model,
+                    success: false,
+                    inputLength: strlen($sanitizedQuery),
+                    usage: array_filter([
+                        'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                        'completion_tokens' => $usage['completion_tokens'] ?? null,
+                        'total_tokens' => $usage['total_tokens'] ?? null,
+                    ]),
+                    responseTimeMs: $responseTimeMs,
+                    errorMessage: 'HTTP '.$response->status(),
+                    userId: $userId,
+                );
+
                 return ['results' => [], 'context' => '', 'error' => 'Search API error'];
             }
 
-            return $this->parseGatewayResponse($response->json(), $sanitizedQuery);
+            $this->usageLogger->log(
+                fieldType: 'web_search',
+                model: $model,
+                success: true,
+                inputLength: strlen($sanitizedQuery),
+                outputLength: strlen($responseData['choices'][0]['message']['content'] ?? ''),
+                usage: array_filter([
+                    'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                    'completion_tokens' => $usage['completion_tokens'] ?? null,
+                    'total_tokens' => $usage['total_tokens'] ?? null,
+                ]),
+                responseTimeMs: $responseTimeMs,
+                apiRequestId: $responseData['id'] ?? null,
+                userId: $userId,
+            );
+
+            return $this->parseGatewayResponse($responseData, $sanitizedQuery);
         } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
             Log::warning('Web search failed', ['error' => $e->getMessage()]);
+
+            $this->usageLogger->log(
+                fieldType: 'web_search',
+                model: $model,
+                success: false,
+                responseTimeMs: $responseTimeMs,
+                errorMessage: $e->getMessage(),
+                userId: $userId,
+            );
 
             return ['results' => [], 'context' => '', 'error' => $e->getMessage()];
         }
@@ -182,7 +512,7 @@ class WebSearchService
     /**
      * Use direct Gemini API with Google Search grounding.
      */
-    private function searchViaGemini(string $sanitizedQuery, array $incidentContext = []): array
+    private function searchViaGemini(string $sanitizedQuery, array $incidentContext = [], ?int $userId = null): array
     {
         $apiKey = config('ai.search.gemini_api_key');
         $model = config('ai.search.gemini_model', 'gemini-2.5-flash');
@@ -194,6 +524,8 @@ class WebSearchService
 
             return ['results' => [], 'context' => '', 'error' => 'Search not configured'];
         }
+
+        $startTime = microtime(true);
 
         try {
             $response = Http::withHeaders([
@@ -213,18 +545,50 @@ class WebSearchService
                     ],
                 ]);
 
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+
             if (! $response->successful()) {
                 Log::warning('Gemini search API error', [
                     'status' => $response->status(),
                     'body' => $response->body(),
                 ]);
 
+                $this->usageLogger->log(
+                    fieldType: 'web_search',
+                    model: $model,
+                    success: false,
+                    inputLength: strlen($sanitizedQuery),
+                    responseTimeMs: $responseTimeMs,
+                    errorMessage: 'HTTP '.$response->status(),
+                    userId: $userId,
+                );
+
                 return ['results' => [], 'context' => '', 'error' => 'Search API error'];
             }
 
+            $this->usageLogger->log(
+                fieldType: 'web_search',
+                model: $model,
+                success: true,
+                inputLength: strlen($sanitizedQuery),
+                responseTimeMs: $responseTimeMs,
+                metadata: ['provider' => 'gemini'],
+                userId: $userId,
+            );
+
             return $this->parseGeminiResponse($response->json());
         } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
             Log::warning('Web search failed', ['error' => $e->getMessage()]);
+
+            $this->usageLogger->log(
+                fieldType: 'web_search',
+                model: $model,
+                success: false,
+                responseTimeMs: $responseTimeMs,
+                errorMessage: $e->getMessage(),
+                userId: $userId,
+            );
 
             return ['results' => [], 'context' => '', 'error' => $e->getMessage()];
         }
@@ -232,9 +596,9 @@ class WebSearchService
 
     private function buildGatewaySearchPrompt(array $incidentContext = []): string
     {
-        $prompt = "You are a web search assistant for a technical risk management team. "
+        $prompt = 'You are a web search assistant for a technical risk management team. '
             ."Search the web for the user's query and provide factual, well-sourced information.\n\n"
-            ."Focus on: root cause analysis, known issues, CVEs, vendor advisories, industry standards, "
+            .'Focus on: root cause analysis, known issues, CVEs, vendor advisories, industry standards, '
             ."best practices, or similar incidents reported publicly.\n\n";
 
         if (! empty($incidentContext)) {
@@ -266,18 +630,18 @@ class WebSearchService
             ."Format your response as:\n"
             ."1. Summary of findings\n"
             ."2. Key details and specifics\n"
-            ."3. Sources (numbered list with URLs)";
+            .'3. Sources (numbered list with URLs)';
 
         return $prompt;
     }
 
     private function buildGeminiSearchPrompt(string $query): string
     {
-        return "Search the web for information about the following topic in the context of incident management, technical risk, or IT operations. "
+        return 'Search the web for information about the following topic in the context of incident management, technical risk, or IT operations. '
             ."Focus on: root cause analysis, known issues, best practices, industry standards, or similar incidents reported publicly.\n\n"
             ."Query: {$query}\n\n"
-            ."Provide a concise summary of what you found, with key takeaways. "
-            ."Include specific details like affected systems, vendors, CVEs, or recommendations when available.";
+            .'Provide a concise summary of what you found, with key takeaways. '
+            .'Include specific details like affected systems, vendors, CVEs, or recommendations when available.';
     }
 
     private function parseGatewayResponse(array $data, string $query): array

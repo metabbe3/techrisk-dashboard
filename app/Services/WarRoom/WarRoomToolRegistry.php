@@ -157,13 +157,22 @@ class WarRoomToolRegistry
             'type' => 'function',
             'function' => [
                 'name' => 'web_search',
-                'description' => 'Search the internet for information related to the incident. Use this to find external references, known issues, vendor advisories, or best practices for the technologies involved.',
+                'description' => 'Search the internet for information related to the incident. Use this to find external references, known issues, vendor advisories, or best practices for the technologies involved. You can search from multiple angles using additional_queries.',
                 'parameters' => [
                     'type' => 'object',
                     'properties' => [
                         'query' => [
                             'type' => 'string',
-                            'description' => 'Search query (be specific and technical)',
+                            'description' => 'Primary search query (be specific and technical)',
+                        ],
+                        'additional_queries' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Optional extra search queries for multi-angle coverage (max 2). Use different angles e.g. root cause, industry benchmarks, remediation.',
+                        ],
+                        'context' => [
+                            'type' => 'string',
+                            'description' => 'Brief context about what you are looking for and why',
                         ],
                     ],
                     'required' => ['query'],

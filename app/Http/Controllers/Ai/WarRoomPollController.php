@@ -6,16 +6,20 @@ use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 
 class WarRoomPollController
 {
     public function __invoke(Request $request, string $id): JsonResponse
     {
-        $session = WarRoomSession::forUser()->findOrFail($id);
+        $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         if ($session->status === 'running') {
-            app(\App\Services\WarRoom\WarRoomService::class)->markStuckMessages($session);
-            $session->refresh();
+            $throttleKey = "warroom_stuck_check:{$session->id}";
+            if (Cache::add($throttleKey, true, 30)) {
+                app(\App\Services\WarRoom\WarRoomService::class)->markStuckMessages($session);
+                $session->refresh();
+            }
         }
 
         $messages = WarRoomMessage::where('session_id', $session->id)

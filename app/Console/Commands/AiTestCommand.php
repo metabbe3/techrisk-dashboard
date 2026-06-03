@@ -17,10 +17,10 @@ class AiTestCommand extends Command
         $this->info('Checking AI service configuration...');
         $this->newLine();
 
-        $baseUrl = config('ai.base_url');
-        $apiKey = config('ai.api_key');
-        $defaultModel = config('ai.default_model');
-        $timeout = config('ai.timeout');
+        $baseUrl = \App\Models\AiSetting::get('base_url', config('ai.base_url'));
+        $apiKey = \App\Models\AiSetting::get('api_key', config('ai.api_key'));
+        $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model'));
+        $timeout = \App\Models\AiSetting::get('timeout', config('ai.timeout'));
 
         $this->line('  Base URL:  '.($baseUrl ? "<fg=green>{$baseUrl}</>" : '<fg=red>NOT SET</>'));
         $this->line('  API Key:   '.($apiKey ? '<fg=green>'.substr($apiKey, 0, 8).'...</>' : '<fg=red>NOT SET</>'));

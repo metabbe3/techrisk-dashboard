@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use OwenIt\Auditing\Contracts\Auditable;
 
 class WarRoomMessage extends Model implements Auditable
 {
+    use HasFactory;
     use HasUuids;
     use \OwenIt\Auditing\Auditable;
     use \App\Traits\HasStatusStateMachine;
@@ -71,5 +73,11 @@ class WarRoomMessage extends Model implements Auditable
         }
 
         $this->update($update);
+    }
+
+    public function appendContent(string $delta): void
+    {
+        $this->content = ($this->content ?? '').$delta;
+        static::where('id', $this->id)->update(['content' => $this->content]);
     }
 }

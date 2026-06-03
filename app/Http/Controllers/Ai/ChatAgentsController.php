@@ -9,13 +9,16 @@ class ChatAgentsController
 {
     public function __invoke(): JsonResponse
     {
-        $agents = WarRoomAgentConfig::getActiveAgents()
+        $agents = WarRoomAgentConfig::with(['skillRecords' => fn ($q) => $q->where('is_active', true)])
+            ->active()
+            ->ordered()
+            ->get()
             ->where('role_key', '!=', 'moderator')
             ->map(fn ($agent) => [
                 'role_key' => $agent->role_key,
                 'display_name' => $agent->display_name,
                 'description' => $agent->description,
-                'skills' => $agent->skillRecords()->where('is_active', true)->get()
+                'skills' => $agent->skillRecords
                     ->map(fn ($skill) => [
                         'name' => $skill->name,
                         'display_name' => $skill->display_name,

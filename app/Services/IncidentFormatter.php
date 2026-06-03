@@ -55,7 +55,10 @@ class IncidentFormatter
         $parts[] = "Severity: {$incident->severity}";
         $parts[] = "Status: {$incident->incident_status}";
         $parts[] = "PIC: {$pic}";
-        $parts[] = "Date: {$date}";
+
+        if ($options['show_date'] ?? true) {
+            $parts[] = "Date: {$date}";
+        }
 
         if ($options['show_fund_loss'] ?? true) {
             if ($incident->fund_loss > 0) {
@@ -70,8 +73,12 @@ class IncidentFormatter
             }
         }
 
-        $parts[] = "MTTR: {$incident->mttr}";
-        $parts[] = "MTBF: {$incident->mtbf}";
+        if ($options['show_mttr'] ?? true) {
+            $parts[] = "MTTR: {$incident->mttr}";
+        }
+        if ($options['show_mtbf'] ?? true) {
+            $parts[] = "MTBF: {$incident->mtbf}";
+        }
         $parts[] = "Labels: {$labels}";
 
         if (($options['show_summary'] ?? true) && $incident->summary) {
@@ -113,6 +120,22 @@ class IncidentFormatter
 
         if (($options['show_match_criteria'] ?? false) && ! empty($incident->match_criteria)) {
             $parts[] = 'matched_via: '.implode('+', $incident->match_criteria);
+        }
+
+        if (($options['show_discovered'] ?? false) && $incident->discovered_at) {
+            $parts[] = 'Discovered: '.$incident->discovered_at->format('Y-m-d H:i');
+        }
+
+        if (($options['show_evidence'] ?? false) && ($incident->evidence || $incident->evidence_link)) {
+            $parts[] = 'Has Evidence: Yes';
+        }
+
+        if (($options['show_recurrence'] ?? false) && ! empty($incident->recurrence_data['is_recurring'])) {
+            $parts[] = 'Recurring: Yes';
+        }
+
+        if (($options['show_investigation_status'] ?? false) && $incident->investigation_pic_status) {
+            $parts[] = 'Investigation: '.$incident->investigation_pic_status;
         }
 
         return '- '.implode(' | ', $parts);
@@ -217,5 +240,56 @@ class IncidentFormatter
         }
 
         return implode("\n", $parts);
+    }
+
+    public static function extractSafeTitleWords(string $title): array
+    {
+        $stopWords = ['the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'for', 'and', 'or', 'is', 'was', 'by', 'with', 'from', 'due', 'not'];
+        $words = preg_split('/[\s\-_:;,]+/', $title);
+        $safe = [];
+
+        foreach (array_slice($words, 0, 8) as $word) {
+            $word = trim($word);
+            if (strlen($word) < 3 || in_array(strtolower($word), $stopWords)) {
+                continue;
+            }
+            if (preg_match('/^[\d_]+$/', $word) || preg_match('/^[A-Z]{2,}[_-]/', $word)) {
+                continue;
+            }
+            $safe[] = $word;
+        }
+
+        return array_slice($safe, 0, 4);
+    }
+
+    public static function extractTechnicalKeywords(string $text): array
+    {
+        $keywords = [];
+
+        if (preg_match_all('/\b(?:MySQL|PostgreSQL|MongoDB|Redis|Elasticsearch|MariaDB|Oracle|SQL\s*Server|Cassandra|Couchbase|DynamoDB)\b/i', $text, $matches)) {
+            $keywords = array_merge($keywords, $matches[0]);
+        }
+
+        if (preg_match_all('/\b(?:Kafka|RabbitMQ|ActiveMQ|SQS|Kinesis|Pub\/Sub|NATS|Pulsar)\b/i', $text, $matches)) {
+            $keywords = array_merge($keywords, $matches[0]);
+        }
+
+        if (preg_match_all('/\b(?:HTTP|HTTPS|gRPC|WebSocket|TCP|UDP|FTP|SSH|TLS|SSL|DNS|SMTP)\b/i', $text, $matches)) {
+            $keywords = array_merge($keywords, array_map('strtoupper', $matches[0]));
+        }
+
+        if (preg_match_all('/\b(?:timeout|deadlock|OOM|out\s+of\s+memory|connection\s+(?:pool|refused|reset)|segmentation\s+fault|stack\s+overflow|race\s+condition)\b/i', $text, $matches)) {
+            $keywords = array_merge($keywords, $matches[0]);
+        }
+
+        if (preg_match_all('/\b(?:Kubernetes|Docker|container|pod|cluster|load\s+balancer|proxy|CDN|firewall|VPN)\b/i', $text, $matches)) {
+            $keywords = array_merge($keywords, $matches[0]);
+        }
+
+        if (preg_match_all('/\b(?:Java|Python|PHP|Node\.?js|Go|Golang|Ruby|\.NET|Spring|Laravel|Django|Flask|Express|React|Vue)\b/i', $text, $matches)) {
+            $keywords = array_merge($keywords, $matches[0]);
+        }
+
+        return array_unique(array_filter($keywords));
     }
 }

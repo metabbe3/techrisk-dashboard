@@ -11,6 +11,7 @@ class WarRoomListController
     public function __invoke(Request $request): JsonResponse
     {
         $query = WarRoomSession::query()
+            ->accessibleByUser()
             ->with('incident:id,no,title,summary,severity,incident_status', 'user:id,name')
             ->latestFirst();
 

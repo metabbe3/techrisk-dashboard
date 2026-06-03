@@ -4,13 +4,15 @@ namespace App\Http\Controllers\Ai;
 
 use App\Http\Controllers\Controller;
 use App\Services\Ai\AiTextService;
+use App\Services\WeeklyDataService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class GenerateWeeklySummaryController extends Controller
 {
     public function __construct(
-        private readonly AiTextService $aiService
+        private readonly AiTextService $aiService,
+        private readonly WeeklyDataService $weeklyDataService,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -21,13 +23,7 @@ class GenerateWeeklySummaryController extends Controller
         ]);
 
         $year = $validated['year'];
-        $weeklyReport = new \App\Filament\Pages\WeeklyReport;
-        $weeklyReport->selectedYear = $year;
-
-        $reflection = new \ReflectionClass($weeklyReport);
-        $method = $reflection->getMethod('getWeeklyData');
-        $method->setAccessible(true);
-        $weeklyData = $method->invoke($weeklyReport);
+        $weeklyData = $this->weeklyDataService->getWeeklyData($year);
 
         $totalOpen = collect($weeklyData)->sum('incident_open');
         $totalClosed = collect($weeklyData)->sum('incident_closed');

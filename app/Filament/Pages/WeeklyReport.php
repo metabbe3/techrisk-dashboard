@@ -2,10 +2,7 @@
 
 namespace App\Filament\Pages;
 
-use App\Enums\FundStatus;
-use App\Enums\IncidentStatus;
-use App\Enums\Severity;
-use App\Models\Incident;
+use App\Services\WeeklyDataService;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -105,91 +102,10 @@ class WeeklyReport extends Page implements HasForms
             return $this->cachedWeeklyData;
         }
 
-        $currentDate = now();
-        $weekData = [];
-
         $year = $this->selectedYear ?? (int) date('Y');
-        $weeks = $this->getIsoWeeksInYear($year);
+        $this->cachedWeeklyData = app(WeeklyDataService::class)->getWeeklyData($year);
 
-        // OPTIMIZED: Load all incidents for the year in a single query
-        $allIncidents = Incident::where('classification', 'Incident')
-            ->whereYear('incident_date', $year)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->where(fn ($query) => $query->whereNull('fund_status')
-                ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
-            ->with(['pic', 'labels'])
-            ->orderBy('incident_date', 'desc')
-            ->get();
-
-        $openStatuses = [
-            IncidentStatus::Open->value,
-            IncidentStatus::InProgress->value,
-            IncidentStatus::Finalization->value,
-        ];
-
-        foreach ($weeks as $weekNumber => $dateRange) {
-            if ($dateRange['start']->gt($currentDate)) {
-                continue;
-            }
-
-            $weekStart = $dateRange['start']->copy()->startOfDay();
-            $weekEnd = $dateRange['end']->copy()->endOfDay();
-
-            $incidents = $allIncidents->filter(function ($incident) use ($weekStart, $weekEnd) {
-                return $incident->incident_date->between($weekStart, $weekEnd);
-            });
-
-            $weekData[] = (object) [
-                'week' => "W{$weekNumber}",
-                'date_range' => $dateRange['start']->format('M j').' - '.$dateRange['end']->format('M j'),
-                'incident_open' => $incidents->whereIn('incident_status', $openStatuses)->count(),
-                'incident_closed' => $incidents->where('incident_status', IncidentStatus::Completed->value)->count(),
-                'total' => $incidents->count(),
-                'incidents' => $incidents->values(),
-            ];
-        }
-
-        $this->cachedWeeklyData = $weekData;
-
-        return $weekData;
-    }
-
-    protected function getIsoWeeksInYear(int $year): array
-    {
-        $weeks = [];
-        $yearStart = \Carbon\Carbon::create($year, 1, 1)->startOfDay();
-
-        $week1End = $yearStart->copy();
-        while ($week1End->dayOfWeek !== 4) {
-            $week1End->addDay();
-        }
-
-        $weeks[1] = [
-            'start' => $yearStart->copy(),
-            'end' => $week1End->copy(),
-        ];
-
-        $currentFriday = $week1End->copy()->addDay();
-        while ($currentFriday->dayOfWeek !== 5) {
-            $currentFriday->addDay();
-        }
-
-        $weekNumber = 2;
-        while ($currentFriday->year === $year) {
-            $weeks[$weekNumber] = [
-                'start' => $currentFriday->copy(),
-                'end' => $currentFriday->copy()->addDays(6),
-            ];
-
-            $currentFriday->addWeek();
-            $weekNumber++;
-
-            if ($weekNumber > 53) {
-                break;
-            }
-        }
-
-        return $weeks;
+        return $this->cachedWeeklyData;
     }
 
     public function exportToExcel(): StreamedResponse

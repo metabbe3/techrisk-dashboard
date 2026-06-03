@@ -210,66 +210,56 @@ class CalculateIncidentMetrics implements ShouldQueue
     {
         $year = $target->incident_date->year;
 
+        // Load all incidents for this year + classification once, sorted for MTBF calculation
+        $yearIncidents = Incident::whereYear('incident_date', $year)
+            ->where('classification', $target->classification)
+            ->orderBy('incident_date')->orderBy('id')
+            ->get(['id', 'incident_date', 'severity', 'fund_status', 'recovered_fund', 'incident_type']);
+
+        // Find target's index in the sorted collection
+        $targetIndex = $yearIncidents->search(fn ($inc) => $inc->id === $target->id);
+
         $categories = [
-            'completed' => ['incident_status' => 'Completed'],
-            'p4' => ['severity' => 'P4'],
-            'non_tech' => ['incident_type' => 'Non-tech'],
-            'fund_loss' => ['fund_status' => 'Confirmed loss'],
-            'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
-            'potential_recovery' => ['fund_status' => 'Potential recovery'],
-            'fully_recovered' => ['fund_status' => 'Fully recovered'],
-            'non_tech_loss' => ['fund_status' => 'Non Tech Loss'],
-            'non_incident' => ['severity' => 'Non Incident'],
+            'mtbf_ongoing' => fn ($inc) => $inc->incident_status !== 'Completed',
+            'mtbf_completed' => fn ($inc) => $inc->incident_status === 'Completed',
+            'mtbf_p4' => fn ($inc) => $inc->severity === 'P4',
+            'mtbf_tech' => fn ($inc) => $inc->incident_type === 'Tech',
+            'mtbf_non_tech' => fn ($inc) => $inc->incident_type === 'Non-tech',
+            'mtbf_fund_loss' => fn ($inc) => $inc->fund_status === 'Confirmed loss',
+            'mtbf_potential_recovery' => fn ($inc) => $inc->fund_status === 'Potential recovery',
+            'mtbf_fully_recovered' => fn ($inc) => $inc->fund_status === 'Fully recovered',
+            'mtbf_non_tech_loss' => fn ($inc) => $inc->fund_status === 'Non Tech Loss',
+            'mtbf_non_incident' => fn ($inc) => $inc->severity === 'Non Incident',
         ];
 
-        foreach ($categories as $key => $condition) {
-            $previous = Incident::whereYear('incident_date', $year)
-                ->where('classification', $target->classification)
-                ->where($condition)
-                ->where(function ($query) use ($target) {
-                    $query->where('incident_date', '<', $target->incident_date)
-                        ->orWhere(function ($query) use ($target) {
-                            $query->where('incident_date', '=', $target->incident_date)
-                                ->where('id', '<', $target->id);
-                        });
-                })
-                ->orderBy('incident_date', 'desc')
-                ->orderBy('id', 'desc')
-                ->first();
+        $yearStart = Carbon::create($year, 1, 1)->startOfDay();
 
-            if ($previous) {
-                $target->{"mtbf_{$key}"} = abs($target->incident_date->startOfDay()
-                    ->diffInDays($previous->incident_date->startOfDay()));
-            } else {
-                $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-                $target->{"mtbf_{$key}"} = abs($target->incident_date->startOfDay()
-                    ->diffInDays($yearStart));
+        foreach ($categories as $column => $filter) {
+            // Get all incidents matching this category, before the target
+            $previous = null;
+            for ($i = ($targetIndex !== false ? $targetIndex - 1 : $yearIncidents->count() - 1); $i >= 0; $i--) {
+                if ($filter($yearIncidents[$i])) {
+                    $previous = $yearIncidents[$i];
+                    break;
+                }
             }
+
+            $target->{$column} = $previous
+                ? abs($target->incident_date->startOfDay()->diffInDays($previous->incident_date->startOfDay()))
+                : abs($target->incident_date->startOfDay()->diffInDays($yearStart));
         }
 
         // Recovered category (recovered_fund > 0)
-        $previousRecovered = Incident::whereYear('incident_date', $year)
-            ->where('classification', $target->classification)
-            ->where('recovered_fund', '>', 0)
-            ->where(function ($query) use ($target) {
-                $query->where('incident_date', '<', $target->incident_date)
-                    ->orWhere(function ($query) use ($target) {
-                        $query->where('incident_date', '=', $target->incident_date)
-                            ->where('id', '<', $target->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previousRecovered) {
-            $target->mtbf_recovered = abs($target->incident_date->startOfDay()
-                ->diffInDays($previousRecovered->incident_date->startOfDay()));
-        } else {
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $target->mtbf_recovered = abs($target->incident_date->startOfDay()
-                ->diffInDays($yearStart));
+        $previousRecovered = null;
+        for ($i = ($targetIndex !== false ? $targetIndex - 1 : $yearIncidents->count() - 1); $i >= 0; $i--) {
+            if ($yearIncidents[$i]->recovered_fund > 0) {
+                $previousRecovered = $yearIncidents[$i];
+                break;
+            }
         }
+        $target->mtbf_recovered = $previousRecovered
+            ? abs($target->incident_date->startOfDay()->diffInDays($previousRecovered->incident_date->startOfDay()))
+            : abs($target->incident_date->startOfDay()->diffInDays($yearStart));
     }
 
     /**

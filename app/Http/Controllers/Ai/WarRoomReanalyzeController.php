@@ -24,7 +24,7 @@ class WarRoomReanalyzeController
             'deep_analysis' => 'nullable|boolean',
         ]);
 
-        $session = WarRoomSession::forUser()->findOrFail($id);
+        $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         try {
             $session = $this->warRoomService->reanalyzeSession(

@@ -5,6 +5,7 @@ use App\Http\Controllers\Ai\AnalyzeRootCauseController;
 use App\Http\Controllers\Ai\AnalyzeTrendsController;
 use App\Http\Controllers\Ai\ApplyLabelsController;
 use App\Http\Controllers\Ai\ChatAgentsController;
+use App\Http\Controllers\Ai\ChatAttachmentController;
 use App\Http\Controllers\Ai\ChatConversationUpdateController;
 use App\Http\Controllers\Ai\ChatCreateController;
 use App\Http\Controllers\Ai\ChatDeleteController;
@@ -14,12 +15,14 @@ use App\Http\Controllers\Ai\ChatListController;
 use App\Http\Controllers\Ai\ChatMessageFeedbackController;
 use App\Http\Controllers\Ai\ChatMessagesController;
 use App\Http\Controllers\Ai\ChatPersonaStreamController;
+use App\Http\Controllers\Ai\ChatPlanResumeController;
+use App\Http\Controllers\Ai\ChatPlanStreamController;
 use App\Http\Controllers\Ai\ChatSendController;
 use App\Http\Controllers\Ai\ChatStreamController;
 use App\Http\Controllers\Ai\DetectSimilarController;
+use App\Http\Controllers\Ai\EnhanceAgentPromptController;
 use App\Http\Controllers\Ai\ExportPostMortemPdfController;
 use App\Http\Controllers\Ai\GeneratePostMortemController;
-use App\Http\Controllers\Ai\EnhanceAgentPromptController;
 use App\Http\Controllers\Ai\GenerateWeeklySummaryController;
 use App\Http\Controllers\Ai\MarkAiEnhancedController;
 use App\Http\Controllers\Ai\SuggestLabelsController;
@@ -29,12 +32,18 @@ use App\Http\Controllers\Ai\WarRoomAvailableAgentsController;
 use App\Http\Controllers\Ai\WarRoomCreateController;
 use App\Http\Controllers\Ai\WarRoomDeleteController;
 use App\Http\Controllers\Ai\WarRoomEstimateTokensController;
+use App\Http\Controllers\Ai\WarRoomExportJsonController;
+use App\Http\Controllers\Ai\WarRoomExportMarkdownController;
+use App\Http\Controllers\Ai\WarRoomShareController;
 use App\Http\Controllers\Ai\WarRoomExportPdfController;
+use App\Http\Controllers\Ai\WarRoomIncidentSearchController;
 use App\Http\Controllers\Ai\WarRoomListController;
 use App\Http\Controllers\Ai\WarRoomPollController;
 use App\Http\Controllers\Ai\WarRoomReanalyzeController;
 use App\Http\Controllers\Ai\WarRoomRetryController;
 use App\Http\Controllers\Ai\WarRoomShowController;
+use App\Http\Controllers\Ai\WarRoomSuggestAgentsController;
+use App\Http\Controllers\Ai\WarRoomTemplateController;
 use App\Http\Controllers\DownloadDocumentController;
 use App\Http\Controllers\WeeklyReportExportController;
 use App\Livewire\RequestAccessForm;
@@ -99,9 +108,21 @@ Route::get('/admin/ai/chat/agents', ChatAgentsController::class)
 Route::post('/admin/ai/chat/stream', ChatStreamController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.stream');
+Route::post('/admin/ai/chat/upload-attachment', [ChatAttachmentController::class, 'upload'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.upload-attachment');
+Route::get('/admin/ai/chat/attachment/{id}', [ChatAttachmentController::class, 'show'])
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.attachment');
 Route::post('/admin/ai/chat/stream-personas', ChatPersonaStreamController::class)
     ->middleware(['auth', 'can:access ai chat', 'ai.available:message,conversation_id'])
     ->name('ai.chat.stream-personas');
+Route::post('/admin/ai/chat/stream-plan', ChatPlanStreamController::class)
+    ->middleware(['auth', 'can:access ai chat', 'ai.available:message,conversation_id'])
+    ->name('ai.chat.stream-plan');
+Route::post('/admin/ai/chat/stream-plan-resume', ChatPlanResumeController::class)
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.stream-plan-resume');
 Route::post('/admin/ai/chat/finalize', ChatFinalizeController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.finalize');
@@ -189,35 +210,11 @@ Route::get('/admin/ai/chat/incident-search', function (\Illuminate\Http\Request 
 
 // War Room
 Route::prefix('admin/war-room')->middleware(['auth', 'can:access war room'])->group(function () {
-    Route::get('/incident-search', function (\Illuminate\Http\Request $request) {
-        $q = $request->input('q', '');
-        if (strlen($q) < 2) {
-            return response()->json(['incidents' => []]);
-        }
-
-        $incidents = \App\Models\Incident::where('no', 'LIKE', "%{$q}%")
-            ->orWhere('title', 'LIKE', "%{$q}%")
-            ->orWhere('summary', 'LIKE', "%{$q}%")
-            ->with('pic')
-            ->orderBy('incident_date', 'desc')
-            ->limit(10)
-            ->get()
-            ->map(fn ($inc) => [
-                'id' => $inc->id,
-                'no' => $inc->no,
-                'title' => $inc->title ?? 'Untitled',
-                'severity' => $inc->severity,
-                'status' => $inc->incident_status,
-                'date' => $inc->incident_date?->format('Y-m-d'),
-                'pic' => $inc->pic?->name,
-                'classification' => $inc->classification,
-            ]);
-
-        return response()->json(['incidents' => $incidents]);
-    })->name('war-room.incident-search');
+    Route::get('/incident-search', WarRoomIncidentSearchController::class)->name('war-room.incident-search');
 
     Route::get('/agents', WarRoomAvailableAgentsController::class)->name('war-room.agents');
     Route::get('/estimate-tokens', WarRoomEstimateTokensController::class)->name('war-room.estimate-tokens');
+    Route::post('/suggest-agents', WarRoomSuggestAgentsController::class)->name('war-room.suggest-agents');
     Route::get('/sessions', WarRoomListController::class)->name('war-room.sessions');
     Route::post('/sessions', WarRoomCreateController::class)->name('war-room.create');
     Route::get('/sessions/{id}', WarRoomShowController::class)->name('war-room.show');
@@ -229,6 +226,19 @@ Route::prefix('admin/war-room')->middleware(['auth', 'can:access war room'])->gr
     Route::delete('/sessions/{id}', WarRoomDeleteController::class)->name('war-room.delete');
     Route::get('/sessions/{id}/poll', WarRoomPollController::class)->name('war-room.poll');
     Route::get('/sessions/{id}/export-pdf', WarRoomExportPdfController::class)->name('war-room.export-pdf');
+    Route::get('/sessions/{id}/export-markdown', WarRoomExportMarkdownController::class)->name('war-room.export-markdown');
+    Route::get('/sessions/{id}/export-json', WarRoomExportJsonController::class)->name('war-room.export-json');
+
+    // Session sharing
+    Route::get('/sessions/{id}/viewers', [WarRoomShareController::class, 'index'])->name('war-room.viewers');
+    Route::post('/sessions/{id}/share', [WarRoomShareController::class, 'share'])->name('war-room.share');
+    Route::post('/sessions/{id}/unshare', [WarRoomShareController::class, 'unshare'])->name('war-room.unshare');
+
+    // Templates
+    Route::get('/templates', [WarRoomTemplateController::class, 'index'])->name('war-room.templates.index');
+    Route::post('/templates', [WarRoomTemplateController::class, 'store'])->name('war-room.templates.store');
+    Route::put('/templates/{id}', [WarRoomTemplateController::class, 'update'])->name('war-room.templates.update');
+    Route::delete('/templates/{id}', [WarRoomTemplateController::class, 'destroy'])->name('war-room.templates.destroy');
 });
 
 Route::redirect('/', '/admin/login');

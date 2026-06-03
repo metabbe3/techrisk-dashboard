@@ -12,7 +12,7 @@ class WarRoomExportPdfController
     public function __invoke(Request $request, string $id)
     {
         $session = WarRoomSession::with(['user:id,name', 'incident:id,no,severity,title'])
-            ->forUser()
+            ->accessibleByUser()
             ->findOrFail($id);
 
         if ($session->status !== 'completed' || blank($session->final_report_html)) {

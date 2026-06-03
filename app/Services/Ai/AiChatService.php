@@ -17,11 +17,16 @@ class AiChatService
     public function __construct(
         private ChatContextService $contextService,
         private AiUsageLogger $usageLogger,
+        private CircuitBreaker $circuitBreaker,
     ) {}
 
     public function chat(array $messages, string $userMessage, ?string $model = null, bool $logUsage = true, array $referencedIds = []): AiTextResult
     {
         $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+
+        if (! $this->circuitBreaker->isAvailable($resolvedModel)) {
+            return AiTextResult::failure('AI service is temporarily unavailable. Please try again in a minute.', $resolvedModel);
+        }
 
         $userId = auth()->id() ?? 'guest';
         if (! RateLimiter::attempt("ai-chat:{$userId}", 6, fn () => true)) {
@@ -55,7 +60,8 @@ class AiChatService
                 ->post($this->buildUrl(), [
                     'model' => $resolvedModel,
                     'messages' => $apiMessages,
-                    'max_tokens' => config('ai.chat_max_tokens', 4000),
+                    'max_tokens' => config('ai.chat_max_tokens', 8192),
+                    'temperature' => config('ai.temperatures.chat', 0.7),
                 ]);
 
             $responseTimeMs = $this->elapsedMs($startTime);
@@ -98,11 +104,17 @@ class AiChatService
         } catch (\Throwable $e) {
             $responseTimeMs = $this->elapsedMs($startTime);
             Log::warning('AI chat unexpected error', ['error' => $e->getMessage()]);
-            $result = AiTextResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
+            $result = AiTextResult::failure('An unexpected error occurred. Please try again.', $resolvedModel, $responseTimeMs);
         }
 
         if ($logUsage) {
             $this->usageLogger->logFromResult('chat_assistant', $resolvedModel, $result, strlen($userMessage));
+        }
+
+        if ($result->success) {
+            $this->circuitBreaker->recordSuccess($resolvedModel);
+        } else {
+            $this->circuitBreaker->recordFailure($resolvedModel);
         }
 
         return $result;
@@ -141,7 +153,8 @@ class AiChatService
                 ->post($this->buildUrl(), [
                     'model' => $resolvedModel,
                     'messages' => $apiMessages,
-                    'max_tokens' => config('ai.chat_max_tokens', 4000),
+                    'max_tokens' => config('ai.chat_max_tokens', 8192),
+                    'temperature' => config('ai.temperatures.chat', 0.7),
                 ]);
 
             $responseTimeMs = $this->elapsedMs($startTime);
@@ -177,7 +190,7 @@ class AiChatService
             $responseTimeMs = $this->elapsedMs($startTime);
             Log::warning('AI persona chat unexpected error', ['error' => $e->getMessage()]);
 
-            return AiTextResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
+            return AiTextResult::failure('An unexpected error occurred. Please try again.', $resolvedModel, $responseTimeMs);
         }
     }
 
@@ -198,6 +211,9 @@ class AiChatService
      */
     public function generateTitle(string $firstMessage, ?string $aiResponse = null): ?string
     {
+        $model = 'FAST-MODEL';
+        $startTime = microtime(true);
+
         try {
             $userContent = $firstMessage;
             if ($aiResponse) {
@@ -207,22 +223,59 @@ class AiChatService
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(10)
                 ->post($this->buildUrl(), [
-                    'model' => 'FAST-MODEL',
+                    'model' => $model,
                     'messages' => [
                         ['role' => 'system', 'content' => config('ai.chat_title_prompt')],
                         ['role' => 'user', 'content' => $userContent],
                     ],
                     'max_tokens' => 30,
+                    'temperature' => config('ai.temperatures.json_extraction', 0.1),
                 ]);
 
+            $responseTimeMs = $this->elapsedMs($startTime);
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+
             if ($response->successful()) {
-                $title = trim($response->json('choices.0.message.content', ''));
+                $title = trim($responseData['choices'][0]['message']['content'] ?? '');
                 if ($title && strlen($title) <= 80) {
+                    $this->usageLogger->log(
+                        fieldType: 'chat_title_generation',
+                        model: $model,
+                        success: true,
+                        inputLength: strlen($userContent),
+                        outputLength: strlen($title),
+                        usage: array_filter([
+                            'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                            'completion_tokens' => $usage['completion_tokens'] ?? null,
+                            'total_tokens' => $usage['total_tokens'] ?? null,
+                        ]),
+                        responseTimeMs: $responseTimeMs,
+                        apiRequestId: $responseData['id'] ?? null,
+                    );
+
                     return $title;
                 }
             }
+
+            $this->usageLogger->log(
+                fieldType: 'chat_title_generation',
+                model: $model,
+                success: false,
+                inputLength: strlen($userContent),
+                responseTimeMs: $responseTimeMs,
+                errorMessage: $response->successful() ? 'Empty or too long title' : 'HTTP '.$response->status(),
+            );
         } catch (\Throwable $e) {
+            $responseTimeMs = $this->elapsedMs($startTime);
             Log::warning('Failed to generate chat title', ['error' => $e->getMessage()]);
+            $this->usageLogger->log(
+                fieldType: 'chat_title_generation',
+                model: $model,
+                success: false,
+                responseTimeMs: $responseTimeMs,
+                errorMessage: $e->getMessage(),
+            );
         }
 
         return null;

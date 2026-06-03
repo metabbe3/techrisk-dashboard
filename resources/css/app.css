@@ -931,10 +931,6 @@
 :root.dark .kanban-ghost { background: rgba(99,102,241,.08); border-color: #818cf8; }
 .kanban-drag { transform: rotate(2deg) scale(1.03); box-shadow: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1); }
 
-/* War room incident link */
-.df-incident-link { color: #0d9488; text-decoration: none; font-weight: 600; }
-:root.dark .df-incident-link { color: #2dd4bf; }
-
 /* --- AI Chat Assistant --- */
 .ai-chat-container {
     display: flex;
@@ -1516,6 +1512,7 @@
     30% { opacity: 1; transform: scale(1.4); }
 }
 :root.dark .ai-chat-typing span { background: #818cf8; }
+
 
 /* Input Area */
 .ai-chat-input-area {

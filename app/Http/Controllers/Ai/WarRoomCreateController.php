@@ -33,7 +33,7 @@ class WarRoomCreateController
 
         if (count($incidentIds) === 1) {
             $existing = WarRoomSession::forIncident($incidentIds[0])
-                ->where('status', '!=', 'failed')
+                ->whereIn('status', ['pending', 'running'])
                 ->latestFirst()
                 ->first();
 
@@ -62,6 +62,16 @@ class WarRoomCreateController
                 deepAnalysis: $validated['deep_analysis'] ?? true,
                 userInstructions: $validated['user_instructions'] ?? null,
             );
+        } catch (\RuntimeException $e) {
+            Log::warning('War Room session rate limited', [
+                'incident_ids' => $incidentIds,
+                'user_id' => $request->user()?->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 429);
         } catch (\Throwable $e) {
             Log::error('War Room session creation failed', [
                 'incident_ids' => $incidentIds,

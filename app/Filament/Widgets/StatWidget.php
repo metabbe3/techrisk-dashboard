@@ -5,6 +5,7 @@ namespace App\Filament\Widgets;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class StatWidget extends BaseWidget
 {
@@ -20,6 +21,14 @@ class StatWidget extends BaseWidget
     protected function getStats(): array
     {
         if (! $this->query) {
+            return [];
+        }
+
+        // Only allow SELECT queries to prevent SQL injection
+        $normalizedQuery = trim(preg_replace('/\s+/', ' ', strtoupper($this->query)));
+        if (! str_starts_with($normalizedQuery, 'SELECT')) {
+            Log::warning('StatWidget rejected non-SELECT query', ['query' => $this->query]);
+
             return [];
         }
 

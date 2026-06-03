@@ -16,7 +16,7 @@ class WarRoomRetryController
 
     public function __invoke(Request $request, string $id): JsonResponse
     {
-        $session = WarRoomSession::forUser()->findOrFail($id);
+        $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         $failedMessages = WarRoomMessage::where('session_id', $session->id)
             ->where('status', 'failed')
@@ -46,7 +46,7 @@ class WarRoomRetryController
 
     public function retryAgent(Request $request, string $id, string $messageId): JsonResponse
     {
-        $session = WarRoomSession::forUser()->findOrFail($id);
+        $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         $message = WarRoomMessage::where('session_id', $session->id)
             ->where('id', $messageId)
@@ -66,7 +66,7 @@ class WarRoomRetryController
 
     public function retryReport(Request $request, string $id): JsonResponse
     {
-        $session = WarRoomSession::forUser()->findOrFail($id);
+        $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         if ($session->status !== 'failed') {
             return response()->json(['message' => 'Session is not in a failed state'], 400);
@@ -89,7 +89,7 @@ class WarRoomRetryController
 
     public function regenerateReport(Request $request, string $id): JsonResponse
     {
-        $session = WarRoomSession::forUser()->findOrFail($id);
+        $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         if (! in_array($session->status, ['completed', 'failed'])) {
             return response()->json(['message' => 'Session must be completed or failed to regenerate report'], 400);

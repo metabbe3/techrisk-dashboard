@@ -44,16 +44,25 @@ class ChatFinalizeController
             $responseText = trim(str_replace($followMatch[0], '', $responseText));
         }
 
-        $assistantMessage = ChatMessage::create([
-            'conversation_id' => $conversation->id,
-            'role' => 'assistant',
-            'content' => $responseText,
-            'model' => $request->input('model'),
-            'tokens_used' => $request->input('total_tokens'),
-            'prompt_tokens' => $request->input('prompt_tokens'),
-            'completion_tokens' => $request->input('completion_tokens'),
-            'created_at' => now(),
-        ]);
+        // Find the assistant message already saved server-side by the streaming controller
+        $assistantMessage = ChatMessage::where('conversation_id', $conversation->id)
+            ->where('role', 'assistant')
+            ->latest('created_at')
+            ->first();
+
+        if (! $assistantMessage) {
+            // Fallback: create if not found (non-streaming path)
+            $assistantMessage = ChatMessage::create([
+                'conversation_id' => $conversation->id,
+                'role' => 'assistant',
+                'content' => $responseText,
+                'model' => $request->input('model'),
+                'tokens_used' => $request->input('total_tokens'),
+                'prompt_tokens' => $request->input('prompt_tokens'),
+                'completion_tokens' => $request->input('completion_tokens'),
+                'created_at' => now(),
+            ]);
+        }
 
         $conversation->update(['updated_at' => now()]);
 
@@ -74,9 +83,9 @@ class ChatFinalizeController
             (string) $assistantMessage->id,
         );
 
-        // Generate title for new conversations
+        // Generate title for new conversations (only if title is still default)
         $updatedTitle = null;
-        if ($request->boolean('is_new') && $request->input('first_message')) {
+        if ($request->boolean('is_new') && $request->input('first_message') && in_array($conversation->title, ['New Chat', 'New Conversation', null])) {
             $updatedTitle = $this->chatService->generateTitle($request->input('first_message'), $responseText);
             if ($updatedTitle) {
                 $conversation->update(['title' => $updatedTitle]);
@@ -101,5 +110,4 @@ class ChatFinalizeController
             ],
         ]);
     }
-
 }

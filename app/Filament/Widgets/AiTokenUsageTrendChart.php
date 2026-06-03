@@ -22,6 +22,10 @@ class AiTokenUsageTrendChart extends ChartWidget
             $query->where('user_id', auth()->id());
         }
 
+        if ($this->filter && $this->filter !== 'all') {
+            $query->where('model', $this->filter);
+        }
+
         $data = $query
             ->selectRaw('DATE(requested_at) as date, SUM(prompt_tokens) as prompt, SUM(completion_tokens) as completion')
             ->groupByRaw('DATE(requested_at)')
@@ -62,6 +66,17 @@ class AiTokenUsageTrendChart extends ChartWidget
     protected function getType(): string
     {
         return 'line';
+    }
+
+    protected function getFilters(): ?array
+    {
+        $models = AiUsageLog::query()
+            ->distinct()
+            ->pluck('model', 'model')
+            ->filter()
+            ->toArray();
+
+        return array_merge(['all' => 'All Models'], $models);
     }
 
     protected function getOptions(): array

@@ -52,8 +52,35 @@ else
 fi
 
 echo ""
-echo "8. Restarting Docker containers..."
+echo "8. Fixing storage directory permissions..."
+
+# Create directories that must exist
+docker compose exec app mkdir -p storage/app/temp
+docker compose exec app mkdir -p storage/app/private/chat-attachments
+docker compose exec app mkdir -p storage/app/private/markdown/documents
+docker compose exec app mkdir -p storage/app/public/investigation-forms
+docker compose exec app mkdir -p storage/framework/cache
+docker compose exec app mkdir -p storage/framework/sessions
+docker compose exec app mkdir -p storage/framework/views
+
+# Set permissions so www-data can read/write
+docker compose exec app chmod -R 775 storage/app/temp
+docker compose exec app chmod -R 775 storage/app/private
+docker compose exec app chmod -R 775 storage/app/public
+docker compose exec app chmod -R 775 storage/framework
+docker compose exec app chown -R www-data:www-data storage
+
+echo "  ✓ Storage permissions fixed"
+
+echo ""
+echo "9. Restarting Docker containers..."
 docker compose restart
+
+echo ""
+echo "10. Caching Laravel config for production..."
+sleep 3
+docker compose exec app php artisan config:cache
+echo "  ✓ Config cached"
 
 echo ""
 echo "=================================="

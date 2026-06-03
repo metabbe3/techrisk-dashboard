@@ -85,15 +85,17 @@ services:
       retries: 5
     command: redis-server --appendonly yes
 
-  # Queue Worker Service
+  # Queue Worker Service (Supervisor-managed with auto-scaling)
   worker:
     build:
       context: .
       dockerfile: Dockerfile.php
     restart: unless-stopped
-    command: php artisan queue:work --sleep=3 --tries=3 --queue=war-room,default,document-conversion,api-audit
     volumes:
       - ./:/var/www/html
+      - ./storage/app:/var/www/html/storage/app
+      - ./storage/framework:/var/www/html/storage/framework
+      - ./storage/logs:/var/www/html/storage/logs
     depends_on:
       - app
     env_file:
@@ -101,8 +103,8 @@ services:
     networks:
       - techrisk-network
     deploy:
-      replicas: 3
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php artisan queue:work --sleep=3 --tries=3 --queue=war-room,default,document-conversion,api-audit"]
+      replicas: 1
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp /var/log/supervisor && chmod 755 /var/www/html/storage/app/temp && exec supervisord -n -c /etc/supervisor/conf.d/supervisord-worker.conf"]
 
   # Scheduler Service
   scheduler:
@@ -114,6 +116,9 @@ services:
     command: php artisan schedule:work
     volumes:
       - ./:/var/www/html
+      - ./storage/app:/var/www/html/storage/app
+      - ./storage/framework:/var/www/html/storage/framework
+      - ./storage/logs:/var/www/html/storage/logs
     depends_on:
       - app
     env_file:
@@ -132,12 +137,15 @@ services:
     command: php artisan reverb:start --host=0.0.0.0 --port=8080
     volumes:
       - ./:/var/www/html
+      - ./storage/app:/var/www/html/storage/app
+      - ./storage/framework:/var/www/html/storage/framework
+      - ./storage/logs:/var/www/html/storage/logs
     depends_on:
       - app
     env_file:
       - .env
     ports:
-      - "8080:8080"
+      - "${REVERB_HOST_PORT:-8081}:8080"
     networks:
       - techrisk-network
 

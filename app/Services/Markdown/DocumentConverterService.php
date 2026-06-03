@@ -85,6 +85,26 @@ class DocumentConverterService
     }
 
     /**
+     * Convert raw file content to Markdown (no InvestigationDocument required).
+     */
+    public function convertRaw(string $content, string $extension): ?string
+    {
+        $extension = strtolower($extension);
+
+        if (! in_array($extension, ['pdf', 'docx', 'doc'])) {
+            return null;
+        }
+
+        $markdown = $this->convertContent($content, "file.{$extension}");
+
+        if (blank($markdown) || trim(strip_tags($markdown)) === '') {
+            return null;
+        }
+
+        return $markdown;
+    }
+
+    /**
      * Check if the document should be converted.
      */
     private function shouldConvert(InvestigationDocument $document): bool

@@ -26,6 +26,24 @@ class ChartWidget extends BaseWidget
 
         $cacheKey = 'chart_widget_'.md5($this->query);
 
+        // Only allow SELECT queries to prevent SQL injection
+        $normalizedQuery = trim(preg_replace('/\s+/', ' ', strtoupper($this->query)));
+        if (! str_starts_with($normalizedQuery, 'SELECT')) {
+            Log::warning('ChartWidget rejected non-SELECT query', ['query' => $this->query]);
+
+            return [];
+        }
+
+        // Block destructive keywords anywhere in the query
+        $blocked = ['DROP ', 'DELETE ', 'UPDATE ', 'INSERT ', 'ALTER ', 'CREATE ', 'TRUNCATE ', 'EXEC ', 'EXECUTE '];
+        foreach ($blocked as $keyword) {
+            if (str_contains($normalizedQuery, $keyword)) {
+                Log::warning('ChartWidget rejected query with blocked keyword', ['keyword' => $keyword, 'query' => $this->query]);
+
+                return [];
+            }
+        }
+
         try {
             $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
                 return DB::select($this->query);

@@ -344,11 +344,11 @@ class RecurrenceDetectionService
 
             $systemPrompt = <<<'PROMPT'
 You are analyzing incident recurrence patterns. Given a new incident and similar past incidents with their remediation status, provide a concise analysis. Focus on:
-1. Why this incident likely recurred (link to incomplete past actions)
-2. What pattern connects these incidents
-3. What specific overdue/pending actions contributed
+1. Why this incident likely recurred — differentiate causal linkage (overdue actions that DIRECTLY allowed recurrence) from mere correlation (overdue actions on unrelated topics)
+2. What pattern connects these incidents (shared root cause, same system, same team, etc.)
+3. What specific overdue/pending actions contributed to recurrence
 
-Format your response using markdown. Use **bold** for incident numbers and action titles. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers and action titles. Return a JSON object with a single "analysis" field containing your markdown-formatted explanation as a string.
+Format your response using markdown. Use **bold** for incident numbers and action titles. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers and action titles. Return a JSON object with "analysis" (markdown string) and "confidence" (high/medium/low) fields.
 PROMPT;
 
             $userMessage = "New incident: [{$incident->no}] {$incident->title}\n";
@@ -401,11 +401,11 @@ PROMPT;
 
             $systemPrompt = <<<'PROMPT'
 You are analyzing incident recurrence detected via AI similarity matching. Given a new incident and AI-identified similar past incidents, provide a concise analysis. Focus on:
-1. What connects these incidents based on the AI similarity reasons
+1. What connects these incidents — distinguish deep similarity (same failure mode, same root cause mechanism) from superficial similarity (same system/component but different failure)
 2. Whether past remediation was incomplete (link to overdue/pending actions)
 3. What should be done differently
 
-Format your response using markdown. Use **bold** for incident numbers and key terms. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers. Return a JSON object with a single "analysis" field containing your markdown-formatted explanation as a string.
+Format your response using markdown. Use **bold** for incident numbers and key terms. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers. Return a JSON object with "analysis" (markdown string), "similarity_type" (deep/superficial), and "confidence" (high/medium/low) fields.
 PROMPT;
 
             $userMessage = "New incident: [{$incident->no}] {$incident->title}\n";

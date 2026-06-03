@@ -16,6 +16,7 @@ class AiTextService
 
     public function __construct(
         private AiUsageLogger $usageLogger,
+        private CircuitBreaker $circuitBreaker,
     ) {}
 
     public function suggestSkills(string $userMessage, ?string $model = null): array
@@ -67,6 +68,10 @@ class AiTextService
         $resolvedModel = $model
             ?? AiSetting::get('default_model', config('ai.default_model'));
 
+        if (! $this->circuitBreaker->isAvailable($resolvedModel)) {
+            return AiTextResult::failure('AI service is temporarily unavailable. Please try again in a minute.', $resolvedModel);
+        }
+
         $userId = auth()->id() ?? 'guest';
         $rateLimitKey = "ai-enhance:{$userId}";
 
@@ -98,16 +103,8 @@ class AiTextService
             $totalTokens = $usage['total_tokens'] ?? null;
             $apiRequestId = $responseData['id'] ?? null;
 
-            if ($response->status() === 429) {
-                $result = AiTextResult::failure('Rate limit exceeded. Please wait a moment before trying again.', $resolvedModel, $responseTimeMs);
-            } elseif ($response->status() === 401) {
-                Log::warning('AI service auth error', ['body' => $response->json('error.message', '')]);
-                $result = AiTextResult::failure('Authentication failed. Check your API key in AI settings.', $resolvedModel, $responseTimeMs);
-            } elseif ($response->status() === 403) {
-                $result = AiTextResult::failure('Access denied. Your API key does not have permission for this model.', $resolvedModel, $responseTimeMs);
-            } elseif ($response->failed()) {
-                Log::warning('AI service returned error', ['status' => $response->status(), 'body' => $response->body()]);
-                $result = AiTextResult::failure('AI service error (HTTP '.$response->status().'). Please try again.', $resolvedModel, $responseTimeMs);
+            if ($error = AiResponseHandler::checkErrors($response, $resolvedModel, $startTime)) {
+                $result = $error;
             } else {
                 $enhancedText = $this->parseResponseFromData($responseData);
 
@@ -142,10 +139,16 @@ class AiTextService
         } catch (\Throwable $e) {
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
             Log::warning('AI service unexpected error', ['error' => $e->getMessage()]);
-            $result = AiTextResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
+            $result = AiTextResult::failure('An unexpected error occurred. Please try again.', $resolvedModel, $responseTimeMs);
         }
 
         $this->logUsage($fieldType, $resolvedModel, $result, $inputLength, $isRefinement);
+
+        if ($result->success) {
+            $this->circuitBreaker->recordSuccess($resolvedModel);
+        } else {
+            $this->circuitBreaker->recordFailure($resolvedModel);
+        }
 
         return $result;
     }
@@ -231,7 +234,7 @@ class AiTextService
                         ['role' => 'system', 'content' => $prompt['system']],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 1000,
+                    'max_tokens' => config('ai.max_tokens.label_suggest', 512),
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
@@ -718,7 +721,7 @@ class AiTextService
                         ['role' => 'system', 'content' => $prompt['system']],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 8000,
+                    'max_tokens' => config('ai.max_tokens.document_summary', 8000),
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
@@ -747,14 +750,15 @@ class AiTextService
         } catch (\Exception $e) {
             Log::error('Document summarization exception', ['error' => $e->getMessage()]);
 
-            return AiTextResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel ?? null, 0);
+            return AiTextResult::failure('An unexpected error occurred while summarizing the document.', $resolvedModel ?? null, 0);
         }
     }
 
-    public function callAiForJson(string $fieldType, string $model, string $systemPrompt, string $userMessage, array $defaultResult): array
+    public function callAiForJson(string $fieldType, string $model, string $systemPrompt, string $userMessage, array $defaultResult, ?int $maxTokens = null): array
     {
         $inputLength = strlen($userMessage);
         $startTime = microtime(true);
+        $resolvedMaxTokens = $maxTokens ?? $this->getMaxTokensForType($fieldType);
 
         try {
             $response = Http::withHeaders($this->buildHeaders())
@@ -765,7 +769,8 @@ class AiTextService
                         ['role' => 'system', 'content' => $systemPrompt],
                         ['role' => 'user', 'content' => $userMessage],
                     ],
-                    'max_tokens' => 16384,
+                    'max_tokens' => $resolvedMaxTokens,
+                    'temperature' => config('ai.temperatures.json_extraction', 0.1),
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
@@ -813,6 +818,21 @@ class AiTextService
         return is_array($parsed) ? $parsed : null;
     }
 
+    private function getMaxTokensForType(string $fieldType): int
+    {
+        $mapping = [
+            'label_suggest' => config('ai.max_tokens.label_suggest', 512),
+            'agent_skill_suggest' => config('ai.max_tokens.label_suggest', 512),
+            'nl_search' => config('ai.max_tokens.nl_search', 2048),
+            'trend_analysis' => config('ai.max_tokens.trend_analysis', 2048),
+            'weekly_report_summary' => config('ai.max_tokens.weekly_summary', 4096),
+            'root_cause_analysis' => config('ai.max_tokens.root_cause_analysis', 8192),
+            'similar_incident' => config('ai.max_tokens.similarity', 2048),
+        ];
+
+        return $mapping[$fieldType] ?? config('ai.max_tokens.json_default', 4096);
+    }
+
     protected function buildPayload(string $systemPrompt, string $userText, string $model, ?string $additionalPrompt = null): array
     {
         $userMessage = filled($additionalPrompt)
@@ -825,7 +845,8 @@ class AiTextService
                 ['role' => 'system', 'content' => $systemPrompt],
                 ['role' => 'user', 'content' => $userMessage],
             ],
-            'max_tokens' => 1000,
+            'max_tokens' => config('ai.max_tokens.text_enhancement', 1000),
+            'temperature' => config('ai.temperatures.text_enhancement', 0.3),
         ];
     }
 

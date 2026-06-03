@@ -6,6 +6,7 @@ use App\Models\Incident;
 use App\Services\Ai\PostMortemService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Parsedown;
 
 class ExportPostMortemPdfController
@@ -16,7 +17,8 @@ class ExportPostMortemPdfController
 
     public function __invoke(Request $request, Incident $incident)
     {
-        $postMortem = $this->postMortemService->generate($incident);
+        $cacheKey = "postmortem_{$incident->id}_".$incident->updated_at?->timestamp;
+        $postMortem = Cache::remember($cacheKey, 3600, fn () => $this->postMortemService->generate($incident));
 
         $parsedown = new Parsedown;
 

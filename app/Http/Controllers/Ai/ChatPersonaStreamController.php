@@ -7,7 +7,10 @@ use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\Incident;
 use App\Models\WarRoomAgentConfig;
+use App\Services\Ai\AiTextResult;
+use App\Services\Ai\AiUsageLogger;
 use App\Services\Ai\ChatContextService;
+use App\Services\Ai\PersonaStreamingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -30,6 +33,12 @@ class ChatPersonaStreamController
             'personas' => 'required|array|min:1',
             'personas.*' => 'string|exists:war_room_agent_configs,role_key',
             'web_search' => 'nullable|boolean',
+            'attachments' => 'nullable|array',
+            'attachments.*.id' => 'required|string',
+            'attachments.*.type' => 'required|string',
+            'attachments.*.filename' => 'nullable|string',
+            'attachments.*.mime_type' => 'nullable|string',
+            'attachments.*.size' => 'nullable|integer',
         ]);
 
         $userId = auth()->id() ?? 'guest';
@@ -43,6 +52,7 @@ class ChatPersonaStreamController
         $conversationId = $request->input('conversation_id');
         $model = $request->input('model');
         $referencedIds = $request->input('referenced_incidents', []);
+        $rawAttachments = $request->input('attachments', []);
         $personaKeys = $request->input('personas', []);
 
         $slashCommand = null;
@@ -61,12 +71,16 @@ class ChatPersonaStreamController
                 'model' => $model,
             ]);
 
-        $userMsg = ChatMessage::create([
+        $createData = [
             'conversation_id' => $conversation->id,
             'role' => 'user',
             'content' => $request->input('message'),
             'created_at' => now(),
-        ]);
+        ];
+        if (! empty($rawAttachments)) {
+            $createData['attachments'] = $rawAttachments;
+        }
+        $userMsg = ChatMessage::create($createData);
 
         $history = $conversation->messages()
             ->orderBy('created_at', 'desc')
@@ -122,8 +136,9 @@ class ChatPersonaStreamController
 
         $conversationIdStr = (string) $conversation->id;
         $userMsgIdStr = (string) $userMsg->id;
+        $lastPersonaKey = $personas->last()->role_key;
 
-        return new StreamedResponse(function () use ($personas, $baseUrl, $apiKey, $model, $history, $userMessage, $maxTokens, $timeout, $referencedIds, $conversation, $conversationIdStr, $userMsgIdStr, $isNew, $searchEnriched, $request) {
+        return new StreamedResponse(function () use ($personas, $baseUrl, $apiKey, $model, $history, $userMessage, $maxTokens, $timeout, $referencedIds, $conversation, $conversationIdStr, $userMsgIdStr, $isNew, $searchEnriched, $request, $rawAttachments, $lastPersonaKey) {
             @ini_set('output_buffering', 'off');
             @ini_set('zlib.output_compression', false);
 
@@ -134,136 +149,102 @@ class ChatPersonaStreamController
                 'mode' => 'personas',
                 'persona_count' => $personas->count(),
             ])."\n\n";
-
             if (ob_get_level()) {
                 ob_flush();
             }
             flush();
 
-            foreach ($personas as $index => $persona) {
-                $isLast = $index === $personas->count() - 1;
-
-                echo "event: persona_start\ndata: ".json_encode([
-                    'persona' => [
-                        'key' => $persona->role_key,
-                        'name' => $persona->display_name,
-                        'icon' => $persona->icon,
-                        'color' => $persona->color,
-                    ],
-                ])."\n\n";
+            $emitSse = function (string $event, array $data): void {
+                if ($event === 'delta') {
+                    echo 'data: '.json_encode($data)."\n\n";
+                } else {
+                    echo "event: {$event}\ndata: ".json_encode($data)."\n\n";
+                }
                 if (ob_get_level()) {
                     ob_flush();
                 }
                 flush();
+            };
 
-                $resolvedModel = $persona->model_override ?? $model ?? AiSetting::get('default_model', config('ai.default_model'));
-                $systemPrompt = $this->contextService->buildPersonaSystemPrompt($persona, $userMessage, $referencedIds);
-                $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
+            $service = app(PersonaStreamingService::class);
+            $results = $service->streamConcurrent(
+                personas: $personas->all(),
+                baseUrl: $baseUrl,
+                apiKey: $apiKey,
+                defaultModel: $model,
+                history: $history,
+                userMessage: $userMessage,
+                maxTokens: $maxTokens,
+                timeout: $timeout,
+                rawAttachments: $rawAttachments,
+                emitSse: $emitSse,
+                contextService: $this->contextService,
+                referencedIds: $referencedIds,
+            );
 
-                $maxHistory = config('ai.chat_max_history', 20);
-                $historyMessages = array_slice($history, -$maxHistory);
-                foreach ($historyMessages as $msg) {
-                    $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
-                }
+            $lastResponseText = null;
 
-                for ($i = count($apiMessages) - 1; $i >= 1; $i--) {
-                    if (($apiMessages[$i]['role'] ?? '') === 'user') {
-                        $apiMessages[$i]['content'] = $userMessage;
-                        break;
-                    }
-                }
+            foreach ($results as $key => $result) {
+                $persona = $result['persona'];
+                $resolvedModel = $result['model'];
+                $responseTimeMs = $result['responseTimeMs'];
 
-                $fullContent = '';
-                $usage = [];
-                $startTime = microtime(true);
+                if ($result['failed'] || blank($result['fullContent'] ?? null)) {
+                    $errorMsg = $result['error'] ?? 'Unknown error';
+                    $usage = $result['usage'] ?? [];
 
-                $ch = curl_init();
-                curl_setopt_array($ch, [
-                    CURLOPT_URL => $baseUrl.'/chat/completions',
-                    CURLOPT_POST => true,
-                    CURLOPT_HTTPHEADER => [
-                        'Authorization: Bearer '.$apiKey,
-                        'Content-Type: application/json',
-                        'Accept: text/event-stream',
-                    ],
-                    CURLOPT_POSTFIELDS => json_encode([
-                        'model' => $resolvedModel,
-                        'messages' => $apiMessages,
-                        'max_tokens' => $maxTokens,
-                        'stream' => true,
-                    ]),
-                    CURLOPT_TIMEOUT => $timeout,
-                    CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$fullContent, &$usage, $persona) {
-                        $lines = explode("\n", $data);
-                        foreach ($lines as $line) {
-                            $line = trim($line);
-                            if (str_starts_with($line, 'data: ')) {
-                                $json = substr($line, 6);
-                                if ($json === '[DONE]') {
-                                    echo "event: persona_done\ndata: ".json_encode([
-                                        'persona_key' => $persona->role_key,
-                                    ])."\n\n";
-                                    if (ob_get_level()) {
-                                        ob_flush();
-                                    }
-                                    flush();
-
-                                    return strlen($data);
-                                }
-
-                                $parsed = json_decode($json, true);
-                                if (! $parsed) {
-                                    continue;
-                                }
-
-                                $delta = $parsed['choices'][0]['delta']['content'] ?? '';
-                                if ($delta !== '') {
-                                    $fullContent .= $delta;
-                                    echo 'data: '.json_encode([
-                                        'delta' => $delta,
-                                        'persona_key' => $persona->role_key,
-                                    ])."\n\n";
-                                    if (ob_get_level()) {
-                                        ob_flush();
-                                    }
-                                    flush();
-                                }
-
-                                if (isset($parsed['usage'])) {
-                                    $usage = $parsed['usage'];
-                                }
-                            }
+                    if (blank($result['fullContent'] ?? null) && ! $result['failed']) {
+                        $rawError = null;
+                        $rawBody = $result['rawBody'] ?? '';
+                        if (! blank($rawBody)) {
+                            $errorData = json_decode($rawBody, true);
+                            $rawError = $errorData['error']['message'] ?? ($errorData['message'] ?? $rawBody);
+                        }
+                        if ($rawError) {
+                            $errorMsg = 'AI error: '.$rawError;
+                        } elseif (! blank($result['reasoningContent'] ?? '') && ($result['finishReason'] ?? null) === 'length') {
+                            $errorMsg = 'Model used all tokens on reasoning. Try a simpler question or different model.';
+                        } else {
+                            $errorMsg = 'AI returned an empty response. Try rephrasing your question.';
                         }
 
-                        return strlen($data);
-                    },
-                ]);
+                        Log::warning('AI persona returned empty response', [
+                            'persona' => $key,
+                            'model' => $resolvedModel,
+                            'finish_reason' => $result['finishReason'] ?? null,
+                        ]);
 
-                $success = curl_exec($ch);
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $curlError = curl_error($ch);
-                curl_close($ch);
-
-                $responseTimeMs = (microtime(true) - $startTime) * 1000;
-
-                if (! $success || $httpCode >= 400) {
-                    $errorMsg = $curlError ?: 'AI service error (HTTP '.$httpCode.')';
-                    Log::warning('AI persona stream error', ['persona' => $persona->role_key, 'http_code' => $httpCode]);
-                    echo "event: persona_error\ndata: ".json_encode([
-                        'persona_key' => $persona->role_key,
-                        'error' => $errorMsg,
-                    ])."\n\n";
-                    if (ob_get_level()) {
-                        ob_flush();
+                        app(AiUsageLogger::class)->log(
+                            fieldType: 'chat_assistant',
+                            model: $resolvedModel,
+                            success: false,
+                            outputLength: 0,
+                            usage: array_filter([
+                                'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                                'completion_tokens' => $usage['completion_tokens'] ?? null,
+                                'total_tokens' => $usage['total_tokens'] ?? null,
+                            ]),
+                            responseTimeMs: $responseTimeMs,
+                            errorMessage: 'Empty streaming response for persona '.$key,
+                            metadata: ['persona' => $key, 'mode' => 'persona_stream'],
+                        );
+                    } else {
+                        Log::warning('AI persona stream error', ['persona' => $key, 'error' => $errorMsg]);
                     }
-                    flush();
 
+                    $emitSse('persona_error', [
+                        'persona_key' => $key,
+                        'error' => $errorMsg,
+                    ]);
                     continue;
                 }
 
+                $isLast = $key === $lastPersonaKey;
+                $responseText = $result['fullContent'];
+                $usage = $result['usage'] ?? [];
+
                 // Extract follow-up from last persona only
                 $followUps = null;
-                $responseText = $fullContent;
                 if ($isLast) {
                     if (preg_match('/<!--FOLLOW_UP:(\[.*?\])-->/', $responseText, $followMatch)) {
                         $decoded = json_decode($followMatch[1], true);
@@ -276,6 +257,8 @@ class ChatPersonaStreamController
                     $responseText = preg_replace('/<!--FOLLOW_UP:\[.*?\]-->/', '', $responseText);
                     $responseText = trim($responseText);
                 }
+
+                $lastResponseText = $responseText;
 
                 $assistantMessage = ChatMessage::create([
                     'conversation_id' => $conversation->id,
@@ -293,10 +276,10 @@ class ChatPersonaStreamController
                     'created_at' => now(),
                 ]);
 
-                app(\App\Services\Ai\AiUsageLogger::class)->logFromResult(
+                app(AiUsageLogger::class)->logFromResult(
                     fieldType: 'chat_assistant',
                     model: $resolvedModel,
-                    result: new \App\Services\Ai\AiTextResult(
+                    result: new AiTextResult(
                         success: true,
                         text: $responseText,
                         model: $resolvedModel,
@@ -309,7 +292,7 @@ class ChatPersonaStreamController
                     metadata: ['message_id' => (string) $assistantMessage->id, 'persona' => $persona->role_key],
                 );
 
-                echo "event: persona_metadata\ndata: ".json_encode([
+                $emitSse('persona_metadata', [
                     'persona_key' => $persona->role_key,
                     'message_id' => (string) $assistantMessage->id,
                     'model' => $resolvedModel,
@@ -317,11 +300,9 @@ class ChatPersonaStreamController
                     'response_time_ms' => $responseTimeMs,
                     'follow_ups' => $followUps,
                     'full_content' => $responseText,
-                ])."\n\n";
-                if (ob_get_level()) {
-                    ob_flush();
-                }
-                flush();
+                    'finish_reason' => $result['finishReason'] ?? null,
+                    'truncated' => ($result['finishReason'] ?? null) === 'length',
+                ]);
             }
 
             $conversation->update(['updated_at' => now()]);
@@ -329,7 +310,7 @@ class ChatPersonaStreamController
             $updatedTitle = null;
             if ($isNew) {
                 $chatService = app(\App\Services\Ai\AiChatService::class);
-                $updatedTitle = $chatService->generateTitle($request->input('message'), $responseText ?? null);
+                $updatedTitle = $chatService->generateTitle($request->input('message'), $lastResponseText ?? null);
                 if ($updatedTitle) {
                     $conversation->update(['title' => $updatedTitle]);
                 }

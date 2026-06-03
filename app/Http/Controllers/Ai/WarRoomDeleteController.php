@@ -9,7 +9,7 @@ class WarRoomDeleteController
 {
     public function __invoke(string $id): JsonResponse
     {
-        $session = WarRoomSession::forUser()->findOrFail($id);
+        $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         $session->messages()->delete();
         $session->delete();

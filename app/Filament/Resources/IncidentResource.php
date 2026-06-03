@@ -13,6 +13,7 @@ use App\Filament\Forms\Components\AiTextarea;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
 use App\Models\Category;
+use Illuminate\Support\Facades\Cache;
 use App\Models\Incident;
 use App\Models\UserAuditLogSetting;
 use Filament\Forms;
@@ -292,12 +293,11 @@ class IncidentResource extends Resource
                     ->label('MTBF (days)')
                     ->width('80px')
                     ->state(function (Incident $record): int {
-                        static $cache = [];
                         $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
                         $year = $record->incident_date->year;
-                        $key = "{$tab}_{$year}";
+                        $cacheKey = "mtbf_{$tab}_{$year}";
 
-                        if (! isset($cache[$key])) {
+                        $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($tab, $year) {
                             $query = Incident::whereYear('incident_date', $year)
                                 ->where('classification', '!=', 'Issue')
                                 ->orderBy('incident_date')->orderBy('id');
@@ -318,16 +318,18 @@ class IncidentResource extends Resource
                             };
 
                             $incidents = $query->get(['id', 'incident_date']);
-                            $cache[$key] = [];
+                            $result = [];
                             foreach ($incidents as $i => $inc) {
-                                $cache[$key][$inc->id] = $i === 0
+                                $result[$inc->id] = $i === 0
                                     ? $inc->incident_date->dayOfYear
                                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                                         ->diffInDays($inc->incident_date->startOfDay());
                             }
-                        }
 
-                        return $cache[$key][$record->id] ?? 0;
+                            return $result;
+                        });
+
+                        return $mtbf[$record->id] ?? 0;
                     })
                     ->formatStateUsing(fn (int $state): string => number_format($state))
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),

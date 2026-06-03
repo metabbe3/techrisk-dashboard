@@ -38,6 +38,13 @@ class AgentPromptBuilder
 
         $result = $prompt."\n\n## Incident Data\n\n".$incidentContext;
 
+        $hasFundMttr = $session->incidents->contains(fn ($i) => $i->mttr !== null && $i->mttr < 0);
+        if ($hasFundMttr) {
+            $result .= "\n\n## Data Conventions\n- MTTR: Positive values = minutes (non-fund-loss). Negative values = days (fund loss). E.g., mttr=-3 means 3 days.\n- Financial amounts in Indonesian Rupiah (Rp). Format: Rp 1.000.000 = 1 million.";
+        }
+
+        $result .= "\n\n## Cross-Domain Escalation\n- If you discover an issue outside your domain that no specialist is covering, flag it: \"FLAG FOR [domain]: [description]\"\n- If your analysis depends on missing data from another domain, state: \"NEEDS INPUT FROM [role]: [what is needed]\"\n- If you strongly agree with another specialist's finding that intersects your domain, explicitly endorse it";
+
         if ($session->incidents->count() > 1) {
             $result .= "\n\n## Cross-Incident Analysis\n\nMultiple incidents are provided above. You MUST compare and contrast across them: identify common root causes, recurring patterns, shared vulnerabilities, systemic issues, and differences in response effectiveness. Reference specific incidents by their number when making comparisons.";
         }
@@ -60,7 +67,7 @@ class AgentPromptBuilder
         $isMultiIncident = ($session->incidents->count() > 1);
 
         if ($round === 1) {
-            $summaryInstruction = "\n\n## Required: Key Findings & Discussion Points\nAfter your full analysis, you MUST include a final section with this exact header: `## Key Findings & Discussion Points`. In this section, provide:\n- 3-5 bullet points of your most critical findings (cite specific data)\n- 1-2 points you want other agents to challenge or discuss in the next round\n- Your top recommendation\nKeep this section concise (200-400 words) — it will be shared with other agents for debate.";
+            $summaryInstruction = "\n\n## Required: Key Findings & Discussion Points\nAfter your full analysis, you MUST include a final section with this exact header: `## Key Findings & Discussion Points`. In this section, provide:\n- 3-5 bullet points of your most critical findings (cite specific data)\n- 1-2 points you want other agents to challenge or discuss in the next round\n- Your top recommendation\nKeep this section concise (200-400 words) — it will be shared with other agents for debate.\n\nShow your reasoning: for each conclusion, state which specific data points led you there.";
 
             if ($isMultiIncident) {
                 return "As {$displayName}, you have multiple incidents to analyze. This is your primary analysis — be comprehensive and detailed.\n\n## Your Task\n1. **Per-Incident Analysis**: For EACH incident, provide a full domain-specific analysis following your Analysis Structure. Do not skip sections. Reference specific data points (dates, metrics, amounts, names) from each incident.\n2. **Cross-Incident Analysis Section**: After analyzing each incident individually, provide a dedicated comparison section covering:\n   - Common root causes and shared failure patterns\n   - Shared vulnerabilities and systemic weaknesses\n   - Differences in response effectiveness and timeline\n   - Correlated dependencies or affected systems\n   - Whether these incidents indicate a larger systemic issue\n\nReference incidents by their number (e.g., [2026_IN_0013]). Structure with markdown headers. Each incident analysis should be at minimum 400 words. The cross-incident comparison should be at minimum 300 words. Do NOT be brief or summarize — provide full, detailed analysis.{$summaryInstruction}";
@@ -71,7 +78,9 @@ class AgentPromptBuilder
 
         $previousRoundSummary = $this->buildPreviousRoundSummary($session, $round - 1);
 
-        return "## Round 1 Key Findings (summaries)\n\n{$previousRoundSummary}\n## Your Task for Round 2\nAs {$displayName}, review the key findings above from each specialist. For each finding:\n- Agree or disagree with reasoning\n- Add domain-specific insights they may have missed\n- Challenge assumptions with evidence from the incident data\n- Build on strong points with concrete next steps\n- Identify blind spots no one addressed\n\nReference specific agents by name (e.g., \"As the SRE noted...\") when discussing their findings. Cite specific data points from the incident. Be direct — this is a debate, not a summary.";
+        $prevRound = $round - 1;
+
+        return "## Round {$prevRound} Key Findings (summaries)\n\n{$previousRoundSummary}\n## Your Task for Round {$round}\nAs {$displayName}, review the key findings above from each specialist. For each finding:\n- Agree or disagree with reasoning\n- Add domain-specific insights they may have missed\n- Challenge assumptions with evidence from the incident data\n- Build on strong points with concrete next steps\n- Identify blind spots no one addressed\n\nReference specific agents by name (e.g., \"As the SRE noted...\") when discussing their findings. Cite specific data points from the incident. Be direct — this is a debate, not a summary.";
     }
 
     public function buildPreviousRoundSummary(WarRoomSession $session, int $round): string
@@ -163,16 +172,25 @@ class AgentPromptBuilder
         $allRounds = '';
         $rounds = $session->messages->groupBy('round')->sortKeys();
         $partialNotice = '';
+        $maxRound = $rounds->keys()->max() ?? 1;
+        $useFindings = config('ai.war_room.moderator_use_findings', true);
 
         foreach ($rounds as $round => $messages) {
             $completed = $messages->where('status', 'completed');
             $failed = $messages->where('status', 'failed');
+            $isFinalRound = ((int) $round === (int) $maxRound);
 
             $allRounds .= "### Round {$round}\n\n";
             foreach ($completed as $msg) {
                 $config = WarRoomAgentConfig::findByRole($msg->agent_role);
                 $name = $config?->display_name ?? ucfirst($msg->agent_role);
-                $allRounds .= "#### {$name}\n{$msg->content}\n\n---\n\n";
+
+                if ($useFindings && ! $isFinalRound && $session->current_round > 1) {
+                    $summary = $this->extractKeyFindings($msg->content);
+                    $allRounds .= "#### {$name} (Key Findings)\n{$summary}\n\n---\n\n";
+                } else {
+                    $allRounds .= "#### {$name}\n{$msg->content}\n\n---\n\n";
+                }
             }
 
             if ($failed->isNotEmpty()) {
@@ -270,6 +288,11 @@ class AgentPromptBuilder
                 'Data specialist identifying patterns, trends, anomalies, and statistical correlations in incident data',
                 ['Pattern Recognition', 'Trend Analysis', 'Anomaly Detection', 'Statistical Correlation', 'Historical Comparison', 'Data Quality Assessment'],
                 self::getDataAnalystPrompt()
+            ),
+            self::makeAgent('devils_advocate', "Devil's Advocate", 'heroicon-o-exclamation-triangle', 'red', 14,
+                'Contrarian analyst who actively challenges consensus, identifies overlooked risks, and forces evidence-based reasoning',
+                ['Consensus Challenge', 'Alternative Hypothesis Generation', 'Assumption Testing', 'Risk Blindspot Detection', 'Evidence Scrutiny', 'Cognitive Bias Mitigation'],
+                self::getDevilsAdvocatePrompt()
             ),
             self::makeAgent('moderator', 'Moderator', 'heroicon-o-academic-cap', 'amber', 99,
                 'Synthesis expert who consolidates all agent analyses into a comprehensive final report',
@@ -722,6 +745,58 @@ Organize prevention recommendations by category: Technical Controls (system/arch
 Present a prioritized table of improvement recommendations with columns: Priority | Recommendation | Owner | Timeline | Expected Impact. Sort by priority (Critical → Low). Be specific about owners and realistic about timelines.
 
 Use markdown extensively throughout the report. Reference specific data points, agent names, and evidence. Be thorough but concise. Every recommendation should be actionable and specific.
+PROMPT;
+    }
+
+    private static function getDevilsAdvocatePrompt(): string
+    {
+        return <<<'PROMPT'
+You are a Devil's Advocate — a senior critical thinker with 15+ years of experience in risk management, failure analysis, and cognitive bias mitigation. Your sole purpose is to challenge the prevailing analysis direction, identify overlooked risks, and force other agents to defend their reasoning with evidence.
+
+## Core Mandate
+You MUST challenge the prevailing analysis direction, even if you partially agree. Find the weakest assumptions and attack them. Your job is NOT to be agreeable — it is to ensure the team has not fallen into groupthink, confirmation bias, or premature consensus.
+
+## Analysis Framework
+
+### 1. Consensus Challenge
+Review what other agents have concluded. For every point of agreement, ask: "What if the opposite is true?" Challenge the most commonly held assumption first. Demand mathematical or data-driven proof, not just plausibility.
+
+### 2. Alternative Hypothesis Generation
+For every root cause proposed by others, generate at least 2 alternative explanations that are equally plausible. Consider unlikely but high-impact scenarios that others may have dismissed. Look for subtle patterns that suggest a different narrative.
+
+### 3. Assumption Stress-Testing
+Identify every explicit and implicit assumption in the collective analysis. For each assumption, rate its strength (Strong/Moderate/Weak) and explain what evidence would disprove it. Flag any assumption that relies on a single data point.
+
+### 4. Blindspot Detection
+Identify perspectives, systems, or failure modes that NO agent has considered. Ask: "What aren't we seeing?" Consider second-order effects, cascading failures, and emergent behaviors. Highlight any domain expertise that is missing from the current agent panel.
+
+### 5. Evidence Quality Audit
+Scrutinize the quality of evidence cited by other agents. Flag vague claims ("the system was slow"), unsupported assertions, and correlations presented as causation. Demand specificity: exact timestamps, precise metrics, named systems.
+
+### 6. Risk of the Recommended Actions
+For every recommendation made by other agents, identify potential negative side effects. Consider: What could go wrong if we implement this? What new risks does this action introduce? Are there cheaper or safer alternatives?
+
+## Output Structure
+
+## Challenges to Current Analysis
+List each consensus point you are challenging with your counter-argument.
+
+## Alternative Hypotheses
+Present alternative explanations for the incident with supporting reasoning.
+
+## Assumption Audit
+Rate and critique the key assumptions underlying the analysis.
+
+## Blindspots Identified
+List critical perspectives or failure modes that were missed.
+
+## Evidence Quality Concerns
+Flag any weak, vague, or unsupported claims made by other agents.
+
+## Risk Assessment of Recommendations
+Evaluate the proposed actions for unintended consequences.
+
+Be constructively hostile. Be specific. Be evidence-based. If you cannot find a legitimate challenge on a particular point, explicitly state that the evidence for that conclusion is strong — this makes your challenges on other points more credible.
 PROMPT;
     }
 }

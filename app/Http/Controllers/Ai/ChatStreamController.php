@@ -6,10 +6,11 @@ use App\Models\AiSetting;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Services\Ai\ChatContextService;
+use App\Services\Ai\AiUsageLogger;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ChatStreamController
 {
@@ -26,12 +27,20 @@ class ChatStreamController
             'referenced_incidents' => 'nullable|array',
             'referenced_incidents.*' => 'string',
             'web_search' => 'nullable|boolean',
+            'attachments' => 'nullable|array',
+            'attachments.*.id' => 'required|string',
+            'attachments.*.type' => 'required|string',
+            'attachments.*.filename' => 'nullable|string',
+            'attachments.*.mime_type' => 'nullable|string',
+            'attachments.*.size' => 'nullable|integer',
+            'mode' => 'nullable|string|in:normal',
         ]);
 
         $userMessage = $request->input('message');
         $conversationId = $request->input('conversation_id');
         $referencedIds = $request->input('referenced_incidents', []);
         $model = $request->input('model');
+        $rawAttachments = $request->input('attachments', []);
 
         $userId = auth()->id() ?? 'guest';
         if (! RateLimiter::attempt("ai-chat:{$userId}", 6, fn () => true)) {
@@ -57,12 +66,16 @@ class ChatStreamController
                 'model' => $model,
             ]);
 
-        $userMsg = ChatMessage::create([
+        $createData = [
             'conversation_id' => $conversation->id,
             'role' => 'user',
             'content' => $request->input('message'),
             'created_at' => now(),
-        ]);
+        ];
+        if (! empty($rawAttachments)) {
+            $createData['attachments'] = $rawAttachments;
+        }
+        $userMsg = ChatMessage::create($createData);
 
         // Load history BEFORE enrichment so /search can use conversation context
         $history = $conversation->messages()
@@ -73,6 +86,8 @@ class ChatStreamController
             ->values()
             ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content])
             ->toArray();
+
+        $searchEnriched = false;
 
         // If no referenced incidents sent, scan conversation history for previously mentioned IDs
         if (empty($referencedIds)) {
@@ -95,7 +110,6 @@ class ChatStreamController
         }
 
         // Detect inline web search intent (without /search command at message start)
-        $searchEnriched = false;
         if (! $slashCommand && preg_match('/(?:\/search\b|\bsearch\s+(?:the\s+)?(?:web|internet|online)|look\s+up|check\s+online|\bsearch\s+for)\b/i', $userMessage)) {
             $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
             if ($searchContext) {
@@ -116,27 +130,43 @@ class ChatStreamController
 
         // Build API messages
         $systemPrompt = $this->contextService->buildSystemPrompt($userMessage, $referencedIds);
+        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+        $maxTokens = config('ai.chat_max_tokens', 4000);
+
         $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
 
         foreach ($history as $msg) {
             $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
         }
 
-        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+        // Process attachments into multimodal content for the last user message
+        if (! empty($rawAttachments)) {
+            $attachmentService = app(\App\Services\Ai\ChatAttachmentService::class);
+            $lastIdx = count($apiMessages) - 1;
+            for ($i = count($apiMessages) - 1; $i >= 1; $i--) {
+                if (($apiMessages[$i]['role'] ?? '') === 'user') {
+                    $lastIdx = $i;
+                    break;
+                }
+            }
+            $apiMessages[$lastIdx]['content'] = $attachmentService->buildMessageContent(
+                $apiMessages[$lastIdx]['content'],
+                $rawAttachments
+            );
+        }
+
         $baseUrl = rtrim(AiSetting::get('base_url', config('ai.base_url', '')), '/');
         $apiKey = AiSetting::get('api_key', config('ai.api_key', ''));
         $timeout = (int) AiSetting::get('timeout', config('ai.timeout', 60));
-        $maxTokens = config('ai.chat_max_tokens', 4000);
 
         $conversationIdStr = (string) $conversation->id;
         $userMsgIdStr = (string) $userMsg->id;
         $isNew = ! $conversationId;
 
-        return new StreamedResponse(function () use ($baseUrl, $apiKey, $resolvedModel, $apiMessages, $maxTokens, $timeout, $conversationIdStr, $userMsgIdStr, $isNew) {
+        return new StreamedResponse(function () use ($baseUrl, $apiKey, $resolvedModel, $apiMessages, $maxTokens, $timeout, $conversationIdStr, $userMsgIdStr, $isNew, $searchEnriched, $conversation) {
             @ini_set('output_buffering', 'off');
             @ini_set('zlib.output_compression', false);
 
-            // Send initial setup event
             echo "event: setup\ndata: ".json_encode([
                 'conversation_id' => $conversationIdStr,
                 'user_message_id' => $userMsgIdStr,
@@ -148,77 +178,48 @@ class ChatStreamController
             }
             flush();
 
+            $sseService = app(\App\Services\Ai\SseStreamingService::class);
             $fullContent = '';
-            $usage = [];
-            $startTime = microtime(true);
 
-            $ch = curl_init();
-            curl_setopt_array($ch, [
-                CURLOPT_URL => $baseUrl.'/chat/completions',
-                CURLOPT_POST => true,
-                CURLOPT_HTTPHEADER => [
-                    'Authorization: Bearer '.$apiKey,
-                    'Content-Type: application/json',
-                    'Accept: text/event-stream',
-                ],
-                CURLOPT_POSTFIELDS => json_encode([
-                    'model' => $resolvedModel,
-                    'messages' => $apiMessages,
-                    'max_tokens' => $maxTokens,
-                    'stream' => true,
-                ]),
-                CURLOPT_TIMEOUT => $timeout,
-                CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$fullContent, &$usage) {
-                    $lines = explode("\n", $data);
-                    foreach ($lines as $line) {
-                        $line = trim($line);
-                        if (str_starts_with($line, 'data: ')) {
-                            $json = substr($line, 6);
-                            if ($json === '[DONE]') {
-                                echo "data: [DONE]\n\n";
-                                if (ob_get_level()) {
-                                    ob_flush();
-                                }
-                                flush();
-
-                                return strlen($data);
-                            }
-
-                            $parsed = json_decode($json, true);
-                            if (! $parsed) {
-                                continue;
-                            }
-
-                            $delta = $parsed['choices'][0]['delta']['content'] ?? '';
-                            if ($delta !== '') {
-                                $fullContent .= $delta;
-                                echo 'data: '.json_encode(['delta' => $delta])."\n\n";
-                                if (ob_get_level()) {
-                                    ob_flush();
-                                }
-                                flush();
-                            }
-
-                            if (isset($parsed['usage'])) {
-                                $usage = $parsed['usage'];
-                            }
+            try {
+                $result = $sseService->stream(
+                    $baseUrl,
+                    $apiKey,
+                    [
+                        'model' => $resolvedModel,
+                        'messages' => $apiMessages,
+                        'max_tokens' => $maxTokens,
+                        'stream' => true,
+                    ],
+                    $timeout,
+                    function (string $delta) use (&$fullContent) {
+                        $fullContent .= $delta;
+                        echo 'data: '.json_encode(['delta' => $delta])."\n\n";
+                        if (ob_get_level()) {
+                            ob_flush();
                         }
-                    }
+                        flush();
+                    },
+                );
+            } catch (\Throwable $e) {
+                Log::warning('AI stream error', ['error' => $e->getMessage()]);
+                echo "event: error\ndata: ".json_encode(['error' => $e->getMessage()])."\n\n";
+                if (ob_get_level()) {
+                    ob_flush();
+                }
+                flush();
 
-                    return strlen($data);
-                },
-            ]);
+                return;
+            }
 
-            $success = curl_exec($ch);
-            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            $curlError = curl_error($ch);
-            curl_close($ch);
+            $httpCode = $result['http_code'];
+            $usage = $result['usage'];
+            $finishReason = $result['finish_reason'];
+            $responseTimeMs = $result['response_time_ms'];
+            $fullContent = $result['content'];
 
-            $responseTimeMs = (microtime(true) - $startTime) * 1000;
-
-            if (! $success || $httpCode >= 400) {
-                $errorMsg = $curlError ?: 'AI service error (HTTP '.$httpCode.')';
-                Log::warning('AI stream error', ['http_code' => $httpCode, 'curl_error' => $curlError]);
+            if ($result['error'] || $httpCode >= 400) {
+                $errorMsg = $result['error'] ?: 'AI service error (HTTP '.$httpCode.')';
                 echo "event: error\ndata: ".json_encode(['error' => $errorMsg])."\n\n";
                 if (ob_get_level()) {
                     ob_flush();
@@ -228,17 +229,109 @@ class ChatStreamController
                 return;
             }
 
+            if (blank($fullContent)) {
+                $rawBody = $result['raw_body'] ?? '';
+                $rawError = null;
+                if (! blank($rawBody)) {
+                    $errorData = json_decode($rawBody, true);
+                    $rawError = $errorData['error']['message'] ?? ($errorData['message'] ?? $rawBody);
+                }
+                $userError = $rawError
+                    ? 'AI error: '.$rawError
+                    : 'AI returned an empty response. Try rephrasing your question.';
+                Log::warning('AI stream returned empty response', [
+                    'model' => $resolvedModel,
+                    'finish_reason' => $finishReason,
+                    'http_code' => $httpCode,
+                    'usage' => $usage,
+                    'raw_error' => $rawBody ?: null,
+                ]);
+                echo "event: error\ndata: ".json_encode([
+                    'error' => $userError,
+                ])."\n\n";
+                if (ob_get_level()) { ob_flush(); }
+                flush();
+                try {
+                    app(AiUsageLogger::class)->log(
+                        fieldType: 'chat_assistant',
+                        model: $resolvedModel,
+                        success: false,
+                        outputLength: 0,
+                        usage: array_filter([
+                            'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                            'completion_tokens' => $usage['completion_tokens'] ?? null,
+                            'total_tokens' => $usage['total_tokens'] ?? null,
+                        ]),
+                        responseTimeMs: $responseTimeMs,
+                        apiRequestId: $usage['id'] ?? null,
+                        errorMessage: 'Empty streaming response',
+                        metadata: ['message_id' => $userMsgIdStr, 'mode' => 'stream'],
+                    );
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to log empty streaming chat usage', ['error' => $e->getMessage()]);
+                }
+                return;
+            }
+
             // Send metadata event with full content and usage
             echo "event: metadata\ndata: ".json_encode([
                 'full_content' => $fullContent,
                 'usage' => $usage,
                 'model' => $resolvedModel,
                 'response_time_ms' => $responseTimeMs,
+                'finish_reason' => $finishReason,
+                'truncated' => $finishReason === 'length',
             ])."\n\n";
             if (ob_get_level()) {
                 ob_flush();
             }
             flush();
+
+            // Save assistant message to database (server-side persistence)
+            try {
+                ChatMessage::create([
+                    'conversation_id' => $conversation->id,
+                    'role' => 'assistant',
+                    'content' => $fullContent,
+                    'model' => $resolvedModel,
+                    'tokens_used' => $usage['total_tokens'] ?? null,
+                    'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                    'completion_tokens' => $usage['completion_tokens'] ?? null,
+                    'web_search_used' => $searchEnriched,
+                    'created_at' => now(),
+                ]);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to save streaming assistant message', ['error' => $e->getMessage()]);
+            }
+
+            // Log usage after stream completes
+            try {
+                app(AiUsageLogger::class)->log(
+                    fieldType: 'chat_assistant',
+                    model: $resolvedModel,
+                    success: ! blank($fullContent),
+                    outputLength: strlen($fullContent),
+                    usage: array_filter([
+                        'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                        'completion_tokens' => $usage['completion_tokens'] ?? null,
+                        'total_tokens' => $usage['total_tokens'] ?? null,
+                    ]),
+                    responseTimeMs: $responseTimeMs,
+                    apiRequestId: $usage['id'] ?? null,
+                    errorMessage: blank($fullContent) ? 'Empty streaming response' : null,
+                    metadata: ['message_id' => $userMsgIdStr, 'mode' => 'stream'],
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Failed to log streaming chat usage', ['error' => $e->getMessage()]);
+            }
+
+            // Archive conversation memory (async, non-blocking)
+            try {
+                $memoryService = app(\App\Services\Ai\ConversationMemoryService::class);
+                $memoryService->archiveConversation($conversation);
+            } catch (\Throwable $e) {
+                Log::debug('Failed to archive conversation memory', ['error' => $e->getMessage()]);
+            }
         }, 200, [
             'Content-Type' => 'text/event-stream',
             'Cache-Control' => 'no-cache',

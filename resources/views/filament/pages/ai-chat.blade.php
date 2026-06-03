@@ -146,6 +146,35 @@
                 </div>
             </div>
             {{-- Compact "..." Menu --}}
+            {{-- Chat Mode Toggle --}}
+            <div class="relative flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 flex-shrink-0">
+                {{-- Sliding pill indicator --}}
+                <div class="absolute top-0.5 rounded-md transition-all duration-200 ease-out"
+                     :style="{
+                         width: 'calc(50% - 2px)',
+                         height: 'calc(100% - 4px)',
+                         left: selectedMode === 'normal' ? '2px' : 'calc(50%)',
+                         backgroundColor: selectedMode === 'normal' ? '#4f46e5' : '#9333ea'
+                     }">
+                </div>
+                <button @click="selectedMode = 'normal'"
+                        class="relative z-10 px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-200 w-1/2 text-center"
+                        :class="selectedMode === 'normal'
+                            ? 'text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"
+                        title="Normal mode — fast streaming response">
+                    Normal
+                </button>
+                <button @click="selectedMode = 'plan'"
+                        class="relative z-10 px-3 py-1.5 text-xs font-medium rounded-md transition-colors duration-200 flex items-center justify-center gap-1 w-1/2"
+                        :class="selectedMode === 'plan'
+                            ? 'text-white'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'"
+                        title="Plan mode — think first, then dispatch specialist agents">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                    Plan
+                </button>
+            </div>
             {{-- Model Picker --}}
             <div class="relative" x-data="{ showModelPicker: false }">
                 <button @click="showModelPicker = !showModelPicker" class="ai-chat-model-btn">
@@ -172,6 +201,27 @@
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
                 <span class="text-xs font-medium" x-text="webSearchEnabled ? 'Search ON' : 'Web Search'"></span>
             </button>
+            {{-- Keyboard Shortcuts Help --}}
+            <div class="relative" x-data="{ showHelp: false }">
+                <button @click="showHelp = !showHelp" class="ai-chat-model-btn" title="Keyboard shortcuts">
+                    <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                </button>
+                <div x-show="showHelp" @click.away="showHelp = false" x-transition
+                     class="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-gray-800 rounded-xl shadow-xl border border-gray-200 dark:border-gray-700 p-4 z-50">
+                    <h4 class="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">Keyboard Shortcuts</h4>
+                    <div class="space-y-2 text-xs">
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">New conversation</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Ctrl+N</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">Focus input</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Ctrl+K</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">Toggle sidebar</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Ctrl+Shift+S</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">Search conversations</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Ctrl+Shift+F</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">Export chat</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Ctrl+Shift+E</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">Slash commands</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Ctrl+/</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">Send message</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Enter</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">New line</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Shift+Enter</kbd></div>
+                        <div class="flex justify-between"><span class="text-gray-600 dark:text-gray-300">Paste image</span><kbd class="px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-[10px] font-mono">Ctrl+V</kbd></div>
+                    </div>
+                </div>
+            </div>
             {{-- Persona Selector --}}
             <div class="relative" x-data="{ showPersonaPicker: false }">
                 <button @click="showPersonaPicker = !showPersonaPicker" class="ai-chat-model-btn" :class="selectedPersonas.length > 0 ? 'ai-chat-model-btn--active' : ''">
@@ -304,6 +354,17 @@
                          :style="msg.persona ? 'border-left: 3px solid ' + getPersonaColor(msg.persona.color, 0.6) : ''">
                         <template x-if="msg.role === 'user'">
                             <div>
+                                <div x-show="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2 mb-2">
+                                    <template x-for="att in (msg.attachments || [])" :key="att.id">
+                                        <span x-show="att.type === 'image'">
+                                            <img :src="'/admin/ai/chat/attachment/' + att.id" class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-600" loading="lazy" />
+                                        </span>
+                                        <span x-show="att.type === 'document'" class="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
+                                            <span>📄</span>
+                                            <span x-text="att.filename"></span>
+                                        </span>
+                                    </template>
+                                </div>
                                 <p class="text-sm" x-text="msg.content"></p>
                                 <p class="ai-chat-msg-time" x-text="new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></p>
                             </div>
@@ -365,16 +426,18 @@
             <div x-show="loading" x-transition class="ai-chat-msg assistant">
                 <template x-if="selectedPersonas.length > 0">
                     <div class="flex flex-col gap-2 w-full">
-                        <template x-for="roleKey in selectedPersonas" :key="roleKey">
-                            <div class="flex items-center gap-2">
-                                <span class="ai-chat-persona-icon" :style="'width:28px;height:28px;font-size:10px;background:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray', 0.15) + '; color:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray')">
-                                    <span x-text="getAgentInitial(getAgentByKey(roleKey)?.display_name || '?')"></span>
-                                </span>
-                                <div class="ai-chat-typing"><span></span><span></span><span></span></div>
-                                <span class="text-[11px] text-gray-400 dark:text-gray-500" x-text="getAgentByKey(roleKey)?.display_name || roleKey"></span>
+                        <div class="flex items-center gap-2">
+                            <div class="flex -space-x-1.5">
+                                <template x-for="(roleKey, i) in selectedPersonas" :key="roleKey">
+                                    <span class="ai-chat-persona-icon relative" :style="'width:24px;height:24px;font-size:9px;border:2px solid white;dark:border-gray-800;background:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray', 0.15) + '; color:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray')">
+                                        <span x-text="getAgentInitial(getAgentByKey(roleKey)?.display_name || '?')"></span>
+                                    </span>
+                                </template>
                             </div>
-                        </template>
-                        <div class="flex items-center gap-2 ml-9">
+                            <div class="ai-chat-typing"><span></span><span></span><span></span></div>
+                            <span class="text-[11px] text-gray-400 dark:text-gray-500">Preparing <span x-text="selectedPersonas.length"></span> perspectives...</span>
+                        </div>
+                        <div class="flex items-center gap-2 ml-8">
                             <span class="text-xs text-gray-400 dark:text-gray-500" x-ref="elapsedDisplay" x-show="loading"></span>
                             <button @click="stopGeneration()" class="ai-chat-stop-btn">
                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
@@ -406,7 +469,7 @@
         {{-- Input --}}
         <div class="ai-chat-input-area">
             {{-- Referenced incidents chips --}}
-            <div x-show="referencedIncidents.length > 0" x-transition class="ai-chat-ref-bar">
+            <div x-show="referencedIncidents.length > 0 || pendingAttachments.length > 0" x-transition class="ai-chat-ref-bar">
                 <template x-for="(inc, idx) in referencedIncidents" :key="inc.no">
                     <span class="ai-chat-ref-chip">
                         <span class="ai-chat-ref-severity" :class="'severity-' + (inc.severity || '').toLowerCase().replace(' ', '')" x-text="inc.severity"></span>
@@ -414,7 +477,24 @@
                         <button @click="removeReferencedIncident(idx)" class="ai-chat-ref-remove">&times;</button>
                     </span>
                 </template>
-                <button @click="referencedIncidents = []" class="ai-chat-ref-clear">Clear all</button>
+                <template x-for="(att, idx) in pendingAttachments" :key="att.id">
+                    <span class="ai-chat-ref-chip" style="background: #f0fdf4; border-color: #86efac;">
+                        <span x-text="att.type === 'image' ? '🖼' : '📄'"></span>
+                        <span class="ai-chat-ref-text" x-text="(att.filename || 'Attachment').substring(0, 40)"></span>
+                        <button @click="removeAttachment(idx)" class="ai-chat-ref-remove">&times;</button>
+                    </span>
+                </template>
+                <button x-show="referencedIncidents.length > 0" @click="referencedIncidents = []" class="ai-chat-ref-clear">Clear all</button>
+            </div>
+
+            {{-- Image previews --}}
+            <div x-show="pendingAttachments.filter(a => a.type === 'image').length > 0" class="flex gap-2 px-3 pt-2 overflow-x-auto">
+                <template x-for="(att, idx) in pendingAttachments.filter(a => a.type === 'image')" :key="att.id">
+                    <div class="relative flex-shrink-0">
+                        <img :src="att.previewUrl" class="w-16 h-16 object-cover rounded-lg border border-gray-200 dark:border-gray-600" />
+                        <button @click="removeAttachment(pendingAttachments.indexOf(att))" class="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center leading-none">&times;</button>
+                    </div>
+                </template>
             </div>
 
             <div class="ai-chat-input-wrapper relative">
@@ -434,12 +514,20 @@
                           @keydown.up.prevent="if (slashActive) slashIndex = Math.max(slashIndex - 1, 0)"
                           @keydown.tab.prevent="if (slashActive && filteredCommands[slashIndex]) selectSlashCommand(filteredCommands[slashIndex].cmd)"
                           @keydown.escape.window="slashActive = false"
+                          @paste="handlePaste($event)"
                           x-ref="chatInput"
                           rows="1"
                           placeholder="Ask about incidents, patterns, trends... or type / for commands"
                           class="ai-chat-textarea"
                           :disabled="loading"
                           @input="onInput()"></textarea>
+
+                {{-- Attach File button --}}
+                <input type="file" x-ref="fileInput" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.docx,.doc" @change="handleFileSelect($event)" multiple />
+                <button @click="$refs.fileInput.click()" type="button" class="ai-chat-attach-btn" :class="{'has-refs': pendingAttachments.length > 0}" title="Attach image or document">
+                    <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+                    <span x-show="pendingAttachments.length > 0" class="ai-chat-attach-badge" x-text="pendingAttachments.length"></span>
+                </button>
 
                 {{-- Attach Incident button --}}
                 <div class="relative">
@@ -505,7 +593,7 @@
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
                 </button>
             </div>
-            <p class="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span></p>
+            <p class="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span> <span x-show="selectedMode === 'plan'" class="font-medium text-purple-500" x-text="'| Mode: Plan'"></span></p>
             <p x-show="selectedPersonas.length >= 3" class="text-[10px] text-amber-500 dark:text-amber-400 text-center mt-0.5" x-text="selectedPersonas.length + ' personas will generate separate responses, increasing token usage.'"></p>
         </div>
     </div>
@@ -529,6 +617,8 @@ function aiChat() {
     // Markdown parser — caches result on message objects
     function parseMd(text) {
         if (!text) return '';
+        // Strip AI reasoning/thinking tags (defense-in-depth for server-side filtering)
+        text = text.replace(/<think(?:ing)?[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, '');
         if (typeof marked !== 'undefined') {
             try { return marked.parse(text, { breaks: true, gfm: true }); }
             catch { return text.replace(/\n/g, '<br>'); }
@@ -550,6 +640,7 @@ function aiChat() {
         messages: [],
         inputText: '',
         loading: false,
+        activePersonaKey: null,
         selectedModel: '{{ $defaultModel }}',
         models: {{ Js::from($models) }},
         showSidebar: false,
@@ -567,9 +658,16 @@ function aiChat() {
         availableAgents: [],
         selectedPersonas: [],
         webSearchEnabled: false,
+        selectedMode: 'normal',
+        planState: null,
+        clarificationState: null,
+        clarificationAnswers: [],
+        gapAnalysisState: null,
+        researchState: null,
         editingTitleId: null,
         editingTitleValue: '',
         collapsedGroups: {},
+        pendingAttachments: [],
 
         get selectedModelLabel() {
             return this.models[this.selectedModel] || this.selectedModel;
@@ -794,7 +892,29 @@ function aiChat() {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    this.messages = data.messages.map(m => withHtml(m));
+                    this.messages = data.messages.map(m => {
+                        // Reconstruct plan card UI for persisted plan messages
+                        if (m.is_plan_message && m.plan_role === 'plan' && m.plan_metadata) {
+                            const planData = {
+                                plan_text: m.plan_metadata.plan_text || m.content,
+                                subtasks: (m.plan_metadata.subtasks || []).map((s, i) => ({
+                                    index: i,
+                                    description: s.description,
+                                    persona_key: s.persona_key,
+                                    label: s.label,
+                                    status: 'completed',
+                                })),
+                            };
+                            m.parsedHtml = this.renderPlanCards(planData);
+                            m.isPlanMessage = true;
+                            m.planRole = 'plan';
+                        }
+                        // Skip ephemeral thinking messages on reload
+                        if (m.is_plan_message && m.plan_role === 'thinking') {
+                            return null;
+                        }
+                        return withHtml(m);
+                    }).filter(m => m !== null);
                     if (data.conversation?.model) this.selectedModel = data.conversation.model;
                     this.restoreReferencedIncidents();
                     // Restore persona selection from conversation history
@@ -813,6 +933,7 @@ function aiChat() {
             this.activeConversationId = null;
             this.messages = [];
             this.referencedIncidents = [];
+            this.pendingAttachments = [];
             if (window.innerWidth < 1024) this.showSidebar = false;
         },
 
@@ -882,6 +1003,64 @@ function aiChat() {
             this.editingTitleId = null;
         },
 
+        async handleFileSelect(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+            for (const file of files) {
+                await this.uploadAttachment(file);
+            }
+            event.target.value = '';
+        },
+
+        handlePaste(event) {
+            const items = event.clipboardData?.items;
+            if (!items) return;
+            for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                    event.preventDefault();
+                    const file = item.getAsFile();
+                    if (file) this.uploadAttachment(file);
+                    return;
+                }
+            }
+        },
+
+        async uploadAttachment(file) {
+            const maxSize = file.type.startsWith('image/') ? 5 * 1024 * 1024 : 15 * 1024 * 1024;
+            if (file.size > maxSize) {
+                alert(`File too large. Maximum ${file.type.startsWith('image/') ? '5MB' : '15MB'}.`);
+                return;
+            }
+            const formData = new FormData();
+            formData.append('file', file);
+            const token = document.querySelector('meta[name="csrf-token"]')?.content || document.querySelector('input[name="_token"]')?.value || '';
+            try {
+                const res = await fetch('/admin/ai/chat/upload-attachment', {
+                    method: 'POST',
+                    headers: { 'X-CSRF-TOKEN': token },
+                    body: formData,
+                });
+                const data = await res.json();
+                if (data.success && data.attachment) {
+                    const att = data.attachment;
+                    if (att.type === 'image' && file.type.startsWith('image/')) {
+                        att.previewUrl = URL.createObjectURL(file);
+                    }
+                    this.pendingAttachments.push(att);
+                } else {
+                    alert(data.error || 'Failed to upload attachment.');
+                }
+            } catch (e) {
+                alert('Failed to upload attachment. Please try again.');
+            }
+        },
+
+        removeAttachment(idx) {
+            const att = this.pendingAttachments[idx];
+            if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
+            this.pendingAttachments.splice(idx, 1);
+        },
+
         async sendMessage() {
             const text = this.inputText.trim();
             if (!text) return;
@@ -899,18 +1078,22 @@ function aiChat() {
             const refIds = this.referencedIncidents.map(i => i.no);
             const refPrefix = refIds.length > 0 ? refIds.map(no => `[${no}]`).join(' ') + '\n' : '';
 
+            const attachmentsToSend = [...this.pendingAttachments];
             const userMsg = {
                 id: 'temp-' + Date.now(),
                 role: 'user',
                 content: refPrefix + text,
                 created_at: new Date().toISOString(),
+                attachments: attachmentsToSend.length > 0 ? attachmentsToSend.map(a => ({id: a.id, type: a.type, filename: a.filename, mime_type: a.mime_type, size: a.size})) : undefined,
             };
             this.messages = [...this.messages, userMsg];
             this.inputText = '';
+            this.pendingAttachments = [];
             this.autoResize();
             this.scrollToBottom();
 
             this.loading = true;
+            this.activePersonaKey = null;
             _elapsed = 0;
             this.lastUserMessage = text;
             _timer = setInterval(() => {
@@ -920,8 +1103,8 @@ function aiChat() {
             }, 1000);
             this.abortController = new AbortController();
 
-            // Route: streaming personas vs standard JSON
-            await this.sendMessageJson(text, refIds);
+            // Route: streaming personas vs standard
+            await this.sendMessageStream(text, refIds, attachmentsToSend);
 
             this.loading = false;
             if (_timer) { clearInterval(_timer); _timer = null; }
@@ -930,15 +1113,27 @@ function aiChat() {
             this.$nextTick(() => this.scrollToBottom());
         },
 
-        async sendMessageJson(text, refIds) {
+        async sendMessageStream(text, refIds, attachmentsToSend = []) {
+            const token = document.querySelector('meta[name="csrf-token"]')?.content;
+            const isPersona = this.selectedPersonas.length > 0;
+            const isPlan = this.selectedMode === 'plan';
+
+            let endpoint;
+            if (isPlan) {
+                endpoint = '/admin/ai/chat/stream-plan';
+            } else if (isPersona) {
+                endpoint = '/admin/ai/chat/stream-personas';
+            } else {
+                endpoint = '/admin/ai/chat/stream';
+            }
+
             try {
-                const token = document.querySelector('meta[name="csrf-token"]')?.content;
-                const res = await fetch('/admin/ai/chat/send', {
+                const res = await fetch(endpoint, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRF-TOKEN': token,
-                        'Accept': 'application/json',
+                        'Accept': 'text/event-stream',
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     signal: this.abortController.signal,
@@ -947,90 +1142,786 @@ function aiChat() {
                         conversation_id: this.activeConversationId,
                         model: this.selectedModel,
                         referenced_incidents: refIds,
-                        personas: this.selectedPersonas.length > 0 ? this.selectedPersonas : undefined,
+                        personas: isPlan || isPersona ? this.selectedPersonas : undefined,
                         web_search: this.webSearchEnabled,
+                        mode: isPlan ? 'plan' : 'normal',
+                        attachments: attachmentsToSend.length > 0 ? attachmentsToSend.map(a => ({id: a.id, type: a.type, filename: a.filename, mime_type: a.mime_type, size: a.size})) : undefined,
                     }),
                 });
 
-                if (res.status === 419) {
-                    window.location.reload();
+                if (res.status === 419) { window.location.reload(); return; }
+                if (res.status === 429) {
+                    this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: '⚠️ Rate limit exceeded. Please wait a moment.', model: null, created_at: new Date().toISOString() })];
+                    return;
+                }
+                if (!res.ok) {
+                    this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: '⚠️ Server error (' + res.status + '). Please try again.', model: null, created_at: new Date().toISOString() })];
                     return;
                 }
 
-                // Safely parse JSON — handle non-JSON responses (500 HTML, proxy errors)
-                let data;
-                try {
-                    const responseText = await res.text();
-                    data = JSON.parse(responseText);
-                } catch (parseError) {
-                    console.error('Failed to parse response:', parseError);
-                    this.messages = [...this.messages, withHtml({
-                        id: 'error-' + Date.now(),
-                        role: 'assistant',
-                        content: '⚠️ Server returned an invalid response. Please try again.',
-                        model: null,
-                        created_at: new Date().toISOString(),
-                    })];
-                    return;
-                }
+                const reader = res.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let streamingIdx = -1;
+                let streamingContent = '';
+                let setupData = null;
+                let personaIdx = {};
+                let personaRaw = {};
+                let renderQueued = false;
+                let personaRenderQueued = {};
 
-                if (data.success) {
-                    const searched = data.web_search_used === true;
-                    // Handle multi-persona responses
-                    if (data.mode === 'personas' && data.assistant_messages) {
-                        for (const msg of data.assistant_messages) {
-                            this.messages = [...this.messages, withHtml({
-                                ...msg,
-                                web_search_used: searched,
-                                copied: false,
-                            })];
-                        }
-                    } else if (data.assistant_message) {
-                        this.messages = [...this.messages, withHtml({
-                            ...data.assistant_message,
-                            web_search_used: searched,
-                            copied: false,
-                        })];
+                const queueRender = (idx, content, personaKey) => {
+                    const queueKey = personaKey || '_standard';
+                    const queueMap = personaKey ? personaRenderQueued : null;
+                    if (queueMap) {
+                        if (queueMap[queueKey]) return;
+                        queueMap[queueKey] = true;
+                    } else if (renderQueued) {
+                        return;
+                    } else {
+                        renderQueued = true;
                     }
+                    requestAnimationFrame(() => {
+                        if (queueMap) {
+                            queueMap[queueKey] = false;
+                        } else {
+                            renderQueued = false;
+                        }
+                        if (idx >= 0 && idx < this.messages.length) {
+                            const msg = { ...this.messages[idx] };
+                            msg.content = content;
+                            msg._raw = content;
+                            msg.parsedHtml = parseMd(content) + '<span class="ai-chat-cursor">▌</span>';
+                            this.messages[idx] = msg;
+                            this.scrollToBottom();
+                        }
+                    });
+                };
 
-                    const payload = data;
-                    setTimeout(() => {
-                        if (!this.activeConversationId && payload.conversation_id) {
-                            this.activeConversationId = payload.conversation_id;
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop() || '';
+
+                    for (const part of parts) {
+                        const lines = part.split('\n');
+                        let eventType = '';
+                        let dataStr = '';
+
+                        for (const line of lines) {
+                            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+                            else if (line.startsWith('data: ')) dataStr += line.slice(6);
                         }
-                        if (payload.updated_title) {
-                            this.conversations = this.conversations.map(c =>
-                                c.id === payload.conversation_id ? { ...c, title: payload.updated_title } : c
-                            );
+
+                        if (eventType === 'setup') {
+                            const data = JSON.parse(dataStr);
+                            setupData = data;
+                            if (data.is_new && data.conversation_id) {
+                                this.activeConversationId = data.conversation_id;
+                            }
+                        } else if (eventType === 'error') {
+                            const data = JSON.parse(dataStr);
+                            this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: '⚠️ ' + (data.error || 'Something went wrong.'), model: null, created_at: new Date().toISOString() })];
+                        } else if (eventType === 'plan_thinking') {
+                            this.loading = false;
+                            if (_timer) { clearInterval(_timer); _timer = null; }
+                            this.planState = { phase: 'thinking' };
+                            const thinkingMsg = {
+                                id: 'plan-thinking-' + Date.now(),
+                                role: 'assistant',
+                                content: '',
+                                parsedHtml: '<div class="flex items-center gap-2 text-purple-600 dark:text-purple-400 p-3"><svg class="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg><span class="text-sm font-medium">Thinking and planning...</span></div>',
+                                isPlanMessage: true,
+                                planRole: 'thinking',
+                                isStreaming: true,
+                                created_at: new Date().toISOString(),
+                            };
+                            const clarCheckIdx = this.messages.findIndex(m => m.planRole === 'clarification_check');
+                            if (clarCheckIdx >= 0) {
+                                this.messages[clarCheckIdx] = thinkingMsg;
+                                this.messages = [...this.messages];
+                            } else {
+                                this.messages = [...this.messages, thinkingMsg];
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'plan_ready') {
+                            const data = JSON.parse(dataStr);
+                            this.planState = { phase: 'agents', planText: data.plan_text, subtasks: data.subtasks };
+                            const planHtml = this.renderPlanCards(data);
+                            const thinkIdx = this.messages.findIndex(m => m.planRole === 'thinking');
+                            if (thinkIdx >= 0) {
+                                const msg = { ...this.messages[thinkIdx] };
+                                msg.parsedHtml = planHtml;
+                                msg.content = data.plan_text;
+                                msg.planRole = 'plan';
+                                msg.isStreaming = false;
+                                this.messages[thinkIdx] = msg;
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'agent_status') {
+                            const data = JSON.parse(dataStr);
+                            if (this.planState) {
+                                this.planState.subtasks[data.index] = { ...this.planState.subtasks[data.index], ...data };
+                                const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                                if (planIdx >= 0) {
+                                    const msg = { ...this.messages[planIdx] };
+                                    msg.parsedHtml = this.renderPlanCards(this.planState);
+                                    this.messages[planIdx] = msg;
+                                }
+                                this.scrollToBottom();
+                            }
+                        } else if (eventType === 'plan_fallback') {
+                            const data = JSON.parse(dataStr);
+                            const thinkIdx = this.messages.findIndex(m => m.planRole === 'thinking' || m.planRole === 'plan');
+                            if (thinkIdx >= 0) {
+                                const msg = { ...this.messages[thinkIdx] };
+                                msg.parsedHtml = '<div class="p-3 text-amber-600 dark:text-amber-400 text-sm"><p>Fallback to standard mode: ' + (data.reason || 'Planning unavailable') + '</p></div>';
+                                msg.planRole = 'fallback';
+                                msg.isStreaming = false;
+                                this.messages[thinkIdx] = msg;
+                            }
+                            this.planState = null;
+                        } else if (eventType === 'clarification_check') {
+                            this.messages = [...this.messages, {
+                                id: 'clarification-check-' + Date.now(),
+                                role: 'assistant',
+                                content: '',
+                                parsedHtml: '<div class="flex items-center gap-2 text-blue-600 dark:text-blue-400 p-3"><svg class="w-4 h-4 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg><span class="text-sm">Checking if your question needs clarification...</span></div>',
+                                isPlanMessage: true,
+                                planRole: 'clarification_check',
+                                isStreaming: true,
+                                created_at: new Date().toISOString(),
+                            }];
+                            this.scrollToBottom();
+                        } else if (eventType === 'needs_clarification') {
+                            const data = JSON.parse(dataStr);
+                            this.loading = false;
+                            if (_timer) { clearInterval(_timer); _timer = null; }
+                            this.clarificationState = {
+                                planId: data.plan_id,
+                                conversationId: data.conversation_id,
+                                questions: data.questions,
+                            };
+                            this.clarificationAnswers = data.questions.map(() => '');
+                            const checkIdx = this.messages.findIndex(m => m.planRole === 'clarification_check');
+                            if (checkIdx >= 0) {
+                                const msg = { ...this.messages[checkIdx] };
+                                msg.parsedHtml = this.renderClarificationUI(data.questions);
+                                msg.planRole = 'clarification';
+                                msg.isStreaming = false;
+                                this.messages[checkIdx] = msg;
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'gap_analysis') {
+                            const data = JSON.parse(dataStr);
+                            this.gapAnalysisState = data;
+                            if (data.status === 'analyzing') {
+                                const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                                if (planIdx >= 0) {
+                                    const msg = { ...this.messages[planIdx] };
+                                    msg.parsedHtml = this.renderPlanCards(this.planState)
+                                        + '<div class="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50">'
+                                        + '<div class="flex items-center gap-2 text-amber-600 dark:text-amber-400">'
+                                        + '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>'
+                                        + '<span class="text-xs font-medium">Analyzing results for completeness...</span></div></div>';
+                                    this.messages[planIdx] = msg;
+                                }
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'research_start') {
+                            const data = JSON.parse(dataStr);
+                            this.researchState = { topics: data.topics, count: data.count };
+                            const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                            if (planIdx >= 0) {
+                                const msg = { ...this.messages[planIdx] };
+                                msg.parsedHtml = this.renderPlanCards(this.planState) + this.renderResearchCards(data);
+                                this.messages[planIdx] = msg;
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'research_status') {
+                            const data = JSON.parse(dataStr);
+                            if (this.planState) {
+                                if (!this.planState.researchSubtasks) this.planState.researchSubtasks = [];
+                                const existing = this.planState.researchSubtasks.findIndex(s => s.index === data.index);
+                                if (existing >= 0) {
+                                    this.planState.researchSubtasks[existing] = { ...this.planState.researchSubtasks[existing], ...data };
+                                } else {
+                                    this.planState.researchSubtasks.push(data);
+                                }
+                                const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                                if (planIdx >= 0) {
+                                    const msg = { ...this.messages[planIdx] };
+                                    msg.parsedHtml = this.renderPlanCards(this.planState) + this.renderResearchCards({ topics: this.planState.researchSubtasks.map(s => s.description || s.description) });
+                                    this.messages[planIdx] = msg;
+                                }
+                                this.scrollToBottom();
+                            }
+                        } else if (eventType === 'synthesis_start') {
+                            this.messages = [...this.messages, {
+                                id: 'streaming-synthesis-' + Date.now(),
+                                role: 'assistant',
+                                content: '',
+                                _raw: '',
+                                parsedHtml: '<div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 p-3"><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="text-sm font-medium">Synthesizing results from all specialists...</span></div>',
+                                model: null,
+                                isStreaming: true,
+                                copied: false,
+                                created_at: new Date().toISOString(),
+                            }];
+                            streamingIdx = this.messages.length - 1;
+                            streamingContent = '';
+                            this.scrollToBottom();
+                        } else if (eventType === 'metadata') {
+                            const data = JSON.parse(dataStr);
+                            if (streamingIdx >= 0 && streamingIdx < this.messages.length) {
+                                const msg = { ...this.messages[streamingIdx] };
+                                let finalContent = data.full_content || streamingContent;
+                                if (data.truncated) {
+                                    finalContent += '\n\n---\n*Response was truncated due to length. Ask me to continue for the rest.*';
+                                }
+                                msg.content = finalContent;
+                                msg.parsedHtml = parseMd(msg.content);
+                                msg.model = data.model;
+                                msg.tokens_used = data.usage?.total_tokens;
+                                msg.prompt_tokens = data.usage?.prompt_tokens;
+                                msg.completion_tokens = data.usage?.completion_tokens;
+                                msg.isStreaming = false;
+                                this.messages[streamingIdx] = msg;
+                            }
+                            // Plan mode persists messages server-side; skip finalizeStream
+                            if (data.mode !== 'plan' && data.mode !== 'fallback') {
+                                await this.finalizeStream(data, setupData, text);
+                            }
+                        } else if (eventType === 'persona_start') {
+                            const data = JSON.parse(dataStr);
+                            const p = data.persona;
+                            this.loading = false;
+                            if (_timer) { clearInterval(_timer); _timer = null; }
+                            this.messages = [...this.messages, {
+                                id: 'streaming-' + p.key + '-' + Date.now(),
+                                role: 'assistant',
+                                content: '',
+                                _raw: '',
+                                parsedHtml: '<span class="ai-chat-cursor">▌</span>',
+                                persona: { name: p.name, color: p.color },
+                                model: null,
+                                isStreaming: true,
+                                copied: false,
+                                web_search_used: this.webSearchEnabled,
+                                created_at: new Date().toISOString(),
+                            }];
+                            personaIdx[p.key] = this.messages.length - 1;
+                            this.activePersonaKey = p.key;
+                            this.scrollToBottom();
+                        } else if (eventType === 'persona_done') {
+                            // persona stream finished, metadata will finalize
+                        } else if (eventType === 'persona_metadata') {
+                            const data = JSON.parse(dataStr);
+                            const idx = personaIdx[data.persona_key];
+                            if (idx !== undefined && idx < this.messages.length) {
+                                const msg = { ...this.messages[idx] };
+                                msg.id = data.message_id;
+                                let finalContent = data.full_content;
+                                if (data.truncated) {
+                                    finalContent += '\n\n---\n*Response was truncated due to length. Ask me to continue for the rest.*';
+                                }
+                                msg.content = finalContent;
+                                delete msg._raw;
+                                msg.parsedHtml = parseMd(finalContent);
+                                msg.model = data.model;
+                                msg.tokens_used = data.usage?.total_tokens;
+                                msg.prompt_tokens = data.usage?.prompt_tokens;
+                                msg.completion_tokens = data.usage?.completion_tokens;
+                                msg.isStreaming = false;
+                                if (data.follow_ups) msg.follow_ups = data.follow_ups;
+                                this.messages[idx] = msg;
+                            }
+                            this.activePersonaKey = null;
+                        } else if (eventType === 'persona_error') {
+                            const data = JSON.parse(dataStr);
+                            const idx = personaIdx[data.persona_key];
+                            if (idx !== undefined && idx < this.messages.length) {
+                                const msg = { ...this.messages[idx] };
+                                msg.content = '⚠️ ' + (data.error || 'Error generating response');
+                                msg.parsedHtml = msg.content;
+                                msg.isStreaming = false;
+                                this.messages[idx] = msg;
+                            }
+                            this.activePersonaKey = null;
+                        } else if (eventType === 'done') {
+                            const data = JSON.parse(dataStr);
+                            if (data.updated_title) {
+                                this.conversations = this.conversations.map(c => c.id === data.conversation_id ? { ...c, title: data.updated_title } : c);
+                            }
+                            if (data.data_freshness) this.dataFreshness = data.data_freshness;
+                            this.loadConversations();
+                            this.scheduleMermaidRender();
+                        } else if (!eventType && dataStr) {
+                            if (dataStr === '[DONE]') continue;
+                            try {
+                                const data = JSON.parse(dataStr);
+                                if (!data.delta) continue;
+
+                                if (data.persona_key) {
+                                    const idx = personaIdx[data.persona_key];
+                                    if (idx !== undefined && idx < this.messages.length) {
+                                        personaRaw[data.persona_key] = (personaRaw[data.persona_key] || '') + data.delta;
+                                        queueRender(idx, personaRaw[data.persona_key], data.persona_key);
+                                    }
+                                } else {
+                                    if (streamingIdx < 0) {
+                                        this.loading = false;
+                                        if (_timer) { clearInterval(_timer); _timer = null; }
+                                        this.messages = [...this.messages, {
+                                            id: 'streaming-' + Date.now(),
+                                            role: 'assistant',
+                                            content: '',
+                                            parsedHtml: '<span class="ai-chat-cursor">▌</span>',
+                                            model: null,
+                                            isStreaming: true,
+                                            copied: false,
+                                            web_search_used: this.webSearchEnabled,
+                                            created_at: new Date().toISOString(),
+                                        }];
+                                        streamingIdx = this.messages.length - 1;
+                                    }
+                                    streamingContent += data.delta;
+                                    queueRender(streamingIdx, streamingContent, null);
+                                }
+                            } catch (e) { /* skip unparseable chunks */ }
                         }
-                        if (payload.data_freshness) {
-                            this.dataFreshness = payload.data_freshness;
-                        }
-                        this.scheduleMermaidRender();
-                        this.scrollToBottom();
-                        this.loadConversations();
-                    }, 50);
-                } else {
-                    this.messages = [...this.messages, withHtml({
-                        id: 'error-' + Date.now(),
-                        role: 'assistant',
-                        content: '⚠️ ' + (data.error || 'Something went wrong. Please try again.'),
-                        model: null,
-                        created_at: new Date().toISOString(),
-                    })];
+                    }
+                }
+
+                // Cleanup: if stream ended without metadata (connection drop)
+                if (streamingIdx >= 0 && this.messages[streamingIdx]?.isStreaming) {
+                    const msg = { ...this.messages[streamingIdx] };
+                    msg.parsedHtml = parseMd(streamingContent);
+                    msg.isStreaming = false;
+                    this.messages[streamingIdx] = msg;
                 }
             } catch (e) {
-                if (e.name === 'AbortError') {
+                if (e.name === 'AbortError') return;
+                console.error('Stream error:', e);
+                this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: '⚠️ Network error. Please check your connection and try again.', model: null, created_at: new Date().toISOString() })];
+            }
+        },
+
+        renderPlanCards(data) {
+            const planText = data.plan_text || data.planText || '';
+            const subtasks = data.subtasks || [];
+            const statusColors = {
+                pending: 'bg-gray-200 dark:bg-gray-600',
+                running: 'bg-blue-400 dark:bg-blue-500 animate-pulse',
+                completed: 'bg-green-500',
+                failed: 'bg-red-500',
+            };
+            const statusLabels = {
+                pending: 'Waiting...',
+                running: 'Analyzing...',
+                completed: 'Done',
+                failed: 'Failed',
+            };
+            const personaColors = {
+                sre: 'text-blue-600 dark:text-blue-400',
+                security: 'text-red-600 dark:text-red-400',
+                dba: 'text-purple-600 dark:text-purple-400',
+                tech_risk: 'text-amber-600 dark:text-amber-400',
+                dev_be: 'text-green-600 dark:text-green-400',
+                dev_fe: 'text-cyan-600 dark:text-cyan-400',
+                qa: 'text-teal-600 dark:text-teal-400',
+                pm: 'text-indigo-600 dark:text-indigo-400',
+                compliance: 'text-orange-600 dark:text-orange-400',
+                data_analyst: 'text-pink-600 dark:text-pink-400',
+                devils_advocate: 'text-rose-600 dark:text-rose-400',
+                system: 'text-violet-600 dark:text-violet-400',
+                ts: 'text-sky-600 dark:text-sky-400',
+                pd: 'text-fuchsia-600 dark:text-fuchsia-400',
+            };
+            const labelColors = {
+                'Pattern Analysis': 'text-violet-600 dark:text-violet-400',
+                'Impact Analysis': 'text-rose-600 dark:text-rose-400',
+                'Root Cause Analysis': 'text-amber-600 dark:text-amber-400',
+                'Trend Analysis': 'text-cyan-600 dark:text-cyan-400',
+                'Financial Analysis': 'text-red-600 dark:text-red-400',
+                'Risk Assessment': 'text-orange-600 dark:text-orange-400',
+                'Compliance Review': 'text-purple-600 dark:text-purple-400',
+                'Comparative Analysis': 'text-teal-600 dark:text-teal-400',
+                'Strength Assessment': 'text-green-600 dark:text-green-400',
+                'Infrastructure Analysis': 'text-blue-600 dark:text-blue-400',
+                'Security Analysis': 'text-red-600 dark:text-red-400',
+                'Database Analysis': 'text-purple-600 dark:text-purple-400',
+                'Data Analysis': 'text-pink-600 dark:text-pink-400',
+                'Response Planning': 'text-indigo-600 dark:text-indigo-400',
+            };
+
+            let html = '<div class="plan-mode-container p-3 space-y-3">';
+            if (planText) {
+                html += '<p class="text-sm text-gray-700 dark:text-gray-300">' + planText + '</p>';
+            }
+            html += '<div class="grid gap-2">';
+            subtasks.forEach((task, i) => {
+                const status = task.status || 'pending';
+                const colorClass = statusColors[status] || statusColors.pending;
+                const label = statusLabels[status] || status;
+                const pKey = task.persona_key || '';
+                const personaClass = personaColors[pKey] || labelColors[task.label] || 'text-gray-600 dark:text-gray-400';
+                const personaLabel = task.label || (pKey ? pKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'General Analysis');
+                const preview = task.result_preview ? '<p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1 truncate">' + task.result_preview + '</p>' : '';
+
+                html += '<div class="flex items-start gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">';
+                html += '<div class="flex-shrink-0 mt-0.5"><span class="inline-block w-2 h-2 rounded-full ' + colorClass + '"></span></div>';
+                html += '<div class="flex-1 min-w-0">';
+                html += '<div class="flex items-center gap-2"><span class="text-xs font-semibold ' + personaClass + '">' + personaLabel + '</span><span class="text-[10px] text-gray-400">' + label + '</span></div>';
+                html += '<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">' + task.description + '</p>';
+                html += preview;
+                html += '</div></div>';
+            });
+            html += '</div></div>';
+
+            return html;
+        },
+
+        renderClarificationUI(questions) {
+            let html = '<div class="p-3 space-y-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700/50">';
+            html += '<div class="flex items-center gap-2 text-blue-600 dark:text-blue-400">';
+            html += '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+            html += '<span class="text-sm font-semibold">A few clarifications will help me give you a better answer</span></div>';
+            questions.forEach((q, i) => {
+                html += '<div class="space-y-1.5">';
+                html += '<label class="text-xs font-medium text-gray-700 dark:text-gray-300">' + q + '</label>';
+                html += '<input type="text" x-model="clarificationAnswers[' + i + ']" ';
+                html += '  @keydown.enter="submitClarification()" ';
+                html += '  class="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" ';
+                html += '  placeholder="Your answer..." />';
+                html += '</div>';
+            });
+            html += '<div class="flex items-center gap-2">';
+            html += '<button @click="submitClarification()" class="px-4 py-2 text-sm font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50" ';
+            html += '  :disabled="clarificationAnswers.some(a => !a.trim())">Submit Answers</button>';
+            html += '<button @click="skipClarification()" class="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Skip &amp; Proceed</button>';
+            html += '</div></div>';
+            return html;
+        },
+
+        async submitClarification() {
+            if (this.clarificationAnswers.some(a => !a.trim())) return;
+            const answers = this.clarificationAnswers.filter(a => a.trim());
+            const { planId, conversationId } = this.clarificationState;
+
+            const clarIdx = this.messages.findIndex(m => m.planRole === 'clarification');
+            if (clarIdx >= 0) {
+                const msg = { ...this.messages[clarIdx] };
+                msg.parsedHtml = '<div class="p-3 text-blue-600 dark:text-blue-400 text-sm">Processing your answers...</div>';
+                msg.isStreaming = true;
+                this.messages[clarIdx] = msg;
+            }
+
+            this.clarificationState = null;
+            this.loading = true;
+            _elapsed = 0;
+            _timer = setInterval(() => { _elapsed++; }, 1000);
+            this.abortController = new AbortController();
+
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.content;
+                const res = await fetch('/admin/ai/chat/stream-plan-resume', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'text/event-stream',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    signal: this.abortController.signal,
+                    body: JSON.stringify({
+                        plan_id: planId,
+                        conversation_id: conversationId,
+                        answers: answers,
+                    }),
+                });
+
+                if (!res.ok) {
+                    this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: 'Failed to process clarification. Please try again.', model: null, created_at: new Date().toISOString() })];
+                    this.loading = false;
+                    if (_timer) { clearInterval(_timer); _timer = null; }
                     return;
                 }
-                console.error('sendMessage error:', e);
-                this.messages = [...this.messages, withHtml({
-                    id: 'error-' + Date.now(),
-                    role: 'assistant',
-                    content: '⚠️ Network error. Please check your connection and try again.',
-                    model: null,
-                    created_at: new Date().toISOString(),
-                })];
+
+                await this.processResumeStream(res);
+            } catch (e) {
+                if (e.name === 'AbortError') return;
+                console.error('Clarification resume error:', e);
+                this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: 'Network error during clarification resume.', model: null, created_at: new Date().toISOString() })];
+            } finally {
+                this.loading = false;
+                if (_timer) { clearInterval(_timer); _timer = null; }
+                _elapsed = 0;
+            }
+        },
+
+        skipClarification() {
+            this.clarificationAnswers = ['Please proceed with your best interpretation.'];
+            this.submitClarification();
+        },
+
+        async processResumeStream(response) {
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let streamingIdx = -1;
+            let streamingContent = '';
+            let setupData = {};
+            let renderQueued = false;
+
+            const queueRender = (idx) => {
+                if (renderQueued) return;
+                renderQueued = true;
+                requestAnimationFrame(() => {
+                    if (idx >= 0 && idx < this.messages.length) {
+                        const msg = { ...this.messages[idx] };
+                        msg.parsedHtml = parseMd(streamingContent) + '<span class="ai-chat-cursor">&#9632;</span>';
+                        this.messages[idx] = msg;
+                    }
+                    this.scrollToBottom();
+                    renderQueued = false;
+                });
+            };
+
+            try {
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const parts = buffer.split('\n\n');
+                    buffer = parts.pop() || '';
+
+                    for (const part of parts) {
+                        const lines = part.split('\n');
+                        let eventType = '';
+                        let dataStr = '';
+
+                        for (const line of lines) {
+                            if (line.startsWith('event: ')) eventType = line.slice(7).trim();
+                            else if (line.startsWith('data: ')) dataStr += line.slice(6);
+                        }
+
+                        if (eventType === 'setup') {
+                            const data = JSON.parse(dataStr);
+                            setupData = data;
+                        } else if (eventType === 'error') {
+                            const data = JSON.parse(dataStr);
+                            this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: '⚠️ ' + (data.error || 'Something went wrong.'), model: null, created_at: new Date().toISOString() })];
+                        } else if (eventType === 'plan_thinking') {
+                            this.planState = { phase: 'thinking' };
+                            this.messages = [...this.messages, {
+                                id: 'plan-thinking-' + Date.now(),
+                                role: 'assistant',
+                                content: '',
+                                parsedHtml: '<div class="flex items-center gap-2 text-purple-600 dark:text-purple-400 p-3"><svg class="w-5 h-5 animate-pulse" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg><span class="text-sm font-medium">Thinking and planning...</span></div>',
+                                isPlanMessage: true,
+                                planRole: 'thinking',
+                                isStreaming: true,
+                                created_at: new Date().toISOString(),
+                            }];
+                            this.scrollToBottom();
+                        } else if (eventType === 'plan_ready') {
+                            const data = JSON.parse(dataStr);
+                            this.planState = { phase: 'agents', planText: data.plan_text, subtasks: data.subtasks };
+                            const planHtml = this.renderPlanCards(data);
+                            const thinkIdx = this.messages.findIndex(m => m.planRole === 'thinking');
+                            if (thinkIdx >= 0) {
+                                const msg = { ...this.messages[thinkIdx] };
+                                msg.parsedHtml = planHtml;
+                                msg.content = data.plan_text;
+                                msg.planRole = 'plan';
+                                msg.isStreaming = false;
+                                this.messages[thinkIdx] = msg;
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'agent_status') {
+                            const data = JSON.parse(dataStr);
+                            if (this.planState) {
+                                this.planState.subtasks[data.index] = { ...this.planState.subtasks[data.index], ...data };
+                                const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                                if (planIdx >= 0) {
+                                    const msg = { ...this.messages[planIdx] };
+                                    msg.parsedHtml = this.renderPlanCards(this.planState);
+                                    this.messages[planIdx] = msg;
+                                }
+                                this.scrollToBottom();
+                            }
+                        } else if (eventType === 'gap_analysis') {
+                            const data = JSON.parse(dataStr);
+                            if (data.status === 'analyzing') {
+                                const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                                if (planIdx >= 0) {
+                                    const msg = { ...this.messages[planIdx] };
+                                    msg.parsedHtml = this.renderPlanCards(this.planState)
+                                        + '<div class="mt-2 p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50">'
+                                        + '<div class="flex items-center gap-2 text-amber-600 dark:text-amber-400">'
+                                        + '<svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>'
+                                        + '<span class="text-xs font-medium">Analyzing results for completeness...</span></div></div>';
+                                    this.messages[planIdx] = msg;
+                                }
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'research_start') {
+                            const data = JSON.parse(dataStr);
+                            this.researchState = { topics: data.topics, count: data.count };
+                            const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                            if (planIdx >= 0) {
+                                const msg = { ...this.messages[planIdx] };
+                                msg.parsedHtml = this.renderPlanCards(this.planState) + this.renderResearchCards(data);
+                                this.messages[planIdx] = msg;
+                            }
+                            this.scrollToBottom();
+                        } else if (eventType === 'research_status') {
+                            const data = JSON.parse(dataStr);
+                            if (this.planState) {
+                                if (!this.planState.researchSubtasks) this.planState.researchSubtasks = [];
+                                const existing = this.planState.researchSubtasks.findIndex(s => s.index === data.index);
+                                if (existing >= 0) {
+                                    this.planState.researchSubtasks[existing] = { ...this.planState.researchSubtasks[existing], ...data };
+                                } else {
+                                    this.planState.researchSubtasks.push(data);
+                                }
+                                const planIdx = this.messages.findIndex(m => m.planRole === 'plan');
+                                if (planIdx >= 0) {
+                                    const msg = { ...this.messages[planIdx] };
+                                    msg.parsedHtml = this.renderPlanCards(this.planState) + this.renderResearchCards({ topics: this.planState.researchSubtasks.map(s => s.description) });
+                                    this.messages[planIdx] = msg;
+                                }
+                                this.scrollToBottom();
+                            }
+                        } else if (eventType === 'synthesis_start') {
+                            this.messages = [...this.messages, {
+                                id: 'streaming-synthesis-' + Date.now(),
+                                role: 'assistant',
+                                content: '',
+                                _raw: '',
+                                parsedHtml: '<div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 p-3"><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="text-sm font-medium">Synthesizing results from all specialists...</span></div>',
+                                model: null,
+                                isStreaming: true,
+                                copied: false,
+                                created_at: new Date().toISOString(),
+                            }];
+                            streamingIdx = this.messages.length - 1;
+                            streamingContent = '';
+                            this.scrollToBottom();
+                        } else if (eventType === 'metadata') {
+                            const data = JSON.parse(dataStr);
+                            if (streamingIdx >= 0 && streamingIdx < this.messages.length) {
+                                const msg = { ...this.messages[streamingIdx] };
+                                msg.content = data.full_content || streamingContent;
+                                msg.parsedHtml = parseMd(msg.content);
+                                msg.model = data.model;
+                                msg.isStreaming = false;
+                                msg.id = 'msg-synthesis-' + Date.now();
+                                this.messages[streamingIdx] = msg;
+                            }
+                        } else if (eventType === 'done') {
+                            const data = JSON.parse(dataStr);
+                            if (data.updated_title) {
+                                const conv = this.conversations.find(c => c.id === data.conversation_id);
+                                if (conv) conv.title = data.updated_title;
+                            }
+                            this.dataFreshness = { stats_cached: false, fetched_at: new Date().toISOString() };
+                            this.loadConversations();
+                        } else if (dataStr) {
+                            try {
+                                const parsed = JSON.parse(dataStr);
+                                if (parsed.delta && streamingIdx >= 0) {
+                                    streamingContent += parsed.delta;
+                                    queueRender(streamingIdx);
+                                }
+                            } catch {}
+                        }
+                    }
+                }
+            } finally {
+                if (streamingIdx >= 0 && streamingIdx < this.messages.length && this.messages[streamingIdx].isStreaming) {
+                    const msg = { ...this.messages[streamingIdx] };
+                    msg.content = streamingContent;
+                    msg.parsedHtml = parseMd(streamingContent);
+                    msg.isStreaming = false;
+                    this.messages[streamingIdx] = msg;
+                }
+                this.loading = false;
+                if (_timer) { clearInterval(_timer); _timer = null; }
+            }
+        },
+
+        renderResearchCards(data) {
+            const topics = data.topics || [];
+            if (topics.length === 0) return '';
+            let html = '<div class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">';
+            html += '<div class="flex items-center gap-2 mb-2">';
+            html += '<svg class="w-4 h-4 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>';
+            html += '<span class="text-xs font-semibold text-amber-600 dark:text-amber-400">Deep Research</span></div>';
+            html += '<div class="grid gap-1.5">';
+            topics.forEach((topic, i) => {
+                const topicText = typeof topic === 'string' ? topic : (topic.description || topic.topic || '');
+                html += '<div class="flex items-center gap-2 p-1.5 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/30">';
+                html += '<span class="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>';
+                html += '<span class="text-xs text-amber-700 dark:text-amber-300">' + topicText + '</span>';
+                html += '</div>';
+            });
+            html += '</div></div>';
+            return html;
+        },
+
+        async finalizeStream(metadata, setupData, firstMessage) {
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.content;
+                const res = await fetch('/admin/ai/chat/finalize', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    body: JSON.stringify({
+                        conversation_id: setupData?.conversation_id || this.activeConversationId,
+                        content: metadata.full_content,
+                        model: metadata.model,
+                        prompt_tokens: metadata.usage?.prompt_tokens,
+                        completion_tokens: metadata.usage?.completion_tokens,
+                        total_tokens: metadata.usage?.total_tokens,
+                        response_time_ms: metadata.response_time_ms,
+                        is_new: setupData?.is_new,
+                        first_message: setupData?.is_new ? firstMessage : undefined,
+                    }),
+                });
+
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.success) {
+                        const lastIdx = this.messages.length - 1;
+                        if (lastIdx >= 0 && this.messages[lastIdx].role === 'assistant') {
+                            const msg = { ...this.messages[lastIdx] };
+                            msg.id = data.assistant_message?.id || msg.id;
+                            msg.content = data.assistant_message?.content || msg.content;
+                            msg.parsedHtml = parseMd(msg.content);
+                            if (data.follow_up_questions) msg.follow_ups = data.follow_up_questions;
+                            this.messages[lastIdx] = msg;
+                        }
+                        if (data.updated_title) {
+                            this.conversations = this.conversations.map(c =>
+                                c.id === data.conversation_id ? { ...c, title: data.updated_title } : c
+                            );
+                        }
+                        this.loadConversations();
+                        this.scheduleMermaidRender();
+                    }
+                }
+            } catch (e) {
+                console.error('Finalize error:', e);
             }
         },
 
@@ -1046,17 +1937,14 @@ function aiChat() {
 
         copyMessage(content) {
             navigator.clipboard.writeText(content).then(() => {
-                const idx = this.messages.map(m => m.role).lastIndexOf('assistant');
-                if (idx !== -1) {
-                    this.messages = this.messages.map((m, i) =>
-                        i === idx ? { ...m, copied: true } : m
+                this.messages = this.messages.map(m =>
+                    m.content === content ? { ...m, copied: true } : m
+                );
+                setTimeout(() => {
+                    this.messages = this.messages.map(m =>
+                        m.copied ? { ...m, copied: false } : m
                     );
-                    setTimeout(() => {
-                        this.messages = this.messages.map(m =>
-                            m.copied ? { ...m, copied: false } : m
-                        );
-                    }, 1500);
-                }
+                }, 1500);
             });
         },
 
@@ -1209,13 +2097,17 @@ function aiChat() {
                 pre.dataset.mermaidRendered = 'true';
 
                 try {
+                    const rawText = block.textContent.trim();
+                    if (!rawText) continue;
                     const id = 'mermaid-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
-                    const { svg } = await mermaid.render(id, block.textContent);
+                    const { svg } = await mermaid.render(id, rawText);
                     pre.innerHTML = svg;
                     pre.className = 'mermaid';
                 } catch (e) {
+                    // Show diagram source as a code block instead of the error message
+                    const source = block.textContent || '';
+                    pre.innerHTML = '<div class="text-[10px] text-gray-400 dark:text-gray-500 mb-1 italic">Diagram preview unavailable</div><pre class="text-xs bg-gray-50 dark:bg-gray-800 rounded p-2 overflow-x-auto"><code>' + source.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code></pre>';
                     pre.dataset.mermaidRendered = 'error';
-                    console.warn('Mermaid render error:', e);
                 }
             }
         },

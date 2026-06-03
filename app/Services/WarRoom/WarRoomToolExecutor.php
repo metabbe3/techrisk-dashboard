@@ -4,16 +4,16 @@ namespace App\Services\WarRoom;
 
 use App\Models\Incident;
 use App\Services\Ai\WebSearchService;
-use App\Services\IncidentFormatter;
-use App\Services\Markdown\MarkdownFormatter;
+use App\Services\IncidentStatsService;
+use App\Services\Markdown\IncidentMarkdownExporter;
 use App\Services\RecurrenceDetectionService;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class WarRoomToolExecutor
 {
     public function __construct(
         private WebSearchService $webSearch,
+        private IncidentStatsService $statsService,
     ) {}
 
     public function execute(array $toolCall): ?array
@@ -99,14 +99,14 @@ class WarRoomToolExecutor
     private function getIncidentDetails(array $args): string
     {
         $incident = Incident::where('no', $args['incident_no'])
-            ->with(['pic', 'labels', 'actionImprovements', 'statusUpdates'])
+            ->with(Incident::FULL_RELATIONS)
             ->first();
 
         if (! $incident) {
             return "Incident not found: {$args['incident_no']}";
         }
 
-        return IncidentFormatter::formatFull($incident);
+        return app(IncidentMarkdownExporter::class)->generateForContext($incident);
     }
 
     private function findSimilarIncidents(array $args): string
@@ -174,13 +174,35 @@ class WarRoomToolExecutor
             return 'No search query provided.';
         }
 
-        $results = $this->webSearch->search($query);
+        $additionalQueries = $args['additional_queries'] ?? [];
+        $context = $args['context'] ?? '';
 
-        if (empty($results)) {
+        // Multi-query search when additional queries provided
+        if (! empty($additionalQueries)) {
+            $allQueries = array_merge([$query], array_slice($additionalQueries, 0, 2));
+            $results = $this->webSearch->searchMulti($allQueries, [], null, 3);
+        } else {
+            $results = $this->webSearch->search($query);
+        }
+
+        if (! empty($results['results'])) {
+            $results['results'] = $this->webSearch->filterRelevantResults(
+                $results['results'],
+                $query.' '.$context,
+                []
+            );
+        }
+
+        if (empty($results) || (! empty($results['error']) && empty($results['context']))) {
             return 'No web search results found.';
         }
 
-        return collect($results)->map(fn ($result) => implode("\n", array_filter([
+        // Return formatted context (multi-query results already have sub-headings)
+        if (! empty($results['context'])) {
+            return $results['context'];
+        }
+
+        return collect($results['results'] ?? $results)->map(fn ($result) => implode("\n", array_filter([
             "### {$result['title']}",
             $result['url'] ?? null,
             $result['content'] ?? $result['snippet'] ?? null,
@@ -189,44 +211,6 @@ class WarRoomToolExecutor
 
     private function getStats(array $args): string
     {
-        $period = $args['period'] ?? 'this_year';
-
-        return match ($period) {
-            'this_month' => Cache::remember('warroom_stats_month', 300, fn () => $this->buildStats(now()->startOfMonth(), now())),
-            'this_quarter' => Cache::remember('warroom_stats_quarter', 300, fn () => $this->buildStats(now()->startOfQuarter(), now())),
-            default => Cache::remember('warroom_stats_year', 300, fn () => $this->buildStats(now()->startOfYear(), now())),
-        };
-    }
-
-    private function buildStats($from, $to): string
-    {
-        $excludeQ = fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', \App\Enums\FundStatus::EXCLUDED_FROM_COUNTS);
-
-        $total = Incident::where('classification', 'Incident')
-            ->whereBetween('incident_date', [$from, $to])
-            ->where($excludeQ)
-            ->count();
-
-        $open = Incident::where('classification', 'Incident')
-            ->whereBetween('incident_date', [$from, $to])
-            ->whereNotIn('incident_status', ['Completed'])
-            ->where($excludeQ)
-            ->count();
-
-        $fundLoss = Incident::whereBetween('incident_date', [$from, $to])
-            ->where($excludeQ)
-            ->sum('fund_loss');
-
-        $bySeverity = Incident::where('classification', 'Incident')
-            ->whereBetween('incident_date', [$from, $to])
-            ->where($excludeQ)
-            ->selectRaw('severity, COUNT(*) as count')
-            ->groupBy('severity')
-            ->pluck('count', 'severity')
-            ->toArray();
-
-        $severityBreakdown = collect($bySeverity)->map(fn ($count, $sev) => "{$sev}: {$count}")->implode(', ');
-
-        return "Period: {$from->format('Y-m-d')} to {$to->format('Y-m-d')}\nTotal Incidents: {$total} | Open: {$open}\nTotal Fund Loss: ".MarkdownFormatter::formatMoney((float) $fundLoss)."\nBy Severity: {$severityBreakdown}";
+        return $this->statsService->getCachedStats($args['period'] ?? 'this_year');
     }
 }

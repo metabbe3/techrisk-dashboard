@@ -18,11 +18,13 @@ class AiUsageLogger
         ?string $apiRequestId = null,
         ?string $errorMessage = null,
         ?array $metadata = null,
+        ?int $userId = null,
+        ?string $userEmail = null,
     ): void {
         try {
             AiUsageLog::create([
-                'user_id' => auth()->id(),
-                'user_email' => auth()->user()?->email,
+                'user_id' => $userId ?? auth()->id(),
+                'user_email' => $userEmail ?? auth()->user()?->email,
                 'field_type' => $fieldType,
                 'model' => $model,
                 'input_length' => $inputLength,
@@ -39,6 +41,16 @@ class AiUsageLogger
             ]);
         } catch (\Throwable $e) {
             Log::warning('Failed to write AI usage log', ['error' => $e->getMessage()]);
+
+            return;
+        }
+
+        if ($success) {
+            try {
+                app(AiBudgetAlertService::class)->checkDailyBudget();
+            } catch (\Throwable $e) {
+                // Budget alert is non-critical, never bubble up
+            }
         }
     }
 
@@ -48,6 +60,8 @@ class AiUsageLogger
         AiTextResult $result,
         ?int $inputLength = null,
         ?array $metadata = null,
+        ?int $userId = null,
+        ?string $userEmail = null,
     ): void {
         $this->log(
             fieldType: $fieldType,
@@ -64,6 +78,8 @@ class AiUsageLogger
             apiRequestId: $result->apiRequestId,
             errorMessage: $result->success ? null : $result->error,
             metadata: $metadata,
+            userId: $userId,
+            userEmail: $userEmail,
         );
     }
 }

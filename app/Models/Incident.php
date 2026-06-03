@@ -142,7 +142,7 @@ class Incident extends Model implements Auditable
         return round(($this->recovered_fund / $this->potential_fund_loss) * 100, 1);
     }
 
-    public const FULL_RELATIONS = ['pic', 'statusUpdates', 'investigationDocuments', 'labels', 'actionImprovements'];
+    public const FULL_RELATIONS = ['pic', 'incidentType', 'statusUpdates', 'investigationDocuments', 'labels', 'actionImprovements'];
 
     public const SIMILARITY_COLUMNS = [
         'id', 'no', 'title', 'summary', 'root_cause', 'timeline',

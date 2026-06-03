@@ -31,6 +31,11 @@ class ChatMessage extends Model implements Auditable
         'web_search_used',
         'tool_calls',
         'tool_results',
+        'attachments',
+        'plan_id',
+        'plan_metadata',
+        'is_plan_message',
+        'plan_role',
         'created_at',
     ];
 
@@ -39,6 +44,9 @@ class ChatMessage extends Model implements Auditable
         'web_search_used' => 'boolean',
         'tool_calls' => 'array',
         'tool_results' => 'array',
+        'attachments' => 'array',
+        'plan_metadata' => 'array',
+        'is_plan_message' => 'boolean',
     ];
 
     public function conversation(): BelongsTo

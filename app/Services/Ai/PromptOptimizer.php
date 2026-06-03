@@ -52,7 +52,7 @@ class PromptOptimizer
     {
         $original = $this->stats['original_length'];
         $optimized = $this->stats['optimized_length'];
-        $saved = $original - $optimized;
+        $saved = max(0, $original - $optimized);
         $percent = $original > 0 ? round(($saved / $original) * 100, 1) : 0;
 
         return [
@@ -60,7 +60,7 @@ class PromptOptimizer
             'optimized_length' => $optimized,
             'chars_saved' => $saved,
             'reduction_percent' => $percent,
-            'estimated_tokens_saved' => intdiv($saved, 4),
+            'estimated_tokens_saved' => (int) ceil($saved / 4.0),
             'rules_applied' => $this->stats['rules_applied'],
         ];
     }
@@ -70,7 +70,7 @@ class PromptOptimizer
      */
     public function estimateTokensSaved(): int
     {
-        return intdiv($this->stats['original_length'] - $this->stats['optimized_length'], 4);
+        return (int) ceil(max(0, $this->stats['original_length'] - $this->stats['optimized_length']) / 4.0);
     }
 
     /**

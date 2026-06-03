@@ -2,7 +2,9 @@
 
 namespace App\Services\WarRoom;
 
+use App\Events\WarRoomAgentStreaming;
 use App\Events\WarRoomMessageUpdated;
+use App\Events\WarRoomReportStreaming;
 use App\Events\WarRoomRoundCompleted;
 use App\Events\WarRoomSessionCompleted;
 use App\Jobs\WarRoom\ProcessWarRoomAgent;
@@ -16,12 +18,14 @@ use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
 use App\Services\Ai\AiUsageLogger;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\SearchPlanningService;
+use App\Services\Ai\TokenEstimator;
 use App\Services\Ai\ToolRegistryService;
 use App\Services\Ai\WebSearchService;
+use App\Services\IncidentFormatter;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Client\ConnectionException;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -34,6 +38,7 @@ class WarRoomService
         private AgentPromptBuilder $promptBuilder,
         private WebSearchService $webSearchService,
         private AiUsageLogger $usageLogger,
+        private WarRoomStreamingService $streamingService,
     ) {}
 
     public function createSession(
@@ -52,6 +57,8 @@ class WarRoomService
         if ($incidents->isEmpty()) {
             throw new \InvalidArgumentException('No valid incidents found for the provided IDs.');
         }
+
+        $this->enforceBudgetLimits($user);
 
         $primaryIncident = $incidents->first();
         $context = $this->buildIncidentContext($incidents, $deepAnalysis);
@@ -277,53 +284,90 @@ class WarRoomService
                 $iterationContent = '';
 
                 for ($attempt = 0; $attempt <= $maxContinuations && ! $done; $attempt++) {
-                    $payload = [
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $maxTokens,
-                        'max_completion_tokens' => $maxTokens,
-                    ];
+                    Log::info("[WarRoom] Agent {$agentRole} prompt size", [
+                        'session_id' => $session->id,
+                        'round' => $round,
+                        'estimated_prompt_tokens' => $this->estimateTokens(
+                            collect($messages)->map(fn ($m) => $m['content'] ?? '')->implode("\n")
+                        ),
+                        'message_count' => count($messages),
+                        'tool_iteration' => $toolIteration,
+                        'attempt' => $attempt,
+                    ]);
 
-                    if (! empty($tools)) {
-                        $payload['tools'] = $tools;
+                    // Throttled streaming callback
+                    $lastBroadcastTime = microtime(true);
+                    $accumulatedDelta = '';
+
+                    $streamResult = $this->streamingService->streamCompletion(
+                        model: $model,
+                        messages: $messages,
+                        maxTokens: $maxTokens,
+                        tools: $tools,
+                        onDelta: function (string $delta, int $contentLength) use (
+                            &$lastBroadcastTime, &$accumulatedDelta,
+                            $session, $message, $agentRole
+                        ) {
+                            $accumulatedDelta .= $delta;
+                            $elapsed = (microtime(true) - $lastBroadcastTime) * 1000;
+
+                            if (strlen($accumulatedDelta) >= 100 || $elapsed >= 500) {
+                                $message->appendContent($accumulatedDelta);
+                                broadcast(new WarRoomAgentStreaming(
+                                    sessionId: (string) $session->id,
+                                    messageId: (string) $message->id,
+                                    agentRole: $agentRole,
+                                    delta: $accumulatedDelta,
+                                    contentLength: $contentLength,
+                                ));
+                                $accumulatedDelta = '';
+                                $lastBroadcastTime = microtime(true);
+                            }
+                        },
+                    );
+
+                    // Flush remaining delta
+                    if (! blank($accumulatedDelta)) {
+                        $message->appendContent($accumulatedDelta);
+                        broadcast(new WarRoomAgentStreaming(
+                            sessionId: (string) $session->id,
+                            messageId: (string) $message->id,
+                            agentRole: $agentRole,
+                            delta: $accumulatedDelta,
+                            contentLength: strlen($streamResult['content']),
+                        ));
                     }
 
-                    $response = Http::withHeaders($this->buildHeaders())
-                        ->timeout($this->getTimeout())
-                        ->post($this->buildUrl(), $payload);
-
-                    $responseData = $response->json();
-                    $usage = $responseData['usage'] ?? [];
-                    $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+                    $finishReason = $streamResult['finish_reason'];
                     $finalFinishReason = $finishReason;
+                    $usage = $streamResult['usage'];
 
                     foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
                         $totalUsage[$key] += $usage[$key] ?? 0;
                     }
 
-                    if ($response->failed()) {
+                    if ($streamResult['error'] !== null) {
                         $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
-                        $errorMsg = 'AI service error (HTTP '.$response->status().')';
                         Log::warning("[WarRoom] Agent {$agentRole} failed", [
                             'session_id' => $session->id,
                             'tool_iteration' => $toolIteration,
                             'attempt' => $attempt,
-                            'status' => $response->status(),
+                            'error' => $streamResult['error'],
                         ]);
-                        $message->markFailed($errorMsg);
-                        $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, $errorMsg);
+                        $message->markFailed($streamResult['error']);
+                        $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, $streamResult['error']);
                         $fullContent = '';
                         $done = true;
 
                         break;
                     }
 
-                    $responseMessage = $responseData['choices'][0]['message'] ?? [];
-                    $chunk = $responseMessage['content'] ?? '';
-                    $toolCalls = $responseMessage['tool_calls'] ?? [];
+                    $chunk = $streamResult['content'];
+                    $toolCalls = $streamResult['tool_calls'];
 
                     if ($toolIteration === 0 && $attempt === 0) {
-                        ['content' => $reasoningContent, 'tokens' => $reasoningTokens] = $this->extractReasoning($responseData);
+                        $reasoningContent = $streamResult['reasoning_content'];
+                        $reasoningTokens = $streamResult['reasoning_tokens'];
                     }
 
                     // Handle tool calls — execute and loop back for another iteration
@@ -334,7 +378,6 @@ class WarRoomService
                             $iterationContent .= $chunk;
                         }
 
-                        // Add assistant message with tool_calls to conversation
                         $assistantMessage = ['role' => 'assistant'];
                         if (! blank($chunk)) {
                             $assistantMessage['content'] = $chunk;
@@ -342,7 +385,6 @@ class WarRoomService
                         $assistantMessage['tool_calls'] = $toolCalls;
                         $messages[] = $assistantMessage;
 
-                        // Execute each tool and append results
                         foreach ($toolCalls as $toolCall) {
                             $toolResult = $toolRegistryService->executeToolCall($toolCall);
                             $messages[] = $toolResult;
@@ -362,10 +404,10 @@ class WarRoomService
                             'tools' => array_map(fn ($tc) => $tc['function']['name'] ?? 'unknown', $toolCalls),
                         ]);
 
-                        break; // Break inner loop, continue to next tool iteration
+                        break;
                     }
 
-                    // Handle completely empty response (no content, no tool calls, first call)
+                    // Handle completely empty response
                     if (blank($chunk) && $attempt === 0 && $toolIteration === 0) {
                         $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
                         $message->markFailed('AI returned empty response');
@@ -378,7 +420,7 @@ class WarRoomService
 
                     $iterationContent .= $chunk;
 
-                    // Detect truncation: explicit (finish_reason=length) or heuristic (doesn't end properly)
+                    // Detect truncation
                     $trimmedChunk = rtrim($chunk);
                     $looksTruncated = ! preg_match('/[.!?)`\n]$/', $trimmedChunk) && strlen($trimmedChunk) > 100;
 
@@ -449,6 +491,8 @@ class WarRoomService
                     $session->addTokens($totalUsage['total_tokens']);
                 }
 
+                $this->enforceSessionTokenBudget($session);
+
                 $this->logUsage('war_room_agent', $model, true, $totalUsage, $responseTimeMs, $session, $agentRole, $round);
             }
         } catch (ConnectionException $e) {
@@ -498,34 +542,57 @@ class WarRoomService
             $modReasoningTokens = null;
 
             for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
-                $response = Http::withHeaders($this->buildHeaders())
-                    ->timeout((int) AiSetting::get('war_room_moderator_timeout',
-                        config('ai.war_room.moderator_timeout', 600)))
-                    ->post($this->buildUrl(), [
-                        'model' => $model,
-                        'messages' => $messages,
-                        'max_tokens' => $maxTokens,
-                        'max_completion_tokens' => $maxTokens,
-                    ]);
+                $lastBroadcastTime = microtime(true);
+                $accumulatedDelta = '';
 
-                $responseData = $response->json();
-                $usage = $responseData['usage'] ?? [];
-                $finishReason = $responseData['choices'][0]['finish_reason'] ?? 'unknown';
+                $streamResult = $this->streamingService->streamCompletion(
+                    model: $model,
+                    messages: $messages,
+                    maxTokens: $maxTokens,
+                    onDelta: function (string $delta, int $contentLength) use (
+                        &$lastBroadcastTime, &$accumulatedDelta, $session
+                    ) {
+                        $accumulatedDelta .= $delta;
+                        $elapsed = (microtime(true) - $lastBroadcastTime) * 1000;
 
-                $chunk = $responseData['choices'][0]['message']['content'] ?? '';
+                        if (strlen($accumulatedDelta) >= 100 || $elapsed >= 500) {
+                            broadcast(new WarRoomReportStreaming(
+                                sessionId: (string) $session->id,
+                                delta: $accumulatedDelta,
+                                contentLength: $contentLength,
+                            ));
+                            $accumulatedDelta = '';
+                            $lastBroadcastTime = microtime(true);
+                        }
+                    },
+                );
+
+                // Flush remaining delta
+                if (! blank($accumulatedDelta)) {
+                    broadcast(new WarRoomReportStreaming(
+                        sessionId: (string) $session->id,
+                        delta: $accumulatedDelta,
+                        contentLength: strlen($streamResult['content']),
+                    ));
+                }
+
+                $usage = $streamResult['usage'] ?? [];
+                $finishReason = $streamResult['finish_reason'] ?? 'unknown';
+                $chunk = $streamResult['content'] ?? '';
 
                 if ($attempt === 0) {
-                    ['content' => $modReasoningContent, 'tokens' => $modReasoningTokens] = $this->extractReasoning($responseData);
+                    $modReasoningContent = $streamResult['reasoning_content'] ?? null;
+                    $modReasoningTokens = $streamResult['reasoning_tokens'] ?? null;
                 }
 
                 foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
                     $totalUsage[$key] += $usage[$key] ?? 0;
                 }
 
-                if ($response->failed()) {
+                if ($streamResult['error'] !== null) {
                     $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
-                    $session->markFailed('Report synthesis failed: HTTP '.$response->status());
-                    $this->logUsage('war_room_moderator', $model, false, $totalUsage, $responseTimeMs, $session, 'moderator', 0, 'HTTP '.$response->status());
+                    $session->markFailed('Report synthesis failed: '.$streamResult['error']);
+                    $this->logUsage('war_room_moderator', $model, false, $totalUsage, $responseTimeMs, $session, 'moderator', 0, $streamResult['error']);
                     broadcast(new WarRoomSessionCompleted($session->fresh()));
 
                     return;
@@ -661,24 +728,45 @@ class WarRoomService
             return 0;
         }
 
-        $timeoutSeconds = (int) config('ai.war_room.agent_timeout', 600);
-        $cutoff = now()->subSeconds($timeoutSeconds);
+        $runningTimeout = (int) config('ai.war_room.agent_timeout', 600);
+        $pendingTimeout = 120;
 
-        $stuckMessages = WarRoomMessage::where('session_id', $session->id)
-            ->where('status', 'running')
-            ->where('created_at', '<', $cutoff)
+        // Re-dispatch pending messages whose jobs were lost (never started)
+        $stuckPending = WarRoomMessage::where('session_id', $session->id)
+            ->where('status', 'pending')
+            ->where('created_at', '<', now()->subSeconds($pendingTimeout))
             ->get();
 
-        foreach ($stuckMessages as $message) {
-            $message->markFailed("Agent timed out after {$timeoutSeconds} seconds");
-            broadcast(new WarRoomMessageUpdated($message->load('session')));
+        foreach ($stuckPending as $message) {
+            Log::info("[WarRoom] Re-dispatching stuck pending agent {$message->agent_role}", [
+                'session_id' => $session->id,
+                'round' => $message->round,
+                'age_seconds' => now()->diffInSeconds($message->created_at),
+            ]);
+            ProcessWarRoomAgent::dispatch($session, $message->agent_role, $message->round);
         }
 
-        if ($stuckMessages->isNotEmpty()) {
-            $this->onAgentCompleted($session, $stuckMessages->first()->round);
+        // Mark running messages that exceeded the timeout as failed
+        $stuckRunning = WarRoomMessage::where('session_id', $session->id)
+            ->where('status', 'running')
+            ->where('created_at', '<', now()->subSeconds($runningTimeout))
+            ->get();
+
+        foreach ($stuckRunning as $message) {
+            $message->markFailed("Agent timed out after {$runningTimeout} seconds");
+            broadcast(new WarRoomMessageUpdated($session, $message));
         }
 
-        return $stuckMessages->count();
+        $allStuck = $stuckPending->merge($stuckRunning);
+        if ($allStuck->isNotEmpty()) {
+            // Process each round that has stuck messages
+            $stuckByRound = $allStuck->groupBy('round');
+            foreach ($stuckByRound as $round => $roundStuck) {
+                $this->onAgentCompleted($session, $roundStuck->first());
+            }
+        }
+
+        return $allStuck->count();
     }
 
     public function getSessionData(WarRoomSession $session): array
@@ -763,9 +851,42 @@ class WarRoomService
     {
         try {
             $incident = $session->incident;
-            $query = ($incident->title ?? $incident->summary ?? 'incident').' troubleshooting root cause analysis';
 
-            $results = $this->webSearchService->search($query);
+            // Build incident context for planning
+            $incidentContext = [];
+            if ($incident) {
+                $incidentContext[] = [
+                    'root_cause_categories' => $incident->root_cause_category ? (array) $incident->root_cause_category : [],
+                    'safe_title_words' => IncidentFormatter::extractSafeTitleWords($incident->title ?? ''),
+                    'labels' => $incident->labels->pluck('name')->toArray(),
+                    'technical_keywords' => IncidentFormatter::extractTechnicalKeywords(($incident->summary ?? '').'. '.($incident->root_cause ?? '')),
+                ];
+            }
+
+            // Use AI planning for multi-angle search
+            $planner = app(SearchPlanningService::class);
+            $baseQuery = ($incident->title ?? $incident->summary ?? 'incident').' troubleshooting root cause analysis';
+            $plan = $planner->planSearches($baseQuery, $incidentContext);
+
+            if (! $plan->isEmpty()) {
+                $results = $this->webSearchService->searchMulti($plan->getQueries(), $incidentContext);
+            } else {
+                // Fallback to simple search
+                $results = $this->webSearchService->search($baseQuery);
+            }
+
+            // Apply relevance filtering
+            if (! empty($results['results'])) {
+                $results['results'] = $this->webSearchService->filterRelevantResults(
+                    $results['results'],
+                    $baseQuery,
+                    $incidentContext
+                );
+            }
+
+            if (! empty($results['context'])) {
+                return $results['context'];
+            }
 
             return is_string($results) ? $results : null;
         } catch (\Throwable $e) {
@@ -812,7 +933,7 @@ class WarRoomService
         ];
     }
 
-    private function getTimeout(): int
+    protected function getTimeout(): int
     {
         return (int) AiSetting::get('war_room_agent_timeout',
             config('ai.war_room.agent_timeout', 600));
@@ -820,7 +941,7 @@ class WarRoomService
 
     private function estimateTokens(string $text): int
     {
-        return intdiv(strlen($text), 4);
+        return TokenEstimator::estimate($text);
     }
 
     private function getModelInputLimit(string $model): int
@@ -833,7 +954,7 @@ class WarRoomService
     private function compressContext(array $context, string $model, $incidents): array
     {
         $inputLimit = $this->getModelInputLimit($model);
-        $targetTokens = (int) ($inputLimit * 0.75);
+        $targetTokens = (int) ($inputLimit * config('ai.war_room.context_compression_threshold', 0.50));
         $contextText = implode("\n", $context);
         $estimated = $this->estimateTokens($contextText);
 
@@ -916,6 +1037,68 @@ class WarRoomService
                 'round' => $round,
             ],
         );
+    }
+
+    private function enforceBudgetLimits(User $user): void
+    {
+        $limits = config('ai.war_room.rate_limits');
+
+        $todaySessions = WarRoomSession::where('user_id', $user->id)
+            ->whereDate('created_at', today())
+            ->count();
+
+        if ($todaySessions >= ($limits['max_sessions_per_user_per_day'] ?? 10)) {
+            throw new \RuntimeException(
+                "Daily session limit reached ({$limits['max_sessions_per_user_per_day']} sessions per day)."
+            );
+        }
+
+        $activeSessions = WarRoomSession::where('user_id', $user->id)
+            ->whereIn('status', ['pending', 'running'])
+            ->count();
+
+        if ($activeSessions >= ($limits['max_active_sessions_per_user'] ?? 3)) {
+            throw new \RuntimeException(
+                "Active session limit reached ({$limits['max_active_sessions_per_user']} concurrent sessions)."
+            );
+        }
+
+        $todayTokens = (int) WarRoomSession::where('user_id', $user->id)
+            ->whereDate('created_at', today())
+            ->sum('tokens_used');
+
+        if ($todayTokens >= ($limits['max_daily_tokens_per_user'] ?? 500000)) {
+            throw new \RuntimeException(
+                'Daily token budget exhausted ('.number_format($limits['max_daily_tokens_per_user']).' tokens per day).'
+            );
+        }
+    }
+
+    private function enforceSessionTokenBudget(WarRoomSession $session): void
+    {
+        $maxTokens = config('ai.war_room.rate_limits.max_total_tokens_per_session', 200000);
+
+        $session->refresh();
+
+        if ($session->tokens_used < $maxTokens) {
+            return;
+        }
+
+        Log::warning('[WarRoom] Session exceeded token budget', [
+            'session_id' => $session->id,
+            'tokens_used' => $session->tokens_used,
+            'max_tokens' => $maxTokens,
+        ]);
+
+        WarRoomMessage::where('session_id', $session->id)
+            ->whereIn('status', ['pending', 'running'])
+            ->each(function (WarRoomMessage $msg) {
+                $msg->markFailed('Session token budget exceeded');
+                broadcast(new WarRoomMessageUpdated($session->fresh(), $msg->fresh()));
+            });
+
+        $session->markFailed('Session token budget exceeded ('.number_format($maxTokens).' tokens).');
+        broadcast(new WarRoomSessionCompleted($session->fresh()));
     }
 
     private function buildIncidentContext(Collection $incidents, bool $deepAnalysis): array

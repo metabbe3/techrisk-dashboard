@@ -26,6 +26,10 @@ class ChatMessagesController
                 'completion_tokens' => $m->completion_tokens,
                 'feedback' => $m->feedback,
                 'created_at' => $m->created_at?->toIso8601String(),
+                'attachments' => $m->attachments,
+                'is_plan_message' => $m->is_plan_message,
+                'plan_role' => $m->plan_role,
+                'plan_metadata' => $m->plan_metadata,
                 'persona' => $m->persona_key ? [
                     'key' => $m->persona_key,
                     'name' => $m->persona_name,

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -11,6 +12,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 
 class WarRoomSession extends Model implements Auditable
 {
+    use HasFactory;
     use HasUuids;
     use \OwenIt\Auditing\Auditable;
     use \App\Traits\HasStatusStateMachine;
@@ -90,6 +92,38 @@ class WarRoomSession extends Model implements Auditable
             ->orderBy('created_at');
     }
 
+    public function viewers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'war_room_session_viewers', 'session_id', 'user_id')
+            ->withPivot('created_at')
+            ->withTimestamps();
+    }
+
+    public function addViewer(int $userId): void
+    {
+        $this->viewers()->syncWithoutDetaching([$userId]);
+    }
+
+    public function removeViewer(int $userId): void
+    {
+        $this->viewers()->detach([$userId]);
+    }
+
+    public function isAccessibleBy($user): bool
+    {
+        return $this->user_id === $user->id || $this->viewers()->where('user_id', $user->id)->exists();
+    }
+
+    public function scopeAccessibleByUser($query, ?int $userId = null)
+    {
+        $userId = $userId ?? auth()->id();
+
+        return $query->where(function ($q) use ($userId) {
+            $q->where('user_id', $userId)
+                ->orWhereHas('viewers', fn ($q) => $q->where('user_id', $userId));
+        });
+    }
+
     public function getAgentRoles(): array
     {
         return $this->selected_agents ?? [];
@@ -166,7 +200,9 @@ class WarRoomSession extends Model implements Auditable
 
     public function scopeForIncident($query, string $incidentId)
     {
-        return $query->whereHas('incidents', fn ($q) => $q->where('incidents.id', $incidentId))
-            ->orWhere('incident_id', $incidentId);
+        return $query->where(function ($q) use ($incidentId) {
+            $q->whereHas('incidents', fn ($q) => $q->where('incidents.id', $incidentId))
+                ->orWhere('incident_id', $incidentId);
+        });
     }
 }

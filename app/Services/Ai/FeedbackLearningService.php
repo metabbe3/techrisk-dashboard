@@ -11,6 +11,11 @@ use Illuminate\Support\Facades\Log;
 class FeedbackLearningService
 {
     use InteractsWithAiApi;
+
+    public function __construct(
+        private AiUsageLogger $usageLogger,
+    ) {}
+
     public function processFeedback(ChatMessage $message, string $feedback, ?string $comment): void
     {
         if (! config('ai.perception.feedback_learning.enabled', true)) {
@@ -67,6 +72,7 @@ class FeedbackLearningService
         ])->toJson();
 
         $model = config('ai.perception.feedback_learning.rule_extraction_model', 'FAST-MODEL');
+        $startTime = microtime(true);
 
         try {
             $response = Http::withHeaders($this->buildHeaders())
@@ -74,17 +80,31 @@ class FeedbackLearningService
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
-                        ['role' => 'system', 'content' => 'You analyze user feedback patterns and extract concise preference rules. Return a JSON array of 1-3 short preference rules (each under 50 words). Each rule should describe what the user prefers in AI responses. Return only the JSON array, no markdown.'],
+                        ['role' => 'system', 'content' => "You analyze user feedback for an AI incident management assistant. Extract concise preference rules.\n\nConsider patterns: detail level, format preferences (tables vs narrative), topic focus, tone (technical vs executive), what was unhelpful.\n\nReturn ONLY valid JSON array of 1-3 actionable rules (each under 50 words):\n[\"Prefer concise bullet-point summaries over paragraphs\", \"Always cite incident numbers when discussing findings\"]\n\nRules must be actionable (not \"User likes short answers\" but \"Prefer bullet points over paragraphs for multi-incident comparisons\")."],
                         ['role' => 'user', 'content' => "Based on these negative feedback samples, extract preference rules:\n\n{$feedbackSamples}"],
                     ],
                     'max_tokens' => 300,
+                    'temperature' => config('ai.temperatures.json_extraction', 0.1),
                 ]);
 
-            $content = $response->json('choices.0.message.content', '');
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+            $content = $responseData['choices'][0]['message']['content'] ?? '';
 
             $rules = json_decode($content, true);
 
             if (! is_array($rules)) {
+                $this->usageLogger->log(
+                    fieldType: 'feedback_learning',
+                    model: $model,
+                    success: false,
+                    inputLength: strlen($feedbackSamples),
+                    responseTimeMs: $responseTimeMs,
+                    errorMessage: 'Invalid JSON response',
+                    userId: $userId,
+                );
+
                 return;
             }
 
@@ -105,11 +125,38 @@ class FeedbackLearningService
                 'rules_count' => count($rules),
             ]);
 
+            $this->usageLogger->log(
+                fieldType: 'feedback_learning',
+                model: $model,
+                success: true,
+                inputLength: strlen($feedbackSamples),
+                outputLength: strlen($content),
+                usage: array_filter([
+                    'prompt_tokens' => $usage['prompt_tokens'] ?? null,
+                    'completion_tokens' => $usage['completion_tokens'] ?? null,
+                    'total_tokens' => $usage['total_tokens'] ?? null,
+                ]),
+                responseTimeMs: $responseTimeMs,
+                apiRequestId: $responseData['id'] ?? null,
+                metadata: ['rules_count' => count($rules)],
+                userId: $userId,
+            );
+
         } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
             Log::warning('[FeedbackLearning] Failed to extract rules', [
                 'user_id' => $userId,
                 'error' => $e->getMessage(),
             ]);
+
+            $this->usageLogger->log(
+                fieldType: 'feedback_learning',
+                model: $model,
+                success: false,
+                responseTimeMs: $responseTimeMs,
+                errorMessage: $e->getMessage(),
+                userId: $userId,
+            );
         }
     }
 

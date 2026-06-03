@@ -47,6 +47,7 @@ RUN mkdir -p /var/log/supervisor
 
 # Copy supervisor configuration
 COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY supervisord-worker.conf /etc/supervisor/conf.d/supervisord-worker.conf
 
 # Set working directory
 WORKDIR /var/www/html
