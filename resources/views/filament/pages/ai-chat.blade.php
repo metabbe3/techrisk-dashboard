@@ -62,10 +62,9 @@
                                     </button>
                                 </div>
                             </div>
-                        </div>
-                    </template>
-                </div>
-            </template>
+                        </template>
+                    </div>
+                </template>
             {{-- Regular conversations (grouped by date) --}}
             <template x-for="group in groupedConversations" :key="group.label">
                 <div>
@@ -114,11 +113,10 @@
                                         </button>
                                     </div>
                                 </div>
-                            </div>
-                        </template>
+                            </template>
+                        </div>
                     </div>
-                </div>
-            </template>
+                </template>
             <div x-show="conversations.length === 0" class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">
                 No conversations yet. Start a new chat!
             </div>
