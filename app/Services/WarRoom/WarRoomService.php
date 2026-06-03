@@ -494,6 +494,18 @@ class WarRoomService
                 $this->enforceSessionTokenBudget($session);
 
                 $this->logUsage('war_room_agent', $model, true, $totalUsage, $responseTimeMs, $session, $agentRole, $round);
+            } else {
+                $existingContent = $message->content ?? '';
+                if (! blank($existingContent)) {
+                    $metadata = array_merge($message->metadata ?? [], [
+                        'finish_reason' => $finalFinishReason,
+                        'model' => $model,
+                    ]);
+                    $message->markCompleted($existingContent, $totalUsage, $responseTimeMs, $metadata);
+                } else {
+                    $message->markFailed('Agent returned empty response after processing');
+                    $this->logUsage('war_room_agent', $model, false, $totalUsage, $responseTimeMs, $session, $agentRole, $round, 'Empty response');
+                }
             }
         } catch (ConnectionException $e) {
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);

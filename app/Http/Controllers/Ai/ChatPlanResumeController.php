@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Ai;
 
 use App\Models\ChatMessage;
+use App\Models\ChatPlanSubtask;
+use App\Jobs\Ai\ProcessPlanSubtask;
 use App\Services\Ai\PlanMode\PlanModeStreamingService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -62,5 +65,39 @@ class ChatPlanResumeController
         Cache::forget("plan_clarification:{$planId}");
 
         return $this->streamingService->streamPlanResume($planId, $cached, $augmentedMessage);
+    }
+
+    public function retrySubtask(Request $request, string $id): JsonResponse
+    {
+        $subtask = ChatPlanSubtask::where('id', $id)
+            ->whereHas('conversation', fn ($q) => $q->where('user_id', auth()->id()))
+            ->firstOrFail();
+
+        if (! $subtask->isFailed()) {
+            return response()->json(['message' => 'Only failed subtasks can be retried.'], 422);
+        }
+
+        $subtask->update([
+            'status' => 'pending',
+            'error_message' => null,
+            'result' => null,
+        ]);
+
+        $planMessage = ChatMessage::where('plan_id', $subtask->plan_id)
+            ->where('plan_role', 'plan')
+            ->first();
+
+        $userMessage = $planMessage?->content ?? '';
+        $referencedIds = $planMessage?->plan_metadata['referenced_ids'] ?? [];
+        $userModel = $planMessage?->plan_metadata['model'] ?? null;
+
+        ProcessPlanSubtask::dispatch($subtask, $userMessage, $referencedIds, $userModel)
+            ->onQueue(config('ai.plan_mode.queue', 'war-room'));
+
+        return response()->json([
+            'success' => true,
+            'subtask_id' => $subtask->id,
+            'status' => 'pending',
+        ]);
     }
 }

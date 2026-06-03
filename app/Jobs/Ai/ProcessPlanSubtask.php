@@ -33,7 +33,7 @@ class ProcessPlanSubtask implements ShouldQueue
     public function handle(PlanModeService $planService): void
     {
         $fresh = $this->subtask->fresh();
-        if (! $fresh || (! $fresh->isPending() && $fresh->status !== 'running')) {
+        if (! $fresh || $fresh->isCompleted()) {
             return;
         }
 
@@ -42,12 +42,25 @@ class ProcessPlanSubtask implements ShouldQueue
 
     public function failed(\Throwable $exception): void
     {
+        $fresh = $this->subtask->fresh();
+        if (! $fresh || $fresh->isCompleted()) {
+            return;
+        }
+
         Log::warning('Plan subtask job failed', [
-            'plan_id' => $this->subtask->plan_id,
-            'subtask_index' => $this->subtask->subtask_index,
+            'plan_id' => $fresh->plan_id,
+            'subtask_index' => $fresh->subtask_index,
             'error' => $exception->getMessage(),
         ]);
 
-        $this->subtask->markFailed('Job failed: '.$exception->getMessage());
+        $fresh->markFailed('Job failed: '.$exception->getMessage());
+
+        app(PlanModeService::class)->onSubtaskCompleted(
+            $fresh->plan_id,
+            $fresh->conversation_id,
+            $this->userMessage,
+            $this->referencedIds,
+            $this->userModel,
+        );
     }
 }

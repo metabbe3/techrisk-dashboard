@@ -81,14 +81,25 @@ window.WarRoomSession = function(routes, routeFor) {
             if (window.Echo && this.activeSession) {
                 window.Echo.leave('war-room.' + this.activeSession.id);
             }
+            clearTimeout(this._reloadTimer);
+        },
+
+        debouncedReload() {
+            clearTimeout(this._reloadTimer);
+            this._reloadTimer = setTimeout(() => {
+                if (this.activeSession) this.loadSession(this.activeSession.id);
+            }, 500);
         },
 
         async onMessageUpdated(e) {
-            if (!this.activeSession) return;
-            const prevStatus = this.activeSession.status;
-            await this.loadSession(this.activeSession.id);
-            if (prevStatus === 'pending' && this.activeSession.status === 'running') {
-                this.startPolling();
+            if (!this.activeSession || this.activeSession.id !== e.session_id) return;
+            const round = e.round;
+            const msgs = this.activeSession.messages?.[round];
+            if (!msgs) return;
+            const msg = msgs.find(m => m.id === e.message_id);
+            if (msg) {
+                msg.status = e.status;
+                if (e.error_message) msg.error_message = e.error_message;
             }
         },
 
@@ -109,13 +120,14 @@ window.WarRoomSession = function(routes, routeFor) {
 
         async onRoundCompleted(e) {
             if (!this.activeSession) return;
-            await this.loadSession(this.activeSession.id);
+            this.debouncedReload();
         },
 
         async onSessionCompleted(e) {
             this.stopPolling();
             const title = this.activeSession?.title || 'Discussion Forum';
 
+            clearTimeout(this._reloadTimer);
             await this.loadSession(this.activeSession.id);
             await this.loadSessions();
 

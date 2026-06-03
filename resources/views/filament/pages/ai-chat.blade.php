@@ -1575,8 +1575,15 @@ function aiChat() {
                 html += '<div class="flex items-start gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">';
                 html += '<div class="flex-shrink-0 mt-0.5"><span class="inline-block w-2 h-2 rounded-full ' + colorClass + '"></span></div>';
                 html += '<div class="flex-1 min-w-0">';
-                html += '<div class="flex items-center gap-2"><span class="text-xs font-semibold ' + personaClass + '">' + personaLabel + '</span><span class="text-[10px] text-gray-400">' + label + '</span></div>';
+                html += '<div class="flex items-center gap-2"><span class="text-xs font-semibold ' + personaClass + '">' + personaLabel + '</span><span class="text-[10px] text-gray-400">' + label + '</span>';
+                if (status === 'failed') {
+                    html += '<button onclick="window.retryPlanSubtask(\'' + task.id + '\', this)" class="text-[10px] text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline cursor-pointer">Retry</button>';
+                }
+                html += '</div>';
                 html += '<p class="text-xs text-gray-600 dark:text-gray-400 mt-0.5">' + task.description + '</p>';
+                if (status === 'failed' && task.error_message) {
+                    html += '<p class="text-[10px] text-red-400 dark:text-red-500 mt-0.5">' + task.error_message + '</p>';
+                }
                 html += preview;
                 html += '</div></div>';
             });
@@ -1584,8 +1591,6 @@ function aiChat() {
 
             return html;
         },
-
-        renderClarificationUI(questions) {
             let html = '<div class="p-3 space-y-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700/50">';
             html += '<div class="flex items-center gap-2 text-blue-600 dark:text-blue-400">';
             html += '<svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
@@ -2126,5 +2131,34 @@ function aiChat() {
         },
     };
 }
+
+window.retryPlanSubtask = async function(subtaskId, btn) {
+    btn.textContent = 'Retrying...';
+    btn.disabled = true;
+    try {
+        const token = document.querySelector('meta[name="csrf-token"]')?.content;
+        const res = await fetch('/admin/ai/chat/plan-subtask/' + subtaskId + '/retry', {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-CSRF-TOKEN': token },
+        });
+        if (res.ok) {
+            const card = btn.closest('.flex.items-start');
+            const dot = card?.querySelector('.rounded-full');
+            if (dot) dot.className = 'inline-block w-2 h-2 rounded-full bg-blue-400 dark:bg-blue-500 animate-pulse';
+            const statusSpan = btn.previousElementSibling;
+            if (statusSpan) statusSpan.textContent = 'Analyzing...';
+            btn.remove();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            btn.textContent = 'Retry';
+            btn.disabled = false;
+            console.error('Retry failed:', res.status, data);
+        }
+    } catch (e) {
+        btn.textContent = 'Retry';
+        btn.disabled = false;
+        console.error('Retry error:', e);
+    }
+};
 </script>
 </x-filament-panels::page>

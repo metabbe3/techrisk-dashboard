@@ -73,11 +73,16 @@ docker compose exec app chown -R www-data:www-data storage
 echo "  ✓ Storage permissions fixed"
 
 echo ""
-echo "9. Restarting Docker containers..."
+echo "9. Restarting queue workers (picks up code changes)..."
+docker compose exec worker php artisan queue:restart 2>/dev/null || docker exec techrisk-worker-1 php artisan queue:restart 2>/dev/null || true
+echo "  ✓ Workers restarting"
+
+echo ""
+echo "10. Restarting Docker containers..."
 docker compose restart
 
 echo ""
-echo "10. Caching Laravel config for production..."
+echo "11. Caching Laravel config for production..."
 sleep 3
 docker compose exec app php artisan config:cache
 echo "  ✓ Config cached"

@@ -59,14 +59,21 @@ class WarRoomMessage extends Model implements Auditable
 
     public function markCompleted(string $content, array $usage = [], int $responseTimeMs = 0, array $metadata = []): void
     {
+        $existingContent = $this->content ?? '';
+        $bestContent = strlen($content) >= strlen($existingContent) ? $content : $existingContent;
+
         $update = [
             'status' => 'completed',
-            'content' => $content,
+            'content' => $bestContent,
             'prompt_tokens' => $usage['prompt_tokens'] ?? null,
             'completion_tokens' => $usage['completion_tokens'] ?? null,
             'total_tokens' => $usage['total_tokens'] ?? null,
             'response_time_ms' => $responseTimeMs,
         ];
+
+        if (isset($metadata['model'])) {
+            $update['model'] = $metadata['model'];
+        }
 
         if (! empty($metadata)) {
             $update['metadata'] = array_merge($this->metadata ?? [], $metadata);

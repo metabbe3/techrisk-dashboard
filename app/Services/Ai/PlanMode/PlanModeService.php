@@ -417,9 +417,7 @@ class PlanModeService
             $usage = $result['usage'] ?? [];
 
             if (blank($content)) {
-                $subtask->markFailed('Agent returned empty response.');
-
-                return;
+                throw new \RuntimeException('Agent returned empty response.');
             }
 
             $subtask->markCompleted(
@@ -455,8 +453,7 @@ class PlanModeService
                 'subtask_index' => $subtask->subtask_index,
                 'error' => $e->getMessage(),
             ]);
-            $subtask->markFailed($e->getMessage());
-            $this->onSubtaskCompleted($subtask->plan_id, $subtask->conversation_id, $userMessage, $referencedIds, $userModel);
+            throw $e;
         }
     }
 
@@ -580,11 +577,13 @@ class PlanModeService
             ->orderBy('subtask_index')
             ->get()
             ->map(fn ($s) => [
+                'id' => $s->id,
                 'index' => $s->subtask_index,
                 'description' => $s->description,
                 'persona_key' => $s->persona_key,
                 'label' => $s->metadata['label'] ?? ($s->persona_key ? ucfirst(str_replace('_', ' ', $s->persona_key)) : 'General Analysis'),
                 'status' => $s->status,
+                'error_message' => $s->error_message,
                 'result_preview' => $s->result ? mb_substr($s->result, 0, 200) : null,
                 'is_research' => ($s->metadata['type'] ?? null) === 'research',
             ])
