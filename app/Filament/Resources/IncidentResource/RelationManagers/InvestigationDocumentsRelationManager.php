@@ -18,7 +18,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InvestigationDocumentsRelationManager extends RelationManager
 {
@@ -325,44 +324,8 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     }),
                 Tables\Actions\Action::make('download')
                     ->icon('heroicon-o-arrow-down-tray')
-                    ->action(function ($record, EncryptionService $encryptionService): ?StreamedResponse {
-                        if (! $record->file_path || ! Storage::disk('public')->exists($record->file_path)) {
-                            return null;
-                        }
-
-                        $encryptionKey = $record->encryptionKey;
-                        if (! $encryptionKey) {
-                            return null;
-                        }
-
-                        try {
-                            $finalKey = $encryptionService->getFinalKey($encryptionKey->key, $encryptionKey->salt, $encryptionKey->method);
-                            $decryptedContent = $encryptionService->decrypt(Storage::disk('public')->get($record->file_path), $finalKey);
-                        } catch (\Exception $e) {
-                            return null;
-                        }
-
-                        try {
-                            $this->ownerRecord->audits()->create([
-                                'user_id' => Auth::id(),
-                                'event' => 'file_downloaded',
-                                'auditable_type' => Incident::class,
-                                'auditable_id' => $this->ownerRecord->id,
-                                'new_values' => [
-                                    'filename' => (string) Str::of($record->original_filename)->ascii(),
-                                ],
-                            ]);
-                        } catch (\Exception $e) {
-                            Log::error('Error creating audit log: '.$e->getMessage());
-                        }
-
-                        return response()->streamDownload(
-                            function () use ($decryptedContent) {
-                                echo $decryptedContent;
-                            },
-                            $record->original_filename
-                        );
-                    }),
+                    ->label('Download')
+                    ->action(fn ($record) => redirect()->route('documents.download', $record)),
                 Tables\Actions\EditAction::make()
                     ->mutateFormDataUsing(function (Tables\Actions\EditAction $action, array $data, EncryptionService $encryptionService): array {
                         try {

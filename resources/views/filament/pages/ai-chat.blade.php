@@ -1957,11 +1957,24 @@ function aiChat() {
         },
 
         async regenerateResponse(assistantIdx) {
-            let userMsgIdx = assistantIdx - 1;
-            if (userMsgIdx < 0 || this.messages[userMsgIdx]?.role !== 'user') return;
+            // Search backwards for the nearest user message
+            let userMsgIdx = -1;
+            for (let i = assistantIdx - 1; i >= 0; i--) {
+                if (this.messages[i]?.role === 'user') {
+                    userMsgIdx = i;
+                    break;
+                }
+            }
+            if (userMsgIdx < 0) return;
 
-            const userText = this.messages[userMsgIdx].content;
-            this.messages = this.messages.filter((_, i) => i !== assistantIdx);
+            let userText = this.messages[userMsgIdx].content;
+
+            // Strip any reference prefixes that were baked in (e.g., "[20240101_IN_0001] ")
+            userText = userText.replace(/^(\[[\w_]+\]\s*)+/, '').trim();
+            if (!userText) return;
+
+            // Remove everything from the user message onward (user msg + all responses)
+            this.messages = this.messages.slice(0, userMsgIdx);
             this.inputText = userText;
             this.sendMessage();
         },

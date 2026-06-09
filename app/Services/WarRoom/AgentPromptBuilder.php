@@ -38,6 +38,39 @@ class AgentPromptBuilder
 
         $result = $prompt."\n\n## Incident Data\n\n".$incidentContext;
 
+        if ($session->pre_analysis) {
+            $result .= "\n\n## Pre-Analysis Insights\n\nA preliminary analysis of this incident identified the following. Use these as starting points — verify and build on them in your analysis:\n";
+
+            $pa = $session->pre_analysis;
+
+            if (! empty($pa['severity_assessment'])) {
+                $sev = $pa['severity_assessment'];
+                $result .= "\n**Severity Assessment**: {$sev['level']} — {$sev['reasoning']}";
+            }
+
+            if (! empty($pa['key_concerns'])) {
+                $result .= "\n\n**Key Concerns**:\n".collect($pa['key_concerns'])->map(fn ($c) => "- {$c}")->implode("\n");
+            }
+
+            if (! empty($pa['hypotheses'])) {
+                $result .= "\n\n**Root Cause Hypotheses**:\n".collect($pa['hypotheses'])->map(fn ($h) => "- [{$h['likelihood']}] {$h['description']}")->implode("\n");
+            }
+
+            if (! empty($pa['data_gaps'])) {
+                $result .= "\n\n**Data Gaps to Investigate**:\n".collect($pa['data_gaps'])->map(fn ($g) => "- {$g}")->implode("\n");
+            }
+
+            $roleFocus = $pa['domain_focus'][$role] ?? null;
+            if ($roleFocus) {
+                $displayName = $config?->display_name ?? ucfirst($role);
+                $result .= "\n\n**Focus Area for {$displayName}**: {$roleFocus}";
+            }
+
+            if (! empty($pa['cross_domain_alerts'])) {
+                $result .= "\n\n**Cross-Domain Alerts**:\n".collect($pa['cross_domain_alerts'])->map(fn ($a) => "- {$a}")->implode("\n");
+            }
+        }
+
         $hasFundMttr = $session->incidents->contains(fn ($i) => $i->mttr !== null && $i->mttr < 0);
         if ($hasFundMttr) {
             $result .= "\n\n## Data Conventions\n- MTTR: Positive values = minutes (non-fund-loss). Negative values = days (fund loss). E.g., mttr=-3 means 3 days.\n- Financial amounts in Indonesian Rupiah (Rp). Format: Rp 1.000.000 = 1 million.";

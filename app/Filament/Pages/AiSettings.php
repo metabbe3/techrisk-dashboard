@@ -81,15 +81,15 @@ class AiSettings extends Page implements HasForms
                             ->helperText('General AI timeout for chat and text enhancements.'),
 
                         TextInput::make('war_room_agent_timeout')
-                            ->label('War Room Agent Timeout (seconds)')
+                            ->label('AI Retrospective Agent Timeout (seconds)')
                             ->numeric()
                             ->minValue(30)
                             ->maxValue(1800)
                             ->default(600)
-                            ->helperText('Per-agent timeout in Discussion Forum. Increase if agents timeout with HTTP 504 (the AI gateway may also need its timeout increased).'),
+                            ->helperText('Per-agent timeout in AI Retrospective. Increase if agents timeout with HTTP 504 (the AI gateway may also need its timeout increased).'),
 
                         TextInput::make('war_room_moderator_timeout')
-                            ->label('War Room Moderator Timeout (seconds)')
+                            ->label('AI Retrospective Moderator Timeout (seconds)')
                             ->numeric()
                             ->minValue(30)
                             ->maxValue(1800)

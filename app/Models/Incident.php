@@ -151,6 +151,20 @@ class Incident extends Model implements Auditable
         'improvements', 'classification',
     ];
 
+    public const EXTENDED_SIMILARITY_COLUMNS = [
+        'id', 'no', 'title', 'summary', 'root_cause', 'timeline',
+        'severity', 'incident_type', 'incident_date', 'incident_status',
+        'business_category', 'root_cause_category', 'responsible_team',
+        'improvements', 'classification',
+        'fund_status', 'potential_fund_loss', 'recovered_fund',
+        'fund_loss', 'loss_taken_by',
+        'incident_source', 'pic_id', 'reported_by',
+        'third_party_client', 'investigation_pic_status',
+        'incident_category', 'incident_type_id',
+        'discovered_at', 'stop_bleeding_at', 'entry_date_tech_risk',
+        'glitch_flag', 'evidence', 'remark', 'mttr',
+    ];
+
     /**
      * Get formatted MTTR with appropriate unit.
      * - Fund loss incidents: negative value stored as days, display as "X days"

@@ -61,7 +61,7 @@ class WarRoomDeleteControllerTest extends TestCase
         $response = $this->actingAs($this->user)
             ->deleteJson("/admin/war-room/sessions/{$session->id}");
 
-        $response->assertStatus(404);
+        $response->assertStatus(403);
 
         // Verify session still exists
         $this->assertDatabaseHas('war_room_sessions', ['id' => $session->id]);

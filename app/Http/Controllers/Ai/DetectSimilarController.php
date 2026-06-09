@@ -7,6 +7,7 @@ use App\Models\Incident;
 use App\Models\RagDocument;
 use App\Services\Ai\AiTextService;
 use App\Services\Ai\RagService;
+use App\Services\Ai\SimilarIncidentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,7 @@ class DetectSimilarController extends Controller
     public function __construct(
         private readonly AiTextService $aiService,
         private readonly RagService $ragService,
+        private readonly SimilarIncidentService $similarIncidentService,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -49,6 +51,61 @@ class DetectSimilarController extends Controller
             ]);
         }
 
+        // Use the new 3-phase pipeline when enabled and we have an incident ID
+        if (config('ai.similarity.enabled', true) && ($validated['exclude_id'] ?? null)) {
+            return $this->detectViaPipeline($validated);
+        }
+
+        // Fallback to the legacy single-call method
+        return $this->detectViaLegacy($validated, $incidentData);
+    }
+
+    private function detectViaPipeline(array $validated): JsonResponse
+    {
+        $incident = Incident::find($validated['exclude_id']);
+
+        if (! $incident) {
+            return response()->json([
+                'success' => true,
+                'similar' => [],
+            ]);
+        }
+
+        $this->ensureIndexed($validated);
+
+        Log::info('[DetectSimilar] Using 3-phase pipeline', [
+            'incident_id' => $incident->id,
+            'incident_no' => $incident->no,
+        ]);
+
+        $result = $this->similarIncidentService->analyze($incident);
+
+        if (! $result->success) {
+            Log::warning('[DetectSimilar] Pipeline failed, falling back to legacy', [
+                'error' => $result->error,
+            ]);
+
+            $incidentData = collect($validated)
+                ->except(['exclude_id'])
+                ->filter(fn ($v) => filled($v))
+                ->toArray();
+
+            return $this->detectViaLegacy($validated, $incidentData);
+        }
+
+        Log::info('[DetectSimilar] Pipeline result', [
+            'verified_count' => $result->verifiedCount,
+            'candidate_count' => $result->candidateCount,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'similar' => $result->toApiResponse(),
+        ]);
+    }
+
+    private function detectViaLegacy(array $validated, array $incidentData): JsonResponse
+    {
         $this->ensureIndexed($validated);
 
         $recentIncidents = $this->fetchCandidates($validated);
@@ -62,7 +119,7 @@ class DetectSimilarController extends Controller
             ]);
         }
 
-        Log::info('[DetectSimilar] Sending to AI', [
+        Log::info('[DetectSimilar] Sending to AI (legacy)', [
             'incident_fields' => array_keys($incidentData),
             'candidate_count' => count($recentIncidents),
         ]);

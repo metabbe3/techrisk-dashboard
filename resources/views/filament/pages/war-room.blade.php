@@ -193,8 +193,8 @@ document.addEventListener('alpine:init', () => {
                 </button>
                 <div class="df-header__title-group">
                     <h2 class="df-header__title">
-                        <span x-show="!activeSession">Discussion Forum</span>
-                        <span x-show="activeSession" x-text="activeSession?.title || 'Discussion Forum'"></span>
+                        <span x-show="!activeSession">AI Retrospective</span>
+                        <span x-show="activeSession" x-text="activeSession?.title || 'AI Retrospective'"></span>
                     </h2>
                     <p class="df-header__subtitle" x-show="activeSession?.status === 'running'">
                         <span x-show="activeSession?.incident" x-html="activeSession?.incident ? incidentLink(activeSession.incident, activeSession.incident.no + (activeSession.incident.title ? ' — ' + activeSession.incident.title : '')) + ' · ' : ''"></span>
@@ -524,18 +524,58 @@ document.addEventListener('alpine:init', () => {
                 <span x-text="activeSession?.user_instructions"></span>
             </div>
 
-            {{-- ===== PENDING / STARTING STATE ===== --}}
-            <div x-show="activeSession && activeSession.status === 'pending' && getSortedRounds().length === 0" x-transition class="df-starting-state">
+            {{-- ===== PRE-ANALYSIS / STARTING STATE ===== --}}
+            <div x-show="activeSession && activeSession.status === 'running' && getSortedRounds().length === 0 && !activeSession.pre_analysis" x-transition class="df-starting-state">
                 <div class="df-starting-state__icon">
                     <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                        <path d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                        <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
                     </svg>
                 </div>
-                <h3 class="df-starting-state__title">Starting Discussion</h3>
-                <p class="df-starting-state__desc">Preparing agents and analyzing incident data...</p>
+                <h3 class="df-starting-state__title">Analyzing Incident</h3>
+                <p class="df-starting-state__desc">Pre-analysis is running to identify key concerns and guide specialist agents...</p>
                 <div class="df-starting-state__loader">
                     <div class="df-loader df-loader--active"></div>
-                    <span>This may take a few seconds</span>
+                    <span>This may take a moment</span>
+                </div>
+            </div>
+
+            <div x-show="activeSession && activeSession.pre_analysis" x-data="{ preAnalysisOpen: true }" x-transition class="df-pre-analysis">
+                <div class="df-pre-analysis__header" @click="preAnalysisOpen = !preAnalysisOpen" style="cursor:pointer;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                    </svg>
+                    <span class="df-pre-analysis__title">Pre-Analysis Insights</span>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:auto;transition:transform .2s" :style="preAnalysisOpen ? 'transform:rotate(180deg)' : ''"><path d="m6 9 6 6 6-6"/></svg>
+                </div>
+                <div x-show="preAnalysisOpen" x-transition class="df-pre-analysis__body">
+                    <div x-show="activeSession.pre_analysis?.severity_assessment" class="df-pre-analysis__severity">
+                        <strong x-text="'Severity: ' + (activeSession.pre_analysis?.severity_assessment?.level || '')"></strong>
+                        <span x-text="activeSession.pre_analysis?.severity_assessment?.reasoning || ''"></span>
+                    </div>
+                    <div x-show="activeSession.pre_analysis?.key_concerns?.length" class="df-pre-analysis__section">
+                        <h4>Key Concerns</h4>
+                        <ul>
+                            <template x-for="concern in (activeSession.pre_analysis?.key_concerns || [])"><li x-text="concern"></li></template>
+                        </ul>
+                    </div>
+                    <div x-show="activeSession.pre_analysis?.hypotheses?.length" class="df-pre-analysis__section">
+                        <h4>Root Cause Hypotheses</h4>
+                        <ul>
+                            <template x-for="hyp in (activeSession.pre_analysis?.hypotheses || [])">
+                                <li><span class="df-pre-analysis__likelihood" x-text="'[' + hyp.likelihood + ']'"></span> <span x-text="hyp.description"></span></li>
+                            </template>
+                        </ul>
+                    </div>
+                    <div x-show="activeSession.pre_analysis?.data_gaps?.length" class="df-pre-analysis__section">
+                        <h4>Data Gaps</h4>
+                        <ul>
+                            <template x-for="gap in (activeSession.pre_analysis?.data_gaps || [])"><li x-text="gap"></li></template>
+                        </ul>
+                    </div>
+                    <div x-show="activeSession.pre_analysis?.reasoning" class="df-pre-analysis__section">
+                        <h4>Summary</h4>
+                        <p x-text="activeSession.pre_analysis?.reasoning"></p>
+                    </div>
                 </div>
             </div>
 

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Incident;
 use App\Services\Ai\AiTextService;
 use App\Services\Ai\RagService;
+use App\Services\Ai\SimilarIncidentService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -23,6 +24,7 @@ class RecurrenceDetectionService
     public function __construct(
         private AiTextService $aiService,
         private RagService $ragService,
+        private SimilarIncidentService $similarIncidentService,
     ) {}
 
     public function detect(Incident $incident): array
@@ -71,21 +73,39 @@ class RecurrenceDetectionService
 
     private function detectViaAi(Incident $incident): array
     {
-        if (! $this->aiService->isAvailable()) {
-            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-        }
-
         if (empty($incident->summary) && empty($incident->title)) {
             return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
         }
 
-        $candidates = $this->fetchAiCandidates($incident);
-
-        if (empty($candidates)) {
-            return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
-        }
-
         try {
+            // Try the new 3-phase pipeline first
+            if (config('ai.similarity.enabled', true) && $this->similarIncidentService->isAvailable()) {
+                $result = $this->similarIncidentService->analyze($incident);
+
+                if ($result->success && ! empty($result->matches)) {
+                    return $this->buildResultFromPipeline($incident, $result);
+                }
+
+                if ($result->success && empty($result->matches)) {
+                    return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
+                }
+
+                Log::info('[RecurrenceDetection] Pipeline failed, falling back to legacy', [
+                    'error' => $result->error,
+                ]);
+            }
+
+            // Legacy fallback
+            if (! $this->aiService->isAvailable()) {
+                return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
+            }
+
+            $candidates = $this->fetchAiCandidates($incident);
+
+            if (empty($candidates)) {
+                return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
+            }
+
             $incidentData = array_filter([
                 'title' => $incident->title,
                 'summary' => $incident->summary,
@@ -162,6 +182,79 @@ class RecurrenceDetectionService
 
             return $this->storeResult($incident, ['analyzed_at' => now()->toIso8601String()]);
         }
+    }
+
+    private function buildResultFromPipeline(Incident $incident, \App\Services\Ai\SimilarIncidentResult $result): array
+    {
+        $matchIds = collect($result->matches)->pluck('id')->toArray();
+        $enrichedIncidents = Incident::whereIn('id', $matchIds)
+            ->with(['actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date'])])
+            ->get()
+            ->keyBy('id');
+
+        $matchData = collect($result->matches)->take(self::MAX_MATCHES)->map(function ($match) use ($enrichedIncidents) {
+            $enriched = $enrichedIncidents->get($match['id']);
+            $actions = $enriched
+                ? $enriched->actionImprovements->map(fn ($a) => [
+                    'title' => $a->title,
+                    'status' => $a->status,
+                    'due_date' => is_string($a->due_date) ? $a->due_date : $a->due_date?->toDateString(),
+                ])->toArray()
+                : [];
+
+            $pendingActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']))->count();
+            $overdueActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']) && $a['due_date'] && $a['due_date'] < now()->toDateString())->count();
+
+            $dimensions = $match['dimensions'] ?? [];
+            $matchReasons = [];
+            if (($dimensions['root_cause_mechanism'] ?? 0) >= 0.7) {
+                $matchReasons[] = 'root_cause_mechanism';
+            }
+            if (($dimensions['affected_systems'] ?? 0) >= 0.7) {
+                $matchReasons[] = 'affected_systems';
+            }
+            if (($dimensions['failure_mode'] ?? 0) >= 0.7) {
+                $matchReasons[] = 'failure_mode';
+            }
+            if (($dimensions['category_overlap'] ?? 0) >= 0.5) {
+                $matchReasons[] = 'category_overlap';
+            }
+            if (($dimensions['financial_pattern'] ?? 0) >= 0.5) {
+                $matchReasons[] = 'financial_pattern';
+            }
+            if (empty($matchReasons)) {
+                $matchReasons[] = 'ai_similarity';
+            }
+
+            return [
+                'id' => $match['id'],
+                'no' => $match['no'],
+                'summary' => $match['summary'] ?? '',
+                'severity' => $match['severity'] ?? '',
+                'incident_date' => $match['incident_date'] ?? '',
+                'incident_status' => $match['incident_status'] ?? '',
+                'score' => (int) round(($match['similarity'] ?? 0) * 10),
+                'similarity' => $match['similarity'] ?? 0,
+                'reason' => $match['reasoning'] ?? '',
+                'match_reasons' => $matchReasons,
+                'match_type' => $match['match_type'] ?? 'thematic',
+                'dimensions' => $dimensions,
+                'action_improvements' => $actions,
+                'pending_actions' => $pendingActions,
+                'overdue_actions' => $overdueActions,
+            ];
+        })->values()->toArray();
+
+        $aiAnalysis = $this->generateAiAnalysisForSimilar($incident, $matchData);
+
+        return $this->storeResult($incident, [
+            'is_recurring' => true,
+            'detection_method' => 'pipeline_verified',
+            'matches' => $matchData,
+            'ai_analysis' => $aiAnalysis,
+            'think_analysis' => $result->thinkAnalysis,
+            'detected_at' => now()->toIso8601String(),
+        ]);
     }
 
     private function getRagScoreMap(Incident $incident): array

@@ -9,9 +9,9 @@ class WarRoom extends Page
 {
     protected static ?string $navigationIcon = 'heroicon-o-users';
 
-    protected static ?string $navigationLabel = 'Discussion Forum';
+    protected static ?string $navigationLabel = 'AI Retrospective';
 
-    protected static ?string $title = 'Discussion Forum';
+    protected static ?string $title = 'AI Retrospective';
 
     protected static ?int $navigationSort = 4;
 

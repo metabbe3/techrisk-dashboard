@@ -39,6 +39,7 @@ class WarRoomPollController
             'status' => $session->status,
             'current_round' => $session->current_round,
             'error_message' => $session->error_message,
+            'pre_analysis' => $session->pre_analysis,
             'messages' => $messages,
         ]);
     }

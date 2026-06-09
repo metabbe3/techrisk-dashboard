@@ -11,6 +11,10 @@ class WarRoomDeleteController
     {
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
+        if ((int) $session->user_id !== (int) auth()->id()) {
+            abort(403, 'Only the session creator can delete this session.');
+        }
+
         $session->messages()->delete();
         $session->delete();
 

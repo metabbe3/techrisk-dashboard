@@ -56,7 +56,7 @@ class WarRoomShowControllerTest extends TestCase
             ->assertJson($expectedData);
     }
 
-    public function test_show_only_own_sessions(): void
+    public function test_show_allows_viewing_other_users_sessions(): void
     {
         $otherUser = User::factory()->create();
         Permission::firstOrCreate(['name' => 'access war room']);
@@ -67,10 +67,23 @@ class WarRoomShowControllerTest extends TestCase
             'status' => 'completed',
         ]);
 
+        $expectedData = [
+            'id' => $session->id,
+            'title' => $session->title,
+            'status' => 'completed',
+        ];
+
+        $mockService = Mockery::mock(WarRoomService::class);
+        $mockService->shouldReceive('getSessionData')
+            ->once()
+            ->andReturn($expectedData);
+
+        $this->app->instance(WarRoomService::class, $mockService);
+
         $response = $this->actingAs($this->user)
             ->getJson("/admin/war-room/sessions/{$session->id}");
 
-        $response->assertStatus(404);
+        $response->assertStatus(200);
     }
 
     public function test_show_requires_authentication(): void

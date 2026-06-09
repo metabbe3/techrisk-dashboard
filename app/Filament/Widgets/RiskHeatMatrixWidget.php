@@ -6,6 +6,7 @@ use App\Enums\FundStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
+use Carbon\Carbon;
 use Filament\Widgets\Widget;
 use Illuminate\Support\Facades\Cache;
 
@@ -82,18 +83,59 @@ class RiskHeatMatrixWidget extends Widget
     protected function calculateLikelihood(Incident $incident): int
     {
         $recurrenceData = $incident->recurrence_data;
-        $matchCount = 0;
 
-        if (is_array($recurrenceData) && isset($recurrenceData['matches']) && is_array($recurrenceData['matches'])) {
-            $matchCount = count($recurrenceData['matches']);
+        if (! is_array($recurrenceData) || ! isset($recurrenceData['matches']) || ! is_array($recurrenceData['matches'])) {
+            return 1;
         }
 
+        $matches = $recurrenceData['matches'];
+
+        if (empty($matches)) {
+            return 1;
+        }
+
+        $qualityScore = collect($matches)->reduce(function ($carry, $match) {
+            $similarity = $match['similarity'] ?? ($match['score'] ?? 0) / 10;
+
+            return $carry + min(max($similarity, 0), 1);
+        }, 0);
+
+        $timeDecayScore = collect($matches)->reduce(function ($carry, $match) {
+            $date = $match['incident_date'] ?? null;
+            if (! $date) {
+                return $carry;
+            }
+
+            $daysDiff = now()->diffInDays(Carbon::parse($date));
+            $decayFactor = exp(-$daysDiff / 365);
+
+            return $carry + $decayFactor;
+        }, 0);
+
+        $severityScore = collect($matches)->reduce(function ($carry, $match) {
+            return $carry + $this->severityWeight($match['severity'] ?? 'P4') / 10;
+        }, 0);
+
+        $combined = ($qualityScore * 0.4) + ($timeDecayScore * 0.35) + ($severityScore * 0.25);
+
         return match (true) {
-            $matchCount >= 6 => 5,
-            $matchCount >= 4 => 4,
-            $matchCount >= 2 => 3,
-            $matchCount >= 1 => 2,
+            $combined >= 3.5 => 5,
+            $combined >= 2.5 => 4,
+            $combined >= 1.5 => 3,
+            $combined >= 0.7 => 2,
             default => 1,
+        };
+    }
+
+    private function severityWeight(string $severity): int
+    {
+        return match ($severity) {
+            'P1' => 10,
+            'P2' => 8,
+            'P3', 'X1' => 6,
+            'P4', 'X2' => 4,
+            'X3', 'X4', 'G' => 3,
+            default => 2,
         };
     }
 

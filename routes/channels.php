@@ -32,7 +32,9 @@ Broadcast::channel('presence.online', function ($user) {
 });
 
 Broadcast::channel('war-room.{sessionId}', function (User $user, string $sessionId) {
-    $session = WarRoomSession::find($sessionId);
+    if (! $user->can('access war room')) {
+        return false;
+    }
 
-    return $session && (int) $session->user_id === (int) $user->id;
+    return WarRoomSession::whereKey($sessionId)->exists();
 });

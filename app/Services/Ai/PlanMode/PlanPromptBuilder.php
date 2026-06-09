@@ -80,7 +80,7 @@ class PlanPromptBuilder
         return implode("\n\n", $parts);
     }
 
-    public function buildSubtaskAgentPrompt(string $description, ?string $personaKey, string $userMessage, array $referencedIds, array $requiredContext = [], ?string $planText = null, int $totalSubtasks = 1): string
+    public function buildSubtaskAgentPrompt(string $description, ?string $personaKey, string $userMessage, array $referencedIds, array $requiredContext = [], ?string $planText = null, int $totalSubtasks = 1, string $outputMode = 'standard'): string
     {
         $parts = [];
 
@@ -102,14 +102,25 @@ class PlanPromptBuilder
         }
 
         $parts[] = "\n\n## Your Specific Task\n{$description}";
-        $parts[] = "\nFocus ONLY on this specific aspect. Provide a detailed, evidence-based analysis.";
+        $parts[] = "\nFocus ONLY on this specific aspect.";
 
-        $parts[] = "\n## Required Output Format";
-        $parts[] = 'Structure your response with these markdown headers:';
-        $parts[] = '### Key Findings — Your 3-5 most important discoveries (cite specific data with incident numbers)';
-        $parts[] = '### Evidence — Data points, metrics, and quotes that support each finding';
-        $parts[] = '### Recommendations — Specific, actionable next steps within your domain';
-        $parts[] = '### Confidence — Rate overall confidence (High/Medium/Low) and state what would increase it';
+        if ($outputMode === 'caveman' && config('ai.plan_mode.caveman_for_simple', true)) {
+            $maxWords = config('ai.plan_mode.caveman_max_words', 200);
+            $parts[] = "\n## Output Format — CAVEMAN MODE";
+            $parts[] = 'Your output goes to a synthesis agent, NOT the user. Be ultra-concise:';
+            $parts[] = '- Fragments only. No complete sentences. No filler words.';
+            $parts[] = '- No preamble. No "Based on the data" or "I found that" or "Looking at".';
+            $parts[] = '- Data first. Numbers before words.';
+            $parts[] = '- Use: "P1: 12. P2: 8. Trend: +15%." NOT: "Looking at the data, there are 12 P1 incidents..."';
+            $parts[] = "- Technical accuracy: 100%. Max {$maxWords} words.";
+        } else {
+            $parts[] = "\n## Required Output Format";
+            $parts[] = 'Structure your response with these markdown headers:';
+            $parts[] = '### Key Findings — Your 3-5 most important discoveries (cite specific data with incident numbers)';
+            $parts[] = '### Evidence — Data points, metrics, and quotes that support each finding';
+            $parts[] = '### Recommendations — Specific, actionable next steps within your domain';
+            $parts[] = '### Confidence — Rate overall confidence (High/Medium/Low) and state what would increase it';
+        }
 
         if ($planText) {
             $parts[] = "\n## Plan Context";
@@ -157,7 +168,9 @@ class PlanPromptBuilder
                 ? ucfirst(str_replace('-', ' ', $result['persona_key'])).' Analyst'
                 : 'General Analyst';
             $isResearch = ($result['is_research'] ?? false);
-            $label = $isResearch ? "{$personaLabel} — Research ".($index + 1) : "{$personaLabel} — Task ".($index + 1);
+            $isCaveman = ($result['output_mode'] ?? 'standard') === 'caveman';
+            $modeTag = $isCaveman ? ' [CAVEMAN — expand into full sentences]' : '';
+            $label = $isResearch ? "{$personaLabel} — Research ".($index + 1) : "{$personaLabel} — Task ".($index + 1).$modeTag;
             $parts[] = "\n### {$label}";
             $parts[] = '**Task**: '.$result['description'];
             $parts[] = "\n{$result['result']}";

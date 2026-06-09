@@ -19,11 +19,11 @@ class WarRoomAgentConfigResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-chat-bubble-left-right';
 
-    protected static ?string $navigationLabel = 'Discussion Agents';
+    protected static ?string $navigationLabel = 'Retrospective Agents';
 
-    protected static ?string $modelLabel = 'Discussion Agent';
+    protected static ?string $modelLabel = 'Retrospective Agent';
 
-    protected static ?string $pluralModelLabel = 'Discussion Agents';
+    protected static ?string $pluralModelLabel = 'Retrospective Agents';
 
     protected static ?int $navigationSort = 5;
 
@@ -53,7 +53,7 @@ class WarRoomAgentConfigResource extends Resource
                             ->maxLength(255)
                             ->rows(2)
                             ->columnSpan(3)
-                            ->helperText('Short description shown in the Discussion Forum agent picker.'),
+                            ->helperText('Short description shown in the AI Retrospective agent picker.'),
                     ])->columns(3),
 
                 Forms\Components\Section::make('Appearance')
@@ -178,7 +178,7 @@ class WarRoomAgentConfigResource extends Resource
                             ->helperText('Allow this agent to search the web for additional context.'),
                         Forms\Components\Toggle::make('is_active')
                             ->default(true)
-                            ->helperText('Inactive agents are hidden from the Discussion Forum picker.'),
+                            ->helperText('Inactive agents are hidden from the AI Retrospective picker.'),
                     ])->columns(3),
             ]);
     }

@@ -11,7 +11,7 @@ class WarRoomSessionsRelationManager extends RelationManager
 {
     protected static string $relationship = 'warRoomSessions';
 
-    protected static ?string $title = 'Discussion Forum Sessions';
+    protected static ?string $title = 'AI Retrospective Sessions';
 
     protected static ?string $icon = 'heroicon-o-chat-bubble-left-right';
 
@@ -63,7 +63,7 @@ class WarRoomSessionsRelationManager extends RelationManager
                     ->openUrlInNewTab(),
             ])
             ->emptyStateHeading('No discussions yet')
-            ->emptyStateDescription('This incident has not been discussed in the Discussion Forum.')
+            ->emptyStateDescription('This incident has not been analyzed in AI Retrospective.')
             ->emptyStateIcon('heroicon-o-chat-bubble-left-right');
     }
 }

@@ -18,6 +18,7 @@ use App\Services\WarRoom\AgentPromptBuilder;
 use App\Services\WarRoom\WarRoomService;
 use App\Services\WarRoom\WarRoomStreamingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Mockery;
@@ -103,7 +104,7 @@ class WarRoomServiceTest extends TestCase
         $this->assertSame(3, $session->max_rounds);
         $this->assertSame('SMART-MODEL', $session->model);
         $this->assertEquals(['sre', 'tech_risk'], $session->selected_agents);
-        $this->assertStringContainsString('Discussion Forum:', $session->title);
+        $this->assertStringContainsString('AI Retrospective:', $session->title);
 
         // Incident should be linked via pivot
         $this->assertTrue($session->incidents->contains($incident));
@@ -177,6 +178,7 @@ class WarRoomServiceTest extends TestCase
     public function test_start_session_marks_running_and_dispatches_round(): void
     {
         Queue::fake();
+        Config::set('ai.war_room.pre_analysis_enabled', false);
 
         $session = WarRoomSession::factory()->create([
             'status' => 'pending',
@@ -201,8 +203,30 @@ class WarRoomServiceTest extends TestCase
         Queue::assertPushed(ProcessWarRoomAgent::class, 2);
     }
 
-    // -----------------------------------------------------------------------
-    // 3. dispatchRound
+    public function test_start_session_dispatches_pre_analysis_when_enabled(): void
+    {
+        Queue::fake();
+        Config::set('ai.war_room.pre_analysis_enabled', true);
+
+        $session = WarRoomSession::factory()->create([
+            'status' => 'pending',
+            'selected_agents' => ['sre', 'dba'],
+            'current_round' => 0,
+        ]);
+
+        $this->service->startSession($session);
+
+        $session->refresh();
+        $this->assertSame('running', $session->status);
+
+        // Should dispatch RunPreAnalysis instead of agents directly
+        Queue::assertPushed(\App\Jobs\WarRoom\RunPreAnalysis::class, 1);
+        Queue::assertNotPushed(ProcessWarRoomAgent::class);
+
+        // No messages created yet — they're deferred to after pre-analysis
+        $messages = WarRoomMessage::where('session_id', $session->id)->get();
+        $this->assertCount(0, $messages);
+    }
     // -----------------------------------------------------------------------
 
     public function test_dispatch_round_creates_messages_for_each_agent(): void

@@ -73,11 +73,14 @@ class DownloadDocumentController extends Controller
 
         // 6. Download the file with the original name
 
+        $extension = pathinfo($record->original_filename, PATHINFO_EXTENSION);
+        $mimeType = \Symfony\Component\Mime\MimeTypes::getDefault()->getMimeTypes($extension)[0] ?? 'application/octet-stream';
+
         return response()->streamDownload(function () use ($decryptedContent) {
 
             echo $decryptedContent;
 
-        }, $record->original_filename);
+        }, $record->original_filename, ['Content-Type' => $mimeType]);
 
     }
 }

@@ -31,6 +31,7 @@ class WarRoomSession extends Model implements Auditable
         'selected_agents',
         'incident_context',
         'context_summarized',
+        'pre_analysis',
         'selected_skills',
         'user_instructions',
         'final_report',
@@ -49,6 +50,7 @@ class WarRoomSession extends Model implements Auditable
         'enable_web_search' => 'boolean',
         'deep_analysis' => 'boolean',
         'context_summarized' => 'boolean',
+        'pre_analysis' => 'array',
         'selected_skills' => 'array',
         'started_at' => 'datetime',
         'completed_at' => 'datetime',
@@ -116,12 +118,7 @@ class WarRoomSession extends Model implements Auditable
 
     public function scopeAccessibleByUser($query, ?int $userId = null)
     {
-        $userId = $userId ?? auth()->id();
-
-        return $query->where(function ($q) use ($userId) {
-            $q->where('user_id', $userId)
-                ->orWhereHas('viewers', fn ($q) => $q->where('user_id', $userId));
-        });
+        return $query;
     }
 
     public function getAgentRoles(): array

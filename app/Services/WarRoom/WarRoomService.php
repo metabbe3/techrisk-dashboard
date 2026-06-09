@@ -8,6 +8,7 @@ use App\Events\WarRoomReportStreaming;
 use App\Events\WarRoomRoundCompleted;
 use App\Events\WarRoomSessionCompleted;
 use App\Jobs\WarRoom\ProcessWarRoomAgent;
+use App\Jobs\WarRoom\RunPreAnalysis;
 use App\Jobs\WarRoom\StartWarRoomSession;
 use App\Jobs\WarRoom\SynthesizeWarRoomReport;
 use App\Models\AiSetting;
@@ -121,6 +122,7 @@ class WarRoomService
             'current_round' => 0,
             'incident_context' => $compressedContext,
             'context_summarized' => false,
+            'pre_analysis' => null,
             'user_instructions' => $userInstructions ?? $session->user_instructions,
             'final_report' => null,
             'final_report_html' => null,
@@ -158,7 +160,11 @@ class WarRoomService
 
         app(\App\Services\Skills\SkillRoutingService::class)->selectSkillsForSession($session);
 
-        $this->dispatchRound($session, 1);
+        if (config('ai.war_room.pre_analysis_enabled', true)) {
+            RunPreAnalysis::dispatch($session);
+        } else {
+            $this->dispatchRound($session, 1);
+        }
     }
 
     public function dispatchRound(WarRoomSession $session, int $round): void
@@ -852,6 +858,7 @@ class WarRoomService
             'completed_at' => $session->completed_at?->toIso8601String(),
             'failed_at' => $session->failed_at?->toIso8601String(),
             'error_message' => $session->error_message,
+            'pre_analysis' => $session->pre_analysis,
             'messages' => $messagesByRound,
             'final_report' => $session->final_report,
             'final_report_html' => $session->final_report_html,
@@ -1138,12 +1145,12 @@ class WarRoomService
         if ($incidents->count() <= 1) {
             $incident = $incidents->first();
 
-            return "Discussion Forum: {$incident->no}";
+            return "AI Retrospective: {$incident->no}";
         }
 
         $incidentNos = $incidents->pluck('no')->implode(' vs ');
 
-        return 'Discussion Forum: '.Str::limit($incidentNos, 80);
+        return 'AI Retrospective: '.Str::limit($incidentNos, 80);
     }
 
     private function resolveModel(?string $model): string

@@ -93,7 +93,7 @@ class EnhanceAgentPromptController extends Controller
 
     private function buildSkillRequestMessage(array $validated): string
     {
-        $message = 'Suggest actionable skill capabilities for a Discussion Forum analyst agent.';
+        $message = 'Suggest actionable skill capabilities for an AI Retrospective analyst agent.';
 
         if (filled($validated['agent_name'] ?? null)) {
             $message .= "\n\nAgent name: {$validated['agent_name']}";

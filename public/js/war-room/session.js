@@ -62,7 +62,8 @@ window.WarRoomSession = function(routes, routeFor) {
                     .listen('.agent.streaming', (e) => this.onAgentStreaming(e))
                     .listen('.round.completed', (e) => this.onRoundCompleted(e))
                     .listen('.session.completed', (e) => this.onSessionCompleted(e))
-                    .listen('.report.streaming', (e) => this.onReportStreaming(e));
+                    .listen('.report.streaming', (e) => this.onReportStreaming(e))
+                    .listen('.pre-analysis.completed', (e) => this.onPreAnalysisCompleted(e));
             }
 
             this.pollInterval = setInterval(() => this.poll(), 15000);
@@ -152,6 +153,11 @@ window.WarRoomSession = function(routes, routeFor) {
             }
         },
 
+        onPreAnalysisCompleted(e) {
+            if (!this.activeSession || this.activeSession.id !== e.session_id) return;
+            this.activeSession.pre_analysis = e.pre_analysis;
+        },
+
         async poll() {
             if (!this.activeSession || (this.activeSession.status !== 'running' && this.activeSession.status !== 'pending')) {
                 this.stopPolling();
@@ -163,6 +169,9 @@ window.WarRoomSession = function(routes, routeFor) {
                 this.activeSession.status = data.status;
                 this.activeSession.current_round = data.current_round;
                 this.activeSession.error_message = data.error_message;
+                if (data.pre_analysis && !this.activeSession.pre_analysis) {
+                    this.activeSession.pre_analysis = data.pre_analysis;
+                }
 
                 if (data.status === 'running' && (!this.activeSession.messages || Object.keys(this.activeSession.messages || {}).length === 0)) {
                     const sessionId = this.activeSession.id;

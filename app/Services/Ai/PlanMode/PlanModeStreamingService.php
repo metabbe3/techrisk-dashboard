@@ -193,6 +193,8 @@ class PlanModeStreamingService
                 'total_tokens' => $planResult->totalTokens,
                 'pre_analysis' => $preAnalysis,
                 'validation' => $validation,
+                'model' => $model,
+                'referenced_ids' => $referencedIds,
             ];
 
             ChatMessage::create([
@@ -519,6 +521,8 @@ class PlanModeStreamingService
                 'total_tokens' => $planResult->totalTokens,
                 'pre_analysis' => $preAnalysis,
                 'validation' => $validation,
+                'model' => $model,
+                'referenced_ids' => $referencedIds,
             ];
 
             ChatMessage::create([

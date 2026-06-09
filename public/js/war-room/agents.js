@@ -58,11 +58,35 @@ window.WarRoomAgents = function() {
             if (!text) return '';
             let processed = this.processAgentReferences(text);
             processed = this.processIncidentLinks(processed);
+            let html;
             if (typeof marked !== 'undefined') {
-                try { return marked.parse(processed, { breaks: true, gfm: true }); }
-                catch { return processed.replace(/\n/g, '<br>'); }
+                try { html = marked.parse(processed, { breaks: true, gfm: true }); }
+                catch { html = processed.replace(/\n/g, '<br>'); }
+            } else {
+                html = processed.replace(/\n/g, '<br>');
             }
-            return processed.replace(/\n/g, '<br>');
+            if (msg._expanded) {
+                html = this.wrapThinkingSections(html);
+            }
+            return html;
+        },
+
+        wrapThinkingSections(html) {
+            // Match <h2>Thinking Process</h2> or <h3>Thinking Process</h3> and everything until the next <h2>/<h3>/end
+            return html.replace(
+                /(<h[23][^>]*>\s*(?:Thinking\s*Process|Reasoning)\s*<\/h[23]>)((?:(?!<h[23]>)[\s\S])*)/gi,
+                (match, heading, content) => {
+                    const id = 'tp-' + Math.random().toString(36).substring(2, 8);
+                    return `<div class="df-thinking-inline">
+                        <div class="df-thinking-inline__toggle" onclick="this.parentElement.classList.toggle('df-thinking-inline--collapsed')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                            <span>Thinking Process</span>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:auto"><path d="m6 9 6 6 6-6"/></svg>
+                        </div>
+                        <div class="df-thinking-inline__body">${content}</div>
+                    </div>`;
+                }
+            );
         },
 
         incidentLink(incident, label = '') {

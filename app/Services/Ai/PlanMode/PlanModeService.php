@@ -350,6 +350,7 @@ class PlanModeService
                     'required_context' => $subtask['required_context'] ?? [],
                     'label' => $subtask['label'] ?? 'General Analysis',
                     'domain' => $subtask['domain'] ?? 'general',
+                    'output_mode' => $subtask['output_mode'] ?? 'standard',
                 ],
             ]);
         }
@@ -381,6 +382,7 @@ class PlanModeService
             );
         } else {
             $requiredContext = $subtask->metadata['required_context'] ?? [];
+            $outputMode = $subtask->metadata['output_mode'] ?? 'standard';
             $dynamicPrompt = $this->promptBuilder->buildSubtaskAgentPrompt(
                 description: $subtask->description,
                 personaKey: $subtask->persona_key,
@@ -389,6 +391,7 @@ class PlanModeService
                 requiredContext: $requiredContext,
                 planText: $planText,
                 totalSubtasks: $totalSubtasks,
+                outputMode: $outputMode,
             );
         }
 
@@ -495,6 +498,7 @@ class PlanModeService
             'description' => $s->description,
             'result' => $s->result,
             'is_research' => ($s->metadata['type'] ?? null) === 'research',
+            'output_mode' => $s->metadata['output_mode'] ?? 'standard',
         ])->values()->toArray();
 
         $failedCount = $subtasks->where('status', 'failed')->count();
@@ -709,7 +713,7 @@ class PlanModeService
             ->where('plan_role', 'plan')
             ->first()?->plan_metadata['plan_text'] ?? '';
 
-        $model = config('ai.plan_mode.gap_analysis_model', 'SMART-MODEL');
+        $model = $userModel ?? config('ai.plan_mode.gap_analysis_model', 'SMART-MODEL');
         $timeout = config('ai.plan_mode.gap_analysis_timeout', 30);
         $maxTokens = config('ai.plan_mode.max_gap_analysis_tokens', 2048);
 
@@ -950,6 +954,7 @@ class PlanModeService
                 'description' => $task['description'] ?? 'Analyze the question from a general perspective.',
                 'persona_key' => $personaKey,
                 'domain' => $task['domain'] ?? 'general',
+                'output_mode' => $task['output_mode'] ?? 'standard',
                 'required_context' => $task['required_context'] ?? [],
                 'label' => $this->generateSubtaskLabel($task, $personaKey),
             ];

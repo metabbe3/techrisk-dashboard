@@ -1925,6 +1925,151 @@
     color: var(--df-text-muted);
 }
 
+/* --- Pre-Analysis --- */
+.df-pre-analysis {
+    margin: 24px 0;
+    border: 1px solid var(--df-border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+.df-pre-analysis__header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 16px;
+    background: var(--df-surface-alt);
+    border-bottom: 1px solid var(--df-border);
+}
+.df-pre-analysis__header svg {
+    color: #f59e0b;
+    flex-shrink: 0;
+}
+.df-pre-analysis__title {
+    font-weight: 600;
+    font-size: 14px;
+}
+.df-pre-analysis__badge {
+    margin-left: auto;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: rgba(59, 130, 246, 0.1);
+    color: #3b82f6;
+    animation: df-accent-pulse 2s ease-in-out infinite;
+}
+.df-pre-analysis__body {
+    padding: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.df-pre-analysis__severity {
+    padding: 8px 12px;
+    background: rgba(245, 158, 11, 0.08);
+    border-radius: 8px;
+    margin-bottom: 12px;
+}
+.df-pre-analysis__severity strong {
+    text-transform: capitalize;
+    margin-right: 8px;
+}
+.df-pre-analysis__section {
+    margin-top: 12px;
+}
+.df-pre-analysis__section h4 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--df-text-muted);
+    margin-bottom: 6px;
+}
+.df-pre-analysis__section ul {
+    list-style: none;
+    padding: 0;
+}
+.df-pre-analysis__section li {
+    padding: 4px 0 4px 16px;
+    position: relative;
+}
+.df-pre-analysis__section li::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 12px;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--df-text-muted);
+}
+.df-pre-analysis__likelihood {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-right: 4px;
+}
+.df-pre-analysis__section p {
+    color: var(--df-text-secondary);
+}
+
+/* --- Inline Thinking Section (inside agent messages) --- */
+.df-thinking-inline {
+    margin: 12px 0;
+    border: 1px solid var(--df-border);
+    border-radius: 8px;
+    background: var(--df-surface-alt, #f9fafb);
+    overflow: hidden;
+}
+.df-thinking-inline__toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--df-text-muted, #6b7280);
+    user-select: none;
+    border-bottom: 1px solid var(--df-border);
+}
+.df-thinking-inline__toggle:hover {
+    background: rgba(0,0,0,0.03);
+}
+.df-thinking-inline__toggle svg:first-child {
+    color: #f59e0b;
+    flex-shrink: 0;
+}
+.df-thinking-inline__toggle span {
+    flex-shrink: 0;
+}
+.df-thinking-inline__body {
+    padding: 12px;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--df-text-secondary, #6b7280);
+    max-height: 600px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+.df-thinking-inline--collapsed .df-thinking-inline__body {
+    max-height: 0;
+    padding: 0 12px;
+    overflow: hidden;
+}
+.df-thinking-inline--collapsed .df-thinking-inline__toggle svg:last-child {
+    transform: rotate(180deg);
+}
+.df-thinking-inline__body ol,
+.df-thinking-inline__body ul {
+    padding-left: 20px;
+    margin: 4px 0;
+}
+.df-thinking-inline__body li {
+    margin: 2px 0;
+}
+.df-thinking-inline__body p {
+    margin: 4px 0;
+}
+
 /* --- Animations --- */
 @keyframes df-spin { to { transform: rotate(360deg); } }
 @keyframes df-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }

@@ -17,7 +17,7 @@ class DetectRecurrenceJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public int $timeout = 120;
+    public int $timeout = 180;
 
     public function __construct(
         private Incident $incident
