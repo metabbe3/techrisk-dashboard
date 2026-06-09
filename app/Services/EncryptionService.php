@@ -45,7 +45,18 @@ class EncryptionService
         $encrypter = new Encrypter($key, self::CIPHER);
 
         try {
-            return $encrypter->decryptString($encryptedData);
+            $decrypted = $encrypter->decryptString($encryptedData);
+
+            // Legacy files were encrypted with encrypt() which serializes.
+            // decryptString() succeeds but returns the raw serialized string.
+            if (str_starts_with($decrypted, 's:') && preg_match('/^s:\d+:"/', $decrypted)) {
+                $unserialized = @unserialize($decrypted);
+                if ($unserialized !== false || $decrypted === 'b:0;') {
+                    return $unserialized;
+                }
+            }
+
+            return $decrypted;
         } catch (\Exception $e) {
             // Fall back to serialized decryption for legacy files
             return $encrypter->decrypt($encryptedData);
