@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Models\Incident;
 use App\Models\Label;
@@ -58,7 +59,7 @@ class CalculateIncidentMetrics implements ShouldQueue
 
             // If classification changed, also update adjacent incidents in the OLD classification
             // since this incident left their group
-            if ($this->previousClassification && $this->previousClassification !== $this->incident->classification) {
+            if ($this->previousClassification && $this->previousClassification !== $this->incident->classification->value) {
                 $this->updateAdjacentForClassification($this->previousClassification);
             }
         }
@@ -89,7 +90,7 @@ class CalculateIncidentMetrics implements ShouldQueue
         // Calculate MTBF using optimized query
         $year = $incident->incident_date->year;
         $previousIncident = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification)
+            ->where('classification', $incident->classification->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
@@ -132,7 +133,7 @@ class CalculateIncidentMetrics implements ShouldQueue
         $year = $incident->incident_date->year;
 
         $nextIncident = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification)
+            ->where('classification', $incident->classification->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
@@ -212,7 +213,7 @@ class CalculateIncidentMetrics implements ShouldQueue
 
         // Load all incidents for this year + classification once, sorted for MTBF calculation
         $yearIncidents = Incident::whereYear('incident_date', $year)
-            ->where('classification', $target->classification)
+            ->where('classification', $target->classification->value)
             ->orderBy('incident_date')->orderBy('id')
             ->get(['id', 'incident_date', 'severity', 'fund_status', 'recovered_fund', 'incident_type']);
 
@@ -220,16 +221,16 @@ class CalculateIncidentMetrics implements ShouldQueue
         $targetIndex = $yearIncidents->search(fn ($inc) => $inc->id === $target->id);
 
         $categories = [
-            'mtbf_ongoing' => fn ($inc) => $inc->incident_status !== 'Completed',
-            'mtbf_completed' => fn ($inc) => $inc->incident_status === 'Completed',
-            'mtbf_p4' => fn ($inc) => $inc->severity === 'P4',
+            'mtbf_ongoing' => fn ($inc) => $inc->incident_status !== IncidentStatus::Completed,
+            'mtbf_completed' => fn ($inc) => $inc->incident_status === IncidentStatus::Completed,
+            'mtbf_p4' => fn ($inc) => $inc->severity === Severity::P4,
             'mtbf_tech' => fn ($inc) => $inc->incident_type === 'Tech',
             'mtbf_non_tech' => fn ($inc) => $inc->incident_type === 'Non-tech',
-            'mtbf_fund_loss' => fn ($inc) => $inc->fund_status === 'Confirmed loss',
-            'mtbf_potential_recovery' => fn ($inc) => $inc->fund_status === 'Potential recovery',
-            'mtbf_fully_recovered' => fn ($inc) => $inc->fund_status === 'Fully recovered',
-            'mtbf_non_tech_loss' => fn ($inc) => $inc->fund_status === 'Non Tech Loss',
-            'mtbf_non_incident' => fn ($inc) => $inc->severity === 'Non Incident',
+            'mtbf_fund_loss' => fn ($inc) => $inc->fund_status === FundStatus::ConfirmedLoss,
+            'mtbf_potential_recovery' => fn ($inc) => $inc->fund_status === FundStatus::PotentialRecovery,
+            'mtbf_fully_recovered' => fn ($inc) => $inc->fund_status === FundStatus::FullyRecovered,
+            'mtbf_non_tech_loss' => fn ($inc) => $inc->fund_status === FundStatus::NonTechLoss,
+            'mtbf_non_incident' => fn ($inc) => $inc->severity === Severity::NonIncident,
         ];
 
         $yearStart = Carbon::create($year, 1, 1)->startOfDay();
@@ -314,7 +315,7 @@ class CalculateIncidentMetrics implements ShouldQueue
 
         foreach ($categories as $key => $condition) {
             $previousIncident = Incident::whereYear('incident_date', $year)
-                ->where('classification', $incident->classification)
+                ->where('classification', $incident->classification->value)
                 ->where($condition)
                 ->where(function ($query) use ($incident) {
                     $query->where('incident_date', '<', $incident->incident_date)
@@ -339,7 +340,7 @@ class CalculateIncidentMetrics implements ShouldQueue
 
         // Special handling for 'recovered' category
         $previousRecovered = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification)
+            ->where('classification', $incident->classification->value)
             ->where('recovered_fund', '>', 0)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ai;
 
 use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
+use App\Support\Export;
 use Illuminate\Http\Request;
 
 class WarRoomExportJsonController
@@ -17,7 +18,7 @@ class WarRoomExportJsonController
         $data = app(WarRoomService::class)->getSessionData($session);
         $incident = $session->incident;
         $incidentNo = $incident?->no ?? 'unknown';
-        $filename = 'discussion-forum-'.$incidentNo.'-'.now()->format('Y-m-d').'.json';
+        $filename = Export::downloadFilename('discussion-forum-'.$incidentNo, 'json', now()->format('Y-m-d'));
 
         return response()->json($data)
             ->header('Content-Disposition', 'attachment; filename="'.$filename.'"');

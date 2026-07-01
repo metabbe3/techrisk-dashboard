@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Enums\IncidentClassification;
 use App\Http\Controllers\Controller;
 use App\Models\Incident;
 use App\Models\RagDocument;
@@ -45,7 +46,7 @@ class DetectSimilarController extends Controller
         if (empty($incidentData)) {
             Log::info('[DetectSimilar] No incident data provided');
 
-            return response()->json([
+            return $this->successResponse([
                 'success' => true,
                 'similar' => [],
             ]);
@@ -65,7 +66,7 @@ class DetectSimilarController extends Controller
         $incident = Incident::find($validated['exclude_id']);
 
         if (! $incident) {
-            return response()->json([
+            return $this->successResponse([
                 'success' => true,
                 'similar' => [],
             ]);
@@ -98,7 +99,7 @@ class DetectSimilarController extends Controller
             'candidate_count' => $result->candidateCount,
         ]);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'similar' => $result->toApiResponse(),
         ]);
@@ -113,7 +114,7 @@ class DetectSimilarController extends Controller
         if (empty($recentIncidents)) {
             Log::info('[DetectSimilar] No candidates found');
 
-            return response()->json([
+            return $this->successResponse([
                 'success' => true,
                 'similar' => [],
             ]);
@@ -133,7 +134,7 @@ class DetectSimilarController extends Controller
             'similar_count' => count($result['similar'] ?? []),
         ]);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'similar' => $result['similar'],
         ]);
@@ -201,7 +202,7 @@ class DetectSimilarController extends Controller
 
         Log::info('[DetectSimilar] Using DB fallback (no RAG results)');
 
-        return Incident::whereIn('classification', ['Incident', 'Issue'])
+        return Incident::whereIn('classification', [IncidentClassification::Incident->value, IncidentClassification::Issue->value])
             ->where('incident_date', '>=', now()->subMonths(24))
             ->when($validated['exclude_id'] ?? null, fn ($q, $id) => $q->where('id', '!=', $id))
             ->with(['labels:id,name'])

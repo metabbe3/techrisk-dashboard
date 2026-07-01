@@ -2,6 +2,7 @@
 
 namespace App\Filament\Importers;
 
+use App\Enums\IncidentClassification;
 use App\Helpers\StringHelper;
 use App\Models\Incident;
 use Filament\Actions\Imports\Exceptions\RowImportFailedException;
@@ -44,7 +45,7 @@ class IssuesImporter extends Importer
         $normalizedTitle = StringHelper::normalizeForComparison($name);
 
         // Query all issues and filter using fuzzy matching
-        $existing = Incident::where('classification', 'Issue')
+        $existing = Incident::where('classification', IncidentClassification::Issue->value)
             ->get()
             ->first(fn (Incident $incident) => StringHelper::normalizeForComparison($incident->title) === $normalizedTitle
             );

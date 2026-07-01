@@ -4,13 +4,15 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Prunable;
 
 class ApiAuditLog extends Model
 {
-    use HasFactory, HasUuids;
+    use HasFactory, HasUuids, Prunable;
 
     protected $fillable = [
         'trace_id',
@@ -20,6 +22,7 @@ class ApiAuditLog extends Model
         'endpoint',
         'query_params',
         'request_body',
+        'request_headers',
         'user_id',
         'user_email',
         'ip_address',
@@ -41,10 +44,20 @@ class ApiAuditLog extends Model
         'response_timestamp' => 'datetime',
         'query_params' => 'array',
         'request_body' => 'array',
+        'request_headers' => 'array',
         'response_data' => 'array',
         'response_headers' => 'array',
         'metadata' => 'array',
     ];
+
+    /**
+     * Prunable: auto-delete audit records older than the configured retention.
+     * Driven by `php artisan model:prune` (scheduled daily in routes/console.php).
+     */
+    public function prunable(): Builder
+    {
+        return static::where('request_timestamp', '<', now()->subDays((int) config('api-audit.retention_days', 30)));
+    }
 
     /**
      * Get the user that made the request

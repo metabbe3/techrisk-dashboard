@@ -31,12 +31,6 @@
     ]));
 @endphp
 
-@once
-@push('scripts')
-    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
-@endpush
-@endonce
-
 <div
     x-data="kanbanBoard()"
     x-init="init()"
@@ -234,7 +228,7 @@
     </div>
 
     {{-- Board Columns --}}
-    <div class="flex gap-4 overflow-x-auto pb-6 min-h-[calc(100vh-340px)]">
+    <div class="kanban-canvas flex gap-4 overflow-x-auto pb-6 min-h-[calc(100vh-340px)] -mx-1 px-1 rounded-xl">
         @foreach($columns as $column)
             @php
                 $colorHex = $statusColors[$column['color']] ?? '#6366f1';
@@ -257,8 +251,8 @@
                 <div class="flex-1 min-h-0 overflow-y-auto p-2 flex flex-col gap-2 max-h-[calc(100vh-410px)] min-h-[120px] kanban-scroll">
                     @forelse($columnIncidents as $incident)
                         @php
-                            $severityColor = Severity::tryFrom($incident->severity)?->color() ?? 'gray';
-                            $fundStatusColor = $incident->fund_status ? FundStatus::tryFrom($incident->fund_status)?->color() : null;
+                            $severityColor = $incident->severity?->color() ?? 'gray';
+                            $fundStatusColor = $incident->fund_status?->color();
                         @endphp
                         {{-- Card --}}
                         <div
@@ -351,6 +345,24 @@
                                     </div>
                                 @endif
                             </div>
+
+                            {{-- Accessible move control (keyboard / touch / no-JS fallback to drag) --}}
+                            @if(auth()->user()?->can('manage incidents'))
+                                <div class="kanban-card__move border-t border-gray-100 dark:border-gray-700/60 px-3 py-1 flex items-center gap-1.5">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-5L21 6m0 0l-4.5 4.5M21 6h-13.5" /></svg>
+                                    <select
+                                        wire:change="updateStatus({{ $incident->id }}, $event.target.value)"
+                                        class="kanban-move-select w-full text-[11px] font-medium bg-transparent border-0 outline-none cursor-pointer text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 focus:text-indigo-600 dark:focus:text-indigo-400"
+                                        aria-label="Move incident {{ $incident->no }} to another status"
+                                        onclick="event.stopPropagation()"
+                                        title="Move to status"
+                                    >
+                                        @foreach($columns as $moveCol)
+                                            <option value="{{ $moveCol['value'] }}" @selected((string) $moveCol['value'] === (string) ($incident->incident_status?->value))>{{ $moveCol['label'] }}</option>
+                                        @endforeach
+                                    </select>
+                                </div>
+                            @endif
                         </div>
                     @empty
                         <div class="flex flex-col items-center justify-center py-8 px-4 text-center">
@@ -412,9 +424,9 @@
         >
             @if($incident)
                 @php
-                    $severityColor = \App\Enums\Severity::tryFrom($incident->severity)?->color() ?? 'gray';
-                    $statusColor = \App\Enums\IncidentStatus::tryFrom($incident->incident_status)?->color() ?? 'gray';
-                    $fundStatusColor = $incident->fund_status ? \App\Enums\FundStatus::tryFrom($incident->fund_status)?->color() : null;
+                    $severityColor = $incident->severity?->color() ?? 'gray';
+                    $statusColor = $incident->incident_status?->color() ?? 'gray';
+                    $fundStatusColor = $incident->fund_status?->color();
                     $severityHex = match($severityColor) {
                         'danger' => '#ef4444', 'warning' => '#f59e0b', 'info' => '#3b82f6', 'success' => '#22c55e', default => '#6b7280'
                     };
@@ -632,10 +644,12 @@
                     this.sortableInstances.forEach(s => s.destroy());
                     this.sortableInstances = [];
 
-                    var isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
                     var canManage = {{ auth()->user()?->can('manage incidents') ? 'true' : 'false' }};
 
-                    if (isTouchDevice || !canManage || typeof Sortable === 'undefined') return;
+                    // SortableJS supports touch natively. The delay makes a quick swipe
+                    // scroll the column and a long-press start a drag — this is what lets
+                    // phones/tablets move cards (previously disabled entirely).
+                    if (!canManage || typeof Sortable === 'undefined') return;
 
                     var self = this;
                     this.$el.querySelectorAll('.kanban-scroll').forEach(function(el) {
@@ -645,6 +659,9 @@
                             ghostClass: 'kanban-ghost',
                             dragClass: 'kanban-drag',
                             handle: '[data-drag-handle]',
+                            delay: 120,
+                            delayOnTouchOnly: true,
+                            touchStartThreshold: 5,
                             onEnd: function(evt) {
                                 var incidentId = parseInt(evt.item.dataset.incidentId);
                                 var newStatus = evt.to.closest('[data-status]').dataset.status;

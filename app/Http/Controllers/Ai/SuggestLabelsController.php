@@ -37,7 +37,7 @@ class SuggestLabelsController extends Controller
             ->toArray();
 
         if (empty($incidentData)) {
-            return response()->json([
+            return $this->successResponse([
                 'success' => false,
                 'error' => 'No incident data provided. Fill in at least summary or root cause.',
                 'matched' => [],
@@ -53,7 +53,7 @@ class SuggestLabelsController extends Controller
             model: $validated['model'] ?? null,
         );
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'matched' => $result['matched'],
             'suggested' => $result['suggested'],

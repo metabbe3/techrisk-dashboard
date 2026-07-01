@@ -430,7 +430,7 @@
                         <div class="flex items-center gap-2">
                             <div class="flex -space-x-1.5">
                                 <template x-for="(roleKey, i) in selectedPersonas" :key="roleKey">
-                                    <span class="ai-chat-persona-icon relative" :style="'width:24px;height:24px;font-size:9px;border:2px solid white;dark:border-gray-800;background:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray', 0.15) + '; color:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray')">
+                                    <span class="ai-chat-persona-icon relative" :style="'width:24px;height:24px;font-size:9px;background:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray', 0.15) + '; color:' + getPersonaColor(getAgentByKey(roleKey)?.color || 'gray')">
                                         <span x-text="getAgentInitial(getAgentByKey(roleKey)?.display_name || '?')"></span>
                                     </span>
                                 </template>
@@ -825,7 +825,7 @@ function aiChat() {
                 const res = await fetch('/admin/ai/chat/agents', {
                     headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 });
-                if (res.ok) this.availableAgents = await res.json();
+                if (res.ok) this.availableAgents = (await res.json()).data;
             } catch (e) { console.error('Failed to load agents:', e); }
         },
 
@@ -862,7 +862,7 @@ function aiChat() {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    this.conversations = data.conversations;
+                    this.conversations = data.data.conversations;
                 }
             } catch (e) { console.error(e); }
         },
@@ -878,7 +878,7 @@ function aiChat() {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    this.conversations = data.conversations;
+                    this.conversations = data.data.conversations;
                 }
             } catch (e) { console.error(e); }
         },
@@ -893,7 +893,7 @@ function aiChat() {
                 });
                 if (res.ok) {
                     const data = await res.json();
-                    this.messages = data.messages.map(m => {
+                    this.messages = data.data.messages.map(m => {
                         // Reconstruct plan card UI for persisted plan messages
                         if (m.is_plan_message && m.plan_role === 'plan' && m.plan_metadata) {
                             const planData = {
@@ -916,11 +916,11 @@ function aiChat() {
                         }
                         return withHtml(m);
                     }).filter(m => m !== null);
-                    if (data.conversation?.model) this.selectedModel = data.conversation.model;
+                    if (data.data.conversation?.model) this.selectedModel = data.data.conversation.model;
                     this.restoreReferencedIncidents();
                     // Restore persona selection from conversation history
                     const personaKeys = new Set();
-                    for (const msg of data.messages) {
+                    for (const msg of data.data.messages) {
                         if (msg.persona && msg.persona.key) personaKeys.add(msg.persona.key);
                     }
                     this.selectedPersonas = [...personaKeys];
@@ -965,7 +965,7 @@ function aiChat() {
                 if (res.ok) {
                     const data = await res.json();
                     this.conversations = this.conversations.map(c =>
-                        c.id === conv.id ? { ...c, pinned: data.pinned } : c
+                        c.id === conv.id ? { ...c, pinned: data.data.pinned } : c
                     );
                 }
             } catch (e) { console.error(e); }
@@ -993,7 +993,7 @@ function aiChat() {
                 if (res.ok) {
                     const data = await res.json();
                     this.conversations = this.conversations.map(c =>
-                        c.id === conv.id ? { ...c, title: data.title } : c
+                        c.id === conv.id ? { ...c, title: data.data.title } : c
                     );
                 }
             } catch (e) { console.error(e); }
@@ -1042,14 +1042,14 @@ function aiChat() {
                     body: formData,
                 });
                 const data = await res.json();
-                if (data.success && data.attachment) {
-                    const att = data.attachment;
+                if (data.data?.success && data.data?.attachment) {
+                    const att = data.data.attachment;
                     if (att.type === 'image' && file.type.startsWith('image/')) {
                         att.previewUrl = URL.createObjectURL(file);
                     }
                     this.pendingAttachments.push(att);
                 } else {
-                    alert(data.error || 'Failed to upload attachment.');
+                    alert(data.message || 'Failed to upload attachment.');
                 }
             } catch (e) {
                 alert('Failed to upload attachment. Please try again.');

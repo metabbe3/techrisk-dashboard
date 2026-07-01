@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Ai;
 
 use App\Http\Controllers\Controller;
-use App\Jobs\ConvertDocumentToMarkdown;
 use App\Models\InvestigationDocument;
 use App\Services\Ai\AiTextService;
 use App\Services\Markdown\DocumentConverterService;
@@ -28,14 +27,14 @@ class SummarizeDocumentController extends Controller
         $document = InvestigationDocument::with('encryptionKey')->find($validated['document_id']);
 
         if (! $document) {
-            return response()->json(['success' => false, 'error' => 'Document not found.'], 404);
+            return $this->errorResponse('Document not found.', 404);
         }
 
         try {
             $markdown = $this->resolveMarkdownContent($document);
 
             if (blank($markdown)) {
-                return response()->json([
+                return $this->successResponse([
                     'success' => false,
                     'error' => 'Could not extract text from this document. The file type may not be supported.',
                 ]);
@@ -48,7 +47,7 @@ class SummarizeDocumentController extends Controller
             );
 
             if (! $result->success) {
-                return response()->json(['success' => false, 'error' => $result->error]);
+                return $this->successResponse(['success' => false, 'error' => $result->error]);
             }
 
             $document->update([
@@ -57,7 +56,7 @@ class SummarizeDocumentController extends Controller
                 'ai_summary_at' => now(),
             ]);
 
-            return response()->json([
+            return $this->successResponse([
                 'success' => true,
                 'summary' => $result->text,
                 'model' => $result->model,
@@ -68,9 +67,9 @@ class SummarizeDocumentController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json([
+            return $this->successResponse([
                 'success' => false,
-                'error' => 'Summarization failed: ' . $e->getMessage(),
+                'error' => 'Summarization failed: '.$e->getMessage(),
             ]);
         }
     }

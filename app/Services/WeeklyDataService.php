@@ -2,7 +2,7 @@
 
 namespace App\Services;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Models\Incident;
@@ -17,19 +17,18 @@ class WeeklyDataService
 
         $weeks = $this->getIsoWeeksInYear($year);
 
-        $allIncidents = Incident::where('classification', 'Incident')
+        $allIncidents = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->where(fn ($query) => $query->whereNull('fund_status')
-                ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+            ->excludedFromCounts()
             ->with(['pic', 'labels'])
             ->orderBy('incident_date', 'desc')
             ->get();
 
         $openStatuses = [
-            IncidentStatus::Open->value,
-            IncidentStatus::InProgress->value,
-            IncidentStatus::Finalization->value,
+            IncidentStatus::Open,
+            IncidentStatus::InProgress,
+            IncidentStatus::Finalization,
         ];
 
         foreach ($weeks as $weekNumber => $dateRange) {
@@ -48,7 +47,7 @@ class WeeklyDataService
                 'week' => "W{$weekNumber}",
                 'date_range' => $dateRange['start']->format('M j').' - '.$dateRange['end']->format('M j'),
                 'incident_open' => $incidents->whereIn('incident_status', $openStatuses)->count(),
-                'incident_closed' => $incidents->where('incident_status', IncidentStatus::Completed->value)->count(),
+                'incident_closed' => $incidents->where('incident_status', IncidentStatus::Completed)->count(),
                 'total' => $incidents->count(),
                 'incidents' => $incidents->values(),
             ];

@@ -15,18 +15,18 @@
         Summary
     </x-slot>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
+    <div class="grid grid-cols-2 md:grid-cols-4 [grid-template-columns:repeat(auto-fit,minmax(150px,1fr))] gap-3">
         @foreach($statCards as $card)
             <div class="relative rounded-xl bg-white dark:bg-gray-800/60 p-4 ring-1 ring-gray-950/5 dark:ring-white/5 border-l-[3px] {{ $card['border'] }} transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 overflow-hidden group">
                 <div class="absolute inset-0 bg-gradient-to-br from-transparent to-gray-50/50 dark:from-transparent dark:to-gray-900/20 pointer-events-none"></div>
-                <div class="relative">
+                <div class="relative min-w-0">
                     <div class="flex items-center gap-2 mb-3">
                         <div class="flex h-8 w-8 items-center justify-center rounded-lg {{ $card['iconBg'] }} transition-transform duration-200 group-hover:scale-110">
                             <x-filament::icon icon="{{ $card['icon'] }}" class="h-4 w-4 {{ $card['iconColor'] }}" />
                         </div>
                     </div>
-                    <p class="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">{{ $card['label'] }}</p>
-                    <p class="text-lg font-bold text-gray-900 dark:text-white mt-0.5 tabular-nums">{{ $card['value'] }}</p>
+                    <p class="text-[11px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider truncate">{{ $card['label'] }}</p>
+                    <p class="text-lg font-bold text-gray-900 dark:text-white mt-0.5 tabular-nums truncate">{{ $card['value'] }}</p>
                 </div>
             </div>
         @endforeach

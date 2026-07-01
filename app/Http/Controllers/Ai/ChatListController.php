@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ChatConversation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class ChatListController
+class ChatListController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
@@ -51,7 +52,7 @@ class ChatListController
 
         $folders = ChatConversation::getFolders();
 
-        return response()->json([
+        return $this->successResponse([
             'conversations' => $conversations,
             'folders' => $folders,
         ]);

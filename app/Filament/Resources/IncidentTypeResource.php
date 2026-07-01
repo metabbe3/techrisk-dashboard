@@ -18,11 +18,6 @@ class IncidentTypeResource extends Resource
 
     protected static ?string $navigationGroup = 'Settings';
 
-    public static function canViewAny(): bool
-    {
-        return auth()->user()->can('view incident types');
-    }
-
     public static function form(Form $form): Form
     {
         return $form

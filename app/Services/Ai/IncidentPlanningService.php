@@ -2,6 +2,8 @@
 
 namespace App\Services\Ai;
 
+use App\Enums\IncidentStatus;
+use App\Enums\Severity;
 use App\Models\Incident;
 use App\Services\Markdown\MarkdownFormatter;
 use Illuminate\Support\Collection;
@@ -102,12 +104,12 @@ class IncidentPlanningService
     private function assessPriority(Incident $incident): array
     {
         return match (true) {
-            $incident->severity === 'P1' => ['level' => 'CRITICAL', 'reason' => 'P1 severity requires immediate response'],
-            $incident->severity === 'P2' && $incident->fund_loss > 0 => ['level' => 'HIGH', 'reason' => 'P2 with confirmed fund loss'],
-            $incident->severity === 'P2' => ['level' => 'HIGH', 'reason' => 'P2 severity needs urgent attention'],
+            $incident->severity === Severity::P1 => ['level' => 'CRITICAL', 'reason' => 'P1 severity requires immediate response'],
+            $incident->severity === Severity::P2 && $incident->fund_loss > 0 => ['level' => 'HIGH', 'reason' => 'P2 with confirmed fund loss'],
+            $incident->severity === Severity::P2 => ['level' => 'HIGH', 'reason' => 'P2 severity needs urgent attention'],
             ! empty($incident->recurrence_data['is_recurring']) => ['level' => 'HIGH', 'reason' => 'Recurring incident pattern detected'],
             $incident->fund_loss > 0 => ['level' => 'ELEVATED', 'reason' => 'Confirmed financial impact'],
-            default => ['level' => 'STANDARD', 'reason' => "{$incident->severity} severity, standard review recommended"],
+            default => ['level' => 'STANDARD', 'reason' => "{$incident->severity->value} severity, standard review recommended"],
         };
     }
 
@@ -115,7 +117,7 @@ class IncidentPlanningService
     {
         $triggers = [];
 
-        if ($incident->severity === 'P1') {
+        if ($incident->severity === Severity::P1) {
             $triggers[] = 'P1 incident — automatic executive notification required';
         }
         if ($incident->fund_loss > 0 && $incident->severity !== 'P1') {
@@ -130,7 +132,7 @@ class IncidentPlanningService
         if (! empty($incident->recurrence_data['is_recurring'])) {
             $triggers[] = 'Pattern recurrence detected — systemic issue likely';
         }
-        if ($incident->investigationDocuments->isEmpty() && in_array($incident->severity, ['P1', 'P2'])) {
+        if ($incident->investigationDocuments->isEmpty() && in_array($incident->severity, [Severity::P1, Severity::P2])) {
             $triggers[] = 'P1/P2 without investigation documents — documentation gap';
         }
 
@@ -142,7 +144,7 @@ class IncidentPlanningService
         $actions = [];
         $status = $incident->incident_status;
 
-        if ($status === 'Open') {
+        if ($status === IncidentStatus::Open) {
             $actions[] = 'Assign PIC and begin initial investigation';
             $actions[] = 'Document timeline of events as they are discovered';
         }
@@ -176,7 +178,7 @@ class IncidentPlanningService
         if ($incident->potential_fund_loss > 0 && $incident->recovered_fund == 0) {
             $risks[] = 'Potential fund loss with zero recovery — financial exposure';
         }
-        if (in_array($incident->incident_status, ['Open', 'In progress']) && $incident->incident_date && $incident->incident_date->diffInDays(now()) > 30) {
+        if (in_array($incident->incident_status, [IncidentStatus::Open, IncidentStatus::InProgress]) && $incident->incident_date && $incident->incident_date->diffInDays(now()) > 30) {
             $risks[] = 'Incident open 30+ days — resolution delay risk';
         }
 

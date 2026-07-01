@@ -65,7 +65,9 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    # Auto-purge binary logs older than 3 days (259200s) to prevent the binlog
+    # overflow that filled the disk in the production outage.
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --binlog_expire_logs_seconds=259200
 
   # Redis Service
   redis:
@@ -104,7 +106,7 @@ services:
       - techrisk-network
     deploy:
       replicas: 1
-    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp /var/log/supervisor && chmod 755 /var/www/html/storage/app/temp && exec supervisord -n -c /etc/supervisor/conf.d/supervisord-worker.conf"]
+    entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp /var/log/supervisor && chmod 755 /var/www/html/storage/app/temp && chown -R www-data:www-data /var/log/supervisor && exec supervisord -n -c /etc/supervisor/conf.d/supervisord-worker.conf"]
 
   # Scheduler Service
   scheduler:
@@ -167,6 +169,24 @@ services:
         condition: service_healthy
     networks:
       - techrisk-network
+
+  # One-shot janitor: runs every `docker compose up`, sweeps old backups and
+  # logs from the bind-mounted directories, then exits. Prevents the manual
+  # backup clutter that contributed to the disk-full outage.
+  cleanup:
+    image: alpine:3.20
+    container_name: techrisk-cleanup
+    restart: "no"
+    volumes:
+      - ./storage/backups:/backups
+      - ./backups:/manual-backups
+      - ./storage/logs:/app-logs
+    # Delete SQL dumps older than 7 days and logs older than 14 days.
+    command: >
+      sh -c "echo 'Janitor: sweeping old backups and logs...';
+      find /backups /manual-backups -type f \( -name '*.sql' -o -name '*.sql.gz' \) -mtime +7 -delete 2>/dev/null;
+      find /app-logs -type f -name '*.log' -mtime +14 -delete 2>/dev/null;
+      echo 'Janitor: done.'"
 
 networks:
   techrisk-network:

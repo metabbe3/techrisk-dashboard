@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -33,7 +34,7 @@ class IncidentStatsOverview extends BaseWidget
 
     private function calculateStats(): array
     {
-        $query = Incident::query()->where('classification', '!=', 'Issue');
+        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value);
 
         if (! $this->start_date && ! $this->end_date) {
             $query->whereYear('incident_date', now()->year);
@@ -75,7 +76,7 @@ class IncidentStatsOverview extends BaseWidget
             }
         }
 
-        $lastIncident = Incident::where('classification', '!=', 'Issue')
+        $lastIncident = Incident::where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->latest('incident_date')
             ->first();

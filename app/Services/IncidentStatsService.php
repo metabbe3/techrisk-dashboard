@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Models\Incident;
 use App\Services\Markdown\MarkdownFormatter;
 use Carbon\Carbon;
@@ -14,26 +14,24 @@ class IncidentStatsService
 {
     public function getBaseStats(Carbon $from, Carbon $to): array
     {
-        $excludeQ = fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
-
-        $total = Incident::where('classification', 'Incident')
+        $total = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereBetween('incident_date', [$from, $to])
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->count();
 
-        $open = Incident::where('classification', 'Incident')
+        $open = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereBetween('incident_date', [$from, $to])
             ->whereNotIn('incident_status', ['Completed'])
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->count();
 
         $fundLoss = Incident::whereBetween('incident_date', [$from, $to])
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->sum('fund_loss');
 
-        $bySeverity = Incident::where('classification', 'Incident')
+        $bySeverity = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereBetween('incident_date', [$from, $to])
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->selectRaw('severity, COUNT(*) as count')
             ->groupBy('severity')
             ->pluck('count', 'severity')

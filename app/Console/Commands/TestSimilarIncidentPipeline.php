@@ -29,7 +29,7 @@ class TestSimilarIncidentPipeline extends Command
 
         $this->info('=== Testing Similar Incident Pipeline ===');
         $this->line("Source: [{$incident->no}] {$incident->title}");
-        $this->line("Severity: {$incident->severity} | Type: {$incident->incident_type} | Date: {$incident->incident_date?->toDateString()}");
+        $this->line("Severity: {$incident->severity->value} | Type: {$incident->incident_type} | Date: {$incident->incident_date?->toDateString()}");
         $this->newLine();
 
         if (! $service->isAvailable()) {

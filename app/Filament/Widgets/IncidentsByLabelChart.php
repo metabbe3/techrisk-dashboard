@@ -2,7 +2,6 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
 use App\Filament\Concerns\HasChartColors;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Label;
@@ -32,7 +31,7 @@ class IncidentsByLabelChart extends ChartWidget
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Label::query()
                 ->withCount(['incidents' => function ($query) {
-                    $query->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS));
+                    $query->excludedFromCounts();
                     if ($this->start_date && $this->end_date) {
                         $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
                     } else {

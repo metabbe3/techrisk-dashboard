@@ -53,7 +53,7 @@ class WarRoomShowControllerTest extends TestCase
             ->getJson("/admin/war-room/sessions/{$session->id}");
 
         $response->assertStatus(200)
-            ->assertJson($expectedData);
+            ->assertJson(['data' => $expectedData]);
     }
 
     public function test_show_allows_viewing_other_users_sessions(): void

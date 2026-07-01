@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\IncidentClassification;
 use App\Models\Incident;
 use App\Services\Ai\AiTextService;
 use App\Services\Ai\RagService;
@@ -110,7 +111,7 @@ class RecurrenceDetectionService
                 'title' => $incident->title,
                 'summary' => $incident->summary,
                 'root_cause' => $incident->root_cause,
-                'severity' => $incident->severity,
+                'severity' => $incident->severity?->value,
                 'incident_type' => $incident->incident_type,
                 'business_category' => $incident->business_category,
                 'root_cause_category' => $incident->root_cause_category,
@@ -284,7 +285,7 @@ class RecurrenceDetectionService
 
     private function fetchCandidates(Incident $incident)
     {
-        return Incident::whereIn('classification', ['Incident', 'Issue'])
+        return Incident::whereIn('classification', [IncidentClassification::Incident->value, IncidentClassification::Issue->value])
             ->where('id', '!=', $incident->id)
             ->where('incident_date', '>=', now()->subMonths(self::LOOKBACK_MONTHS))
             ->with(['actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date']), 'labels:id,name'])
@@ -321,7 +322,7 @@ class RecurrenceDetectionService
             }
         }
 
-        return Incident::whereIn('classification', ['Incident', 'Issue'])
+        return Incident::whereIn('classification', [IncidentClassification::Incident->value, IncidentClassification::Issue->value])
             ->where('id', '!=', $incident->id)
             ->where('incident_date', '>=', now()->subMonths(self::LOOKBACK_MONTHS))
             ->with(['labels:id,name'])
@@ -413,9 +414,9 @@ class RecurrenceDetectionService
                 'id' => $match->id,
                 'no' => $match->no,
                 'summary' => $match->summary ? Str::limit($match->summary, 150) : '',
-                'severity' => $match->severity,
+                'severity' => $match->severity?->value,
                 'incident_date' => $match->incident_date?->toDateString(),
-                'incident_status' => $match->incident_status,
+                'incident_status' => $match->incident_status?->value,
                 'score' => $match->_score,
                 'match_reasons' => $match->_match_reasons,
                 'action_improvements' => $actions,
@@ -450,7 +451,7 @@ PROMPT;
             $userMessage .= 'Root cause categories: '.implode(', ', (array) ($incident->root_cause_category ?? []))."\n";
             $userMessage .= 'Business categories: '.implode(', ', (array) ($incident->business_category ?? []))."\n";
             $userMessage .= 'Responsible teams: '.implode(', ', (array) ($incident->responsible_team ?? []))."\n";
-            $userMessage .= 'Severity: '.$incident->severity."\n\n";
+            $userMessage .= 'Severity: '.$incident->severity->value."\n\n";
             $userMessage .= "Similar past incidents:\n";
 
             foreach ($matchData as $i => $match) {

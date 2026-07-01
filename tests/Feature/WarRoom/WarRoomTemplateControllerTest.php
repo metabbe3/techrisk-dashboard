@@ -45,9 +45,9 @@ class WarRoomTemplateControllerTest extends TestCase
             ->getJson('/admin/war-room/templates');
 
         $response->assertStatus(200)
-            ->assertJsonStructure(['templates']);
+            ->assertJsonStructure(['data' => ['templates']]);
 
-        $templates = $response->json('templates');
+        $templates = $response->json('data.templates');
         $this->assertCount(1, $templates);
         $this->assertEquals('My Template', $templates[0]['name']);
     }
@@ -64,7 +64,7 @@ class WarRoomTemplateControllerTest extends TestCase
             ]);
 
         $response->assertStatus(201)
-            ->assertJsonPath('template.name', 'Test Template');
+            ->assertJsonPath('data.template.name', 'Test Template');
 
         $this->assertDatabaseHas('war_room_templates', [
             'user_id' => $this->user->id,
@@ -110,7 +110,7 @@ class WarRoomTemplateControllerTest extends TestCase
             ]);
 
         $response->assertStatus(200)
-            ->assertJsonPath('template.name', 'Updated');
+            ->assertJsonPath('data.template.name', 'Updated');
 
         $this->assertDatabaseHas('war_room_templates', [
             'id' => $template->id,
@@ -152,7 +152,7 @@ class WarRoomTemplateControllerTest extends TestCase
             ->deleteJson("/admin/war-room/templates/{$template->id}");
 
         $response->assertStatus(200)
-            ->assertJsonPath('deleted', true);
+            ->assertJsonPath('data.deleted', true);
 
         $this->assertDatabaseMissing('war_room_templates', [
             'id' => $template->id,

@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomSession;
 use Illuminate\Http\JsonResponse;
 
-class WarRoomDeleteController
+class WarRoomDeleteController extends Controller
 {
     public function __invoke(string $id): JsonResponse
     {
@@ -18,6 +19,6 @@ class WarRoomDeleteController
         $session->messages()->delete();
         $session->delete();
 
-        return response()->json(['success' => true]);
+        return $this->successResponse(['success' => true]);
     }
 }

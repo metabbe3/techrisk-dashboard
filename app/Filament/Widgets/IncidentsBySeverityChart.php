@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -58,10 +58,9 @@ class IncidentsBySeverityChart extends Widget
 
         $results = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Incident::select('severity', DB::raw('count(*) as total'))
-                ->where('classification', 'Incident')
+                ->where('classification', IncidentClassification::Incident->value)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->where(fn ($query) => $query->whereNull('fund_status')
-                    ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS));
+                ->excludedFromCounts();
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
@@ -85,7 +84,7 @@ class IncidentsBySeverityChart extends Widget
             $percentage = $total > 0 ? round(($item->total / $total) * 100, 1) : 0;
 
             return [
-                'severity' => $item->severity,
+                'severity' => $item->severity?->value,
                 'count' => $item->total,
                 'percentage' => $percentage,
             ];

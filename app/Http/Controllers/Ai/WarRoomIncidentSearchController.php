@@ -2,18 +2,19 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\Incident;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class WarRoomIncidentSearchController
+class WarRoomIncidentSearchController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
         $q = $request->input('q', '');
 
         if (strlen($q) < 2) {
-            return response()->json(['incidents' => []]);
+            return $this->successResponse(['incidents' => []]);
         }
 
         $incidents = Incident::where('no', 'LIKE', "%{$q}%")
@@ -34,6 +35,6 @@ class WarRoomIncidentSearchController
                 'classification' => $inc->classification,
             ]);
 
-        return response()->json(['incidents' => $incidents]);
+        return $this->successResponse(['incidents' => $incidents]);
     }
 }

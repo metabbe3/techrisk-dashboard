@@ -42,7 +42,7 @@ class WarRoomDeleteControllerTest extends TestCase
             ->deleteJson("/admin/war-room/sessions/{$session->id}");
 
         $response->assertStatus(200)
-            ->assertJson(['success' => true]);
+            ->assertJson(['data' => ['success' => true]]);
 
         $this->assertDatabaseMissing('war_room_sessions', ['id' => $session->id]);
         $this->assertEquals(0, WarRoomMessage::where('session_id', $session->id)->count());

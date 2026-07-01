@@ -2,6 +2,7 @@
 
 namespace App\Filament\Pages;
 
+use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
@@ -225,7 +226,7 @@ class Reporting extends Page implements HasForms
             return;
         }
 
-        $query = Incident::query()->where('classification', '!=', 'Issue');
+        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value);
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));

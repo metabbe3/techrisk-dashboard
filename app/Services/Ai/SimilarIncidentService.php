@@ -212,9 +212,9 @@ class SimilarIncidentService
             $userMessage .= '   ID: '.$candidate->id."\n";
             $userMessage .= '   Summary: '.str_limit($candidate->summary ?? 'N/A', 200)."\n";
             $userMessage .= '   Root Cause: '.str_limit($candidate->root_cause ?? 'N/A', 200)."\n";
-            $userMessage .= '   Severity: '.($candidate->severity ?? 'N/A')."\n";
+            $userMessage .= '   Severity: '.($candidate->severity?->value ?? 'N/A')."\n";
             $userMessage .= '   Type: '.($candidate->incident_type ?? 'N/A')."\n";
-            $userMessage .= '   Status: '.($candidate->incident_status ?? 'N/A')."\n";
+            $userMessage .= '   Status: '.($candidate->incident_status?->value ?? 'N/A')."\n";
             $userMessage .= '   Date: '.($candidate->incident_date?->toDateString() ?? 'N/A')."\n";
 
             $categories = collect([
@@ -228,7 +228,7 @@ class SimilarIncidentService
             $userMessage .= '   Labels: '.($labels ?: 'None')."\n";
 
             if ($candidate->fund_status) {
-                $userMessage .= '   Fund Status: '.$candidate->fund_status."\n";
+                $userMessage .= '   Fund Status: '.$candidate->fund_status->value."\n";
             }
             if ((float) ($candidate->fund_loss ?? 0) > 0) {
                 $userMessage .= '   Fund Loss: '.$candidate->fund_loss."\n";
@@ -586,7 +586,7 @@ class SimilarIncidentService
 
         return Incident::where('id', '!=', $incident->id)
             ->where('incident_date', '>=', now()->subMonths($lookbackMonths))
-            ->where('fund_status', $incident->fund_status)
+            ->where('fund_status', $incident->fund_status->value)
             ->whereBetween('fund_loss', [$lowerBound, $upperBound])
             ->limit(self::MAX_CANDIDATES_PER_DIMENSION)
             ->pluck('id')

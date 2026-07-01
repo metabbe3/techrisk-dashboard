@@ -7,6 +7,7 @@ use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Models\Incident;
 use App\Models\WarRoomAgentConfig;
+use App\Services\Ai\AiChatService;
 use App\Services\Ai\AiTextResult;
 use App\Services\Ai\AiUsageLogger;
 use App\Services\Ai\ChatContextService;
@@ -20,6 +21,9 @@ class ChatPersonaStreamController
 {
     public function __construct(
         private ChatContextService $contextService,
+        private PersonaStreamingService $personaStreamingService,
+        private AiUsageLogger $aiUsageLogger,
+        private AiChatService $aiChatService,
     ) {}
 
     public function __invoke(Request $request): StreamedResponse
@@ -166,7 +170,7 @@ class ChatPersonaStreamController
                 flush();
             };
 
-            $service = app(PersonaStreamingService::class);
+            $service = $this->personaStreamingService;
             $results = $service->streamConcurrent(
                 personas: $personas->all(),
                 baseUrl: $baseUrl,
@@ -214,7 +218,7 @@ class ChatPersonaStreamController
                             'finish_reason' => $result['finishReason'] ?? null,
                         ]);
 
-                        app(AiUsageLogger::class)->log(
+                        $this->aiUsageLogger->log(
                             fieldType: 'chat_assistant',
                             model: $resolvedModel,
                             success: false,
@@ -236,6 +240,7 @@ class ChatPersonaStreamController
                         'persona_key' => $key,
                         'error' => $errorMsg,
                     ]);
+
                     continue;
                 }
 
@@ -276,7 +281,7 @@ class ChatPersonaStreamController
                     'created_at' => now(),
                 ]);
 
-                app(AiUsageLogger::class)->logFromResult(
+                $this->aiUsageLogger->logFromResult(
                     fieldType: 'chat_assistant',
                     model: $resolvedModel,
                     result: new AiTextResult(
@@ -309,7 +314,7 @@ class ChatPersonaStreamController
 
             $updatedTitle = null;
             if ($isNew) {
-                $chatService = app(\App\Services\Ai\AiChatService::class);
+                $chatService = $this->aiChatService;
                 $updatedTitle = $chatService->generateTitle($request->input('message'), $lastResponseText ?? null);
                 if ($updatedTitle) {
                     $conversation->update(['title' => $updatedTitle]);

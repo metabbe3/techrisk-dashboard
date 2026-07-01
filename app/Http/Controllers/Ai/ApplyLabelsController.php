@@ -33,7 +33,7 @@ class ApplyLabelsController extends Controller
             $labelIds[] = Label::firstOrCreate(['name' => $name])->id;
         }
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'label_ids' => $labelIds,
         ]);

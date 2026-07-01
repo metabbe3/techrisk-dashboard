@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\AiSetting;
@@ -148,7 +149,7 @@ class AiTrendInsights extends Widget
             }
         };
 
-        $baseQuery = Incident::where('classification', 'Incident')->tap($dateFilter);
+        $baseQuery = Incident::where('classification', IncidentClassification::Incident->value)->tap($dateFilter);
 
         $monthlyData = (clone $baseQuery)
             ->selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
@@ -159,7 +160,7 @@ class AiTrendInsights extends Widget
             ])
             ->toArray();
 
-        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->where('classification', 'Incident')->tap($dateFilter)])
+        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->where('classification', IncidentClassification::Incident->value)->tap($dateFilter)])
             ->having('incidents_count', '>', 0)
             ->orderByDesc('incidents_count')
             ->limit(10)

@@ -2,6 +2,7 @@
 
 namespace App\Exports\Sheets;
 
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -93,9 +94,9 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
 
             // Issues tab uses Issue classification; all others exclude Issues
             if ($this->title === 'All Issues') {
-                $query->where('classification', 'Issue');
+                $query->where('classification', IncidentClassification::Issue->value);
             } else {
-                $query->where('classification', '!=', 'Issue');
+                $query->where('classification', '!=', IncidentClassification::Issue->value);
             }
 
             match ($this->title) {

@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomAgentConfig;
 use Illuminate\Http\JsonResponse;
 
-class WarRoomAvailableAgentsController
+class WarRoomAvailableAgentsController extends Controller
 {
     public function __invoke(): JsonResponse
     {
@@ -25,6 +26,6 @@ class WarRoomAvailableAgentsController
                 'enable_web_search' => $agent->enable_web_search,
             ]);
 
-        return response()->json($agents);
+        return $this->successResponse($agents);
     }
 }

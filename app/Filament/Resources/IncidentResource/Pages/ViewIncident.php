@@ -183,11 +183,11 @@ class ViewIncident extends ViewRecord
                         ->schema([
                             TextEntry::make('severity')
                                 ->badge()
-                                ->color(fn ($state) => Severity::tryFrom($state)?->color() ?? 'gray'),
+                                ->color(fn (?Severity $state) => $state?->color() ?? 'gray'),
                             TextEntry::make('incident_status')
                                 ->label('Status')
                                 ->badge()
-                                ->color(fn ($state) => IncidentStatus::tryFrom($state)?->color() ?? 'gray'),
+                                ->color(fn (?IncidentStatus $state) => $state?->color() ?? 'gray'),
                             TextEntry::make('incident_date')
                                 ->label('Incident Date')
                                 ->dateTime('d M Y, H:i'),
@@ -207,7 +207,7 @@ class ViewIncident extends ViewRecord
                         ->schema([
                             TextEntry::make('fund_status')
                                 ->badge()
-                                ->color(fn ($state) => FundStatus::tryFrom($state)?->color() ?? 'gray'),
+                                ->color(fn (?FundStatus $state) => $state?->color() ?? 'gray'),
                             TextEntry::make('potential_fund_loss')
                                 ->money('IDR')
                                 ->color('warning'),

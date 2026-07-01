@@ -2,15 +2,13 @@
 
 namespace App\Services\Analytics;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
-use App\Enums\IncidentType;
 use App\Enums\Severity;
 use App\Filament\Concerns\HasChartColors;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 
 class AnalyticsQueryService
 {
@@ -96,7 +94,7 @@ class AnalyticsQueryService
     private function baseQuery(array $filters): \Illuminate\Database\Eloquent\Builder
     {
         $query = Incident::query()
-            ->where('classification', '!=', 'Issue');
+            ->where('classification', '!=', IncidentClassification::Issue->value);
 
         if (! empty($filters['start_date'])) {
             $query->where('incident_date', '>=', Carbon::parse($filters['start_date'])->startOfDay());

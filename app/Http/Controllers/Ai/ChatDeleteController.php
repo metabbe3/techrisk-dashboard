@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ChatConversation;
 use Illuminate\Http\JsonResponse;
 
-class ChatDeleteController
+class ChatDeleteController extends Controller
 {
     public function __invoke(string $id): JsonResponse
     {
@@ -15,6 +16,6 @@ class ChatDeleteController
 
         $conversation->delete();
 
-        return response()->json(['success' => true]);
+        return $this->successResponse(['success' => true]);
     }
 }

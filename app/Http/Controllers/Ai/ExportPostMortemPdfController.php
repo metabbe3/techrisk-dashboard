@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ai;
 
 use App\Models\Incident;
 use App\Services\Ai\PostMortemService;
+use App\Support\Export;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -32,7 +33,7 @@ class ExportPostMortemPdfController
             'severity_assessment' => $postMortem['severity_assessment'] ?? '',
         ];
 
-        $filename = 'post-mortem-'.$incident->no.'.pdf';
+        $filename = Export::downloadFilename('post-mortem-'.$incident->no, 'pdf');
 
         $pdf = Pdf::loadView('pdf.post-mortem', [
             'incident' => $incident,

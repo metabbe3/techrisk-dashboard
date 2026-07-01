@@ -20,12 +20,12 @@ class MarkAiEnhancedController extends Controller
         $incident = Incident::find($validated['incident_id']);
 
         if (! $incident) {
-            return response()->json(['success' => false, 'error' => 'Incident not found.'], 404);
+            return $this->errorResponse('Incident not found.', 404);
         }
 
         $incident->markAiEnhancedFields($validated['fields']);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'marked_fields' => array_keys($validated['fields']),
         ]);

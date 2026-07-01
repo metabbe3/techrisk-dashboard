@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ChatConversation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class ChatConversationUpdateController
+class ChatConversationUpdateController extends Controller
 {
     public function pin(Request $request, string $id): JsonResponse
     {
@@ -15,7 +16,7 @@ class ChatConversationUpdateController
             'pinned_at' => $conversation->isPinned() ? null : now(),
         ]);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'pinned' => $conversation->isPinned(),
         ]);
@@ -27,7 +28,7 @@ class ChatConversationUpdateController
         $conversation = ChatConversation::forUser()->findOrFail($id);
         $conversation->update(['folder' => $request->input('folder') ?: null]);
 
-        return response()->json(['success' => true, 'folder' => $conversation->folder]);
+        return $this->successResponse(['success' => true, 'folder' => $conversation->folder]);
     }
 
     public function updateTags(Request $request, string $id): JsonResponse
@@ -36,7 +37,7 @@ class ChatConversationUpdateController
         $conversation = ChatConversation::forUser()->findOrFail($id);
         $conversation->update(['tags' => $request->input('tags') ?: null]);
 
-        return response()->json(['success' => true, 'tags' => $conversation->tags]);
+        return $this->successResponse(['success' => true, 'tags' => $conversation->tags]);
     }
 
     public function updateTitle(Request $request, string $id): JsonResponse
@@ -45,12 +46,12 @@ class ChatConversationUpdateController
         $conversation = ChatConversation::forUser()->findOrFail($id);
         $conversation->update(['title' => strip_tags($request->input('title'))]);
 
-        return response()->json(['success' => true, 'title' => $conversation->title]);
+        return $this->successResponse(['success' => true, 'title' => $conversation->title]);
     }
 
     public function folders(): JsonResponse
     {
-        return response()->json([
+        return $this->successResponse([
             'folders' => ChatConversation::getFolders(),
         ]);
     }

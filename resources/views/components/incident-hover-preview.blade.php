@@ -5,9 +5,9 @@
     use App\Enums\IncidentStatus;
     use App\Enums\Severity;
 
-    $severityColor = Severity::tryFrom($incident->severity)?->color() ?? 'gray';
-    $statusColor = IncidentStatus::tryFrom($incident->incident_status)?->color() ?? 'gray';
-    $fundStatusColor = $incident->fund_status ? FundStatus::tryFrom($incident->fund_status)?->color() ?? 'gray' : null;
+    $severityColor = $incident->severity?->color() ?? 'gray';
+    $statusColor = $incident->incident_status?->color() ?? 'gray';
+    $fundStatusColor = $incident->fund_status?->color();
 @endphp
 
 <div
@@ -44,10 +44,15 @@
 >
     <span
         x-ref="trigger"
+        tabindex="0"
+        role="button"
+        aria-label="Preview incident {{ $incident->no }}"
         @mouseenter="open()"
         @mouseleave="close()"
+        @focus="open()"
+        @blur="close()"
         @click="open()"
-        class="cursor-pointer text-sm text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 font-medium hover:underline decoration-primary-300 underline-offset-2 transition-colors"
+        class="cursor-pointer text-sm text-primary-600 dark:text-primary-400 hover:text-primary-800 dark:hover:text-primary-300 font-medium hover:underline decoration-primary-300 underline-offset-2 transition-colors rounded-sm focus:outline-none focus:ring-2 focus:ring-primary-500/40"
     >
         {{ Illuminate\Support\Str::limit($incident->title, 30) }}
     </span>

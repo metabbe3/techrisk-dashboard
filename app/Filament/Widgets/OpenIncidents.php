@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\IncidentClassification;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Filament\Resources\IncidentResource;
 use Filament\Tables;
@@ -23,7 +24,7 @@ class OpenIncidents extends BaseWidget
     public function table(Table $table): Table
     {
         $query = IncidentResource::getEloquentQuery()
-            ->where('classification', 'Incident')
+            ->where('classification', IncidentClassification::Incident->value)
             ->whereIn('incident_status', ['Open', 'In progress', 'Finalization']);
 
         if ($this->start_date && $this->end_date) {
@@ -39,7 +40,7 @@ class OpenIncidents extends BaseWidget
             ->columns([
                 Tables\Columns\TextColumn::make('incident_date')->dateTime(),
                 Tables\Columns\TextColumn::make('title'),
-                Tables\Columns\TextColumn::make('severity')->badge()->color(fn (string $state): string => match ($state) {
+                Tables\Columns\TextColumn::make('severity')->badge()->color(fn ($state): string => match ($state?->value) {
                     'P1' => 'danger',
                     'P2' => 'warning',
                     'P3' => 'info',
@@ -47,7 +48,7 @@ class OpenIncidents extends BaseWidget
                     'Non Incident' => 'secondary',
                     default => 'secondary',
                 }),
-                Tables\Columns\TextColumn::make('incident_status')->badge()->color(fn (string $state): string => match ($state) {
+                Tables\Columns\TextColumn::make('incident_status')->badge()->color(fn ($state): string => match ($state?->value) {
                     'Open' => 'warning',
                     'In progress' => 'info',
                     'Finalization' => 'primary',

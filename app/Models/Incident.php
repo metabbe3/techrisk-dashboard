@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -15,6 +17,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 
 class Incident extends Model implements Auditable
 {
+    use \App\Models\Concerns\SerializesDatesInAppTimezone;
     use AuditableTrait;
     use HasFactory;
 
@@ -106,6 +109,10 @@ class Incident extends Model implements Auditable
         'doc_signed' => 'boolean',
         'risk_incident_form_cfm' => 'boolean',
         'glitch_flag' => 'boolean',
+        'incident_status' => \App\Casts\EnumCast::class.':'.\App\Enums\IncidentStatus::class,
+        'severity' => \App\Casts\EnumCast::class.':'.\App\Enums\Severity::class,
+        'fund_status' => \App\Casts\EnumCast::class.':'.\App\Enums\FundStatus::class,
+        'classification' => \App\Casts\EnumCast::class.':'.\App\Enums\IncidentClassification::class,
         'stop_bleeding_at' => 'datetime',
         'discovered_at' => 'datetime',
         'incident_date' => 'datetime',
@@ -132,6 +139,17 @@ class Incident extends Model implements Auditable
         'mtbf_all' => 'decimal:2',
         'recurrence_data' => 'array',
     ];
+
+    /**
+     * Exclude fund statuses that must not be counted in metrics
+     * (FundStatus::EXCLUDED_FROM_COUNTS); a null fund_status is includable.
+     * Wrapped in where() so the OR stays grouped and SQL precedence is unchanged.
+     */
+    public function scopeExcludedFromCounts($query): void
+    {
+        $query->where(fn ($q) => $q->whereNull('fund_status')
+            ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS));
+    }
 
     public function getRecoveryPercentageAttribute(): ?float
     {
@@ -294,7 +312,7 @@ class Incident extends Model implements Auditable
 
     public function scopeIssues($query)
     {
-        return $query->where('classification', 'Issue');
+        return $query->where('classification', IncidentClassification::Issue->value);
     }
 
     /**
@@ -314,7 +332,7 @@ class Incident extends Model implements Auditable
      */
     public function shouldCalculateMttrByDays(): bool
     {
-        return in_array($this->fund_status, ['Confirmed loss', 'Potential recovery', 'Fully recovered', 'Non Tech Loss']);
+        return in_array($this->fund_status?->value, ['Confirmed loss', 'Potential recovery', 'Fully recovered', 'Non Tech Loss']);
     }
 
     /**

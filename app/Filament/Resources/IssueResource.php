@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources;
 
+use App\Enums\IncidentClassification;
 use App\Filament\Resources\IssueResource\Pages;
 use App\Models\Incident;
 use Filament\Forms\Components\DateTimePicker;
@@ -138,7 +139,7 @@ class IssueResource extends Resource
 
                         if (! isset($cache[$key])) {
                             $incidents = Incident::whereYear('incident_date', $year)
-                                ->where('classification', 'Issue')
+                                ->where('classification', IncidentClassification::Issue->value)
                                 ->orderBy('incident_date')->orderBy('id')
                                 ->get(['id', 'incident_date']);
 

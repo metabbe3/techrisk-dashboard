@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Http\Controllers\Controller;
 use App\Models\Incident;
@@ -47,7 +48,7 @@ class AnalyzeTrendsController extends Controller
 
         $fromCache = ! $request->boolean('force_refresh') && Cache::has($cacheKey);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'trends' => $result['trends'],
             'recurring_issues' => $result['recurring_issues'],
@@ -68,7 +69,7 @@ class AnalyzeTrendsController extends Controller
             }
         };
 
-        $baseQuery = Incident::where('classification', 'Incident')->tap($dateFilter);
+        $baseQuery = Incident::where('classification', IncidentClassification::Incident->value)->tap($dateFilter);
 
         $monthlyData = (clone $baseQuery)
             ->selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
@@ -79,7 +80,7 @@ class AnalyzeTrendsController extends Controller
             ])
             ->toArray();
 
-        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->where('classification', 'Incident')->tap($dateFilter)])
+        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->where('classification', IncidentClassification::Incident->value)->tap($dateFilter)])
             ->having('incidents_count', '>', 0)
             ->orderByDesc('incidents_count')
             ->limit(10)

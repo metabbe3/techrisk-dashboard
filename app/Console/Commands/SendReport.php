@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Exports\IncidentsExport;
 use App\Models\Incident;
@@ -41,7 +42,7 @@ class SendReport extends Command
         }
 
         $data = $template->filters;
-        $query = Incident::query()->where('classification', '!=', 'Issue');
+        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value);
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));

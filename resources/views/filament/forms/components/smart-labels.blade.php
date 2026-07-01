@@ -81,15 +81,15 @@
                 payload.model = this.slSelectedModel;
 
                 const d = await this.slFetch('{{ $endpoint }}', payload);
-                if (d.success) {
-                    this.slResults = d;
-                    this.slSelected = [...(d.matched || []), ...(d.suggested || [])];
+                if (d.data.success) {
+                    this.slResults = d.data;
+                    this.slSelected = [...(d.data.matched || []), ...(d.data.suggested || [])];
                     this.slOpen = true;
-                    if (!d.matched?.length && !d.suggested?.length) {
+                    if (!d.data.matched?.length && !d.data.suggested?.length) {
                         this.slError = 'No labels found. Try adding more incident details or check AI configuration.';
                     }
                 } else {
-                    this.slError = d.error || 'Failed to get suggestions.';
+                    this.slError = d.data.error || 'Failed to get suggestions.';
                     this.slNotify(this.slError, 'danger');
                 }
             } catch (e) {
@@ -114,9 +114,9 @@
             const n = (this.slResults?.suggested || []).filter(l => this.slSelected.includes(l));
             try {
                 const d = await this.slFetch('{{ $applyEndpoint }}', { matched: m, new_labels: n });
-                if (d.success && d.label_ids) {
+                if (d.data.success && d.data.label_ids) {
                     const cur = await this.$wire.get('data.labels') || [];
-                    this.$wire.set('data.labels', [...new Set([...cur, ...d.label_ids.map(String)])]);
+                    this.$wire.set('data.labels', [...new Set([...cur, ...d.data.label_ids.map(String)])]);
                     this.slOpen = false;
                     this.slNotify(this.slSelected.length + ' label(s) applied successfully.', 'success');
                 }

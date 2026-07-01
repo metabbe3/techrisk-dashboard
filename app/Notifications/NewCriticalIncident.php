@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Enums\Severity;
 use Illuminate\Notifications\Messages\MailMessage;
 
 class NewCriticalIncident extends IncidentNotification
@@ -16,7 +17,7 @@ class NewCriticalIncident extends IncidentNotification
         $lines = [
             'A new critical incident has been reported:',
             '**Title:** '.$this->incident->title,
-            '**Severity:** '.$this->incident->severity,
+            '**Severity:** '.$this->incident->severity->value,
             '**Type:** '.$this->incident->incident_type,
             '**Date:** '.$this->incident->incident_date->format('Y-m-d H:i'),
             '**Summary:** '.$this->incident->summary,
@@ -27,7 +28,7 @@ class NewCriticalIncident extends IncidentNotification
         }
 
         return $this->buildIncidentMailMessage(
-            '[CRITICAL] New '.$this->incident->severity.' Incident: '.$this->incident->title,
+            '[CRITICAL] New '.$this->incident->severity->value.' Incident: '.$this->incident->title,
             $lines,
             $notifiable,
             'Please review and take appropriate action.'
@@ -37,11 +38,11 @@ class NewCriticalIncident extends IncidentNotification
     public function toDatabase(object $notifiable): array
     {
         return $this->baseDatabasePayload([
-            'title' => 'New '.$this->incident->severity.' Incident',
+            'title' => 'New '.$this->incident->severity->value.' Incident',
             'body' => $this->incident->title,
             'severity' => $this->incident->severity,
             'icon' => 'heroicon-o-exclamation-triangle',
-            'icon_color' => $this->incident->severity === 'P1' ? 'danger' : 'warning',
+            'icon_color' => $this->incident->severity === Severity::P1 ? 'danger' : 'warning',
             'type' => 'critical_incident',
         ]);
     }

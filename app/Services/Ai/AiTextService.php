@@ -572,11 +572,11 @@ class AiTextService
                 $userMessage .= "  Fund loss: Rp{$wFundLoss}\n";
             }
 
-            $topIncidents = $incidents->sortByDesc(fn ($i) => $this->severityWeight($i->severity ?? ''))->take(5);
+            $topIncidents = $incidents->sortByDesc(fn ($i) => $this->severityWeight($i->severity?->value ?? ''))->take(5);
             foreach ($topIncidents as $inc) {
                 $title = $inc->title ?? 'Untitled';
-                $sev = $inc->severity ?? '?';
-                $status = $inc->incident_status ?? '?';
+                $sev = $inc->severity?->value ?? '?';
+                $status = $inc->incident_status?->value ?? '?';
                 $rootCausePreview = $inc->root_cause ? ' | RC: '.\Illuminate\Support\Str::limit($inc->root_cause, 80) : '';
                 $userMessage .= "  - [{$sev}] {$inc->no}: {$title} ({$status}){$rootCausePreview}\n";
             }

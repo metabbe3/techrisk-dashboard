@@ -30,7 +30,7 @@ class GenerateWeeklySummaryController extends Controller
         $grandTotal = collect($weeklyData)->sum('total');
 
         if (empty($weeklyData)) {
-            return response()->json([
+            return $this->successResponse([
                 'success' => false,
                 'error' => 'No incident data found for '.$year.'.',
                 'summary' => '',
@@ -52,7 +52,7 @@ class GenerateWeeklySummaryController extends Controller
             model: $validated['model'] ?? null,
         );
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'summary' => $result['summary'],
             'key_highlights' => $result['key_highlights'],

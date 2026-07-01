@@ -23,7 +23,7 @@ window.WarRoomSession = function(routes, routeFor) {
             try {
                 const res = await fetch(routeFor('show', id), { headers: utils.getHeaders() });
                 if (!res.ok) { console.error('Load session failed:', res.status, await res.text()); return; }
-                const session = await res.json();
+                const session = (await res.json()).data;
                 this.activeSession = this.normalizeMessages(session);
                 this.showCreateForm = false;
                 this.showReport = false;
@@ -38,7 +38,7 @@ window.WarRoomSession = function(routes, routeFor) {
                 const res = await fetch(routes.sessions, { headers: utils.getHeaders() });
                 if (!res.ok) { console.error('Load sessions failed:', res.status, await res.text()); return; }
                 const data = await res.json();
-                this.sessions = data.data || data;
+                this.sessions = data.data?.data || data.data || [];
             } catch (e) { console.error('Failed to load sessions:', e); }
         },
 
@@ -46,7 +46,7 @@ window.WarRoomSession = function(routes, routeFor) {
             try {
                 const res = await fetch(routes.agents, { headers: utils.getHeaders() });
                 if (!res.ok) { console.error('Load agents failed:', res.status, await res.text()); return; }
-                this.availableAgents = await res.json();
+                this.availableAgents = (await res.json()).data;
                 this._agentCache = null;
             } catch (e) { console.error('Failed to load agents:', e); }
         },
@@ -165,7 +165,7 @@ window.WarRoomSession = function(routes, routeFor) {
             }
             try {
                 const res = await fetch(routeFor('poll', this.activeSession.id), { headers: utils.getHeaders() });
-                const data = await res.json();
+                const data = (await res.json()).data;
                 this.activeSession.status = data.status;
                 this.activeSession.current_round = data.current_round;
                 this.activeSession.error_message = data.error_message;
@@ -177,7 +177,7 @@ window.WarRoomSession = function(routes, routeFor) {
                     const sessionId = this.activeSession.id;
                     const res2 = await fetch(routeFor('show', sessionId), { headers: utils.getHeaders() });
                     if (res2.ok) {
-                        const fullData = await res2.json();
+                        const fullData = (await res2.json()).data;
                         this.activeSession = this.normalizeMessages(fullData);
                     }
                 }
@@ -206,7 +206,7 @@ window.WarRoomSession = function(routes, routeFor) {
                     const sessionId = this.activeSession.id;
                     const res2 = await fetch(routeFor('show', sessionId), { headers: utils.getHeaders() });
                     if (res2.ok) {
-                        const fullData = await res2.json();
+                        const fullData = (await res2.json()).data;
                         this.activeSession = this.normalizeMessages(fullData);
                         this.scheduleMermaidRender();
                     }

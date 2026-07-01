@@ -136,20 +136,7 @@ class ListIncidents extends ListRecords
 
                     $totalCases = $query->count();
 
-                    $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
-                    $mtbfCount = $mtbfQuery->count();
-                    $avgMtbf = 0;
-                    if ($mtbfCount > 0) {
-                        $minDate = $mtbfQuery->min('incident_date');
-                        $maxDate = $mtbfQuery->max('incident_date');
-
-                        if ($minDate && $maxDate) {
-                            $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
-                            $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
-                            $totalDays = $minDate->diffInDays($maxDate);
-                            $avgMtbf = $mtbfCount > 1 ? round($totalDays / ($mtbfCount - 1), 3) : 0;
-                        }
-                    }
+                    $avgMtbf = $this->computeAvgMtbf($query);
 
                     $stats = [
                         'totalCases' => $totalCases,
@@ -233,15 +220,12 @@ class ListIncidents extends ListRecords
         ];
     }
 
-    public function getTableFooter(): ?View
+    /**
+     * Average time (days) between failures across METRIC_ELIGIBLE severities
+     * within the given query: total span / (count - 1).
+     */
+    protected function computeAvgMtbf($query)
     {
-        // Clone the query to avoid affecting the main table query
-        $query = $this->getFilteredTableQuery()->clone();
-
-        $totalCases = $query->count();
-
-        // Calculate MTBF correctly: Total Time Period / Number of Incidents
-        // Only include eligible severities from MTBF calculation
         $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
         $mtbfCount = $mtbfQuery->count();
         $avgMtbf = 0;
@@ -256,6 +240,20 @@ class ListIncidents extends ListRecords
                 $avgMtbf = $mtbfCount > 1 ? round($totalDays / ($mtbfCount - 1), 3) : 0;
             }
         }
+
+        return $avgMtbf;
+    }
+
+    public function getTableFooter(): ?View
+    {
+        // Clone the query to avoid affecting the main table query
+        $query = $this->getFilteredTableQuery()->clone();
+
+        $totalCases = $query->count();
+
+        // Calculate MTBF correctly: Total Time Period / Number of Incidents
+        // Only include eligible severities from MTBF calculation
+        $avgMtbf = $this->computeAvgMtbf($query);
 
         $stats = [
             'totalCases' => $totalCases,

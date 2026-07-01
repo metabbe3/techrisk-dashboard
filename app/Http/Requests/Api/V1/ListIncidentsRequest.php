@@ -8,10 +8,10 @@ use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\Api\ApiFormRequest;
 use Illuminate\Validation\Rule;
 
-class ListIncidentsRequest extends FormRequest
+class ListIncidentsRequest extends ApiFormRequest
 {
     public function authorize(): bool
     {
@@ -35,7 +35,9 @@ class ListIncidentsRequest extends FormRequest
             'fund_status' => ['nullable', 'string', Rule::enum(FundStatus::class)],
             'pic_id' => ['nullable', 'integer'],
             'search' => ['nullable', 'string', 'min:2'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
+            'offset' => ['nullable', 'integer', 'min:0'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:500'],
         ];
     }
 }

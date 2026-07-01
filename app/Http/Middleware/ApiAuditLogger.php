@@ -42,20 +42,50 @@ class ApiAuditLogger
 
         // Capture request data
         $auditEntry = $this->captureRequestData($request, $traceId);
+        $response = null;
 
-        // Process the request
-        $response = $next($request);
+        try {
+            // Process the request
+            $response = $next($request);
 
-        // Capture response data
-        $this->captureResponseData($response, $auditEntry, $startTime);
+            // Capture response data
+            $this->captureResponseData($response, $auditEntry, $startTime);
 
-        // Add trace ID to response headers
-        $response->headers->set('X-Trace-ID', $traceId);
+            // Add trace ID to response headers
+            $response->headers->set('X-Trace-ID', $traceId);
+        } catch (\Throwable $e) {
+            // Failing requests must still be audited. Previously, if $next or
+            // captureResponseData threw, dispatchAuditLog was skipped entirely —
+            // so 4xx/5xx never appeared in the audit log. Synthesize the right
+            // status from the exception type; the finally block always dispatches.
+            $auditEntry->response_timestamp = now()->toIso8601String();
+            $auditEntry->response_status = $this->statusFromException($e);
+            $auditEntry->response_time_ms = (int) ((microtime(true) - $startTime) * 1000);
+            $auditEntry->error_message = $e::class.': '.$e->getMessage();
 
-        // Dispatch logging job asynchronously
-        $this->dispatchAuditLog($auditEntry);
+            throw $e;
+        } finally {
+            // Always dispatch the audit log — success or failure.
+            $this->dispatchAuditLog($auditEntry);
+        }
 
         return $response;
+    }
+
+    /**
+     * Map an exception to its HTTP status so the audit log records the real code.
+     */
+    private function statusFromException(\Throwable $e): int
+    {
+        return match (true) {
+            $e instanceof \Illuminate\Auth\AuthenticationException => 401,
+            $e instanceof \Illuminate\Auth\Access\AuthorizationException => 403,
+            $e instanceof \Illuminate\Database\Eloquent\ModelNotFoundException,
+            $e instanceof \Symfony\Component\HttpKernel\Exception\NotFoundHttpException => 404,
+            $e instanceof \Illuminate\Validation\ValidationException => 422,
+            $e instanceof \Symfony\Component\HttpKernel\Exception\HttpException => $e->getStatusCode(),
+            default => 500,
+        };
     }
 
     private function shouldSkipLogging(Request $request): bool

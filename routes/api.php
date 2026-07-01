@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\Api\ActionImprovementController;
 use App\Http\Controllers\Api\Ai\ExportController;
-use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\TokenController;
 use Illuminate\Support\Facades\Route;
@@ -15,17 +14,17 @@ Route::get('/health', function () {
     ]);
 });
 
-// Public login endpoint - strict limit to prevent brute force
-Route::post('/login', [AuthController::class, 'login'])
-    ->middleware('throttle:5,1'); // 5 login attempts per minute
+// NOTE: credential-based /api/login was removed — the API is token-only.
+// Issue tokens via the Filament admin (API Tokens resource), which sets a
+// 30-day sliding expiry so actively-used tokens never expire.
 
 Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access'])->group(function () {
     // Token management
     Route::post('/logout', [TokenController::class, 'logout']);
     Route::get('/v1/token/info', [TokenController::class, 'info']);
 
-    // API v1 - Read operations (100 req/min)
-    Route::prefix('v1')->middleware('throttle:100,1')->group(function () {
+    // API v1 - Read operations (rate limit editable in Admin → API Settings)
+    Route::prefix('v1')->middleware('throttle:incidents')->group(function () {
         Route::apiResource('incidents', IncidentController::class)->only(['index', 'show']);
         Route::get('incidents-by-no/{no}', [IncidentController::class, 'showByNo']);
         Route::get('incidents-by-no/{no}/markdown', [IncidentController::class, 'showMarkdown']);
@@ -49,22 +48,22 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     });
     */
 
-    // Reference data (30 req/min) - already cached
-    Route::prefix('v1')->middleware('throttle:30,1')->group(function () {
+    // Reference data (rate limit editable in Admin → API Settings)
+    Route::prefix('v1')->middleware('throttle:reference')->group(function () {
         Route::get('labels', [IncidentController::class, 'getLabels']);
         Route::get('incident-types', [IncidentController::class, 'getIncidentTypes']);
         Route::get('categories', [IncidentController::class, 'getCategories']);
         Route::get('users', [IncidentController::class, 'getUsers']);
     });
 
-    // Action improvements read (60 req/min)
-    Route::prefix('v1')->middleware('throttle:60,1')->group(function () {
+    // Action improvements read (rate limit editable in Admin → API Settings)
+    Route::prefix('v1')->middleware('throttle:actions')->group(function () {
         Route::get('/incidents/{incident}/action-improvements', [ActionImprovementController::class, 'index']);
         Route::get('/action-improvements/{action_improvement}', [ActionImprovementController::class, 'show']);
     });
 
-    // AI Export endpoints (60 req/min) - for bulk data ingestion
-    Route::prefix('v1/ai')->middleware('throttle:60,1')->group(function () {
+    // AI Export endpoints - for bulk data ingestion (rate limit editable in Admin → API Settings)
+    Route::prefix('v1/ai')->middleware('throttle:ai_export')->group(function () {
         Route::get('/export', [ExportController::class, 'export']);
     });
 });

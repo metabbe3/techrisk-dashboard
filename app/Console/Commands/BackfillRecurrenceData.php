@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Enums\IncidentClassification;
 use App\Jobs\DetectRecurrenceJob;
 use App\Models\Incident;
 use Illuminate\Console\Command;
@@ -21,7 +22,7 @@ class BackfillRecurrenceData extends Command
         $delay = (int) $this->option('delay');
         $force = $this->option('force');
 
-        $query = Incident::whereIn('classification', ['Incident', 'Issue'])
+        $query = Incident::whereIn('classification', [IncidentClassification::Incident->value, IncidentClassification::Issue->value])
             ->orderByDesc('incident_date');
 
         if (! $force) {

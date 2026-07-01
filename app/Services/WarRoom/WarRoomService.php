@@ -1018,7 +1018,7 @@ class WarRoomService
         // Level 3: Use generateMinimal() for each incident
         $minimalContext = [];
         foreach ($incidents as $inc) {
-            $minimalContext[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
+            $minimalContext[] = "--- Incident: {$inc->no} ({$inc->severity->value}) ---";
             $minimalContext[] = $this->markdownExporter->generateMinimal($inc);
         }
 
@@ -1133,7 +1133,7 @@ class WarRoomService
 
         $context = [];
         foreach ($incidents as $inc) {
-            $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
+            $context[] = "--- Incident: {$inc->no} ({$inc->severity->value}) ---";
             $context[] = $this->markdownExporter->$generateMethod($inc);
         }
 

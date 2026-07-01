@@ -2,18 +2,19 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\WarRoomSession;
 use Illuminate\Http\Request;
 
-class WarRoomShareController
+class WarRoomShareController extends Controller
 {
     public function index(Request $request, string $id)
     {
         $session = WarRoomSession::where('user_id', auth()->id())
             ->findOrFail($id);
 
-        return response()->json([
+        return $this->successResponse([
             'viewers' => $session->viewers()->get(['users.id', 'users.name', 'users.email']),
         ]);
     }
@@ -30,12 +31,12 @@ class WarRoomShareController
         $user = User::where('email', $request->email)->first();
 
         if ($user->id === auth()->id()) {
-            return response()->json(['message' => 'Cannot share with yourself.'], 422);
+            return $this->errorResponse('Cannot share with yourself.', 422);
         }
 
         $session->addViewer($user->id);
 
-        return response()->json([
+        return $this->successResponse([
             'message' => 'Session shared with '.$user->name,
             'viewer' => ['id' => $user->id, 'name' => $user->name, 'email' => $user->email],
         ]);
@@ -52,6 +53,6 @@ class WarRoomShareController
 
         $session->removeViewer($request->user_id);
 
-        return response()->json(['message' => 'Viewer removed.']);
+        return $this->successResponse(['message' => 'Viewer removed.']);
     }
 }

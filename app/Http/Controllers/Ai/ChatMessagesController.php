@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ChatConversation;
 use Illuminate\Http\JsonResponse;
 
-class ChatMessagesController
+class ChatMessagesController extends Controller
 {
     public function __invoke(string $id): JsonResponse
     {
@@ -38,7 +39,7 @@ class ChatMessagesController
                 ] : null,
             ]);
 
-        return response()->json([
+        return $this->successResponse([
             'conversation' => [
                 'id' => (string) $conversation->id,
                 'title' => $conversation->title,

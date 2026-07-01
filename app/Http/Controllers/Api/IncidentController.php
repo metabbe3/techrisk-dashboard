@@ -14,6 +14,7 @@ use App\Models\Incident;
 use App\Models\IncidentType;
 use App\Models\Label;
 use App\Models\User;
+use App\Services\IncidentFormatter;
 use App\Traits\ApiResponser;
 use Exception;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -46,29 +47,33 @@ class IncidentController extends Controller
      * @queryParam max_potential_fund_loss number Filter incidents with potential loss less than or equal to this value. Example: 100000000
      * @queryParam tags string Filter by comma-separated label names. Example: payment,database,timeout
      * @queryParam type string Filter by incident type. Must be "Tech" or "Non-tech". Example: Tech
-     * @queryParam page integer Page number for pagination. Default: 1. Example: 1
+     * @queryParam limit integer Number of records to return (1–500). Omit to return ALL matching records. Example: 20
+     * @queryParam offset integer Records to skip (default 0). Use with `limit` for pagination. Example: 40
+     * @queryParam per_page integer Alias for `limit` (backward-compatible). Example: 20
      *
      * @response {
      *   "code": 200,
      *   "status": "Success",
      *   "message": "Incidents retrieved successfully.",
-     *   "data": {
-     *     "data": [
-     *       {
-     *         "id": 1,
-     *         "no": "20250115_IN_1234",
-     *         "title": "Payment Gateway Timeout",
-     *         "summary": "5-minute outage during peak hours...",
-     *         "severity": "P1",
-     *         "incident_type": "Tech",
-     *         "incident_date": "2025-01-15T10:30:00.000000Z",
-     *         "fund_loss": 5000000,
-     *         "labels": ["payment", "database"]
-     *       }
-     *     ],
-     *     "current_page": 1,
-     *     "per_page": 15,
-     *     "total": 42
+     *   "data": [
+     *     {
+     *       "id": 1,
+     *       "no": "20250115_IN_1234",
+     *       "title": "Payment Gateway Timeout",
+     *       "summary": "5-minute outage during peak hours...",
+     *       "severity": "P1",
+     *       "incident_type": "Tech",
+     *       "incident_date": "2025-01-15T10:30:00.000000Z",
+     *       "fund_loss": 5000000,
+     *       "labels": ["payment", "database"]
+     *     }
+     *   ],
+     *   "meta": {
+     *     "total": 42,
+     *     "limit": 20,
+     *     "offset": 0,
+     *     "returned": 20,
+     *     "has_more": true
      *   }
      * }
      * @response 500 {
@@ -143,11 +148,27 @@ class IncidentController extends Controller
                 });
             }
 
-            $perPage = $request->validated('per_page', 15);
+            // Pagination: limit/offset — omit both to return ALL matching records.
+            // `per_page` is a backward-compatible alias for `limit`.
+            $limit = $request->validated('limit') ?? $request->validated('per_page');
+            $limit = $limit !== null ? (int) $limit : null;
+            $offset = (int) ($request->validated('offset', 0) ?? 0);
+
+            $total = $query->count();
+            $items = $limit
+                ? $query->skip($offset)->take($limit)->get()
+                : $query->get();
 
             return $this->successResponse(
-                IncidentListApiResource::collection($query->paginate($perPage)),
-                'Incidents retrieved successfully.'
+                IncidentListApiResource::collection($items),
+                'Incidents retrieved successfully.',
+                meta: [
+                    'total' => $total,
+                    'limit' => $limit ?? $total,
+                    'offset' => $offset,
+                    'returned' => $items->count(),
+                    'has_more' => ($offset + $items->count()) < $total,
+                ],
             );
         } catch (Exception $e) {
             Log::error('Failed to retrieve incidents: '.$e->getMessage(), [
@@ -455,7 +476,7 @@ class IncidentController extends Controller
                 ->with(Incident::FULL_RELATIONS)
                 ->firstOrFail();
 
-            $markdown = $this->convertToMarkdown($incident);
+            $markdown = IncidentFormatter::toMarkdown($incident);
 
             return $this->successResponse(
                 base64_encode($markdown),
@@ -471,133 +492,6 @@ class IncidentController extends Controller
 
             return $this->errorResponse('Failed to retrieve incident.', 500);
         }
-    }
-
-    private function convertToMarkdown(Incident $incident): string
-    {
-        $md = [];
-
-        // Header
-        $md[] = "# {$incident->title}";
-        $md[] = '';
-        $md[] = "**Incident ID:** {$incident->no}";
-        $md[] = '';
-
-        // Basic Info
-        $md[] = '## Basic Information';
-        $md[] = '';
-        $md[] = '| Field | Value |';
-        $md[] = '|-------|-------|';
-        $md[] = "| **Severity** | {$incident->severity} |";
-        $md[] = "| **Type** | {$incident->incident_type} |";
-        $md[] = "| **Source** | {$incident->incident_source} |";
-        $md[] = "| **Incident Date** | {$incident->incident_date->format('Y-m-d')} |";
-        $md[] = '| **Discovered At** | '.($incident->discovered_at?->format('Y-m-d H:i') ?? 'N/A').' |';
-        $md[] = '| **Stop Bleeding At** | '.($incident->stop_bleeding_at?->format('Y-m-d H:i') ?? 'N/A').' |';
-        $md[] = '| **Entry Date** | '.($incident->entry_date_tech_risk?->format('Y-m-d') ?? 'N/A').' |';
-        $md[] = '';
-
-        // Summary
-        $md[] = '## Summary';
-        $md[] = '';
-        $md[] = $incident->summary ?? 'No summary provided.';
-        $md[] = '';
-
-        // Root Cause
-        if ($incident->root_cause) {
-            $md[] = '## Root Cause';
-            $md[] = '';
-            $md[] = $incident->root_cause;
-            $md[] = '';
-        }
-
-        // Financial Impact
-        $md[] = '## Financial Impact';
-        $md[] = '';
-        $md[] = '- **Potential Fund Loss:** '.($incident->potential_fund_loss ? number_format($incident->potential_fund_loss) : 'N/A');
-        $md[] = '- **Actual Fund Loss:** '.($incident->fund_loss ? number_format($incident->fund_loss) : 'N/A');
-        $md[] = '';
-
-        // PIC
-        if ($incident->pic) {
-            $md[] = '## Person In Charge';
-            $md[] = '';
-            $md[] = "- **Name:** {$incident->pic->name}";
-            $md[] = '';
-        }
-
-        // Third Party
-        if ($incident->third_party_client) {
-            $md[] = '## Third Party';
-            $md[] = '';
-            $md[] = $incident->third_party_client;
-            $md[] = '';
-        }
-
-        // Labels/Tags
-        if ($incident->labels && $incident->labels->isNotEmpty()) {
-            $md[] = '## Labels';
-            $md[] = '';
-            foreach ($incident->labels as $label) {
-                $md[] = "- `{$label->name}`";
-            }
-            $md[] = '';
-        }
-
-        // Status Updates
-        if ($incident->statusUpdates && $incident->statusUpdates->isNotEmpty()) {
-            $md[] = '## Status Updates';
-            $md[] = '';
-            foreach ($incident->statusUpdates as $update) {
-                $md[] = "### {$update->updated_at->format('Y-m-d H:i')} - {$update->status}";
-                $md[] = '';
-                $md[] = $update->notes ?? 'No notes.';
-                $md[] = '';
-            }
-        }
-
-        // Action Improvements
-        if ($incident->actionImprovements && $incident->actionImprovements->isNotEmpty()) {
-            $md[] = '## Action Improvements';
-            $md[] = '';
-            foreach ($incident->actionImprovements as $action) {
-                $statusIcon = $action->status === 'done' ? '✅' : '🔄';
-                $md[] = "### {$statusIcon} {$action->title}";
-                $md[] = '';
-                $md[] = $action->detail;
-                $md[] = '';
-                // Safe date handling
-                $dueDate = $action->due_date;
-                if (is_string($dueDate)) {
-                    $md[] = "- **Due Date:** {$dueDate}";
-                } elseif ($dueDate && method_exists($dueDate, 'format')) {
-                    $md[] = "- **Due Date:** {$dueDate->format('Y-m-d')}";
-                } else {
-                    $md[] = '- **Due Date:** N/A';
-                }
-                $md[] = "- **Status:** {$action->status}";
-                $md[] = '';
-            }
-        }
-
-        // Investigation Documents
-        if ($incident->investigationDocuments && $incident->investigationDocuments->isNotEmpty()) {
-            $md[] = '## Investigation Documents';
-            $md[] = '';
-            foreach ($incident->investigationDocuments as $doc) {
-                $md[] = "### {$doc->title}";
-                $md[] = '';
-                $md[] = $doc->content ?? 'No content.';
-                $md[] = '';
-            }
-        }
-
-        // Metadata
-        $md[] = '---';
-        $md[] = '';
-        $md[] = '*Reported by: '.($incident->reported_by ?? 'N/A').'*';
-
-        return implode("\n", $md);
     }
 
     public function update(UpdateIncidentRequest $request, Incident $incident)

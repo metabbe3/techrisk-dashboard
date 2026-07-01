@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -29,7 +30,7 @@ class PotentialFundLoss extends BaseWidget
     protected function getStats(): array
     {
         $query = Incident::query()
-            ->where('classification', '!=', 'Issue')
+            ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->whereNotIn('incident_status', ['Closed', 'Resolved', 'Recovered']);
 

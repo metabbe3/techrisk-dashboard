@@ -2,10 +2,11 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomAgentConfig;
 use Illuminate\Http\JsonResponse;
 
-class ChatAgentsController
+class ChatAgentsController extends Controller
 {
     public function __invoke(): JsonResponse
     {
@@ -30,6 +31,6 @@ class ChatAgentsController
                 'color' => $agent->color,
             ]);
 
-        return response()->json($agents);
+        return $this->successResponse($agents);
     }
 }

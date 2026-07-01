@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -50,10 +50,9 @@ class RiskHeatMatrixWidget extends Widget
 
         $cached = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $incidents = Incident::query()
-                ->where('classification', 'Incident')
+                ->where('classification', IncidentClassification::Incident->value)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->where(fn ($q) => $q->whereNull('fund_status')
-                    ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+                ->excludedFromCounts()
                 ->when($this->start_date && $this->end_date,
                     fn ($q) => $q->whereBetween('incident_date', [$this->start_date, $this->end_date]),
                     fn ($q) => $q->whereYear('incident_date', now()->year))
@@ -144,19 +143,19 @@ class RiskHeatMatrixWidget extends Widget
         $severity = $incident->severity;
         $fundLoss = (float) ($incident->fund_loss ?? 0);
 
-        if ($severity === 'P1' || $fundLoss > 100000000) {
+        if ($severity === Severity::P1 || $fundLoss > 100000000) {
             return 5;
         }
-        if ($severity === 'P2') {
+        if ($severity === Severity::P2) {
             return 4;
         }
-        if ($severity === 'P3' || in_array($severity, ['X1', 'X2'])) {
+        if ($severity === Severity::P3 || in_array($severity, [Severity::X1, Severity::X2])) {
             return 3;
         }
-        if ($severity === 'P4' && $fundLoss > 0) {
+        if ($severity === Severity::P4 && $fundLoss > 0) {
             return 2;
         }
-        if (in_array($severity, ['X3', 'X4'])) {
+        if (in_array($severity, [Severity::X3, Severity::X4])) {
             return 2;
         }
 

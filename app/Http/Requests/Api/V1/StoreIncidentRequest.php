@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
-use Illuminate\Foundation\Http\FormRequest;
+use App\Http\Requests\Api\ApiFormRequest;
 
-class StoreIncidentRequest extends FormRequest
+class StoreIncidentRequest extends ApiFormRequest
 {
     public function authorize(): bool
     {

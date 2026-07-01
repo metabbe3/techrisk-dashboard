@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ChatMessage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class ChatMessageFeedbackController
+class ChatMessageFeedbackController extends Controller
 {
     public function __invoke(Request $request, string $id): JsonResponse
     {
@@ -25,7 +26,7 @@ class ChatMessageFeedbackController
             'feedback_comment' => $request->input('comment'),
         ]);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'feedback' => $message->feedback,
         ]);

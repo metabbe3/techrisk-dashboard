@@ -2,14 +2,20 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
+use App\Services\WarRoom\WarRoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 
-class WarRoomPollController
+class WarRoomPollController extends Controller
 {
+    public function __construct(
+        private WarRoomService $warRoomService,
+    ) {}
+
     public function __invoke(Request $request, string $id): JsonResponse
     {
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
@@ -17,7 +23,7 @@ class WarRoomPollController
         if ($session->status === 'running') {
             $throttleKey = "warroom_stuck_check:{$session->id}";
             if (Cache::add($throttleKey, true, 30)) {
-                app(\App\Services\WarRoom\WarRoomService::class)->markStuckMessages($session);
+                $this->warRoomService->markStuckMessages($session);
                 $session->refresh();
             }
         }
@@ -34,7 +40,7 @@ class WarRoomPollController
                 'error_message' => $msg->error_message,
             ])->values());
 
-        return response()->json([
+        return $this->successResponse([
             'id' => $session->id,
             'status' => $session->status,
             'current_round' => $session->current_round,

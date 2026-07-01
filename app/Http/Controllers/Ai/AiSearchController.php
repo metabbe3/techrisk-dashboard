@@ -25,7 +25,7 @@ class AiSearchController extends Controller
             model: $validated['model'] ?? null,
         );
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'filters' => $result['filters'],
             'explanation' => $result['explanation'],

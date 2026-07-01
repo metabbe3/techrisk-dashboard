@@ -27,8 +27,8 @@ class PicAssignedNotification extends IncidentNotification
                 'A team member has been assigned as PIC for an incident:',
                 '**PIC:** '.$this->assignedPic->name,
                 '**Incident:** '.$this->incident->title,
-                '**Severity:** '.$this->incident->severity,
-                '**Status:** '.$this->incident->incident_status,
+                '**Severity:** '.$this->incident->severity->value,
+                '**Status:** '.$this->incident->incident_status->value,
             ],
             $notifiable,
             'You are receiving this as a team lead.'

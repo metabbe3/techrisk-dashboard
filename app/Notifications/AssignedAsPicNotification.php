@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Enums\Severity;
+
 class AssignedAsPicNotification extends IncidentNotification
 {
     public function broadcastType(): string
@@ -16,8 +18,8 @@ class AssignedAsPicNotification extends IncidentNotification
             [
                 'You have been assigned as the Person In Charge (PIC) for a new incident.',
                 '**Incident:** '.$this->incident->title,
-                '**Severity:** '.$this->incident->severity,
-                '**Status:** '.$this->incident->incident_status,
+                '**Severity:** '.$this->incident->severity->value,
+                '**Status:** '.$this->incident->incident_status->value,
                 '**Date:** '.$this->incident->incident_date->format('Y-m-d H:i'),
             ],
             $notifiable,
@@ -32,7 +34,7 @@ class AssignedAsPicNotification extends IncidentNotification
             'body' => "You have been assigned as PIC for: {$this->incident->title}",
             'severity' => $this->incident->severity,
             'icon' => 'heroicon-o-shield-exclamation',
-            'icon_color' => $this->incident->severity === 'P1' ? 'danger' : 'warning',
+            'icon_color' => $this->incident->severity === Severity::P1 ? 'danger' : 'warning',
             'type' => 'incident_assignment',
         ]);
     }

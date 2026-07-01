@@ -36,7 +36,7 @@ class TextEnhanceController extends Controller
             $incident?->markAiEnhancedFields([$validated['field_type'] => $result->text]);
         }
 
-        return response()->json([
+        return $this->successResponse([
             'success' => $result->success,
             'text' => $result->text,
             'error' => $result->error,

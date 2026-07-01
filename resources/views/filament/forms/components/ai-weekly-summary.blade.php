@@ -47,12 +47,12 @@
                 const year = await this.$wire.get('selectedYear') || new Date().getFullYear();
                 const d = await this.wsFetch('{{ $endpoint }}', { year: parseInt(year), model: this.wsSelectedModel });
 
-                if (d.success && d.summary) {
-                    this.wsResults = d;
+                if (d.data.success && d.data.summary) {
+                    this.wsResults = d.data;
                     this.wsOpen = true;
                     this.wsNotify('Summary generated.', 'success');
                 } else {
-                    this.wsError = d.error || 'No summary generated.';
+                    this.wsError = d.data.error || 'No summary generated.';
                     this.wsNotify(this.wsError, 'warning');
                 }
             } catch (e) {

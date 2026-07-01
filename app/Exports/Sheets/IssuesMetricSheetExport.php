@@ -2,6 +2,7 @@
 
 namespace App\Exports\Sheets;
 
+use App\Enums\IncidentClassification;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -69,7 +70,7 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
 
         if (! isset(self::$mtbfCache[$key])) {
             $incidents = \App\Models\Incident::whereYear('incident_date', $year)
-                ->where('classification', 'Issue')
+                ->where('classification', IncidentClassification::Issue->value)
                 ->orderBy('incident_date')->orderBy('id')
                 ->get(['id', 'incident_date']);
 

@@ -78,7 +78,7 @@ class RecalculateIncidentMetricsCommand extends Command
             if ($this->option('debug') && $debugCount <= 10) {
                 $year = $incident->incident_date->year;
                 $previousIncident = Incident::whereYear('incident_date', $year)
-                    ->where('classification', $incident->classification) // Same classification only
+                    ->where('classification', $incident->classification->value) // Same classification only
                     ->where(function ($query) use ($incident) {
                         $query->where('incident_date', '<', $incident->incident_date)
                             ->orWhere(function ($query) use ($incident) {
@@ -91,18 +91,18 @@ class RecalculateIncidentMetricsCommand extends Command
                     ->first();
 
                 $this->newLine();
-                $this->line("  [DEBUG #{$debugCount}] {$incident->no} ({$incident->classification}) - {$incident->incident_date->format('Y-m-d H:i:s')}");
+                $this->line("  [DEBUG #{$debugCount}] {$incident->no} ({$incident->classification->value}) - {$incident->incident_date->format('Y-m-d H:i:s')}");
                 if ($previousIncident) {
                     $daysDiff = abs($incident->incident_date->startOfDay()
                         ->diffInDays($previousIncident->incident_date->startOfDay()));
-                    $this->line("    Previous: {$previousIncident->no} ({$previousIncident->classification}) - {$previousIncident->incident_date->format('Y-m-d H:i:s')}");
+                    $this->line("    Previous: {$previousIncident->no} ({$previousIncident->classification->value}) - {$previousIncident->incident_date->format('Y-m-d H:i:s')}");
                     $this->line("    Calendar day diff: {$daysDiff} days");
                     $this->line("    MTBF = {$daysDiff}");
                 } else {
                     $yearStart = Carbon::create($year, 1, 1)->startOfDay();
                     $daysDiff = abs($incident->incident_date->startOfDay()
                         ->diffInDays($yearStart));
-                    $this->line("    First {$incident->classification} of year {$year}");
+                    $this->line("    First {$incident->classification->value} of year {$year}");
                     $this->line("    Days from Jan 1: {$daysDiff} days");
                     $this->line("    MTBF = {$daysDiff}");
                 }
@@ -165,7 +165,7 @@ class RecalculateIncidentMetricsCommand extends Command
         }
 
         // Check if should calculate by days based on fund_status
-        $calculateByDays = in_array($incident->fund_status, ['Confirmed loss', 'Potential recovery', 'Fully recovered', 'Non Tech Loss']);
+        $calculateByDays = $incident->shouldCalculateMttrByDays();
 
         if ($calculateByDays) {
             // Fund status "Confirmed loss" or "Potential recovery" - store as DAYS (date-only)
@@ -193,7 +193,7 @@ class RecalculateIncidentMetricsCommand extends Command
         // and taking the maximum such incident by (date, id).
         // EXCLUDE "Non Incident" severity from overall MTBF calculation
         $previousIncident = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification) // Same classification only
+            ->where('classification', $incident->classification->value) // Same classification only
             ->whereIn('severity', Severity::METRIC_ELIGIBLE) // Exclude Non Incident from overall MTBF
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
@@ -249,7 +249,7 @@ class RecalculateIncidentMetricsCommand extends Command
         // Process each category
         foreach ($categories as $key => $condition) {
             $previousIncident = Incident::whereYear('incident_date', $year)
-                ->where('classification', $incident->classification)
+                ->where('classification', $incident->classification->value)
                 ->where($condition)
                 ->where(function ($query) use ($incident) {
                     $query->where('incident_date', '<', $incident->incident_date)
@@ -274,7 +274,7 @@ class RecalculateIncidentMetricsCommand extends Command
 
         // Special handling for 'recovered' category (recovered_fund > 0)
         $previousRecovered = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification)
+            ->where('classification', $incident->classification->value)
             ->where('recovered_fund', '>', 0)
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)

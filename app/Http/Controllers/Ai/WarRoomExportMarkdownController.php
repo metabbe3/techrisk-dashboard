@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ai;
 
 use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
+use App\Support\Export;
 use Illuminate\Http\Request;
 
 class WarRoomExportMarkdownController
@@ -17,7 +18,7 @@ class WarRoomExportMarkdownController
         $data = app(WarRoomService::class)->getSessionData($session);
         $incident = $session->incident;
         $incidentNo = $incident?->no ?? 'unknown';
-        $filename = 'discussion-forum-'.$incidentNo.'-'.now()->format('Y-m-d').'.md';
+        $filename = Export::downloadFilename('discussion-forum-'.$incidentNo, 'md', now()->format('Y-m-d'));
 
         $markdown = $this->toMarkdown($data);
 
@@ -56,12 +57,12 @@ class WarRoomExportMarkdownController
                     $lines[] = '### '.$name.' ('.$status.')';
                     $lines[] = '';
 
-                    if (!empty($msg['content'])) {
+                    if (! empty($msg['content'])) {
                         $lines[] = $msg['content'];
                         $lines[] = '';
                     }
 
-                    if (!empty($msg['error_message'])) {
+                    if (! empty($msg['error_message'])) {
                         $lines[] = '> **Error:** '.$msg['error_message'];
                         $lines[] = '';
                     }
@@ -69,7 +70,7 @@ class WarRoomExportMarkdownController
             }
         }
 
-        if (!empty($data['final_report'])) {
+        if (! empty($data['final_report'])) {
             $lines[] = '---';
             $lines[] = '';
             $lines[] = '## Final Report';

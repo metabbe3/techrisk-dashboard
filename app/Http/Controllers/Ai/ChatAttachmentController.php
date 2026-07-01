@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Services\Ai\ChatAttachmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 
-class ChatAttachmentController
+class ChatAttachmentController extends Controller
 {
     public function upload(Request $request, ChatAttachmentService $service): JsonResponse
     {
@@ -18,7 +19,7 @@ class ChatAttachmentController
         try {
             $attachment = $service->storeAttachment($request->file('file'));
 
-            return response()->json([
+            return $this->successResponse([
                 'success' => true,
                 'attachment' => [
                     'id' => $attachment['id'],
@@ -29,15 +30,9 @@ class ChatAttachmentController
                 ],
             ]);
         } catch (\InvalidArgumentException $e) {
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         } catch (\Throwable $e) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Failed to process attachment. Please try again.',
-            ], 500);
+            return $this->errorResponse('Failed to process attachment. Please try again.', 500);
         }
     }
 

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ChatConversation;
+use App\Support\Export;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Parsedown;
 
-class ChatExportPdfController
+class ChatExportPdfController extends Controller
 {
     public function __invoke(Request $request, string $id)
     {
@@ -18,7 +20,7 @@ class ChatExportPdfController
         $messages = $conversation->messages;
 
         if ($messages->isEmpty()) {
-            return response()->json(['message' => 'No messages to export.'], 422);
+            return $this->errorResponse('No messages to export.', 422);
         }
 
         $format = $request->input('format', 'pdf');
@@ -65,7 +67,7 @@ class ChatExportPdfController
                 'created_at' => $msg->created_at?->toIso8601String(),
             ]),
             'total_tokens' => $messages->sum('tokens_used'),
-        ])->header('Content-Disposition', 'attachment; filename="techrisk-ai-'.$titleSlug.'-'.now()->format('Y-m-d').'.json"');
+        ])->header('Content-Disposition', 'attachment; filename="'.Export::downloadFilename('techrisk-ai-'.$titleSlug, 'json', now()->format('Y-m-d')).'"');
     }
 
     private function exportMarkdown(ChatConversation $conversation, $messages): \Symfony\Component\HttpFoundation\StreamedResponse
@@ -102,7 +104,7 @@ class ChatExportPdfController
 
         return response()->streamDownload(function () use ($markdown) {
             echo $markdown;
-        }, "techrisk-ai-{$titleSlug}-".now()->format('Y-m-d').'.md', [
+        }, Export::downloadFilename('techrisk-ai-'.$titleSlug, 'md', now()->format('Y-m-d')), [
             'Content-Type' => 'text/markdown; charset=utf-8',
         ]);
     }
@@ -129,7 +131,7 @@ class ChatExportPdfController
             ->toArray();
 
         $titleSlug = \Illuminate\Support\Str::slug($conversation->title ?? 'chat');
-        $filename = "techrisk-ai-{$titleSlug}-".now()->format('Y-m-d').'.pdf';
+        $filename = Export::downloadFilename('techrisk-ai-'.$titleSlug, 'pdf', now()->format('Y-m-d'));
 
         $pdf = Pdf::loadView('ai-chat.pdf-export', [
             'title' => $conversation->title ?? 'TechRisk AI Chat',

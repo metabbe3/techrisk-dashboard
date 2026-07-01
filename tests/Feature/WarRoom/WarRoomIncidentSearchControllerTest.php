@@ -44,9 +44,9 @@ class WarRoomIncidentSearchControllerTest extends TestCase
             ->getJson('/admin/war-room/incident-search?q=Database');
 
         $response->assertStatus(200)
-            ->assertJsonStructure(['incidents']);
+            ->assertJsonStructure(['data' => ['incidents']]);
 
-        $incidents = $response->json('incidents');
+        $incidents = $response->json('data.incidents');
 
         // Should find the matching incident by title
         $found = collect($incidents)->contains(fn ($i) => $i['id'] === $matchingIncident->id);
@@ -63,7 +63,7 @@ class WarRoomIncidentSearchControllerTest extends TestCase
             ->getJson('/admin/war-room/incident-search?q=a');
 
         $response->assertStatus(200)
-            ->assertExactJson(['incidents' => []]);
+            ->assertJsonPath('data.incidents', []);
     }
 
     public function test_search_returns_empty_when_q_is_missing(): void
@@ -72,7 +72,7 @@ class WarRoomIncidentSearchControllerTest extends TestCase
             ->getJson('/admin/war-room/incident-search');
 
         $response->assertStatus(200)
-            ->assertExactJson(['incidents' => []]);
+            ->assertJsonPath('data.incidents', []);
     }
 
     public function test_search_requires_authentication(): void
@@ -95,7 +95,7 @@ class WarRoomIncidentSearchControllerTest extends TestCase
             ->getJson('/admin/war-room/incident-search?q=Search');
 
         $response->assertStatus(200);
-        $incidents = $response->json('incidents');
+        $incidents = $response->json('data.incidents');
         $this->assertCount(10, $incidents);
     }
 
@@ -112,7 +112,7 @@ class WarRoomIncidentSearchControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $found = collect($response->json('incidents'))->contains(fn ($i) => $i['id'] === $incident->id);
+        $found = collect($response->json('data.incidents'))->contains(fn ($i) => $i['id'] === $incident->id);
         $this->assertTrue($found, 'Expected to find the incident by number');
     }
 
@@ -129,7 +129,7 @@ class WarRoomIncidentSearchControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $found = collect($response->json('incidents'))->contains(fn ($i) => $i['id'] === $incident->id);
+        $found = collect($response->json('data.incidents'))->contains(fn ($i) => $i['id'] === $incident->id);
         $this->assertTrue($found, 'Expected to find the incident by summary');
     }
 
@@ -147,7 +147,7 @@ class WarRoomIncidentSearchControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $incidents = $response->json('incidents');
+        $incidents = $response->json('data.incidents');
         $this->assertNotEmpty($incidents);
 
         $first = $incidents[0];

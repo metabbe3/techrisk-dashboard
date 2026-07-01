@@ -2,7 +2,7 @@
 
 namespace App\Services\Ai;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Models\Category;
 use App\Models\Incident;
@@ -419,48 +419,47 @@ class ChatContextService
     {
         return Cache::remember('chat_quick_stats_v2', 300, function () {
             $year = now()->year;
-            $excludeQ = fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
 
-            $totalIncidents = Incident::where('classification', 'Incident')
+            $totalIncidents = Incident::where('classification', IncidentClassification::Incident->value)
                 ->whereYear('incident_date', $year)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->count();
 
-            $openIncidents = Incident::where('classification', 'Incident')
+            $openIncidents = Incident::where('classification', IncidentClassification::Incident->value)
                 ->whereYear('incident_date', $year)
                 ->whereNotIn('incident_status', ['Completed'])
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->count();
 
             $totalFundLoss = Incident::whereYear('incident_date', $year)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->sum('fund_loss');
 
             $avgMttr = Incident::whereYear('incident_date', $year)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->where('mttr', '>=', 0)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->avg('mttr');
 
-            $bySeverity = Incident::where('classification', 'Incident')
+            $bySeverity = Incident::where('classification', IncidentClassification::Incident->value)
                 ->whereYear('incident_date', $year)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->selectRaw('severity, COUNT(*) as count')
                 ->groupBy('severity')
                 ->pluck('count', 'severity')
                 ->toArray();
 
-            $byStatus = Incident::where('classification', 'Incident')
+            $byStatus = Incident::where('classification', IncidentClassification::Incident->value)
                 ->whereYear('incident_date', $year)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->selectRaw('incident_status, COUNT(*) as count')
                 ->groupBy('incident_status')
                 ->pluck('count', 'incident_status')
                 ->toArray();
 
             $topLabels = Incident::whereYear('incident_date', $year)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->with('labels')
                 ->get()
                 ->flatMap->labels
@@ -491,7 +490,7 @@ class ChatContextService
 
             // Root cause category breakdown
             $rootCauseCategories = Incident::whereYear('incident_date', $year)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->whereNotNull('root_cause_category')
                 ->get()
                 ->flatMap->root_cause_category
@@ -506,7 +505,7 @@ class ChatContextService
 
             // Responsible team breakdown
             $responsibleTeams = Incident::whereYear('incident_date', $year)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->whereNotNull('responsible_team')
                 ->get()
                 ->flatMap->responsible_team
@@ -521,7 +520,7 @@ class ChatContextService
 
             // Business category breakdown
             $businessCategories = Incident::whereYear('incident_date', $year)
-                ->where($excludeQ)
+                ->excludedFromCounts()
                 ->whereNotNull('business_category')
                 ->get()
                 ->flatMap->business_category
@@ -545,8 +544,8 @@ class ChatContextService
             : 'chat_recent_incidents_'.md5(implode(',', $columns));
 
         return Cache::remember($cacheKey, 300, function () use ($columns) {
-            $incidents = Incident::where('classification', 'Incident')
-                ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+            $incidents = Incident::where('classification', IncidentClassification::Incident->value)
+                ->excludedFromCounts()
                 ->with(['pic', 'labels', 'actionImprovements', 'investigationDocuments'])
                 ->latest('incident_date')
                 ->take(8)
@@ -618,7 +617,7 @@ class ChatContextService
         // Detect trend/pattern questions — narrow trigger to avoid false positives
         if (preg_match('/\b(?:trend|pattern|over\s+time|monthly\s+(?:trend|stats|report))\b/i', $msg)) {
             $monthly = Cache::remember('chat_trend_context', 300, function () {
-                return Incident::where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+                return Incident::excludedFromCounts()
                     ->selectRaw('MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss')
                     ->whereYear('incident_date', now()->year)
                     ->groupByRaw('MONTH(incident_date)')
@@ -665,7 +664,7 @@ class ChatContextService
             if (! $gatingEnabled || $enrichmentBudget < $maxBlocks) {
                 $topPics = Cache::remember('chat_pic_context', 300, function () {
                     return Incident::whereYear('incident_date', now()->year)
-                        ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+                        ->excludedFromCounts()
                         ->with('pic')
                         ->get()
                         ->groupBy(fn ($inc) => $inc->pic?->name ?? 'Unassigned')
@@ -684,7 +683,7 @@ class ChatContextService
             if (! $gatingEnabled || $enrichmentBudget < $maxBlocks) {
                 $rcaData = Cache::remember('chat_rca_context', 300, function () {
                     $recentWithRca = Incident::whereYear('incident_date', now()->year)
-                        ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+                        ->excludedFromCounts()
                         ->whereNotNull('root_cause')
                         ->with(['actionImprovements', 'investigationDocuments'])
                         ->latest('incident_date')
@@ -1539,9 +1538,6 @@ class ChatContextService
     public function searchIncidentsByTopic(string $topic): array
     {
         return Cache::remember('chat_topic_'.md5($topic), 300, function () use ($topic) {
-            $excludeQ = fn ($q) => $q->whereNull('fund_status')
-                ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
-
             // Fuzzy-match category names that contain the topic
             $fuzzyCategoryNames = [];
             try {
@@ -1557,7 +1553,7 @@ class ChatContextService
                 ->pluck('name')
                 ->toArray();
 
-            $incidents = Incident::where($excludeQ)
+            $incidents = Incident::excludedFromCounts()
                 ->where(function ($q) use ($topic, $fuzzyCategoryNames, $fuzzyLabelNames) {
                     $q->where('title', 'LIKE', "%{$topic}%");
                     $q->orWhere('summary', 'LIKE', "%{$topic}%");
@@ -1645,10 +1641,7 @@ class ChatContextService
      */
     private function executeFilterQuery(array $filters, array $excludeIds = []): array
     {
-        $excludeQ = fn ($q) => $q->whereNull('fund_status')
-            ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
-
-        $query = Incident::where($excludeQ);
+        $query = Incident::excludedFromCounts();
 
         // Exclude already-referenced incident IDs
         if (! empty($excludeIds)) {
@@ -1848,7 +1841,7 @@ class ChatContextService
                 $rcCat = $inc->root_cause_category ? ' | RCCat: '.implode(', ', $inc->root_cause_category) : '';
                 $criteria = ! empty($inc->match_criteria) ? ' | matched_via: '.implode('+', $inc->match_criteria) : '';
 
-                return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | id:{$inc->id} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_type} | PIC: {$pic} | Date: {$inc->incident_date?->format('Y-m-d')}{$fundLoss} | MTTR: {$inc->mttr} | Labels: {$labels}{$bizCat}{$team}{$rcCat}{$criteria}";
+                return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | id:{$inc->id} | {$inc->severity->value} | {$inc->incident_status->value} | {$inc->incident_type} | PIC: {$pic} | Date: {$inc->incident_date?->format('Y-m-d')}{$fundLoss} | MTTR: {$inc->mttr} | Labels: {$labels}{$bizCat}{$team}{$rcCat}{$criteria}";
             })->implode("\n");
 
             return $header.$lines;
@@ -1861,7 +1854,7 @@ class ChatContextService
                 $fundLoss = $inc->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $inc->fund_loss) : '';
                 $criteria = ! empty($inc->match_criteria) ? ' | via: '.implode('+', $inc->match_criteria) : '';
 
-                return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_type} | PIC: {$pic} | {$inc->incident_date?->format('Y-m-d')}{$fundLoss}{$criteria}";
+                return "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity->value} | {$inc->incident_status->value} | {$inc->incident_type} | PIC: {$pic} | {$inc->incident_date?->format('Y-m-d')}{$fundLoss}{$criteria}";
             })->implode("\n");
 
             return $header.$lines;
@@ -1880,7 +1873,7 @@ class ChatContextService
             .'Type: '.$typeDist->map(fn ($c, $t) => "{$t}={$c}")->implode(', ')."\n"
             .'Total Fund Loss: '.MarkdownFormatter::formatMoney((float) $totalLoss)."\n\n"
             ."### Sample (10 most recent):\n"
-            .$sample->map(fn ($inc) => "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity} | {$inc->incident_status} | {$inc->incident_date?->format('Y-m-d')}")->implode("\n");
+            .$sample->map(fn ($inc) => "- [{$inc->no}](/admin/incidents/{$inc->id}) {$inc->title} | {$inc->severity->value} | {$inc->incident_status->value} | {$inc->incident_date?->format('Y-m-d')}")->implode("\n");
 
         return $header.$summary;
     }
@@ -1911,20 +1904,19 @@ class ChatContextService
     {
         $thisMonth = now()->startOfMonth();
         $lastMonth = now()->subMonth()->startOfMonth();
-        $excludeQ = fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
 
-        $thisMonthCount = Incident::where('classification', 'Incident')->whereBetween('incident_date', [$thisMonth, now()])->where($excludeQ)->count();
-        $lastMonthCount = Incident::where('classification', 'Incident')->whereBetween('incident_date', [$lastMonth, $thisMonth])->where($excludeQ)->count();
+        $thisMonthCount = Incident::where('classification', IncidentClassification::Incident->value)->whereBetween('incident_date', [$thisMonth, now()])->excludedFromCounts()->count();
+        $lastMonthCount = Incident::where('classification', IncidentClassification::Incident->value)->whereBetween('incident_date', [$lastMonth, $thisMonth])->excludedFromCounts()->count();
         $change = $lastMonthCount > 0 ? round((($thisMonthCount - $lastMonthCount) / $lastMonthCount) * 100, 1) : ($thisMonthCount > 0 ? 100 : 0);
 
-        $thisMonthLoss = Incident::whereBetween('incident_date', [$thisMonth, now()])->where($excludeQ)->sum('fund_loss');
-        $lastMonthLoss = Incident::whereBetween('incident_date', [$lastMonth, $thisMonth])->where($excludeQ)->sum('fund_loss');
+        $thisMonthLoss = Incident::whereBetween('incident_date', [$thisMonth, now()])->excludedFromCounts()->sum('fund_loss');
+        $lastMonthLoss = Incident::whereBetween('incident_date', [$lastMonth, $thisMonth])->excludedFromCounts()->sum('fund_loss');
         $lossChange = $lastMonthLoss > 0 ? round((($thisMonthLoss - $lastMonthLoss) / $lastMonthLoss) * 100, 1) : 0;
 
-        $openP1P2 = Incident::where('classification', 'Incident')
+        $openP1P2 = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereIn('severity', ['P1', 'P2'])
             ->whereNotIn('incident_status', ['Completed'])
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->with(['pic', 'labels'])
             ->latest('incident_date')
             ->get();
@@ -1933,9 +1925,9 @@ class ChatContextService
             ->where('due_date', '<', now())
             ->count();
 
-        $topIncidents = Incident::where('classification', 'Incident')
+        $topIncidents = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereBetween('incident_date', [$thisMonth, now()])
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->with(['pic'])
             ->orderByRaw("FIELD(severity, 'P1','P2','P3','P4')")
@@ -1951,11 +1943,11 @@ class ChatContextService
         ];
 
         if ($openP1P2->isNotEmpty()) {
-            $lines[] = "Urgent P1/P2 incidents:\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity} | {$i->incident_status} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
+            $lines[] = "Urgent P1/P2 incidents:\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | {$i->incident_status->value} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
         }
 
         if ($topIncidents->isNotEmpty()) {
-            $lines[] = "Top incidents this month:\n".$topIncidents->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
+            $lines[] = "Top incidents this month:\n".$topIncidents->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
         }
 
         return implode("\n", $lines);
@@ -1968,17 +1960,16 @@ class ChatContextService
 
     private function getCompareContext(string $args): string
     {
-        $excludeQ = fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
         $year = now()->year;
 
-        $monthly = Incident::where($excludeQ)
+        $monthly = Incident::excludedFromCounts()
             ->whereYear('incident_date', $year)
             ->selectRaw('MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss, AVG(mttr) as avg_mttr')
             ->groupByRaw('MONTH(incident_date)')
             ->orderBy('m')
             ->get();
 
-        $sevMonthly = Incident::where($excludeQ)
+        $sevMonthly = Incident::excludedFromCounts()
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->selectRaw('MONTH(incident_date) as m, severity, COUNT(*) as cnt')
@@ -1988,7 +1979,7 @@ class ChatContextService
 
         $lines = ["## Monthly Comparison Data ({$year})"];
         foreach ($monthly as $row) {
-            $sevs = $sevMonthly->where('m', $row->m)->map(fn ($s) => "{$s->severity}={$s->cnt}")->implode(', ');
+            $sevs = $sevMonthly->where('m', $row->m)->map(fn ($s) => "{$s->severity->value}={$s->cnt}")->implode(', ');
             $lines[] = "Month {$row->m}: {$row->cnt} incidents | Fund Loss: ".MarkdownFormatter::formatMoney((float) ($row->loss ?? 0)).' | Avg MTTR: '.number_format($row->avg_mttr ?? 0, 0)." min | Severity: {$sevs}";
         }
 
@@ -1997,17 +1988,15 @@ class ChatContextService
 
     private function getRiskContext(): string
     {
-        $excludeQ = fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS);
-
         $openP1P2 = Incident::whereIn('severity', ['P1', 'P2'])
             ->whereNotIn('incident_status', ['Completed'])
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->with(['pic', 'actionImprovements'])
             ->latest('incident_date')
             ->get();
 
         $topFundLoss = Incident::where('fund_loss', '>', 0)
-            ->where($excludeQ)
+            ->excludedFromCounts()
             ->whereYear('incident_date', now()->year)
             ->with('pic')
             ->orderByDesc('fund_loss')
@@ -2022,7 +2011,7 @@ class ChatContextService
         $lines = ['## Current Risk Overview'];
 
         if ($openP1P2->isNotEmpty()) {
-            $lines[] = "### Open P1/P2 Incidents ({$openP1P2->count()})\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity} | {$i->incident_status} | PIC: ".($i->pic?->name ?? 'Unassigned').($i->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $i->fund_loss) : ''))->implode("\n");
+            $lines[] = "### Open P1/P2 Incidents ({$openP1P2->count()})\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | {$i->incident_status->value} | PIC: ".($i->pic?->name ?? 'Unassigned').($i->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $i->fund_loss) : ''))->implode("\n");
         } else {
             $lines[] = '### No open P1/P2 incidents. Well done!';
         }

@@ -8,7 +8,7 @@ window.WarRoomForm = function(routes, routeFor) {
                 const res = await fetch(routes.incidentSearch + '?q=' + encodeURIComponent(this.incidentSearch), { headers: utils.getHeaders() });
                 if (!res.ok) { console.error('Search incidents failed:', res.status, await res.text()); return; }
                 const data = await res.json();
-                this.incidentResults = data.incidents || [];
+                this.incidentResults = data.data?.incidents || [];
             } catch (e) { console.error('Failed to search incidents:', e); }
         },
 
@@ -42,7 +42,7 @@ window.WarRoomForm = function(routes, routeFor) {
                         deep_analysis: this.config.deepAnalysis,
                     });
                     const res = await fetch(routes.estimateTokens + '?' + params, { headers: utils.getHeaders() });
-                    if (res.ok) { this.tokenEstimate = await res.json(); }
+                    if (res.ok) { this.tokenEstimate = (await res.json()).data; }
                 } catch (e) { /* silent */ }
             }, 300);
         },
@@ -68,10 +68,10 @@ window.WarRoomForm = function(routes, routeFor) {
                 const data = await res.json().catch(() => ({ message: 'Request failed (HTTP ' + res.status + ')' }));
                 if (res.ok) {
                     this.showCreateForm = false;
-                    await this.loadSession(data.id);
+                    await this.loadSession(data.data.id);
                     await this.loadSessions();
-                } else if (res.status === 409 && data.existing_session) {
-                    const existing = data.existing_session;
+                } else if (res.status === 409 && data.data.existing_session) {
+                    const existing = data.data.existing_session;
                     const action = confirm(
                         'This incident already has a discussion session (' + existing.status + ', created ' + new Date(existing.created_at).toLocaleDateString() + ').\n\nClick OK to view the existing session, or Cancel to go back.'
                     );
@@ -270,7 +270,7 @@ window.WarRoomForm = function(routes, routeFor) {
         async loadTemplates() {
             try {
                 const res = await fetch(routes.templatesIndex, { headers: utils.getHeaders() });
-                if (res.ok) this.templates = (await res.json()).templates || [];
+                if (res.ok) this.templates = (await res.json()).data.templates || [];
             } catch (e) { console.error('Failed to load templates:', e); }
         },
 

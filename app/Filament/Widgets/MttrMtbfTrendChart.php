@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -32,7 +32,7 @@ class MttrMtbfTrendChart extends ChartWidget
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
-            $baseQuery = Incident::where('classification', '!=', 'Issue');
+            $baseQuery = Incident::where('classification', '!=', IncidentClassification::Issue->value);
 
             if ($this->start_date && $this->end_date) {
                 $baseQuery->whereBetween('incident_date', [$this->start_date, $this->end_date]);

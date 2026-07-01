@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-class WarRoomCreateController
+class WarRoomCreateController extends Controller
 {
     public function __construct(
         private WarRoomService $warRoomService
@@ -38,15 +39,14 @@ class WarRoomCreateController
                 ->first();
 
             if ($existing) {
-                return response()->json([
-                    'message' => 'This incident already has an active discussion.',
+                return $this->successResponse([
                     'existing_session' => [
                         'id' => $existing->id,
                         'title' => $existing->title,
                         'status' => $existing->status,
                         'created_at' => $existing->created_at?->toIso8601String(),
                     ],
-                ], 409);
+                ], 'This incident already has an active discussion.', 409);
             }
         }
 
@@ -63,31 +63,24 @@ class WarRoomCreateController
                 userInstructions: $validated['user_instructions'] ?? null,
             );
         } catch (\RuntimeException $e) {
+            // ponytail: the service throws RuntimeException as a deliberate, user-facing
+            // rate-limit signal, so its (controlled) message is safe to surface at 429.
             Log::warning('War Room session rate limited', [
                 'incident_ids' => $incidentIds,
                 'user_id' => $request->user()?->id,
                 'error' => $e->getMessage(),
             ]);
 
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 429);
-        } catch (\Throwable $e) {
-            Log::error('War Room session creation failed', [
-                'incident_ids' => $incidentIds,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'message' => $e->getMessage(),
-            ], 500);
+            return $this->errorResponse($e->getMessage(), 429);
         }
 
-        return response()->json([
+        // Unexpected errors propagate to the global exception handler (500, unified
+        // envelope, logged) — internal exception detail is never echoed to the client.
+
+        return $this->successResponse([
             'id' => $session->id,
             'status' => $session->status,
             'title' => $session->title,
-        ], 201);
+        ], 'War Room session created.', 201);
     }
 }

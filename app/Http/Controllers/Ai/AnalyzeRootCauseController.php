@@ -33,7 +33,7 @@ class AnalyzeRootCauseController extends Controller
             ->toArray();
 
         if (empty($incidentData)) {
-            return response()->json([
+            return $this->successResponse([
                 'success' => false,
                 'error' => 'No incident data provided. Fill in at least summary or timeline.',
                 'summary' => '',
@@ -55,7 +55,7 @@ class AnalyzeRootCauseController extends Controller
             availableLabels: $availableLabels,
         );
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'summary' => $result['summary'],
             'root_cause' => $result['root_cause'],

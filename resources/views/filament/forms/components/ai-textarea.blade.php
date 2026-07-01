@@ -68,13 +68,13 @@
                     }
 
                     const data = await resp.json();
-                    if (data.success && data.text) {
-                        this.originalText = data.text;
-                        this.editedText = data.text;
-                        this.modelUsed = data.model || this.selectedModel;
+                    if (data.data.success && data.data.text) {
+                        this.originalText = data.data.text;
+                        this.editedText = data.data.text;
+                        this.modelUsed = data.data.model || this.selectedModel;
                         this.showModal = true;
                     } else {
-                        this.notify('AI Enhancement Failed', data.error || 'Unknown error occurred.', 'danger');
+                        this.notify('AI Enhancement Failed', data.data.error || 'Unknown error occurred.', 'danger');
                     }
                 } catch(e) {
                     if (e.name === 'AbortError') {
@@ -121,12 +121,12 @@
                     });
 
                     const data = await resp.json();
-                    if (data.success && data.text) {
-                        this.editedText = data.text;
-                        this.modelUsed = data.model || this.selectedModel;
+                    if (data.data.success && data.data.text) {
+                        this.editedText = data.data.text;
+                        this.modelUsed = data.data.model || this.selectedModel;
                         this.refineNote = '';
                     } else {
-                        this.notify('Refine Failed', data.error || 'Unknown error.', 'danger');
+                        this.notify('Refine Failed', data.data.error || 'Unknown error.', 'danger');
                     }
                 } catch(e) {
                     this.notify('Error', 'Failed to refine. Please try again.', 'danger');

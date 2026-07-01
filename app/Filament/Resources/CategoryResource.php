@@ -20,11 +20,6 @@ class CategoryResource extends Resource
 
     protected static ?int $navigationSort = 5;
 
-    public static function canViewAny(): bool
-    {
-        return auth()->user()->can('manage incidents');
-    }
-
     public static function form(Form $form): Form
     {
         return $form

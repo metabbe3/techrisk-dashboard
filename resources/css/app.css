@@ -162,13 +162,35 @@
 .kanban-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 2px; }
 :root.dark .kanban-scroll::-webkit-scrollbar-thumb { background: #334155; }
 
-/* Kanban card severity left border */
-.kanban-card { border-left: 4px solid transparent; }
-.kanban-card--severity-danger  { border-left-color: #ef4444; }
-.kanban-card--severity-warning { border-left-color: #f59e0b; }
-.kanban-card--severity-info    { border-left-color: #3b82f6; }
-.kanban-card--severity-success { border-left-color: #22c55e; }
-.kanban-card--severity-gray    { border-left-color: #6b7280; }
+/* Kanban card — severity is the visual axis (mission-control). --sev drives the
+   rail, the hover glow, and the keyboard focus ring from a single hue. */
+.kanban-card { border-left: 4px solid transparent; position: relative; }
+.kanban-card--severity-danger  { --sev: #ef4444; border-left-color: #ef4444; }
+.kanban-card--severity-warning { --sev: #f59e0b; border-left-color: #f59e0b; }
+.kanban-card--severity-info    { --sev: #3b82f6; border-left-color: #3b82f6; }
+.kanban-card--severity-success { --sev: #22c55e; border-left-color: #22c55e; }
+.kanban-card--severity-gray    { --sev: #6b7280; border-left-color: #6b7280; }
+
+/* Severity-tinted glow behind the card on hover (reinforces priority at a glance). */
+.kanban-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: 0 10px 24px -16px var(--sev, #6366f1);
+    opacity: 0;
+    transition: opacity .18s ease;
+}
+.kanban-card:hover::after { opacity: 1; }
+
+/* Keyboard a11y: crisp severity-colored ring when the card or its move <select> is focused. */
+.kanban-card:focus-within { outline: 2px solid color-mix(in srgb, var(--sev, #6366f1) 55%, transparent); outline-offset: -1px; }
+.kanban-move-select:focus-visible { outline: 2px solid color-mix(in srgb, var(--sev, #6366f1) 60%, transparent); outline-offset: 1px; border-radius: 4px; }
+
+/* Board canvas — faint dot grid for depth (operations-console feel). */
+.kanban-canvas { background-image: radial-gradient(circle, rgba(99,102,241,.05) 1px, transparent 1px); background-size: 20px 20px; }
+:root.dark .kanban-canvas { background-image: radial-gradient(circle, rgba(148,163,184,.06) 1px, transparent 1px); }
 
 /* Kanban avatar initials */
 .kanban-avatar {
@@ -1424,6 +1446,7 @@
 :root.dark .ai-chat-msg-text table { border-color: #334155; }
 :root.dark .ai-chat-msg-text thead { background: #1e293b; }
 :root.dark .ai-chat-msg-text th { color: #e2e8f0; border-bottom-color: #475569; }
+:root.dark .ai-chat-msg-text tr:hover td { background: #1e293b; }
 :root.dark .ai-chat-msg-text td { color: #94a3b8; border-bottom-color: #1e293b; }
 :root.dark .ai-chat-msg-text tr:hover td { background: #1e293b; }
 
@@ -1729,7 +1752,8 @@
     transition: all .15s;
     opacity: 0;
 }
-.ai-chat-msg:hover .ai-chat-action-btn { opacity: .7; }
+.ai-chat-msg:hover .ai-chat-action-btn,
+.ai-chat-msg:focus-within .ai-chat-action-btn { opacity: .7; }
 .ai-chat-action-btn:hover { background: #f1f5f9; color: #6366f1; opacity: 1 !important; }
 :root.dark .ai-chat-action-btn:hover { background: #253040; color: #818cf8; }
 
@@ -1758,9 +1782,14 @@
     transition: all .15s;
     opacity: 0;
 }
-.ai-chat-msg:hover .ai-chat-feedback-btn { opacity: .7; }
+.ai-chat-msg:hover .ai-chat-feedback-btn,
+.ai-chat-msg:focus-within .ai-chat-feedback-btn { opacity: .7; }
 .ai-chat-feedback-btn:hover { background: #f1f5f9; color: #6366f1; opacity: 1 !important; }
 .ai-chat-feedback-btn.active.positive { opacity: 1; color: #10b981; }
+/* Touch devices have no hover — always reveal action/feedback buttons. */
+@media (pointer: coarse) {
+    .ai-chat-action-btn, .ai-chat-feedback-btn { opacity: .7; }
+}
 .ai-chat-feedback-btn.active.negative { opacity: 1; color: #ef4444; }
 :root.dark .ai-chat-feedback-btn:hover { background: #253040; color: #818cf8; }
 
@@ -1808,7 +1837,7 @@
     font-variant-numeric: tabular-nums;
 }
 .ai-chat-msg:hover .ai-chat-msg-time { color: rgba(99,102,241,.7); }
-:root.dark .ai-chat-msg-time { color: rgba(129,140,248,.3); }
+:root.dark .ai-chat-msg-time { color: rgba(129,140,248,.6); }
 :root.dark .ai-chat-msg:hover .ai-chat-msg-time { color: rgba(129,140,248,.6); }
 
 /* Fi Sidebar icon for AI Chat */
@@ -1926,7 +1955,7 @@
     position: absolute;
     bottom: calc(100% + 8px);
     right: 0;
-    width: 380px;
+    width: min(380px, calc(100vw - 24px));
     max-height: 360px;
     background: #fff;
     border: 1px solid #e2e8f0;
@@ -2259,7 +2288,9 @@
     font-size: 10px;
     font-weight: 700;
     flex-shrink: 0;
+    border: 2px solid #fff;
 }
+:root.dark .ai-chat-persona-icon { border-color: #1e293b; }
 
 /* Persona message styling */
 .ai-chat-msg-content.persona-border { padding-left: 14px; }

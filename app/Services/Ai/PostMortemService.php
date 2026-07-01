@@ -77,7 +77,7 @@ class PostMortemService
             ],
             'lessons_learned' => $lessons,
             'recommendations' => $lessons,
-            'severity_assessment' => "Severity: {$incident->severity}",
+            'severity_assessment' => "Severity: {$incident->severity->value}",
         ];
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Observers;
 
+use App\Enums\Severity;
 use App\Events\IncidentCreatedEvent;
 use App\Events\IncidentEscalatedEvent;
 use App\Jobs\CalculateIncidentMetrics;
@@ -40,7 +41,7 @@ class IncidentObserver
         }
 
         // Notify admins and team leads for P1/P2 incidents
-        if (in_array($incident->severity, ['P1', 'P2'])) {
+        if (in_array($incident->severity, [Severity::P1, Severity::P2])) {
             $this->notifyCriticalIncident($incident);
         }
 
@@ -79,6 +80,12 @@ class IncidentObserver
                 }
                 if ($newValue instanceof Carbon) {
                     $newValue = $newValue->format('Y-m-d H:i');
+                }
+                if ($newValue instanceof \BackedEnum) {
+                    $newValue = $newValue->value;
+                }
+                if ($oldValue instanceof \BackedEnum) {
+                    $oldValue = $oldValue->value;
                 }
 
                 $changes[$label] = [
@@ -124,8 +131,8 @@ class IncidentObserver
 
         // Handle status change notification
         if ($incident->isDirty('incident_status')) {
-            $oldStatus = $incident->getOriginal('incident_status');
-            $newStatus = $incident->incident_status;
+            $oldStatus = $incident->getOriginal('incident_status')?->value;
+            $newStatus = $incident->incident_status->value;
 
             if ($pic && $oldStatus && $newStatus) {
                 if (! $currentUser || $currentUser->id !== $incident->pic_id) {
@@ -142,7 +149,7 @@ class IncidentObserver
         }
 
         // Fire event for severity escalation to P1/P2
-        if ($incident->isDirty('severity') && in_array($incident->severity, ['P1', 'P2'])) {
+        if ($incident->isDirty('severity') && in_array($incident->severity, [Severity::P1, Severity::P2])) {
             event(new IncidentEscalatedEvent($incident, $incident->getOriginal('severity')));
         }
     }

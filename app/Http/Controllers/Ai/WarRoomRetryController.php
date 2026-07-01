@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class WarRoomRetryController
+class WarRoomRetryController extends Controller
 {
     public function __construct(
         private WarRoomService $warRoomService
@@ -26,19 +27,19 @@ class WarRoomRetryController
             if ($session->status === 'failed' && $session->final_report === null) {
                 $this->warRoomService->retryReportSynthesis($session);
 
-                return response()->json([
+                return $this->successResponse([
                     'message' => 'No failed agents found. Retrying report synthesis instead.',
                 ]);
             }
 
-            return response()->json(['message' => 'No failed agents to retry'], 400);
+            return $this->errorResponse('No failed agents to retry', 400);
         }
 
         foreach ($failedMessages as $message) {
             $this->warRoomService->retryFailedAgent($message);
         }
 
-        return response()->json([
+        return $this->successResponse([
             'message' => "Retrying {$failedMessages->count()} failed agents",
             'retried_count' => $failedMessages->count(),
         ]);
@@ -53,12 +54,12 @@ class WarRoomRetryController
             ->firstOrFail();
 
         if ($message->status !== 'failed') {
-            return response()->json(['message' => 'Agent is not in a failed state'], 400);
+            return $this->errorResponse('Agent is not in a failed state', 400);
         }
 
         $this->warRoomService->retryFailedAgent($message);
 
-        return response()->json([
+        return $this->successResponse([
             'message' => "Retrying agent: {$message->agent_role}",
             'agent_role' => $message->agent_role,
         ]);
@@ -69,7 +70,7 @@ class WarRoomRetryController
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         if ($session->status !== 'failed') {
-            return response()->json(['message' => 'Session is not in a failed state'], 400);
+            return $this->errorResponse('Session is not in a failed state', 400);
         }
 
         $hasFailedAgents = WarRoomMessage::where('session_id', $session->id)
@@ -77,12 +78,12 @@ class WarRoomRetryController
             ->exists();
 
         if ($hasFailedAgents) {
-            return response()->json(['message' => 'Session has failed agents. Retry agents first.'], 400);
+            return $this->errorResponse('Session has failed agents. Retry agents first.', 400);
         }
 
         $this->warRoomService->retryReportSynthesis($session);
 
-        return response()->json([
+        return $this->successResponse([
             'message' => 'Retrying report synthesis',
         ]);
     }
@@ -92,16 +93,16 @@ class WarRoomRetryController
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
         if (! in_array($session->status, ['completed', 'failed'])) {
-            return response()->json(['message' => 'Session must be completed or failed to regenerate report'], 400);
+            return $this->errorResponse('Session must be completed or failed to regenerate report', 400);
         }
 
         try {
             $this->warRoomService->regenerateReport($session);
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['message' => $e->getMessage()], 400);
+            return $this->errorResponse($e->getMessage(), 400);
         }
 
-        return response()->json([
+        return $this->successResponse([
             'message' => 'Regenerating report from available agent data',
         ]);
     }

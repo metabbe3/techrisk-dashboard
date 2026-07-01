@@ -35,13 +35,15 @@ class WarRoomListControllerTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonStructure([
                 'data' => [
-                    '*' => ['id', 'title', 'status', 'current_round', 'max_rounds'],
+                    'data' => [
+                        '*' => ['id', 'title', 'status', 'current_round', 'max_rounds'],
+                    ],
                 ],
             ]);
 
         // The list controller does NOT scope to user -- it returns all sessions.
         // Verify the count matches what we created.
-        $this->assertCount(3, $response->json('data'));
+        $this->assertCount(3, $response->json('data.data'));
     }
 
     public function test_list_returns_paginated_results(): void
@@ -56,8 +58,8 @@ class WarRoomListControllerTest extends TestCase
         $response->assertStatus(200);
 
         // Default pagination is 20 per page
-        $this->assertCount(20, $response->json('data'));
-        $response->assertJsonStructure(['current_page', 'last_page', 'per_page', 'total']);
+        $this->assertCount(20, $response->json('data.data'));
+        $response->assertJsonStructure(['data' => ['current_page', 'last_page', 'per_page', 'total']]);
     }
 
     public function test_list_can_filter_by_incident_id(): void
@@ -74,7 +76,7 @@ class WarRoomListControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $data = $response->json('data');
+        $data = $response->json('data.data');
         foreach ($data as $item) {
             $this->assertEquals($session1->incident_id, $item['incident_id']);
         }
@@ -100,7 +102,7 @@ class WarRoomListControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $ids = collect($response->json('data'))->pluck('id')->toArray();
+        $ids = collect($response->json('data.data'))->pluck('id')->toArray();
         $this->assertEquals($newest->id, $ids[0]);
     }
 

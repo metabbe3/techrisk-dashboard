@@ -65,7 +65,7 @@ class IncidentMarkdownExporter
         $lines = [];
         $lines[] = "# {$incident->no}";
         $lines[] = "**Title:** {$incident->title}";
-        $lines[] = "**Classification:** {$incident->classification} | **Severity:** {$incident->severity} | **Status:** {$incident->incident_status}";
+        $lines[] = "**Classification:** {$incident->classification->value} | **Severity:** {$incident->severity->value} | **Status:** {$incident->incident_status->value}";
         $lines[] = '**Type:** '.($incident->incidentType?->name ?? 'N/A');
         $lines[] = '**PIC:** '.($incident->pic ? "{$incident->pic->name} ({$incident->pic->email})" : 'N/A');
 
@@ -106,7 +106,7 @@ class IncidentMarkdownExporter
         if ($incident->potential_fund_loss || $incident->recovered_fund || $incident->fund_loss) {
             $lines[] = "\n## Financial Impact";
             if ($incident->fund_status) {
-                $lines[] = "- Fund Status: {$incident->fund_status}";
+                $lines[] = "- Fund Status: {$incident->fund_status->value}";
             }
             if ($incident->potential_fund_loss) {
                 $lines[] = '- Potential Loss: '.MarkdownFormatter::formatMoney((float) $incident->potential_fund_loss);
@@ -231,7 +231,7 @@ class IncidentMarkdownExporter
         $lines[] = "ID: {$incident->id}";
         $lines[] = "URL: /admin/incidents/{$incident->id}";
         $lines[] = "**Title:** {$incident->title}";
-        $lines[] = "**Severity:** {$incident->severity} | **Status:** {$incident->incident_status} | **Classification:** {$incident->classification}";
+        $lines[] = "**Severity:** {$incident->severity->value} | **Status:** {$incident->incident_status->value} | **Classification:** {$incident->classification->value}";
         $lines[] = '**Type:** '.($incident->incidentType?->name ?? $incident->incident_type ?? 'N/A');
 
         if ($incident->incident_source) {
@@ -306,7 +306,7 @@ class IncidentMarkdownExporter
         if ($has('financial')) {
             $financial = [];
             if ($incident->fund_status) {
-                $financial[] = "Fund Status: {$incident->fund_status}";
+                $financial[] = "Fund Status: {$incident->fund_status->value}";
             }
             if ($incident->potential_fund_loss) {
                 $financial[] = 'Potential Loss: '.MarkdownFormatter::formatMoney((float) $incident->potential_fund_loss);
@@ -460,7 +460,7 @@ class IncidentMarkdownExporter
         $lines = [];
         $lines[] = "# {$incident->no}";
         $lines[] = "**Title:** {$incident->title}";
-        $lines[] = "**Classification:** {$incident->classification} | **Severity:** {$incident->severity} | **Status:** {$incident->incident_status}";
+        $lines[] = "**Classification:** {$incident->classification->value} | **Severity:** {$incident->severity->value} | **Status:** {$incident->incident_status->value}";
         $lines[] = '**Type:** '.($incident->incidentType?->name ?? 'N/A');
         $lines[] = '**PIC:** '.($incident->pic ? "{$incident->pic->name}" : 'N/A');
 
@@ -481,7 +481,7 @@ class IncidentMarkdownExporter
         if ($incident->potential_fund_loss || $incident->recovered_fund || $incident->fund_loss) {
             $lines[] = "\n## Financial Impact";
             if ($incident->fund_status) {
-                $lines[] = "- Fund Status: {$incident->fund_status}";
+                $lines[] = "- Fund Status: {$incident->fund_status->value}";
             }
             if ($incident->potential_fund_loss) {
                 $lines[] = '- Potential Loss: '.MarkdownFormatter::formatMoney((float) $incident->potential_fund_loss);
@@ -561,7 +561,7 @@ class IncidentMarkdownExporter
     {
         $contexts = [];
         foreach ($incidents as $incident) {
-            $contexts[] = "--- Incident: {$incident->no} ({$incident->severity}) ---";
+            $contexts[] = "--- Incident: {$incident->no} ({$incident->severity->value}) ---";
             $contexts[] = $this->generate($incident);
         }
 

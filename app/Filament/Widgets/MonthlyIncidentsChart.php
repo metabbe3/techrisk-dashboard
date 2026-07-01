@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Filament\Concerns\HasChartColors;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -32,8 +32,8 @@ class MonthlyIncidentsChart extends ChartWidget
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
-                ->where('classification', 'Incident')
-                ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS));
+                ->where('classification', IncidentClassification::Incident->value)
+                ->excludedFromCounts();
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

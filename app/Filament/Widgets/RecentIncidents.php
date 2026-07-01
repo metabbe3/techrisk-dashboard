@@ -2,6 +2,7 @@
 
 namespace App\Filament\Widgets;
 
+use App\Enums\IncidentClassification;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Filament\Resources\IncidentResource;
 use Filament\Tables;
@@ -23,7 +24,7 @@ class RecentIncidents extends BaseWidget
     public function table(Table $table): Table
     {
         $query = IncidentResource::getEloquentQuery()
-            ->where('classification', 'Incident')
+            ->where('classification', IncidentClassification::Incident->value)
             ->with(['latestStatusUpdate', 'pic', 'incidentType']);
 
         if ($this->start_date && $this->end_date) {
@@ -41,7 +42,7 @@ class RecentIncidents extends BaseWidget
                     ->dateTime()
                     ->formatStateUsing(fn ($state) => $state ? $state->format('Y-m-d') : 'N/A'),
                 Tables\Columns\TextColumn::make('title'),
-                Tables\Columns\TextColumn::make('severity')->badge()->formatStateUsing(fn (string $state): string => strtoupper($state))->color(fn (string $state): string => match (strtoupper($state)) {
+                Tables\Columns\TextColumn::make('severity')->badge()->formatStateUsing(fn ($state): string => $state ? strtoupper($state->value) : '')->color(fn ($state): string => match (strtoupper($state?->value ?? '')) {
                     'P1', 'X1' => 'danger',
                     'P2', 'X2' => 'warning',
                     'P3', 'X3' => 'info',

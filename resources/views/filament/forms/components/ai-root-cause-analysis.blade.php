@@ -104,14 +104,14 @@ if (typeof window.aiRootCauseData === 'undefined') {
                     payload.model = this.rcaSelectedModel;
                     const d = await this.rcaFetch(config.endpoint, payload);
 
-                    if (d.success && (d.root_cause || d.summary)) {
-                        this.rcaResults = d;
+                    if (d.data.success && (d.data.root_cause || d.data.summary)) {
+                        this.rcaResults = d.data;
                         this.rcaApply = { summary: true, root_cause: true, remark: true, recommendation: false };
-                        this.rcaSelectedLabels = [...(d.labels_matched || []), ...(d.labels_suggested || [])];
+                        this.rcaSelectedLabels = [...(d.data.labels_matched || []), ...(d.data.labels_suggested || [])];
                         this.rcaOpen = true;
                         this.rcaNotify('Analysis complete.', 'success');
                     } else {
-                        this.rcaError = d.error || 'No analysis generated. Add more incident details.';
+                        this.rcaError = d.data.error || 'No analysis generated. Add more incident details.';
                         this.rcaNotify(this.rcaError, 'warning');
                     }
                 } catch (e) {
@@ -170,9 +170,9 @@ if (typeof window.aiRootCauseData === 'undefined') {
                                 matched: selMatched,
                                 new_labels: selSuggested,
                             });
-                            if (resp.success && resp.label_ids?.length) {
+                            if (resp.data.success && resp.data.label_ids?.length) {
                                 const cur = await this.$wire.get('data.labels') || [];
-                                const merged = [...new Set([...cur, ...resp.label_ids.map(String)])];
+                                const merged = [...new Set([...cur, ...resp.data.label_ids.map(String)])];
                                 this.$wire.set('data.labels', merged);
                             }
                         } catch(e) { console.warn('Label apply failed:', e); }

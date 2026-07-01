@@ -9,6 +9,7 @@ use OwenIt\Auditing\Contracts\Auditable;
 
 class ActionImprovement extends Model implements Auditable
 {
+    use \App\Models\Concerns\SerializesDatesInAppTimezone;
     use HasFactory;
     use \OwenIt\Auditing\Auditable;
 

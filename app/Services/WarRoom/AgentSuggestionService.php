@@ -61,7 +61,7 @@ class AgentSuggestionService
     {
         return $incidents->map(function (Incident $inc, $i) {
             $parts = [($i + 1).". [{$inc->no}] {$inc->title}"];
-            $parts[] = "   Severity: {$inc->severity} | Status: {$inc->incident_status} | Type: {$inc->incident_type}";
+            $parts[] = "   Severity: {$inc->severity->value} | Status: {$inc->incident_status->value} | Type: {$inc->incident_type}";
             if ($inc->summary) {
                 $parts[] = '   Summary: '.mb_substr($inc->summary, 0, 300);
             }

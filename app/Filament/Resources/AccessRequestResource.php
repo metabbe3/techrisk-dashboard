@@ -34,11 +34,6 @@ class AccessRequestResource extends Resource
 
     protected static ?int $navigationSort = 20;
 
-    public static function canViewAny(): bool
-    {
-        return auth()->user()->can('manage users');
-    }
-
     public static function canCreate(): bool
     {
         return false; // Requests are created via public form

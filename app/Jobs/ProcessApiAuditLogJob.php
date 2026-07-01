@@ -211,6 +211,7 @@ class ProcessApiAuditLogJob implements ShouldQueue
             'endpoint' => $data['endpoint'],
             'query_params' => $data['query_params'],
             'request_body' => $data['request_body'],
+            'request_headers' => $data['request_headers'] ?? null,
             'user_id' => $data['user_id'],
             'user_email' => $data['user_email'],
             'ip_address' => $data['ip_address'],
@@ -219,12 +220,35 @@ class ProcessApiAuditLogJob implements ShouldQueue
             'response_status' => $data['response_status'],
             'response_time_ms' => $data['response_time_ms'],
             'response_size_bytes' => $data['response_size_bytes'],
-            'response_data' => $data['response_data'],
+            'response_data' => $this->truncateForStorage($data['response_data']),
             'response_headers' => $data['response_headers'],
             'error_message' => $data['error_message'] ?? null,
             'environment' => $data['metadata']['environment'] ?? config('app.env'),
             'app_version' => $data['metadata']['app_version'] ?? null,
             'metadata' => $data['metadata'],
         ]);
+    }
+
+    /**
+     * Bound storage: cap response payloads so large list/export responses don't
+     * bloat the audit table. Mirrors the request-body 10 KB cap in the middleware.
+     */
+    private function truncateForStorage(?array $data): ?array
+    {
+        if ($data === null) {
+            return null;
+        }
+
+        $json = json_encode($data);
+
+        if ($json === false) {
+            return ['_truncated' => true, '_error' => 'json_encode failed'];
+        }
+
+        if (strlen($json) > 10240) {
+            return ['_truncated' => true, '_size' => strlen($json)];
+        }
+
+        return $data;
     }
 }

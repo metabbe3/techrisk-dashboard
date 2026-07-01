@@ -38,8 +38,18 @@ class PersonalAccessToken extends BasePersonalAccessToken
 
     public function renew(): void
     {
-        if ($this->renewal_minutes && $this->expires_at) {
-            $this->expires_at = $this->expires_at->addMinutes($this->renewal_minutes);
+        // Sliding expiry: extend to now + renewal_minutes, but never shorten a
+        // longer existing expiry. A 30-day token stays alive while in active use
+        // (hit Jan 20 -> exp Feb 20; hit Jan 25 -> exp Feb 25), and a token with
+        // a longer fixed expiry (e.g. 6 months) isn't shrunk by a shorter renewal.
+        if (! $this->renewal_minutes) {
+            return;
+        }
+
+        $newExpiry = now()->addMinutes($this->renewal_minutes);
+
+        if (! $this->expires_at || $newExpiry->isAfter($this->expires_at)) {
+            $this->expires_at = $newExpiry;
             $this->save();
         }
     }

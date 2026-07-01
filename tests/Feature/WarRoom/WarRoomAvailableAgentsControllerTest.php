@@ -70,7 +70,7 @@ class WarRoomAvailableAgentsControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $agents = $response->json();
+        $agents = $response->json('data');
 
         // Moderator should be excluded
         $roleKeys = collect($agents)->pluck('role_key')->toArray();
@@ -104,7 +104,7 @@ class WarRoomAvailableAgentsControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $agent = collect($response->json())->first(fn ($a) => $a['role_key'] === 'dba');
+        $agent = collect($response->json('data'))->first(fn ($a) => $a['role_key'] === 'dba');
         $this->assertEquals(['Query Optimization', 'Backup'], $agent['skills']);
     }
 
@@ -123,7 +123,7 @@ class WarRoomAvailableAgentsControllerTest extends TestCase
 
         $response->assertStatus(200);
 
-        $agent = collect($response->json())->first(fn ($a) => $a['role_key'] === 'analyst');
+        $agent = collect($response->json('data'))->first(fn ($a) => $a['role_key'] === 'analyst');
         // Empty and null skills should be filtered out
         $this->assertEquals(['Valid Skill'], $agent['skills']);
     }
@@ -145,6 +145,6 @@ class WarRoomAvailableAgentsControllerTest extends TestCase
             ->getJson('/admin/war-room/agents');
 
         $response->assertStatus(200)
-            ->assertExactJson([]);
+            ->assertJsonPath('data', []);
     }
 }

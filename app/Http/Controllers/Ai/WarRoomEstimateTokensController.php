@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\Incident;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class WarRoomEstimateTokensController
+class WarRoomEstimateTokensController extends Controller
 {
     public function __construct(
         private IncidentMarkdownExporter $exporter,
@@ -31,7 +32,7 @@ class WarRoomEstimateTokensController
 
         $context = [];
         foreach ($incidents as $inc) {
-            $context[] = "--- Incident: {$inc->no} ({$inc->severity}) ---";
+            $context[] = "--- Incident: {$inc->no} ({$inc->severity->value}) ---";
             $context[] = $this->exporter->$generateMethod($inc);
         }
 
@@ -45,7 +46,7 @@ class WarRoomEstimateTokensController
         $pct = round(($estimatedTokens / $inputLimit) * 100);
         $willCompress = $pct > 75;
 
-        return response()->json([
+        return $this->successResponse([
             'estimated_tokens' => $estimatedTokens,
             'input_limit' => $inputLimit,
             'percentage' => min($pct, 100),

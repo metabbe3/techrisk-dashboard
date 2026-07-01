@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Services\WarRoom\AgentSuggestionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class WarRoomSuggestAgentsController
+class WarRoomSuggestAgentsController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
@@ -21,7 +22,7 @@ class WarRoomSuggestAgentsController
             $validated['user_instructions'] ?? null
         );
 
-        return response()->json([
+        return $this->successResponse([
             'suggested_agents' => $suggested,
         ]);
     }

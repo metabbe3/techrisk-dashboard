@@ -7,6 +7,7 @@ use App\Events\IncidentEscalatedEvent;
 use App\Listeners\Ai\AnalyzeNewIncident;
 use App\Listeners\CheckTokenInactivity;
 use App\Models\ActionImprovement;
+use App\Models\ApiSetting;
 use App\Models\Category;
 use App\Models\Incident;
 use App\Models\IncidentType;
@@ -23,6 +24,7 @@ use App\Policies\ActionImprovementPolicy;
 use App\Policies\IncidentPolicy;
 use App\Services\SensitiveDataFilter;
 use App\Services\TraceIdService;
+use Carbon\Carbon;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Event;
@@ -52,6 +54,13 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
+
+        // Serialize all dates in the app timezone (Asia/Jakarta, GMT+7) with the
+        // offset, instead of Carbon's default UTC "…Z". This makes API JSON
+        // datetime output match the Filament dashboard (which formats in app tz).
+        // Dashboard display is unaffected — Filament formats dates via ->format(),
+        // not via JSON serialization.
+        Carbon::serializeUsing(fn ($date) => $date->setTimezone(config('app.timezone', 'Asia/Jakarta'))->toIso8601String());
 
         // CHANGE THIS LINE: Use $this->app->environment()
         // You can also add 'prod' or 'staging' if your PAAS uses those names
@@ -112,17 +121,14 @@ class AppServiceProvider extends ServiceProvider
             });
         }
 
-        // Configure API rate limiters
-        RateLimiter::for('api', function ($request) {
-            return Limit::perMinute(100)->by($request->user()?->id ?: $request->ip());
-        });
+        // API rate limiters — per-user per-minute limits, admin-adjustable from
+        // the Filament "API Settings" page (ApiSetting store). Defaults match the
+        // previous hardcoded values; the value is read live (cached briefly).
+        $limitBy = fn ($request) => $request->user()?->id ?: $request->ip();
 
-        RateLimiter::for('api-expensive', function ($request) {
-            return Limit::perMinute(20)->by($request->user()?->id ?: $request->ip());
-        });
-
-        RateLimiter::for('api-ip', function ($request) {
-            return Limit::perMinute(200)->by($request->ip());
-        });
+        RateLimiter::for('incidents', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.incidents', 100))->by($limitBy($request)));
+        RateLimiter::for('reference', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.reference', 30))->by($limitBy($request)));
+        RateLimiter::for('actions', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.actions', 60))->by($limitBy($request)));
+        RateLimiter::for('ai_export', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.ai_export', 60))->by($limitBy($request)));
     }
 }

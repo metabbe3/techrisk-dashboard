@@ -32,7 +32,7 @@ class EnhanceAgentPromptController extends Controller
     private function enhancePrompt(array $validated): JsonResponse
     {
         if (blank($validated['text'] ?? null)) {
-            return response()->json([
+            return $this->successResponse([
                 'success' => false,
                 'error' => 'Please write a draft prompt before enhancing.',
             ]);
@@ -47,7 +47,7 @@ class EnhanceAgentPromptController extends Controller
             additionalPrompt: $context,
         );
 
-        return response()->json([
+        return $this->successResponse([
             'success' => $result->success,
             'text' => $result->text,
             'error' => $result->error,
@@ -60,7 +60,7 @@ class EnhanceAgentPromptController extends Controller
         $prompt = config('ai.prompts.agent_skill_suggest');
 
         if (! $prompt) {
-            return response()->json([
+            return $this->successResponse([
                 'success' => false,
                 'error' => 'Skill suggestion is not configured.',
             ]);
@@ -73,7 +73,7 @@ class EnhanceAgentPromptController extends Controller
             model: $validated['model'] ?? null,
         );
 
-        return response()->json($result);
+        return $this->successResponse($result);
     }
 
     private function buildAgentContext(array $validated): ?string

@@ -12,9 +12,9 @@
     };
 
     $inc = $this->record;
-    $sevColor = Severity::tryFrom($inc->severity)?->color() ?? 'gray';
-    $statusColor = IncidentStatus::tryFrom($inc->incident_status)?->color() ?? 'gray';
-    $fundColor = $inc->fund_status ? FundStatus::tryFrom($inc->fund_status)?->color() ?? 'gray' : null;
+    $sevColor = $inc->severity?->color() ?? 'gray';
+    $statusColor = $inc->incident_status?->color() ?? 'gray';
+    $fundColor = $inc->fund_status?->color() ?? 'gray';
 
     $sevGradient = match($sevColor) {
         'danger' => 'from-red-600 to-red-500',

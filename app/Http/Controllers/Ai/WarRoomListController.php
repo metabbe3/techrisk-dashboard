@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomSession;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class WarRoomListController
+class WarRoomListController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
@@ -21,6 +22,6 @@ class WarRoomListController
 
         $sessions = $query->paginate(20);
 
-        return response()->json($sessions);
+        return $this->successResponse($sessions);
     }
 }

@@ -2,7 +2,6 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
 use Carbon\Carbon;
@@ -35,7 +34,7 @@ class FundLossTrendChart extends ChartWidget
                 DB::raw('SUM(fund_loss) as total_fund_loss'),
                 DB::raw('MONTH(incident_date) as month')
             )
-                ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+                ->excludedFromCounts()
                 ->groupBy('month');
 
             if ($this->start_date && $this->end_date) {

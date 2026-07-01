@@ -13,7 +13,6 @@ use App\Filament\Forms\Components\AiTextarea;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
 use App\Models\Category;
-use Illuminate\Support\Facades\Cache;
 use App\Models\Incident;
 use App\Models\UserAuditLogSetting;
 use Filament\Forms;
@@ -36,6 +35,7 @@ use Filament\Tables\Grouping\Group;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class IncidentResource extends Resource
 {
@@ -299,21 +299,21 @@ class IncidentResource extends Resource
 
                         $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($tab, $year) {
                             $query = Incident::whereYear('incident_date', $year)
-                                ->where('classification', '!=', 'Issue')
+                                ->where('classification', '!=', IncidentClassification::Issue->value)
                                 ->orderBy('incident_date')->orderBy('id');
 
                             match ($tab) {
-                                'On Going' => $query->where('incident_status', '!=', 'Completed'),
-                                'Completed Cases' => $query->where('incident_status', 'Completed'),
+                                'On Going' => $query->where('incident_status', '!=', IncidentStatus::Completed->value),
+                                'Completed Cases' => $query->where('incident_status', IncidentStatus::Completed->value),
                                 'Recovered Cases' => $query->where('recovered_fund', '>', 0),
-                                'P4 Incidents' => $query->where('severity', 'P4'),
-                                'Non-Tech Incidents' => $query->where('incident_type', 'Non-tech'),
-                                'Fund Loss' => $query->where('fund_status', 'Confirmed loss'),
-                                'Potential Recovery' => $query->where('fund_status', 'Potential recovery'),
-                                'Fully Recovered' => $query->where('fund_status', 'Fully recovered'),
-                                'Non Tech Loss' => $query->where('fund_status', 'Non Tech Loss'),
-                                'Non Fund Loss' => $query->where('fund_status', 'Non fundLoss'),
-                                'Non Incident' => $query->where('severity', 'Non Incident'),
+                                'P4 Incidents' => $query->where('severity', Severity::P4->value),
+                                'Non-Tech Incidents' => $query->where('incident_type', IncidentType::NonTech->value),
+                                'Fund Loss' => $query->where('fund_status', FundStatus::ConfirmedLoss->value),
+                                'Potential Recovery' => $query->where('fund_status', FundStatus::PotentialRecovery->value),
+                                'Fully Recovered' => $query->where('fund_status', FundStatus::FullyRecovered->value),
+                                'Non Tech Loss' => $query->where('fund_status', FundStatus::NonTechLoss->value),
+                                'Non Fund Loss' => $query->where('fund_status', FundStatus::NonFundLoss->value),
+                                'Non Incident' => $query->where('severity', Severity::NonIncident->value),
                                 default => null,
                             };
 
@@ -333,9 +333,9 @@ class IncidentResource extends Resource
                     })
                     ->formatStateUsing(fn (int $state): string => number_format($state))
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
-                TextColumn::make('severity')->badge()->color(fn (string $state): string => Severity::tryFrom($state)?->color() ?? 'gray')->sortable()->width('80px'),
-                TextColumn::make('incident_status')->badge()->color(fn (string $state): string => IncidentStatus::tryFrom($state)?->color() ?? 'gray')->sortable()->width('100px'),
-                TextColumn::make('fund_status')->badge()->color(fn (string $state): string => FundStatus::tryFrom($state)?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
+                TextColumn::make('severity')->badge()->color(fn (?Severity $state): string => $state?->color() ?? 'gray')->sortable()->width('80px'),
+                TextColumn::make('incident_status')->badge()->color(fn (?IncidentStatus $state): string => $state?->color() ?? 'gray')->sortable()->width('100px'),
+                TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
                 TextColumn::make('pic.name')->label('PIC')->sortable()->toggleable()->width('100px'),
                 TextColumn::make('incident_date')->dateTime()->sortable()->width('100px'),
                 TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->width('110px')->summarize(Sum::make()->money('IDR')->label('Total Potential')),
@@ -359,8 +359,10 @@ class IncidentResource extends Resource
                 IconColumn::make('goc_upload')->boolean()->toggleable(isToggledHiddenByDefault: true),
             ])
             ->groups([
-                'incident_status',
-                'severity',
+                Group::make('incident_status')
+                    ->getTitleFromRecordUsing(fn (Incident $record): ?string => $record->incident_status?->value),
+                Group::make('severity')
+                    ->getTitleFromRecordUsing(fn (Incident $record): ?string => $record->severity?->value),
                 Group::make('incident_date')
                     ->label('Incident Month')
                     ->getTitleFromRecordUsing(fn (Incident $record): ?string => $record->incident_date?->format('F Y'))
@@ -643,7 +645,7 @@ class IncidentResource extends Resource
 
     public static function applyAccessControl(Builder $query): Builder
     {
-        $query = $query->where('classification', '!=', 'Issue');
+        $query = $query->where('classification', '!=', IncidentClassification::Issue->value);
 
         $user = auth()->user();
         if (! $user) {

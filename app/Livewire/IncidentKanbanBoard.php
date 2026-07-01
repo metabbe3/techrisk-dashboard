@@ -80,7 +80,7 @@ class IncidentKanbanBoard extends Component
         return collect(IncidentStatus::cases())->mapWithKeys(function (IncidentStatus $status) use ($incidents) {
             $items = $incidents->where('incident_status', $status->value)->values();
 
-            if ($status->value === 'Completed' && ! $this->showAllCompleted && $items->count() > 10) {
+            if ($status->value === IncidentStatus::Completed && ! $this->showAllCompleted && $items->count() > 10) {
                 $items = $items->slice(0, 10)->values();
             }
 
@@ -150,7 +150,7 @@ class IncidentKanbanBoard extends Component
             return;
         }
 
-        $oldStatus = $incident->incident_status;
+        $oldStatus = $incident->incident_status->value;
         $incident->incident_status = $newStatus;
         $incident->save();
 
@@ -253,7 +253,7 @@ class IncidentKanbanBoard extends Component
             $text = intdiv($diffInHours, 24).'d';
         }
 
-        $threshold = self::SLA_THRESHOLDS[$incident->severity] ?? 72;
+        $threshold = self::SLA_THRESHOLDS[$incident->severity->value] ?? 72;
 
         return ['text' => $text, 'overdue' => $diffInHours > $threshold];
     }
@@ -366,7 +366,7 @@ class IncidentKanbanBoard extends Component
         $query = IncidentResource::applyAccessControl($query);
 
         if (! empty($this->severity)) {
-            $query->whereIn('severity', $this->severity);
+            $query->whereIn('severity', $this->severity->value);
         }
 
         if (! empty($this->incidentType)) {

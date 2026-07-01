@@ -2,7 +2,7 @@
 
 namespace App\Filament\Widgets;
 
-use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -49,30 +49,30 @@ class DashboardStatsOverview extends BaseWidget
         }
 
         $totalIncidentsOnly = Incident::query()
-            ->where('classification', 'Incident')
+            ->where('classification', IncidentClassification::Incident->value)
             ->tap($incidentDateFilter)
-            ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+            ->excludedFromCounts()
             ->count();
 
         $totalIncidents = Incident::query()
             ->tap($incidentDateFilter)
-            ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+            ->excludedFromCounts()
             ->count();
 
         $fundLossTotal = Incident::query()
             ->tap($incidentDateFilter)
             ->where('incident_status', 'Completed')
-            ->where(fn ($q) => $q->whereNull('fund_status')->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS))
+            ->excludedFromCounts()
             ->sum('fund_loss');
 
         $recoveredTotal = Incident::query()
             ->tap($incidentDateFilter)
-            ->where('classification', '!=', 'Issue')
+            ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where('recovered_fund', '>', 0)
             ->sum('recovered_fund');
 
-        $lastIncident = Incident::where('classification', 'Incident')
+        $lastIncident = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->latest('incident_date')
             ->first();
@@ -85,21 +85,21 @@ class DashboardStatsOverview extends BaseWidget
         $lastIncidentLabel = $days === 0 ? 'No recent incident' : $days.' days ago';
 
         $mttrNonFundLoss = Incident::query()
-            ->where('classification', '!=', 'Issue')
+            ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->tap($incidentDateFilter)
             ->where('mttr', '>=', 0)
             ->average('mttr');
 
         $mttrFundLoss = abs(Incident::query()
-            ->where('classification', '!=', 'Issue')
+            ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->tap($incidentDateFilter)
             ->where('mttr', '<', 0)
             ->average('mttr') ?? 0);
 
         $mtbfNonFundLossQuery = Incident::query()
-            ->where('classification', '!=', 'Issue')
+            ->where('classification', '!=', IncidentClassification::Issue->value)
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where('fund_status', 'Non fundLoss');
@@ -115,7 +115,7 @@ class DashboardStatsOverview extends BaseWidget
         }
 
         $mtbfFundLossQuery = Incident::query()
-            ->where('classification', '!=', 'Issue')
+            ->where('classification', '!=', IncidentClassification::Issue->value)
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->where('fund_status', 'Confirmed loss');

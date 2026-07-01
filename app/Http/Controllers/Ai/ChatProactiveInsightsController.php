@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ProactiveInsight;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class ChatProactiveInsightsController
+class ChatProactiveInsightsController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
@@ -28,7 +29,7 @@ class ChatProactiveInsightsController
                 'created_at' => $insight->created_at?->toISOString(),
             ]);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'insights' => $insights,
         ]);
@@ -42,6 +43,6 @@ class ChatProactiveInsightsController
 
         $insight->update(['is_read' => true]);
 
-        return response()->json(['success' => true]);
+        return $this->successResponse(['success' => true]);
     }
 }

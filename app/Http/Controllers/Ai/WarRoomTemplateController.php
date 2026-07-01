@@ -15,7 +15,7 @@ class WarRoomTemplateController extends Controller
             ->orderBy('updated_at', 'desc')
             ->get();
 
-        return response()->json(['templates' => $templates]);
+        return $this->successResponse(['templates' => $templates]);
     }
 
     public function store(Request $request): JsonResponse
@@ -37,7 +37,7 @@ class WarRoomTemplateController extends Controller
             'user_id' => $request->user()->id,
         ]);
 
-        return response()->json(['template' => $template], 201);
+        return $this->successResponse(['template' => $template], null, 201);
     }
 
     public function update(Request $request, string $id): JsonResponse
@@ -60,7 +60,7 @@ class WarRoomTemplateController extends Controller
 
         $template->update($data);
 
-        return response()->json(['template' => $template->fresh()]);
+        return $this->successResponse(['template' => $template->fresh()]);
     }
 
     public function destroy(Request $request, string $id): JsonResponse
@@ -71,6 +71,6 @@ class WarRoomTemplateController extends Controller
 
         $template->delete();
 
-        return response()->json(['deleted' => true]);
+        return $this->successResponse(['deleted' => true]);
     }
 }

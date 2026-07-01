@@ -24,8 +24,8 @@ class IncidentUpdated extends IncidentNotification
         $lines = [
             'The incident you are assigned as PIC has been updated.',
             '**Incident:** '.$this->incident->title,
-            '**Status:** '.$this->incident->incident_status,
-            '**Severity:** '.$this->incident->severity,
+            '**Status:** '.$this->incident->incident_status->value,
+            '**Severity:** '.$this->incident->severity->value,
         ];
 
         if (! empty($this->changes)) {

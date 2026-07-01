@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Incident;
+use App\Services\WeeklyDataService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Response;
@@ -10,6 +10,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class WeeklyReportExportController extends Controller
 {
+    public function __construct(
+        private WeeklyDataService $weeklyDataService,
+    ) {}
+
     /**
      * Export weekly report to Excel.
      */
@@ -21,7 +25,7 @@ class WeeklyReportExportController extends Controller
         }
 
         // Get weekly data
-        $weeklyData = $this->getWeeklyData($year);
+        $weeklyData = $this->weeklyDataService->getWeeklyData($year);
         $totalOpen = collect($weeklyData)->sum('incident_open');
         $totalClosed = collect($weeklyData)->sum('incident_closed');
         $grandTotal = collect($weeklyData)->sum('total');
@@ -38,103 +42,6 @@ class WeeklyReportExportController extends Controller
         }, $filename, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
-    }
-
-    /**
-     * Get weekly data for the given year.
-     */
-    protected function getWeeklyData(int $year): array
-    {
-        $currentDate = now();
-        $weekData = [];
-
-        // Get custom Friday-Thursday weeks for the selected year
-        $weeks = $this->getCustomWeeks($year);
-
-        // Load all incidents for the year in a single query
-        $allIncidents = Incident::where('classification', 'Incident')
-            ->whereYear('incident_date', $year)
-            ->where(fn ($query) => $query->whereNull('fund_status')
-                ->orWhereNotIn('fund_status', \App\Enums\FundStatus::EXCLUDED_FROM_COUNTS))
-            ->get();
-
-        foreach ($weeks as $weekNumber => $dateRange) {
-            // Skip future weeks
-            if ($dateRange['start']->gt($currentDate)) {
-                continue;
-            }
-
-            // Filter from already-loaded collection
-            $weekStart = $dateRange['start']->copy()->startOfDay();
-            $weekEnd = $dateRange['end']->copy()->endOfDay();
-
-            $incidents = $allIncidents->filter(function ($incident) use ($weekStart, $weekEnd) {
-                return $incident->incident_date->between($weekStart, $weekEnd);
-            });
-
-            $openCount = $incidents->whereIn('incident_status', ['Open', 'In progress', 'Finalization'])->count();
-            $closedCount = $incidents->where('incident_status', 'Completed')->count();
-            $totalCount = $incidents->count();
-
-            $weekData[] = (object) [
-                'week' => "W{$weekNumber}",
-                'date_range' => $dateRange['start']->format('M j').' - '.$dateRange['end']->format('M j, Y'),
-                'incident_open' => $openCount,
-                'incident_closed' => $closedCount,
-                'total' => $totalCount,
-            ];
-        }
-
-        return $weekData;
-    }
-
-    /**
-     * Get custom Friday-Thursday weeks for a given year.
-     * Week 1: January 1st to first Thursday
-     * Week 2 onwards: Friday to Thursday
-     */
-    protected function getCustomWeeks(int $year): array
-    {
-        $weeks = [];
-        $yearStart = \Carbon\Carbon::create($year, 1, 1)->startOfDay();
-
-        // Week 1: Always starts from January 1st
-        $week1End = $yearStart->copy();
-        while ($week1End->dayOfWeek !== 4) { // 4 = Thursday
-            $week1End->addDay();
-        }
-
-        $weeks[1] = [
-            'start' => $yearStart->copy(),
-            'end' => $week1End->copy(),
-        ];
-
-        // Find the first Friday after Week 1 ends
-        $currentFriday = $week1End->copy()->addDay();
-        while ($currentFriday->dayOfWeek !== 5) { // 5 = Friday
-            $currentFriday->addDay();
-        }
-
-        // Week 2 onwards: Friday to Thursday (7 days each)
-        $weekNumber = 2;
-        while ($currentFriday->year === $year) {
-            $weekStart = $currentFriday->copy();
-            $weekEnd = $currentFriday->copy()->addDays(6);
-
-            $weeks[$weekNumber] = [
-                'start' => $weekStart,
-                'end' => $weekEnd,
-            ];
-
-            $currentFriday->addWeek();
-            $weekNumber++;
-
-            if ($weekNumber > 53) {
-                break;
-            }
-        }
-
-        return $weeks;
     }
 
     /**

@@ -2,16 +2,17 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
+use App\Jobs\Ai\ProcessPlanSubtask;
 use App\Models\ChatMessage;
 use App\Models\ChatPlanSubtask;
-use App\Jobs\Ai\ProcessPlanSubtask;
 use App\Services\Ai\PlanMode\PlanModeStreamingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
-class ChatPlanResumeController
+class ChatPlanResumeController extends Controller
 {
     public function __construct(
         private PlanModeStreamingService $streamingService,
@@ -74,7 +75,7 @@ class ChatPlanResumeController
             ->firstOrFail();
 
         if (! $subtask->isFailed()) {
-            return response()->json(['message' => 'Only failed subtasks can be retried.'], 422);
+            return $this->errorResponse('Only failed subtasks can be retried.', 422);
         }
 
         $subtask->update([
@@ -94,7 +95,7 @@ class ChatPlanResumeController
         ProcessPlanSubtask::dispatch($subtask, $userMessage, $referencedIds, $userModel)
             ->onQueue(config('ai.plan_mode.queue', 'war-room'));
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'subtask_id' => $subtask->id,
             'status' => 'pending',
@@ -107,7 +108,7 @@ class ChatPlanResumeController
             ->whereHas('conversation', fn ($q) => $q->where('user_id', auth()->id()))
             ->firstOrFail();
 
-        return response()->json([
+        return $this->successResponse([
             'id' => $subtask->id,
             'status' => $subtask->status,
             'error_message' => $subtask->error_message,

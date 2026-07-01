@@ -17,6 +17,137 @@ use Illuminate\Support\Str;
 class IncidentFormatter
 {
     /**
+     * Render a full incident as a markdown document (API export format).
+     * Expects the incident to be loaded with Incident::FULL_RELATIONS.
+     */
+    public static function toMarkdown(Incident $incident): string
+    {
+        $md = [];
+
+        // Header
+        $md[] = "# {$incident->title}";
+        $md[] = '';
+        $md[] = "**Incident ID:** {$incident->no}";
+        $md[] = '';
+
+        // Basic Info
+        $md[] = '## Basic Information';
+        $md[] = '';
+        $md[] = '| Field | Value |';
+        $md[] = '|-------|-------|';
+        $md[] = "| **Severity** | {$incident->severity->value} |";
+        $md[] = "| **Type** | {$incident->incident_type} |";
+        $md[] = "| **Source** | {$incident->incident_source} |";
+        $md[] = "| **Incident Date** | {$incident->incident_date->format('Y-m-d')} |";
+        $md[] = '| **Discovered At** | '.($incident->discovered_at?->format('Y-m-d H:i') ?? 'N/A').' |';
+        $md[] = '| **Stop Bleeding At** | '.($incident->stop_bleeding_at?->format('Y-m-d H:i') ?? 'N/A').' |';
+        $md[] = '| **Entry Date** | '.($incident->entry_date_tech_risk?->format('Y-m-d') ?? 'N/A').' |';
+        $md[] = '';
+
+        // Summary
+        $md[] = '## Summary';
+        $md[] = '';
+        $md[] = $incident->summary ?? 'No summary provided.';
+        $md[] = '';
+
+        // Root Cause
+        if ($incident->root_cause) {
+            $md[] = '## Root Cause';
+            $md[] = '';
+            $md[] = $incident->root_cause;
+            $md[] = '';
+        }
+
+        // Financial Impact
+        $md[] = '## Financial Impact';
+        $md[] = '';
+        $md[] = '- **Potential Fund Loss:** '.($incident->potential_fund_loss ? number_format((float) $incident->potential_fund_loss) : 'N/A');
+        $md[] = '- **Actual Fund Loss:** '.($incident->fund_loss ? number_format((float) $incident->fund_loss) : 'N/A');
+        $md[] = '';
+
+        // PIC
+        if ($incident->pic) {
+            $md[] = '## Person In Charge';
+            $md[] = '';
+            $md[] = "- **Name:** {$incident->pic->name}";
+            $md[] = '';
+        }
+
+        // Third Party
+        if ($incident->third_party_client) {
+            $md[] = '## Third Party';
+            $md[] = '';
+            $md[] = $incident->third_party_client;
+            $md[] = '';
+        }
+
+        // Labels/Tags
+        if ($incident->labels && $incident->labels->isNotEmpty()) {
+            $md[] = '## Labels';
+            $md[] = '';
+            foreach ($incident->labels as $label) {
+                $md[] = "- `{$label->name}`";
+            }
+            $md[] = '';
+        }
+
+        // Status Updates
+        if ($incident->statusUpdates && $incident->statusUpdates->isNotEmpty()) {
+            $md[] = '## Status Updates';
+            $md[] = '';
+            foreach ($incident->statusUpdates as $update) {
+                $md[] = "### {$update->updated_at->format('Y-m-d H:i')} - {$update->status}";
+                $md[] = '';
+                $md[] = $update->notes ?? 'No notes.';
+                $md[] = '';
+            }
+        }
+
+        // Action Improvements
+        if ($incident->actionImprovements && $incident->actionImprovements->isNotEmpty()) {
+            $md[] = '## Action Improvements';
+            $md[] = '';
+            foreach ($incident->actionImprovements as $action) {
+                $statusIcon = $action->status === 'done' ? '✅' : '🔄';
+                $md[] = "### {$statusIcon} {$action->title}";
+                $md[] = '';
+                $md[] = $action->detail;
+                $md[] = '';
+                // Safe date handling
+                $dueDate = $action->due_date;
+                if (is_string($dueDate)) {
+                    $md[] = "- **Due Date:** {$dueDate}";
+                } elseif ($dueDate && method_exists($dueDate, 'format')) {
+                    $md[] = "- **Due Date:** {$dueDate->format('Y-m-d')}";
+                } else {
+                    $md[] = '- **Due Date:** N/A';
+                }
+                $md[] = "- **Status:** {$action->status}";
+                $md[] = '';
+            }
+        }
+
+        // Investigation Documents
+        if ($incident->investigationDocuments && $incident->investigationDocuments->isNotEmpty()) {
+            $md[] = '## Investigation Documents';
+            $md[] = '';
+            foreach ($incident->investigationDocuments as $doc) {
+                $md[] = "### {$doc->title}";
+                $md[] = '';
+                $md[] = $doc->content ?? 'No content.';
+                $md[] = '';
+            }
+        }
+
+        // Metadata
+        $md[] = '---';
+        $md[] = '';
+        $md[] = '*Reported by: '.($incident->reported_by ?? 'N/A').'*';
+
+        return implode("\n", $md);
+    }
+
+    /**
      * Format an incident as a compact single line with markdown link.
      * Used in: getRecentIncidents, formatSmartSearchContext (full detail).
      *
@@ -47,13 +178,13 @@ class IncidentFormatter
         ];
 
         if ($options['show_classification'] ?? true) {
-            $parts[] = $incident->classification;
+            $parts[] = $incident->classification->value;
         }
 
         $parts[] = $incident->incident_type;
 
-        $parts[] = "Severity: {$incident->severity}";
-        $parts[] = "Status: {$incident->incident_status}";
+        $parts[] = "Severity: {$incident->severity->value}";
+        $parts[] = "Status: {$incident->incident_status->value}";
         $parts[] = "PIC: {$pic}";
 
         if ($options['show_date'] ?? true) {
@@ -151,8 +282,8 @@ class IncidentFormatter
 
         $lines[] = "## {$incident->no} - ".($incident->title ?? 'Untitled');
         $meta = collect([
-            "Severity: {$incident->severity}",
-            "Status: {$incident->incident_status}",
+            "Severity: {$incident->severity->value}",
+            "Status: {$incident->incident_status->value}",
             "Type: {$incident->incident_type}",
             'Date: '.($incident->incident_date?->format('Y-m-d') ?? 'N/A'),
         ])->implode(' | ');
@@ -208,9 +339,9 @@ class IncidentFormatter
     {
         $parts = [
             "# {$incident->no} - ".($incident->title ?? 'Untitled'),
-            "Severity: {$incident->severity} | Status: {$incident->incident_status}",
+            "Severity: {$incident->severity->value} | Status: {$incident->incident_status->value}",
             "Date: {$incident->incident_date?->format('Y-m-d')} | PIC: ".($incident->pic?->name ?? 'Unassigned'),
-            "Classification: {$incident->classification} | Type: {$incident->incident_type}",
+            "Classification: {$incident->classification->value} | Type: {$incident->incident_type}",
         ];
 
         if ($incident->summary) {

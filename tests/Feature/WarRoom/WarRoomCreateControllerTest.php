@@ -62,11 +62,9 @@ class WarRoomCreateControllerTest extends TestCase
             ]);
 
         $response->assertStatus(201)
-            ->assertJsonStructure(['id', 'status', 'title'])
-            ->assertJson([
-                'status' => 'pending',
-                'title' => 'Test Session',
-            ]);
+            ->assertJsonStructure(['data' => ['id', 'status', 'title']])
+            ->assertJsonPath('data.status', 'pending')
+            ->assertJsonPath('data.title', 'Test Session');
     }
 
     public function test_create_session_validates_required_fields(): void
@@ -163,7 +161,7 @@ class WarRoomCreateControllerTest extends TestCase
 
         $response->assertStatus(409)
             ->assertJson(['message' => 'This incident already has an active discussion.'])
-            ->assertJsonStructure(['existing_session' => ['id', 'title', 'status', 'created_at']]);
+            ->assertJsonStructure(['data' => ['existing_session' => ['id', 'title', 'status', 'created_at']]]);
     }
 
     public function test_create_session_allows_new_session_for_failed_existing(): void
@@ -240,8 +238,13 @@ class WarRoomCreateControllerTest extends TestCase
                 'selected_agents' => ['sre'],
             ]);
 
+        // Unexpected errors now propagate to the global handler: unified envelope,
+        // fixed message, and the internal exception detail is never leaked to the client.
         $response->assertStatus(500)
-            ->assertJson(['message' => 'Unexpected AI service failure']);
+            ->assertJsonPath('status', 'Error')
+            ->assertJsonPath('message', 'Internal server error.')
+            ->assertJsonPath('data', null)
+            ->assertJsonMissing(['message' => 'Unexpected AI service failure']);
     }
 
     public function test_create_session_passes_optional_parameters(): void

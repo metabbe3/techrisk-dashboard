@@ -2,12 +2,13 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomSession;
 use App\Services\WarRoom\WarRoomService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class WarRoomReanalyzeController
+class WarRoomReanalyzeController extends Controller
 {
     public function __construct(
         private WarRoomService $warRoomService,
@@ -36,10 +37,10 @@ class WarRoomReanalyzeController
                 $request->has('deep_analysis') ? $request->boolean('deep_analysis') : null,
             );
         } catch (\InvalidArgumentException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
+            return $this->errorResponse($e->getMessage(), 422);
         }
 
-        return response()->json([
+        return $this->successResponse([
             'id' => $session->id,
             'status' => $session->status,
             'title' => $session->title,

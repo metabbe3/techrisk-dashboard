@@ -2,6 +2,7 @@
 
 namespace App\Exports;
 
+use App\Enums\IncidentClassification;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -79,7 +80,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
 
         if (! isset(self::$mtbfCache[$key])) {
             $incidents = \App\Models\Incident::whereYear('incident_date', $year)
-                ->where('classification', '!=', 'Issue')
+                ->where('classification', '!=', IncidentClassification::Issue->value)
                 ->orderBy('incident_date')->orderBy('id')
                 ->get(['id', 'incident_date']);
 

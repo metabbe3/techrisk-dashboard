@@ -59,16 +59,16 @@
 
                 const d = await this.simFetch('{{ $endpoint }}', payload);
 
-                if (d.success) {
-                    this.simResults = d.similar || [];
+                if (d.data.success) {
+                    this.simResults = d.data.similar || [];
                     this.simOpen = true;
-                    if (!d.similar?.length) {
+                    if (!d.data.similar?.length) {
                         this.simNotify('No similar incidents found.', 'info');
                     } else {
-                        this.simNotify(d.similar.length + ' similar incident(s) found.', 'success');
+                        this.simNotify(d.data.similar.length + ' similar incident(s) found.', 'success');
                     }
                 } else {
-                    this.simError = d.error || 'Detection failed.';
+                    this.simError = d.data.error || 'Detection failed.';
                     this.simNotify(this.simError, 'danger');
                 }
             } catch (e) {

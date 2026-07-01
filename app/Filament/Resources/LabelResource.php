@@ -20,11 +20,6 @@ class LabelResource extends Resource
 
     protected static ?string $navigationGroup = 'Settings';
 
-    public static function canViewAny(): bool
-    {
-        return auth()->user()->can('view labels');
-    }
-
     public static function form(Form $form): Form
     {
         return $form

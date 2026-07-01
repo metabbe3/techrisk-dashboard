@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
 use App\Services\Ai\AiChatService;
@@ -9,7 +10,7 @@ use App\Services\Ai\AiTextResult;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
-class ChatFinalizeController
+class ChatFinalizeController extends Controller
 {
     public function __construct(
         private AiChatService $chatService,
@@ -92,7 +93,7 @@ class ChatFinalizeController
             }
         }
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'conversation_id' => (string) $conversation->id,
             'updated_title' => $updatedTitle,

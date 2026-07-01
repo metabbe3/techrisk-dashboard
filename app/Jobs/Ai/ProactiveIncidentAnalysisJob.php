@@ -97,7 +97,7 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
     {
         $parts = [
             "Incident: {$incident->no} - {$incident->title}",
-            "Severity: {$incident->severity} | Status: {$incident->incident_status} | Type: {$incident->incident_type}",
+            "Severity: {$incident->severity->value} | Status: {$incident->incident_status->value} | Type: {$incident->incident_type}",
             "Date: {$incident->incident_date?->format('Y-m-d')}",
         ];
 

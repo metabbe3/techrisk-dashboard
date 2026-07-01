@@ -88,8 +88,8 @@ class WarRoomToolExecutor
 
         return $results->map(fn ($inc) => implode(' | ', array_filter([
             $inc->no,
-            $inc->severity,
-            $inc->incident_status,
+            $inc->severity->value,
+            $inc->incident_status->value,
             $inc->title ?? 'Untitled',
             $inc->incident_date?->format('Y-m-d'),
             $inc->pic?->name ? "PIC: {$inc->pic->name}" : null,

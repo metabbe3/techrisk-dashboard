@@ -51,6 +51,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Interactive Login Token TTL
+    |--------------------------------------------------------------------------
+    |
+    | Lifetime (in minutes) of the access token issued by POST /api/login.
+    | Defaults to 30 days; override via API_LOGIN_TOKEN_TTL_MINUTES. Tokens
+    | issued from the Filament API-token resource keep their own per-token expiry.
+    |
+    */
+
+    'login_token_ttl_minutes' => env('API_LOGIN_TOKEN_TTL_MINUTES', 43200),
+
+    /*
+    |--------------------------------------------------------------------------
     | Token Prefix
     |--------------------------------------------------------------------------
     |

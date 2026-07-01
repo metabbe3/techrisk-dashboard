@@ -26,7 +26,7 @@ class GeneratePostMortemController extends Controller
 
         $result = $this->postMortemService->generate($incident);
 
-        return response()->json([
+        return $this->successResponse([
             'success' => true,
             'data' => $result,
         ]);

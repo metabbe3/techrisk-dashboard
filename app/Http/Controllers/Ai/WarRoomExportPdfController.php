@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Ai;
 
+use App\Http\Controllers\Controller;
 use App\Models\WarRoomSession;
+use App\Support\Export;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Parsedown;
 
-class WarRoomExportPdfController
+class WarRoomExportPdfController extends Controller
 {
     public function __invoke(Request $request, string $id)
     {
@@ -16,7 +18,7 @@ class WarRoomExportPdfController
             ->findOrFail($id);
 
         if ($session->status !== 'completed' || blank($session->final_report_html)) {
-            return response()->json(['message' => 'Report not available for export.'], 422);
+            return $this->errorResponse('Report not available for export.', 422);
         }
 
         $parsedown = new Parsedown;
@@ -24,7 +26,7 @@ class WarRoomExportPdfController
 
         $incident = $session->incident;
         $incidentNo = $incident?->no ?? 'unknown';
-        $filename = 'discussion-forum-'.$incidentNo.'-'.now()->format('Y-m-d').'.pdf';
+        $filename = Export::downloadFilename('discussion-forum-'.$incidentNo, 'pdf', now()->format('Y-m-d'));
 
         $pdf = Pdf::loadView('war-room.pdf-report', [
             'title' => $session->title,

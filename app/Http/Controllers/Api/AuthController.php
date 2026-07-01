@@ -73,9 +73,16 @@ class AuthController extends Controller
                 return $this->errorResponse('Service accounts cannot use interactive login.', 403);
             }
 
+            // Issue a long-lived, sliding token: expires in `login_token_ttl_minutes`
+            // (default 30 days) and renews by the same window on every authenticated
+            // hit (see \App\Models\PersonalAccessToken::renew()), so a token in
+            // regular use never expires.
+            $ttl = (int) config('sanctum.login_token_ttl_minutes', 43200);
+
             $newToken = $user->createToken('api-token-'.$user->id.'-'.now()->format('YmdHis'), ['*']);
             $newToken->accessToken->forceFill([
-                'expires_at' => now()->addHour(),
+                'expires_at' => now()->addMinutes($ttl),
+                'renewal_minutes' => $ttl,
             ])->save();
 
             Log::info('User logged in successfully', [
