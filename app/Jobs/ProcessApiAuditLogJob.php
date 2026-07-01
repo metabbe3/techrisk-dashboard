@@ -202,8 +202,7 @@ class ProcessApiAuditLogJob implements ShouldQueue
 
     private function storeToDatabase(array $data): void
     {
-        // Only store essential data to database
-        ApiAuditLog::create([
+        $createData = [
             'trace_id' => $data['trace_id'],
             'request_id' => $data['request_id'],
             'request_timestamp' => $data['request_timestamp'],
@@ -226,7 +225,16 @@ class ProcessApiAuditLogJob implements ShouldQueue
             'environment' => $data['metadata']['environment'] ?? config('app.env'),
             'app_version' => $data['metadata']['app_version'] ?? null,
             'metadata' => $data['metadata'],
-        ]);
+        ];
+
+        try {
+            ApiAuditLog::create($createData);
+        } catch (\Throwable $e) {
+            // Fallback: the request_headers column may not exist yet (migration
+            // not run). Retry without it so audit logging isn't blocked.
+            unset($createData['request_headers']);
+            ApiAuditLog::create($createData);
+        }
     }
 
     /**
