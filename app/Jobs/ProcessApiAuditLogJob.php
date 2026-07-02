@@ -26,7 +26,7 @@ class ProcessApiAuditLogJob implements ShouldQueue
     public function __construct(
         public readonly array $auditData
     ) {
-        $this->onQueue('api-audit');
+        $this->onQueue('default');
     }
 
     public function handle(): void
