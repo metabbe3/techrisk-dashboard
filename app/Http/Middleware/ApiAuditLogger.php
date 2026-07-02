@@ -65,6 +65,14 @@ class ApiAuditLogger
 
             throw $e;
         } finally {
+            // Capture user AFTER auth has run (we run first via middleware
+            // priority, so $request->user() is null at captureRequestData time).
+            $user = $request->user();
+            if ($user && ! $auditEntry->user_id) {
+                $auditEntry->user_id = $user->id;
+                $auditEntry->user_email = $user->email;
+            }
+
             // Always dispatch the audit log — success or failure.
             $this->dispatchAuditLog($auditEntry);
         }
