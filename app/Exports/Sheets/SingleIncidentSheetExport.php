@@ -76,7 +76,10 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 $value = $incident->{$columnName};
                 $row[] = is_array($value) ? implode(', ', $value) : ($value ?? '');
             } else {
-                $row[] = $incident->{$columnName};
+                $value = $incident->{$columnName};
+                // ponytail: enum-cast attrs (severity/status/classification) return BackedEnum instances
+                // PhpSpreadsheet can't stringify them → coerce to the stored scalar value.
+                $row[] = $value instanceof \BackedEnum ? $value->value : $value;
             }
         }
 

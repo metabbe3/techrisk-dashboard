@@ -296,18 +296,105 @@ The "Issues - MTTR", "Issues - MTBF", and "All Issues" export tabs were returnin
 **Reviewed By:** Claude (PM Agent)
 **Review Date:** 2026-02-02
 
+### [BUG-003] - Excel Export Crash: Severity Enum Not Convertible to String
+
+**Date:** 2026-07-03
+**Discovered By:** User Report (500 error)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Exporting incidents to Excel (single-sheet CSV/XLSX and the "export all tabs" multi-sheet XLSX) crashed with HTTP 500: "Object of class App\Enums\Severity could not be converted to string". The crash originated in PhpSpreadsheet's `DefaultValueBinder` when binding the severity cell.
+
+### Affected Component
+- [x] Filament Resource (Export functionality)
+- [ ] Model
+- [ ] Controller
+- [ ] API Endpoint
+- [ ] Database/Migration
+- [ ] Frontend/CSS
+- [ ] Queue/Job
+- [ ] Other: _____
+
+### Root Cause Analysis (5 Whys)
+1. Why did the bug occur?
+   - The export `map()` pushed `$incident->severity` (a `Severity` enum instance) directly into a spreadsheet cell; PhpSpreadsheet cannot stringify enum objects.
+
+2. Why is `$incident->severity` an enum instance now?
+   - Commit `c43fc3c` introduced `App\Casts\EnumCast` and cast `severity`, `incident_status`, `fund_status`, and `classification` on the Incident model to backed enums.
+
+3. Why wasn't the export updated when the cast changed?
+   - The commit's message stated it fixed "all enum-string consumers", but missed the Maatwebsite/Excel export `map()` methods (`IncidentTableExport`, `SingleIncidentSheetExport`).
+
+4. Why wasn't it caught?
+   - No test exercised the export `map()` with an enum-cast column, so the regression shipped unverified.
+
+5. Root cause identified:
+   - **Cast change with an incomplete consumer sweep + no export test coverage.** When a model attribute's type changes (string → enum), every downstream consumer — including export serializers — must be enumerated and tested, not only the ones that fail loudly.
+
+### Impact
+- [x] User facing?
+- [ ] Data loss/corruption?
+- [x] Broken workflow?
+- [ ] Performance degradation?
+- [ ] Security vulnerability?
+- [ ] Other: _____
+
+**Impact Assessment:**
+- Users could not export incidents to Excel/CSV at all (hard 500 on both export paths).
+- Severity: High — core reporting/export feature fully blocked.
+
+### Prevention Strategy
+
+#### 1. Process Changes
+- [x] When changing a model cast, sweep all consumers (Filament, Blade, API, observers, exports/serializers) — not just the ones that break loudly.
+- [x] Add export `map()` coverage to the regression-test set.
+
+#### 2. Code Changes
+- [x] Coerce `BackedEnum` → scalar value in `IncidentTableExport::map()` and `SingleIncidentSheetExport::map()`.
+- [x] Added `tests/Feature/Exports/IncidentTableExportEnumTest.php` (asserts the severity cell is a string, not the enum instance).
+
+#### 3. Documentation Updates
+- [x] Document this bug in lesson-learned.md.
+
+### Action Items
+- [x] Fix export map() enum coercion - Done
+- [x] Add regression test - Done
+- [x] Run Laravel Pint - Done
+- [ ] Test export end-to-end on the running app (both paths) - User
+
+### Verification
+- [x] Code fixed: `app/Exports/Sheets/SingleIncidentSheetExport.php`, `app/Exports/IncidentTableExport.php`
+- [x] Test case added: `tests/Feature/Exports/IncidentTableExportEnumTest.php` (2 passing)
+- [x] Laravel Pint applied
+- [x] Code reviewed: Self-review completed
+- [ ] Deployment verified on: YYYY-MM-DD - Pending
+
+### References
+- Related Commit: `c43fc3c` (EnumCast regression)
+- Related Files:
+  - `app/Exports/IncidentTableExport.php`
+  - `app/Exports/Sheets/SingleIncidentSheetExport.php`
+  - `app/Models/Incident.php` (casts)
+  - `app/Casts/EnumCast.php`
+
+---
+
+**Reviewed By:** Claude
+**Review Date:** 2026-07-03
+
 ---
 
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 2 |
+| Total Bugs | 3 |
 | Critical | 0 |
-| High | 2 |
+| High | 3 |
 | Medium | 0 |
 | Low | 0 |
-| Resolved | 2 |
+| Resolved | 3 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -315,7 +402,7 @@ The "Issues - MTTR", "Issues - MTBF", and "All Issues" export tabs were returnin
 |-----------|-------|
 | Model | 0 |
 | Controller | 0 |
-| Filament Resource | 2 |
+| Filament Resource | 3 |
 | API Endpoint | 0 |
 | Database/Migration | 0 |
 | Frontend/CSS | 0 |
@@ -324,4 +411,4 @@ The "Issues - MTTR", "Issues - MTBF", and "All Issues" export tabs were returnin
 
 ---
 
-*Last Updated: 2026-02-02*
+*Last Updated: 2026-07-03*
