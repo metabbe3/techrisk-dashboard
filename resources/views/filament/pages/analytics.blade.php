@@ -60,7 +60,9 @@
 </x-filament-panels::page>
 
 @once
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+{{-- chart.js vendored locally as a page-scoped Vite entry (no CDN). Renders on
+     demand via `analytics-chart-updated`, so the deferred module is ready in time. --}}
+@vite(['resources/js/analytics-charts.js'])
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('analytics-chart-updated', (e) => {

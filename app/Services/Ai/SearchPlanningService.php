@@ -3,6 +3,7 @@
 namespace App\Services\Ai;
 
 use App\Models\AiSetting;
+use App\Services\Ai\Concerns\JsonExtractor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -53,7 +54,6 @@ class SearchPlanningService
                         ['role' => 'user', 'content' => $prompt],
                     ],
                     'max_tokens' => $maxTokens,
-                    'temperature' => 0.3,
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
@@ -166,21 +166,15 @@ class SearchPlanningService
             $prompt .= "RECENT CONVERSATION TOPICS: {$recentTopics}\n\n";
         }
 
-        $prompt .= "Plan the most useful web searches to supplement the incident data. "
-            ."Focus on external references, industry benchmarks, CVEs, vendor advisories, or best practices.";
+        $prompt .= 'Plan the most useful web searches to supplement the incident data. '
+            .'Focus on external references, industry benchmarks, CVEs, vendor advisories, or best practices.';
 
         return $prompt;
     }
 
     private function parsePlanResponse(string $content): SearchPlan
     {
-        // Strip markdown code fences if present
-        $json = $content;
-        if (preg_match('/```(?:json)?\s*(\{.*?\})\s*```/s', $content, $match)) {
-            $json = $match[1];
-        }
-
-        $data = json_decode($json, true);
+        $data = JsonExtractor::extract($content);
         if (! is_array($data) || empty($data['queries'])) {
             Log::warning('Search planning returned unparseable response', ['content' => $content]);
 

@@ -3,6 +3,7 @@
 namespace App\Services\Ai;
 
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\Concerns\NormalizesUsage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -11,6 +12,7 @@ use Illuminate\Support\Facades\RateLimiter;
 class AgenticChatService
 {
     use InteractsWithAiApi;
+    use NormalizesUsage;
 
     public function __construct(
         private ToolRegistryService $toolRegistry,
@@ -62,7 +64,7 @@ class AgenticChatService
 
                 $responseTimeMs = $this->elapsedMs($startTime);
                 $responseData = $response->json();
-                $usage = $responseData['usage'] ?? [];
+                $usage = $this->normalizeUsage($responseData['usage'] ?? null);
 
                 foreach (['prompt_tokens', 'completion_tokens', 'total_tokens'] as $key) {
                     $totalUsage[$key] += $usage[$key] ?? 0;
@@ -155,5 +157,4 @@ class AgenticChatService
             return AgenticChatResult::failure('Unexpected error: '.$e->getMessage(), $resolvedModel, $responseTimeMs);
         }
     }
-
 }

@@ -12,10 +12,10 @@ use OwenIt\Auditing\Contracts\Auditable;
 
 class WarRoomSession extends Model implements Auditable
 {
+    use \App\Traits\HasStatusStateMachine;
     use HasFactory;
     use HasUuids;
     use \OwenIt\Auditing\Auditable;
-    use \App\Traits\HasStatusStateMachine;
 
     protected $fillable = [
         'user_id',
@@ -119,6 +119,16 @@ class WarRoomSession extends Model implements Auditable
     public function scopeAccessibleByUser($query, ?int $userId = null)
     {
         return $query;
+    }
+
+    /**
+     * Mutations (re-analyze, retry, regenerate, draft actions) are creator-only:
+     * they re-run agents and are token-expensive. Reads stay open. One chokepoint
+     * so every mutation endpoint enforces the same rule with the same message.
+     */
+    public function assertModifiable(): void
+    {
+        abort_unless((int) $this->user_id === (int) auth()->id(), 403, 'Only the session creator can modify this session.');
     }
 
     public function getAgentRoles(): array

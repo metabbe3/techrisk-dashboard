@@ -58,13 +58,14 @@
             <div class="flex-1 min-w-[200px] max-w-xs">
                 <input
                     type="text"
+                    aria-label="Search incidents by ID or title"
                     wire:model.live.debounce.300ms="searchQuery"
                     placeholder="Search ID or title..."
                     class="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-500/20 outline-none transition-colors"
                 />
             </div>
 
-            <select wire:model.live="quickPeriod" class="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none cursor-pointer focus:border-indigo-400">
+            <select wire:model.live="quickPeriod" aria-label="Time period" class="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none cursor-pointer focus:border-indigo-400">
                 <option value="year">This Year</option>
                 <option value="quarter">This Quarter</option>
                 <option value="month">This Month</option>
@@ -145,13 +146,13 @@
             <div class="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex flex-wrap gap-4">
                 {{-- Severity --}}
                 <div class="min-w-[160px]">
-                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">Severity</label>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 mb-1.5">Severity</label>
                     <div class="flex flex-wrap gap-1">
                         @foreach($severityOptions as $value => $label)
                             <button
                                 type="button"
                                 wire:click="toggleFilter('severity', '{{ $value }}')"
-                                class="px-2 py-1 text-[11px] font-medium rounded-md border cursor-pointer transition-all
+                                class="px-2 py-1.5 text-[11px] font-medium rounded-md border cursor-pointer transition-all
                                     {{ in_array($value, $severity)
                                         ? 'bg-indigo-500 border-indigo-500 text-white'
                                         : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500 dark:hover:text-indigo-400'
@@ -165,13 +166,13 @@
 
                 {{-- Type --}}
                 <div class="min-w-[140px]">
-                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">Type</label>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 mb-1.5">Type</label>
                     <div class="flex flex-wrap gap-1">
                         @foreach($incidentTypeOptions as $value => $label)
                             <button
                                 type="button"
                                 wire:click="toggleFilter('incidentType', '{{ $value }}')"
-                                class="px-2 py-1 text-[11px] font-medium rounded-md border cursor-pointer transition-all
+                                class="px-2 py-1.5 text-[11px] font-medium rounded-md border cursor-pointer transition-all
                                     {{ in_array($value, $incidentType)
                                         ? 'bg-indigo-500 border-indigo-500 text-white'
                                         : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500 dark:hover:text-indigo-400'
@@ -185,8 +186,8 @@
 
                 {{-- Fund Status --}}
                 <div class="min-w-[160px]">
-                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">Fund Status</label>
-                    <select wire:model.live="fundStatus" class="w-full px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none cursor-pointer">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 mb-1.5">Fund Status</label>
+                    <select wire:model.live="fundStatus" aria-label="Fund status" class="w-full px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none cursor-pointer">
                         <option value="">All</option>
                         @foreach($fundStatusOptions as $value => $label)
                             <option value="{{ $value }}">{{ $label }}</option>
@@ -196,13 +197,13 @@
 
                 {{-- PIC --}}
                 <div class="min-w-[200px]">
-                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">PIC</label>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 mb-1.5">PIC</label>
                     <div class="flex flex-wrap gap-1 max-h-[80px] overflow-y-auto">
                         @foreach($picOptions as $id => $name)
                             <button
                                 type="button"
                                 wire:click="toggleFilter('picId', '{{ $id }}')"
-                                class="px-2 py-1 text-[11px] font-medium rounded-md border cursor-pointer transition-all
+                                class="px-2 py-1.5 text-[11px] font-medium rounded-md border cursor-pointer transition-all
                                     {{ in_array((string) $id, array_map('strval', $picId))
                                         ? 'bg-indigo-500 border-indigo-500 text-white'
                                         : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500 dark:hover:text-indigo-400'
@@ -216,11 +217,11 @@
 
                 {{-- Date Range --}}
                 <div class="min-w-[140px]">
-                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5">Date Range</label>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 mb-1.5">Date Range</label>
                     <div class="flex gap-2 items-center">
-                        <input type="date" wire:model.live="dateFrom" class="px-2 py-1 text-[11px] border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none" />
-                        <span class="text-[10px] text-gray-400">to</span>
-                        <input type="date" wire:model.live="dateTo" class="px-2 py-1 text-[11px] border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none" />
+                        <input type="date" wire:model.live="dateFrom" aria-label="Start date" class="px-2 py-1.5 text-[11px] border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none" />
+                        <span class="text-[10px] text-gray-500">to</span>
+                        <input type="date" wire:model.live="dateTo" aria-label="End date" class="px-2 py-1.5 text-[11px] border border-gray-200 dark:border-gray-700 rounded-md bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none" />
                     </div>
                 </div>
             </div>
@@ -307,23 +308,23 @@
                                     $hasFinancial = ($incident->potential_fund_loss > 0 || $incident->fund_loss > 0 || $incident->recovered_fund > 0);
                                 @endphp
                                 @if($hasFinancial)
-                                    <div class="mt-2 p-2 rounded-md bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700/50">
+                                    <div class="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700/50">
                                         <div class="grid grid-cols-2 gap-x-3 gap-y-1">
                                             @if($incident->potential_fund_loss > 0)
                                                 <div>
-                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Potential</span>
+                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">Potential</span>
                                                     <p class="text-[11px] font-semibold text-amber-700 dark:text-amber-400 leading-tight">Rp {{ number_format($incident->potential_fund_loss, 0, ',', '.') }}</p>
                                                 </div>
                                             @endif
                                             @if($incident->fund_loss > 0)
                                                 <div>
-                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Actual Loss</span>
+                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">Actual Loss</span>
                                                     <p class="text-[11px] font-semibold text-red-600 dark:text-red-400 leading-tight">Rp {{ number_format($incident->fund_loss, 0, ',', '.') }}</p>
                                                 </div>
                                             @endif
                                             @if($incident->recovered_fund > 0)
                                                 <div>
-                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Recovered</span>
+                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">Recovered</span>
                                                     <p class="text-[11px] font-semibold text-green-600 dark:text-green-400 leading-tight">Rp {{ number_format($incident->recovered_fund, 0, ',', '.') }}</p>
                                                 </div>
                                             @endif
@@ -332,7 +333,7 @@
                                             @endphp
                                             @if($recoveryPct !== null)
                                                 <div>
-                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Recovery</span>
+                                                    <span class="text-[9px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-500">Recovery</span>
                                                     <div class="flex items-center gap-1.5">
                                                         <div class="flex-1 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
                                                             <div class="h-full rounded-full transition-all duration-300 {{ $recoveryPct >= 80 ? 'bg-green-500' : ($recoveryPct >= 40 ? 'bg-amber-500' : 'bg-red-500') }}" style="width: {{ min($recoveryPct, 100) }}%"></div>
@@ -352,7 +353,7 @@
                                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-5L21 6m0 0l-4.5 4.5M21 6h-13.5" /></svg>
                                     <select
                                         wire:change="updateStatus({{ $incident->id }}, $event.target.value)"
-                                        class="kanban-move-select w-full text-[11px] font-medium bg-transparent border-0 outline-none cursor-pointer text-gray-400 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 focus:text-indigo-600 dark:focus:text-indigo-400"
+                                        class="kanban-move-select w-full text-[11px] font-medium bg-transparent border-0 outline-none cursor-pointer text-gray-500 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 focus:text-indigo-600 dark:focus:text-indigo-400"
                                         aria-label="Move incident {{ $incident->no }} to another status"
                                         onclick="event.stopPropagation()"
                                         title="Move to status"
@@ -404,7 +405,7 @@
             x-transition:leave="transition ease-in duration-200"
             x-transition:leave-start="opacity-100"
             x-transition:leave-end="opacity-0"
-            class="fixed inset-0 z-[9998] bg-black/30 backdrop-blur-sm"
+            class="fixed inset-0 z-[var(--z-modal-backdrop)] bg-black/30 backdrop-blur-sm"
             x-on:click="panelOpen = false"
             x-cloak
         ></div>
@@ -418,7 +419,7 @@
             x-transition:leave="transition ease-in duration-200"
             x-transition:leave-start="translate-x-0"
             x-transition:leave-end="translate-x-full"
-            class="fixed top-0 right-0 z-[9999] h-full w-full max-w-[560px] bg-white dark:bg-gray-900 shadow-2xl overflow-y-auto"
+            class="fixed top-0 right-0 z-[var(--z-modal)] h-full w-full max-w-[560px] bg-white dark:bg-gray-900 shadow-2xl overflow-y-auto"
             x-cloak
             x-on:keydown.escape.window="panelOpen = false"
         >
@@ -437,12 +438,11 @@
 
                 {{-- ========== HEADER ========== --}}
                 <div class="relative flex border-b border-gray-100 dark:border-gray-800">
-                    <div class="w-1 flex-shrink-0 rounded-tl-none" style="background: {{ $severityHex }}"></div>
                     <div class="flex-1 px-5 pt-5 pb-4">
                         <button
                             type="button"
                             x-on:click="panelOpen = false"
-                            class="absolute top-4 right-4 p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
+                            class="absolute top-4 right-4 p-1.5 rounded-lg text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
@@ -459,7 +459,7 @@
 
                             {{-- Title + ID --}}
                             <h2 class="text-base font-bold text-gray-900 dark:text-white leading-snug">{{ $incident->title }}</h2>
-                            <p class="text-xs font-mono text-gray-400 dark:text-gray-500 mt-1">{{ $incident->no }}</p>
+                            <p class="text-xs font-mono text-gray-500 dark:text-gray-500 mt-1">{{ $incident->no }}</p>
 
                             {{-- Meta row --}}
                             <div class="flex items-center gap-3 mt-3 text-xs text-gray-500 dark:text-gray-400">
@@ -499,7 +499,7 @@
                     <div class="grid grid-cols-[88px_1fr] gap-x-4 gap-y-2.5 text-sm">
                         {{-- Incident Type --}}
                         @if($incident->classification || $incident->incident_type)
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 self-start pt-0.5">Incident</span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 self-start pt-0.5">Incident</span>
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 @if($incident->classification)
                                     <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ $incident->classification }}</span>
@@ -518,7 +518,7 @@
 
                         {{-- Labels --}}
                         @if($incident->labels->isNotEmpty())
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 self-start pt-0.5">Labels</span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 self-start pt-0.5">Labels</span>
                             <div class="flex items-center gap-1.5 flex-wrap">
                                 @foreach($incident->labels as $label)
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">{{ $label->name }}</span>
@@ -528,7 +528,7 @@
 
                         {{-- Business Category --}}
                         @if(!empty($incident->business_category))
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 self-start pt-0.5">Business</span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 self-start pt-0.5">Business</span>
                             <div class="flex flex-wrap gap-1">
                                 @foreach($incident->business_category as $cat)
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">{{ $cat }}</span>
@@ -538,7 +538,7 @@
 
                         {{-- Root Cause --}}
                         @if(!empty($incident->root_cause_category))
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 self-start pt-0.5">Root Cause</span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 self-start pt-0.5">Root Cause</span>
                             <div class="flex flex-wrap gap-1">
                                 @foreach($incident->root_cause_category as $cat)
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-300">{{ $cat }}</span>
@@ -548,7 +548,7 @@
 
                         {{-- Team --}}
                         @if(!empty($incident->responsible_team))
-                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 self-start pt-0.5">Team</span>
+                            <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 self-start pt-0.5">Team</span>
                             <div class="flex flex-wrap gap-1">
                                 @foreach($incident->responsible_team as $team)
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-teal-50 dark:bg-teal-500/15 text-teal-600 dark:text-teal-300">{{ $team }}</span>
@@ -560,7 +560,7 @@
                     {{-- Financial Impact --}}
                     @if($hasFinancial)
                         <div class="space-y-2.5">
-                            <div class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                            <div class="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>
                                 Financial Impact
                             </div>

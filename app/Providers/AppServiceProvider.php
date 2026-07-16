@@ -29,6 +29,7 @@ use Filament\Support\Facades\FilamentView;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
@@ -54,6 +55,15 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
+
+        // Netcore Cloud email transport — registered as the 'netcore' mailer.
+        Mail::extend('netcore', function (array $config) {
+            return new \App\Mail\Transports\NetcoreTransport(
+                apiKey: $config['api_key'] ?? '',
+                baseUrl: $config['base_url'] ?? 'https://emailapi.netcorecloud.net',
+                timeout: (int) ($config['timeout'] ?? 30),
+            );
+        });
 
         // Serialize all dates in the app timezone (Asia/Jakarta, GMT+7) with the
         // offset, instead of Carbon's default UTC "…Z". This makes API JSON

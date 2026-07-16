@@ -6,6 +6,7 @@ namespace App\Models;
 
 use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
+use App\Enums\IncidentStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -101,6 +102,7 @@ class Incident extends Model implements Auditable
         'mtbf_non_incident',
         'mtbf_all',
         'recurrence_data',
+        'last_reminded_at',
     ];
 
     protected $casts = [
@@ -117,6 +119,7 @@ class Incident extends Model implements Auditable
         'discovered_at' => 'datetime',
         'incident_date' => 'datetime',
         'entry_date_tech_risk' => 'date',
+        'last_reminded_at' => 'datetime',
         'business_category' => 'array',
         'root_cause_category' => 'array',
         'responsible_team' => 'array',
@@ -310,6 +313,26 @@ class Incident extends Model implements Auditable
         return $this->hasMany(WarRoomSession::class);
     }
 
+    public function similarIncidents(): HasMany
+    {
+        return $this->hasMany(IncidentSimilarIncident::class);
+    }
+
+    /**
+     * Active (non-dismissed) similar incidents, serialized for the UI.
+     */
+    public function activeSimilarCards(): array
+    {
+        return $this->similarIncidents()
+            ->active()
+            ->with('similarIncident:id,no,title,summary,severity,incident_status,incident_date')
+            ->orderByDesc('similarity')
+            ->get()
+            ->map->toCardArray()
+            ->values()
+            ->all();
+    }
+
     public function scopeIssues($query)
     {
         return $query->where('classification', IncidentClassification::Issue->value);
@@ -323,6 +346,31 @@ class Incident extends Model implements Auditable
     public function hasFundLoss(): bool
     {
         return $this->fund_loss !== null && $this->fund_loss > 0;
+    }
+
+    /**
+     * Incident is still open / not completed.
+     */
+    public function isNotDone(): bool
+    {
+        return $this->incident_status?->value !== IncidentStatus::Completed->value;
+    }
+
+    /**
+     * Outstanding (unsettled) amount: potential loss not yet recovered.
+     */
+    public function getOutstandingFundLossAttribute(): float
+    {
+        return max((float) $this->potential_fund_loss - (float) $this->recovered_fund, 0);
+    }
+
+    /**
+     * Fund loss has not been settled: a loss case with outstanding amount > 0.
+     */
+    public function isUnsettledFundLoss(): bool
+    {
+        return in_array($this->fund_status?->value, [FundStatus::ConfirmedLoss->value, FundStatus::PotentialRecovery->value])
+            && $this->outstanding_fund_loss > 0;
     }
 
     /**

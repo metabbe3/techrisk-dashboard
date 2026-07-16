@@ -55,7 +55,7 @@ class AiTrendInsights extends Widget
     public function mount(): void
     {
         $aiService = app(AiTextService::class);
-        $this->models = $aiService->getAvailableModels();
+        $this->models = $aiService->getModelsForPicker();
         $this->trSelectedModel = AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
         $this->hasMultipleModels = count($this->models) > 1;
     }

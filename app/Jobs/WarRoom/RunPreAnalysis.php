@@ -40,7 +40,7 @@ class RunPreAnalysis implements ShouldQueue
                 : implode("\n", $session->incident_context ?? []);
 
             $systemPrompt = config('ai.prompts.war_room_pre_analysis.system');
-            $model = $session->model ?? config('ai.default_model');
+            $model = app(\App\Services\Ai\ModelRouter::class)->pick('reasoning', $session->model ?? config('ai.default_model'));
 
             $response = Http::withHeaders([
                 'Authorization' => 'Bearer '.$this->getApiKey(),
@@ -54,7 +54,6 @@ class RunPreAnalysis implements ShouldQueue
                         ['role' => 'user', 'content' => "Analyze the following incident data and provide structured pre-analysis:\n\n{$incidentContext}"],
                     ],
                     'max_tokens' => 4096,
-                    'temperature' => 0.3,
                 ]);
 
             if (! $response->successful()) {

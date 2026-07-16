@@ -75,6 +75,13 @@ return [
             'channel' => env('MAIL_LOG_CHANNEL'),
         ],
 
+        'netcore' => [
+            'transport' => 'netcore',
+            'api_key' => env('NETCORE_API_KEY'),
+            'base_url' => env('NETCORE_BASE_URL', 'https://emailapi.netcorecloud.net'),
+            'timeout' => env('NETCORE_TIMEOUT', 30),
+        ],
+
         'array' => [
             'transport' => 'array',
         ],

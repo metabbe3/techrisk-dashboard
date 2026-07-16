@@ -11,6 +11,7 @@ use App\Jobs\WarRoom\ProcessWarRoomAgent;
 use App\Jobs\WarRoom\RunPreAnalysis;
 use App\Jobs\WarRoom\StartWarRoomSession;
 use App\Jobs\WarRoom\SynthesizeWarRoomReport;
+use App\Models\ActionImprovement;
 use App\Models\AiSetting;
 use App\Models\Incident;
 use App\Models\User;
@@ -19,6 +20,7 @@ use App\Models\WarRoomMessage;
 use App\Models\WarRoomSession;
 use App\Services\Ai\AiUsageLogger;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\ModelRouter;
 use App\Services\Ai\SearchPlanningService;
 use App\Services\Ai\TokenEstimator;
 use App\Services\Ai\ToolRegistryService;
@@ -33,6 +35,9 @@ use Illuminate\Support\Str;
 class WarRoomService
 {
     use InteractsWithAiApi;
+
+    /** Set by compressContext(); read when persisting context_summarized. */
+    private bool $contextWasCompressed = false;
 
     public function __construct(
         private IncidentMarkdownExporter $markdownExporter,
@@ -65,6 +70,7 @@ class WarRoomService
         $context = $this->buildIncidentContext($incidents, $deepAnalysis);
         $title = $this->buildSessionTitle($incidents);
         $resolvedModel = $this->resolveModel($model);
+        $compressedContext = $this->compressContext($context, $resolvedModel, $incidents);
 
         $session = WarRoomSession::create([
             'user_id' => $user->id,
@@ -73,11 +79,12 @@ class WarRoomService
             'status' => 'pending',
             'max_rounds' => $maxRounds,
             'model' => $resolvedModel,
-            'moderator_model' => $moderatorModel ?? config('ai.war_room.moderator_model') ?? $resolvedModel,
+            'moderator_model' => app(ModelRouter::class)->pick('reasoning', $moderatorModel ?? config('ai.war_room.moderator_model') ?? $resolvedModel),
             'enable_web_search' => $enableWebSearch,
             'deep_analysis' => $deepAnalysis,
             'selected_agents' => $selectedAgents,
-            'incident_context' => $this->compressContext($context, $resolvedModel, $incidents),
+            'incident_context' => $compressedContext,
+            'context_summarized' => $this->contextWasCompressed,
             'user_instructions' => $userInstructions,
         ]);
 
@@ -121,7 +128,7 @@ class WarRoomService
             'status' => 'pending',
             'current_round' => 0,
             'incident_context' => $compressedContext,
-            'context_summarized' => false,
+            'context_summarized' => $this->contextWasCompressed,
             'pre_analysis' => null,
             'user_instructions' => $userInstructions ?? $session->user_instructions,
             'final_report' => null,
@@ -246,7 +253,7 @@ class WarRoomService
         broadcast(new WarRoomMessageUpdated($session, $message));
 
         $config = WarRoomAgentConfig::findByRole($agentRole);
-        $model = $config?->model_override ?? $session->model;
+        $model = app(ModelRouter::class)->pick('reasoning', $config?->model_override ?? $session->model);
 
         $systemPrompt = $this->promptBuilder->buildAgentPrompt($agentRole, $session);
         $userMessage = $this->promptBuilder->buildRoundUserMessage($session, $agentRole, $round);
@@ -539,7 +546,7 @@ class WarRoomService
 
     public function synthesizeReport(WarRoomSession $session): void
     {
-        $model = $session->moderator_model;
+        $model = app(ModelRouter::class)->pick('reasoning', $session->moderator_model);
         $systemPrompt = $this->promptBuilder->buildModeratorPrompt();
         $userMessage = $this->promptBuilder->buildModeratorUserMessage($session);
 
@@ -931,7 +938,10 @@ class WarRoomService
 
     private function extractSection(string $content, string $sectionTitle): string
     {
-        $pattern = '/^##\s+'.preg_quote($sectionTitle, '/').'\s*\n(.*?)(?=^##\s+|\z)/msu';
+        // Tolerate ## or ### headings and case-insensitive titles so minor model
+        // variation (e.g. "Root-Cause Analysis", "### Summary") doesn't blank a
+        // section. The raw markdown is always preserved in final_report_html.
+        $pattern = '/^#{2,3}\s+'.preg_quote($sectionTitle, '/').'\s*\n(.*?)(?=^#{2,3}\s+|\z)/imsu';
 
         if (preg_match($pattern, $content, $matches)) {
             return trim($matches[1]);
@@ -978,8 +988,12 @@ class WarRoomService
         $estimated = $this->estimateTokens($contextText);
 
         if ($estimated <= $targetTokens) {
+            $this->contextWasCompressed = false;
+
             return $context;
         }
+
+        $this->contextWasCompressed = true;
 
         Log::info('[WarRoom] Context exceeds model limit, compressing', [
             'model' => $model,
@@ -1155,8 +1169,86 @@ class WarRoomService
 
     private function resolveModel(?string $model): string
     {
-        return $model
-            ?? config('ai.war_room.default_model')
-            ?? AiSetting::get('default_model', config('ai.default_model'));
+        return app(ModelRouter::class)->pick(
+            'smart',
+            $model ?? config('ai.war_room.default_model') ?? AiSetting::get('default_model', config('ai.default_model')),
+        );
+    }
+
+    /**
+     * Close the loop: turn the report's "Improvement Recommendations" into
+     * draft ActionImprovements on the primary incident. Drafts are status
+     * 'draft' (not 'pending'), so they stay out of reminder/overdue logic
+     * until an admin reviews and promotes them.
+     */
+    public function draftActionImprovements(WarRoomSession $session): int
+    {
+        $recommendations = $this->extractRecommendations($session);
+        $items = $this->splitRecommendationItems($recommendations);
+
+        if (empty($items) || ! $session->incident_id) {
+            return 0;
+        }
+
+        $note = 'Drafted from AI Retrospective: '.$session->title;
+        $created = 0;
+
+        foreach (array_slice($items, 0, 15) as $item) {
+            ActionImprovement::create([
+                'incident_id' => $session->incident_id,
+                'title' => Str::limit(trim($item), 250),
+                'detail' => trim($item)."\n\n_{$note}_",
+                'due_date' => now()->addDays(30)->toDateString(),
+                'pic_email' => [],
+                'reminder' => false,
+                'status' => 'draft',
+            ]);
+            $created++;
+        }
+
+        Log::info('[WarRoom] Drafted action improvements', [
+            'session_id' => $session->id,
+            'incident_id' => $session->incident_id,
+            'count' => $created,
+        ]);
+
+        return $created;
+    }
+
+    private function extractRecommendations(WarRoomSession $session): string
+    {
+        $report = $session->final_report;
+        if (is_array($report) && ! empty($report['improvement_recommendations'])) {
+            return (string) $report['improvement_recommendations'];
+        }
+
+        // Fall back to extracting the section from the raw report markdown.
+        if (is_string($session->final_report_html) && trim($session->final_report_html) !== '') {
+            return $this->extractSection($session->final_report_html, 'Improvement Recommendations');
+        }
+
+        return '';
+    }
+
+    private function splitRecommendationItems(string $text): array
+    {
+        $text = trim($text);
+        if ($text === '') {
+            return [];
+        }
+
+        // Prefer explicit list items (bullets or numbered).
+        if (preg_match_all('/^\s*(?:[-*]|\d+[.)])\s+(.+)/m', $text, $matches)) {
+            $items = array_filter(array_map('trim', $matches[1]), fn ($s) => $s !== '');
+            if (! empty($items)) {
+                return array_values($items);
+            }
+        }
+
+        // Fall back to sentence splitting for prose recommendations.
+        $sentences = preg_split('/(?<=[.!?])\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
+        $sentences = array_filter(array_map('trim', $sentences), fn ($s) => strlen($s) > 15);
+
+        return $sentences ? array_values($sentences) : [$text];
     }
 }

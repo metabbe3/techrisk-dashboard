@@ -30,6 +30,12 @@ class WarRoomToolExecutor
                 'get_action_items' => $this->getActionItems($arguments),
                 'web_search' => $this->webSearch($arguments),
                 'get_stats' => $this->getStats($arguments),
+                'get_timeline' => $this->getTimeline($arguments),
+                'get_metrics' => $this->getMetrics($arguments),
+                'search_by_severity' => $this->searchBySeverity($arguments),
+                'search_by_date_range' => $this->searchByDateRange($arguments),
+                'get_fund_loss' => $this->getFundLoss($arguments),
+                'get_root_cause_categories' => $this->getRootCauseCategories($arguments),
                 default => "Unknown tool: {$name}",
             };
         } catch (\Throwable $e) {
@@ -49,7 +55,7 @@ class WarRoomToolExecutor
 
     private function searchIncidents(array $args): string
     {
-        $query = Incident::query()->with(['pic', 'labels']);
+        $query = Incident::query();
 
         if (! empty($args['severity'])) {
             $query->whereIn('severity', (array) $args['severity']);
@@ -82,18 +88,7 @@ class WarRoomToolExecutor
             ->limit($limit)
             ->get();
 
-        if ($results->isEmpty()) {
-            return 'No incidents found matching the criteria.';
-        }
-
-        return $results->map(fn ($inc) => implode(' | ', array_filter([
-            $inc->no,
-            $inc->severity->value,
-            $inc->incident_status->value,
-            $inc->title ?? 'Untitled',
-            $inc->incident_date?->format('Y-m-d'),
-            $inc->pic?->name ? "PIC: {$inc->pic->name}" : null,
-        ])))->implode("\n");
+        return $this->formatIncidentList($results) ?: 'No incidents found matching the criteria.';
     }
 
     private function getIncidentDetails(array $args): string
@@ -212,5 +207,157 @@ class WarRoomToolExecutor
     private function getStats(array $args): string
     {
         return $this->statsService->getCachedStats($args['period'] ?? 'this_year');
+    }
+
+    private function getTimeline(array $args): string
+    {
+        $incident = Incident::where('no', $args['incident_no'])->first();
+        if (! $incident) {
+            return "Incident not found: {$args['incident_no']}";
+        }
+
+        $lines = [];
+        if ($incident->incident_date) {
+            $lines[] = 'Incident date: '.$incident->incident_date->format('Y-m-d H:i');
+        }
+        if ($incident->discovered_at) {
+            $lines[] = 'Discovered: '.$incident->discovered_at->format('Y-m-d H:i');
+        }
+        if ($incident->stop_bleeding_at) {
+            $lines[] = 'Stop bleeding: '.$incident->stop_bleeding_at->format('Y-m-d H:i');
+        }
+        if ($incident->timeline) {
+            $lines[] = "Timeline:\n".$incident->timeline;
+        }
+
+        return $lines ? implode("\n", $lines) : "No timeline data for {$args['incident_no']}.";
+    }
+
+    private function getMetrics(array $args): string
+    {
+        $incident = Incident::where('no', $args['incident_no'])->first();
+        if (! $incident) {
+            return "Incident not found: {$args['incident_no']}";
+        }
+
+        $lines = [
+            $incident->no.' | '.($incident->title ?? 'Untitled'),
+            'Severity: '.($incident->severity?->value ?? 'N/A'),
+            'MTTR: '.($incident->mttr ?? 'N/A'),
+            'Fund loss: '.$incident->fund_loss,
+            'Potential fund loss: '.$incident->potential_fund_loss,
+            'Recovered fund: '.$incident->recovered_fund,
+            'Fund status: '.($incident->fund_status?->value ?? 'N/A'),
+        ];
+
+        return implode("\n", $lines);
+    }
+
+    private function searchBySeverity(array $args): string
+    {
+        $severities = (array) ($args['severity'] ?? []);
+        if (empty($severities)) {
+            return 'No severity levels provided.';
+        }
+
+        $results = Incident::whereIn('severity', $severities)
+            ->orderBy('incident_date', 'desc')
+            ->limit(min($args['limit'] ?? 10, 20))
+            ->get();
+
+        return $this->formatIncidentList($results) ?: 'No incidents found at severity: '.implode(', ', $severities);
+    }
+
+    private function searchByDateRange(array $args): string
+    {
+        $from = $args['date_from'] ?? null;
+        if (! $from) {
+            return 'date_from is required.';
+        }
+
+        $query = Incident::query()->where('incident_date', '>=', $from);
+        if (! empty($args['date_to'])) {
+            $query->where('incident_date', '<=', $args['date_to']);
+        }
+        $results = $query->orderBy('incident_date', 'desc')->limit(min($args['limit'] ?? 10, 20))->get();
+
+        return $this->formatIncidentList($results) ?: 'No incidents found in that date range.';
+    }
+
+    private function getFundLoss(array $args): string
+    {
+        $query = Incident::query()->where('fund_loss', '>', 0);
+        if (! empty($args['fund_status'])) {
+            $query->where('fund_status', $args['fund_status']);
+        }
+        if (! empty($args['date_from'])) {
+            $query->where('incident_date', '>=', $args['date_from']);
+        }
+        if (! empty($args['date_to'])) {
+            $query->where('incident_date', '<=', $args['date_to']);
+        }
+        $results = $query->orderByDesc('fund_loss')->limit(min($args['limit'] ?? 10, 20))->get();
+
+        if ($results->isEmpty()) {
+            return 'No fund-loss incidents found.';
+        }
+
+        return $results->map(fn ($inc) => implode(' | ', array_filter([
+            $inc->no,
+            $inc->severity?->value,
+            'Loss: '.$inc->fund_loss,
+            $inc->recovered_fund ? 'Recovered: '.$inc->recovered_fund : null,
+            $inc->fund_status?->value ? 'Status: '.$inc->fund_status->value : null,
+            $inc->incident_date?->format('Y-m-d'),
+            $inc->title ?? '',
+        ])))->implode("\n");
+    }
+
+    private function getRootCauseCategories(array $args): string
+    {
+        $period = $args['period'] ?? 'this_year';
+        $now = now();
+
+        // Only the JSON column is read — select() skips hydrating the ~40 other
+        // incident columns (incl. TEXT/JSON fields) per row.
+        $query = Incident::query()
+            ->select(['id', 'root_cause_category'])
+            ->whereNotNull('root_cause_category');
+
+        // The enum advertises month / quarter / year; scope incident_date once so
+        // every option works. this_quarter previously fell through to whole-year —
+        // a declared option silently doing the wrong thing.
+        match ($period) {
+            'this_month' => $query->whereMonth('incident_date', $now->month)->whereYear('incident_date', $now->year),
+            'this_quarter' => $query->whereBetween('incident_date', [$now->copy()->startOfQuarter(), $now->copy()->endOfQuarter()]),
+            default => $query->whereYear('incident_date', $now->year),
+        };
+
+        $counts = $query->get()
+            ->flatMap(fn ($inc) => (array) ($inc->root_cause_category ?? []))
+            ->countBy()
+            ->sortDesc()
+            ->take(15);
+
+        if ($counts->isEmpty()) {
+            return "No root-cause category data for {$period}.";
+        }
+
+        return $counts->map(fn ($count, $category) => "{$category}: {$count}")->implode("\n");
+    }
+
+    private function formatIncidentList($results): string
+    {
+        if ($results->isEmpty()) {
+            return '';
+        }
+
+        return $results->map(fn ($inc) => implode(' | ', array_filter([
+            $inc->no,
+            $inc->severity?->value,
+            $inc->incident_status?->value,
+            $inc->title ?? 'Untitled',
+            $inc->incident_date?->format('Y-m-d'),
+        ])))->implode("\n");
     }
 }

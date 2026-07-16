@@ -70,12 +70,28 @@ class WarRoomExportMarkdownController
             }
         }
 
-        if (! empty($data['final_report'])) {
+        if (! empty($data['final_report_html'])) {
             $lines[] = '---';
             $lines[] = '';
             $lines[] = '## Final Report';
             $lines[] = '';
-            $lines[] = $data['final_report'];
+            $lines[] = trim($data['final_report_html']);
+            $lines[] = '';
+        } elseif (! empty($data['final_report'])) {
+            // final_report is a parsed array — render its sections instead of
+            // casting the array to the literal string "Array".
+            $lines[] = '---';
+            $lines[] = '';
+            $lines[] = '## Final Report';
+            $lines[] = '';
+            foreach ($data['final_report'] as $section => $body) {
+                if (is_string($body) && trim($body) !== '') {
+                    $lines[] = '### '.ucwords((string) str_replace('_', ' ', $section));
+                    $lines[] = '';
+                    $lines[] = $body;
+                    $lines[] = '';
+                }
+            }
         }
 
         return implode("\n", $lines);

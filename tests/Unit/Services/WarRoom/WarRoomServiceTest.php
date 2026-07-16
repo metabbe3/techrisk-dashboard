@@ -424,13 +424,14 @@ class WarRoomServiceTest extends TestCase
     public function test_mark_stuck_messages_redispatches_stuck_pending(): void
     {
         Queue::fake();
+        Event::fake();
 
         $session = WarRoomSession::factory()->running()->create([
             'selected_agents' => ['sre', 'dba'],
         ]);
 
         // A pending message older than 120 seconds (the pending timeout)
-        $stuckPending = WarRoomMessage::factory()->create([
+        WarRoomMessage::factory()->create([
             'session_id' => $session->id,
             'round' => 1,
             'agent_role' => 'sre',
@@ -438,18 +439,9 @@ class WarRoomServiceTest extends TestCase
             'created_at' => now()->subMinutes(3),
         ]);
 
-        // markStuckMessages dispatches ProcessWarRoomAgent before calling
-        // onAgentCompleted. There is a known bug where onAgentCompleted receives
-        // an int (the round) instead of a WarRoomMessage, causing a TypeError.
-        // We catch it to verify the jobs were still dispatched correctly.
-        try {
-            $count = $this->service->markStuckMessages($session);
-            $this->assertSame(1, $count);
-        } catch (\TypeError $e) {
-            // Expected: onAgentCompleted receives int instead of WarRoomMessage
-            $this->assertStringContainsString('onAgentCompleted', $e->getMessage());
-        }
+        $count = $this->service->markStuckMessages($session);
 
+        $this->assertSame(1, $count);
         Queue::assertPushed(ProcessWarRoomAgent::class, 1);
         Queue::assertPushed(ProcessWarRoomAgent::class, function ($job) use ($session) {
             return $job->session->id === $session->id;
@@ -463,6 +455,7 @@ class WarRoomServiceTest extends TestCase
     public function test_mark_stuck_messages_marks_timed_out_running(): void
     {
         Queue::fake();
+        Event::fake();
 
         $timeout = config('ai.war_room.agent_timeout', 600);
 
@@ -479,19 +472,9 @@ class WarRoomServiceTest extends TestCase
             'created_at' => now()->subSeconds($timeout + 60),
         ]);
 
-        // markStuckMessages marks running messages as failed, then broadcasts
-        // and calls onAgentCompleted. The broadcast has a known bug (passes
-        // $message->load('session') instead of session as first arg), and
-        // onAgentCompleted receives int instead of WarRoomMessage.
-        // We catch the TypeError to verify the message was still marked failed.
-        try {
-            $count = $this->service->markStuckMessages($session);
-            $this->assertSame(1, $count);
-        } catch (\TypeError $e) {
-            // Expected: either the broadcast constructor bug or onAgentCompleted bug
-            $this->assertTrue(true);
-        }
+        $count = $this->service->markStuckMessages($session);
 
+        $this->assertSame(1, $count);
         $stuckRunning->refresh();
         $this->assertSame('failed', $stuckRunning->status);
         $this->assertStringContainsString('timed out', $stuckRunning->error_message);

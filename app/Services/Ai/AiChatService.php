@@ -5,6 +5,7 @@ namespace App\Services\Ai;
 use App\Models\AiSetting;
 use App\Models\WarRoomAgentConfig;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\Concerns\NormalizesUsage;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\RateLimiter;
 class AiChatService
 {
     use InteractsWithAiApi;
+    use NormalizesUsage;
 
     public function __construct(
         private ChatContextService $contextService,
@@ -61,12 +63,11 @@ class AiChatService
                     'model' => $resolvedModel,
                     'messages' => $apiMessages,
                     'max_tokens' => config('ai.chat_max_tokens', 8192),
-                    'temperature' => config('ai.temperatures.chat', 0.7),
                 ]);
 
             $responseTimeMs = $this->elapsedMs($startTime);
             $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
+            $usage = $this->normalizeUsage($responseData['usage'] ?? null);
 
             $errorResult = AiResponseHandler::checkErrors($response, $resolvedModel, $startTime);
             if ($errorResult) {
@@ -154,12 +155,11 @@ class AiChatService
                     'model' => $resolvedModel,
                     'messages' => $apiMessages,
                     'max_tokens' => config('ai.chat_max_tokens', 8192),
-                    'temperature' => config('ai.temperatures.chat', 0.7),
                 ]);
 
             $responseTimeMs = $this->elapsedMs($startTime);
             $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
+            $usage = $this->normalizeUsage($responseData['usage'] ?? null);
 
             $errorResult = AiResponseHandler::checkErrors($response, $resolvedModel, $startTime);
             if ($errorResult) {
@@ -229,12 +229,11 @@ class AiChatService
                         ['role' => 'user', 'content' => $userContent],
                     ],
                     'max_tokens' => 30,
-                    'temperature' => config('ai.temperatures.json_extraction', 0.1),
                 ]);
 
             $responseTimeMs = $this->elapsedMs($startTime);
             $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
+            $usage = $this->normalizeUsage($responseData['usage'] ?? null);
 
             if ($response->successful()) {
                 $title = trim($responseData['choices'][0]['message']['content'] ?? '');

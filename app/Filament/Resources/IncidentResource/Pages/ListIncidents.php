@@ -66,7 +66,7 @@ class ListIncidents extends ListRecords
                 ->modalSubmitActionLabel('Apply Filters')
                 ->form(function () {
                     $aiService = app(\App\Services\Ai\AiTextService::class);
-                    $models = $aiService->getAvailableModels();
+                    $models = $aiService->getModelsForPicker();
                     $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
 
                     return [
@@ -188,7 +188,13 @@ class ListIncidents extends ListRecords
     {
         app()->instance('activeTab', $this->activeTab ?? 'All Cases');
 
-        return parent::getTableQuery();
+        // Scope to a specific set of incident IDs when the Risk Heat Matrix
+        // drills in via ?ids=1,2,3. Only that link sets the param, so this is
+        // a no-op for every other entry point (tabs, filters, export, footer).
+        return parent::getTableQuery()
+            ->when(request()->filled('ids'), function (Builder $query): void {
+                $query->whereIn('id', array_filter(explode(',', (string) request()->input('ids'))));
+            });
     }
 
     public function getTabs(): array

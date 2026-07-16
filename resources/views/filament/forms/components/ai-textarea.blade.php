@@ -377,7 +377,7 @@
     .ai-model-picker__item--active{color:#0d9488;font-weight:600;background:#f0fdfa}
 
     /* ===== Modal ===== */
-    .ai-modal-overlay{position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+    .ai-modal-overlay{position:fixed;inset:0;z-index:var(--z-modal);display:flex;align-items:center;justify-content:center;padding:16px}
     .ai-modal-overlay__bg{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 
     .ai-modal{

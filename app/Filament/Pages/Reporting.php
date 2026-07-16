@@ -43,6 +43,9 @@ class Reporting extends Page implements HasForms
 
     public $metrics = [];
 
+    // Persisted from generateReport() so the view doesn't re-run getState() on render.
+    public $selectedColumns = [];
+
     public function mount(): void
     {
         $this->form->fill([
@@ -199,6 +202,10 @@ class Reporting extends Page implements HasForms
     public function generateReport()
     {
         $data = $this->form->getState();
+
+        // Persist selected columns so the view can render the incidents table
+        // without re-invoking getState() (which re-validates) on every render.
+        $this->selectedColumns = $data['columns'] ?? [];
 
         // Validate date range
         if ($data['start_date'] && $data['end_date']) {

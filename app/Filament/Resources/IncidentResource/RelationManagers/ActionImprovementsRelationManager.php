@@ -2,8 +2,11 @@
 
 namespace App\Filament\Resources\IncidentResource\RelationManagers;
 
+use App\Models\User;
+use App\Notifications\ActionImprovementReminder;
 use Filament\Forms;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -34,6 +37,7 @@ class ActionImprovementsRelationManager extends RelationManager
                     ]),
                 Forms\Components\Select::make('status')
                     ->options([
+                        'draft' => 'Draft (AI-suggested)',
                         'pending' => 'Pending',
                         'done' => 'Done',
                     ])
@@ -56,6 +60,7 @@ class ActionImprovementsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
+                        'draft' => 'gray',
                         'pending' => 'warning',
                         'done' => 'success',
                         default => 'secondary',
@@ -68,6 +73,28 @@ class ActionImprovementsRelationManager extends RelationManager
                 Tables\Actions\CreateAction::make(),
             ])
             ->actions([
+                Tables\Actions\Action::make('send_reminder')
+                    ->label('Email')
+                    ->icon('heroicon-o-envelope')
+                    ->color('info')
+                    ->requiresConfirmation()
+                    ->modalDescription('Send a reminder email to the assigned PIC email(s) via Netcore.')
+                    ->visible(fn ($record) => $record->status === 'pending')
+                    ->action(function ($record) {
+                        $sent = [];
+                        foreach (($record->pic_email ?? []) as $email) {
+                            $user = User::where('email', $email)->first();
+                            if ($user && ! in_array($user->id, $sent)) {
+                                $user->notify(new ActionImprovementReminder($record));
+                                $sent[] = $user->id;
+                            }
+                        }
+
+                        Notification::make()
+                            ->when(count($sent), fn ($n) => $n->success()->title('Reminder queued')->body('Email queued for '.count($sent).' recipient(s).'))
+                            ->when(! count($sent), fn ($n) => $n->warning()->title('No matching users')->body('No registered users matched the PIC email(s).'))
+                            ->send();
+                    }),
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
             ])

@@ -8,6 +8,7 @@ use App\Enums\FundStatus;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Resources\IncidentResource;
+use App\Notifications\IncidentNotDoneReminder;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Filament\Actions;
 use Filament\Infolists\Components\Grid;
@@ -15,6 +16,7 @@ use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Infolists\Components\ViewEntry;
 use Filament\Infolists\Infolist;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 
 class ViewIncident extends ViewRecord
@@ -62,6 +64,25 @@ class ViewIncident extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
+            Actions\Action::make('email_pic')
+                ->label('Email PIC')
+                ->icon('heroicon-o-envelope')
+                ->color('info')
+                ->requiresConfirmation()
+                ->modalHeading('Email PIC')
+                ->modalDescription('Send a reminder email to this incident’s PIC via Netcore.')
+                ->modalSubmitActionLabel('Send Email')
+                ->visible(fn ($record) => $record->pic && $record->isNotDone() && auth()->user()->can('manage incidents'))
+                ->action(function () {
+                    $incident = $this->getRecord();
+                    $incident->pic->notify(new IncidentNotDoneReminder($incident));
+
+                    Notification::make()
+                        ->success()
+                        ->title('Reminder queued')
+                        ->body("Email queued for {$incident->pic->email}.")
+                        ->send();
+                }),
             Actions\Action::make('generate_post_mortem')
                 ->label('Post-Mortem PDF')
                 ->icon('heroicon-o-document-text')

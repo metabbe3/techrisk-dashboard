@@ -15,7 +15,7 @@ class StartWarRoomSession implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $tries = 1;
+    public $tries = 2;
 
     public $timeout = 60;
 

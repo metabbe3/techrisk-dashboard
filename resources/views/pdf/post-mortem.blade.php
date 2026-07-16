@@ -173,7 +173,7 @@
         }
 
         .body blockquote {
-            border-left: 3px solid #d97706;
+            border: 1px solid #d97706;
             padding: 8px 14px;
             margin: 10px 0;
             background: #fffbeb;

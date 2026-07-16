@@ -21,34 +21,23 @@
                 Metrics
             </x-slot>
 
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <dl class="grid grid-cols-2 sm:grid-cols-3 gap-px bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
                 @foreach($metrics as $key => $value)
-                    <x-filament::section>
-                        <div class="flex items-center gap-3">
-                            <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-900/30">
-                                <x-filament::icon
-                                    icon="heroicon-o-chart-bar"
-                                    class="h-5 w-5 text-primary-600 dark:text-primary-400"
-                                />
-                            </div>
-                            <div>
-                                <p class="text-sm font-medium text-gray-500 dark:text-gray-400">
-                                    {{ str_replace('_', ' ', Str::title($key)) }}
-                                </p>
-                                <p class="text-xl font-bold text-gray-900 dark:text-white">
-                                    {{ is_numeric($value) ? number_format($value, 2) : $value }}
-                                </p>
-                            </div>
-                        </div>
-                    </x-filament::section>
+                    <div class="px-4 py-3 bg-white dark:bg-gray-900">
+                        <dt class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                            {{ str_replace('_', ' ', Str::title($key)) }}
+                        </dt>
+                        <dd class="mt-0.5 text-lg font-bold text-gray-900 dark:text-white">
+                            {{ is_numeric($value) ? number_format($value, 2) : $value }}
+                        </dd>
+                    </div>
                 @endforeach
-            </div>
+            </dl>
         </x-filament::section>
     @endif
 
     @php
-        $formState = $this->form->getState();
-        $selectedColumns = $formState['columns'] ?? [];
+        $selectedColumns = $this->selectedColumns ?? [];
         $columnLabels = $this->getColumnsFlattened();
     @endphp
 

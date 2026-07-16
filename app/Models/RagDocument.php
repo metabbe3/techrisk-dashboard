@@ -25,6 +25,7 @@ class RagDocument extends Model
         'label_names',
         'searchable_content',
         'context_content',
+        'embedding',
         'indexed_at',
     ];
 
@@ -36,6 +37,7 @@ class RagDocument extends Model
         'root_cause_category' => 'array',
         'responsible_team' => 'array',
         'label_names' => 'array',
+        'embedding' => 'array',
         'indexed_at' => 'datetime',
     ];
 

@@ -121,7 +121,6 @@ class WarRoomStreamingService
             'messages' => $messages,
             'max_tokens' => $maxTokens,
             'max_completion_tokens' => $maxTokens,
-            'temperature' => config('ai.temperatures.analysis', 0.4),
         ];
 
         if (! empty($tools)) {

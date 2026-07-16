@@ -150,6 +150,31 @@ class AiSettings extends Page implements HasForms
                                         ->body(count($models).' models fetched from the gateway.')
                                         ->send();
                                 }),
+                            Action::make('check_model_health')
+                                ->label('Check Model Health')
+                                ->icon('heroicon-o-signal')
+                                ->color('gray')
+                                ->action(function () {
+                                    $results = app(AiTextService::class)->checkModelsHealth();
+
+                                    if (empty($results)) {
+                                        Notification::make()
+                                            ->warning()
+                                            ->title('Health check skipped')
+                                            ->body('No models configured, or the gateway URL/key is not set.')
+                                            ->send();
+
+                                        return;
+                                    }
+
+                                    $counts = collect($results)->groupBy(fn ($r) => $r['status'])->map->count();
+
+                                    Notification::make()
+                                        ->success()
+                                        ->title('Model health checked')
+                                        ->body($counts->map(fn ($count, $status) => "{$count} {$status}")->implode(', '))
+                                        ->send();
+                                }),
                         ]),
                     ]),
             ])

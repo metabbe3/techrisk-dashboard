@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace App\Services\Ai;
 
+use App\Services\Ai\Concerns\NormalizesUsage;
 use App\Services\Ai\Concerns\StripsThinkingTags;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Log;
 
 class SseStreamingService
 {
+    use NormalizesUsage;
+
     /**
      * Stream an SSE completion from the AI API.
      *
@@ -130,7 +133,7 @@ class SseStreamingService
                     }
 
                     if (isset($parsed['usage'])) {
-                        $usage = $parsed['usage'];
+                        $usage = $this->normalizeUsage($parsed['usage']);
                     }
                 }
 
@@ -193,7 +196,7 @@ class SseStreamingService
                             }
                         }
                         if (isset($parsed['usage'])) {
-                            $usage = $parsed['usage'];
+                            $usage = $this->normalizeUsage($parsed['usage']);
                         }
                         $fr = $parsed['choices'][0]['finish_reason'] ?? null;
                         if ($fr !== null && $fr !== '') {
@@ -215,7 +218,7 @@ class SseStreamingService
                 $rawContent = $responseMessage['content'] ?? '';
                 $fullContent = StripsThinkingTags::stripStatic($rawContent);
                 $finishReason = $parsed['choices'][0]['finish_reason'] ?? 'stop';
-                $usage = $parsed['usage'] ?? $usage;
+                $usage = isset($parsed['usage']) ? $this->normalizeUsage($parsed['usage']) : $usage;
                 $accumulatedToolCalls = $responseMessage['tool_calls'] ?? [];
                 if ($onDelta && ! blank($fullContent)) {
                     $onDelta($fullContent, strlen($fullContent));

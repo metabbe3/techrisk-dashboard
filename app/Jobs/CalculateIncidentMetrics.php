@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\FundStatus;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Models\Incident;

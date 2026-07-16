@@ -54,6 +54,7 @@ storage/redis/
 
 # Claude Code
 .claude/
+.codex/
 .agents/
 /skills/
 skills-lock.json

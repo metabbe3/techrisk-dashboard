@@ -66,8 +66,8 @@
         .chat { display: flex; flex-direction: column; gap: 16px; }
 
         .msg { border-radius: 10px; overflow: hidden; }
-        .msg-user { background: #fffbeb; border-left: 3px solid #d97706; }
-        .msg-assistant { background: #f5f3f0; border-left: 3px solid #a8a29e; }
+        .msg-user { background: #fffbeb; border: 1px solid #d97706; }
+        .msg-assistant { background: #f5f3f0; border: 1px solid #a8a29e; }
         .msg-assistant.has-persona { border-left-color: var(--persona-color, #a8a29e); }
 
         .msg-header {
@@ -151,7 +151,7 @@
             text-align: center; line-height: 14px;
         }
 
-        .msg-body blockquote { border-left: 3px solid #d97706; padding: 6px 12px; margin: 8px 0; background: #fffbeb; border-radius: 0 6px 6px 0; color: #78716c; font-style: italic; }
+        .msg-body blockquote { border: 1px solid #d97706; padding: 6px 12px; margin: 8px 0; background: #fffbeb; border-radius: 0 6px 6px 0; color: #78716c; font-style: italic; }
         .msg-body code { background: #fef3c7; padding: 1px 4px; border-radius: 3px; font-size: 9pt; color: #b45309; font-family: 'Courier New', Courier, monospace; }
         .msg-body pre { background: #1c1917; color: #e7e5e4; padding: 12px; border-radius: 6px; font-size: 8pt; line-height: 1.5; margin: 8px 0; overflow-x: auto; }
         .msg-body pre code { background: none; padding: 0; color: inherit; font-size: inherit; }

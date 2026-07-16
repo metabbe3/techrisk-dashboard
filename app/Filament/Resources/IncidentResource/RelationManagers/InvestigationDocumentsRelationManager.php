@@ -44,7 +44,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         $aiService = app(\App\Services\Ai\AiTextService::class);
-        $models = $aiService->getAvailableModels();
+        $models = $aiService->getModelsForPicker();
         $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
 
         return $table

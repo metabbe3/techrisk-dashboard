@@ -1,7 +1,9 @@
 <x-filament-panels::page>
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+{{-- marked is bundled globally via resources/js/app.js (window.marked); mermaid is a
+     page-scoped Vite entry (resources/js/mermaid.js) so it is not shipped on every
+     admin page. Both replace render-blocking, version-drifting CDN <script> tags. --}}
+@vite(['resources/js/mermaid.js'])
 @endpush
 
 <script src="{{ asset('js/war-room/utils.js') }}"></script>
@@ -143,7 +145,7 @@ document.addEventListener('alpine:init', () => {
             <div class="df-sidebar__search">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                 <input type="text" x-model="sessionSearch" placeholder="Search sessions..." class="df-sidebar__search-input">
-                <button x-show="sessionSearch" @click="sessionSearch = ''" class="df-sidebar__search-clear">&times;</button>
+                <button x-show="sessionSearch" @click="sessionSearch = ''" aria-label="Clear search" class="df-sidebar__search-clear">&times;</button>
             </div>
             <div class="df-sidebar__status-chips">
                 <button @click="sessionStatusFilter = ''" :class="sessionStatusFilter === '' ? 'df-sidebar__chip df-sidebar__chip--active' : 'df-sidebar__chip'">All</button>
@@ -159,7 +161,7 @@ document.addEventListener('alpine:init', () => {
                         @click="loadSession(session.id); showSidebar = false;">
                     <div class="df-session-item__top">
                         <span class="df-session-item__title" x-text="session.title || 'Discussion Session'"></span>
-                        <button @click.stop="deleteSession(session.id)" class="df-session-item__delete" title="Delete">
+                        <button @click.stop="deleteSession(session.id)" class="df-session-item__delete" aria-label="Delete session" title="Delete">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                         </button>
                     </div>
@@ -188,7 +190,7 @@ document.addEventListener('alpine:init', () => {
         {{-- Header --}}
         <header class="df-header">
             <div class="df-header__left">
-                <button class="df-mobile-toggle" @click="showSidebar = !showSidebar">
+                <button class="df-mobile-toggle" aria-label="Toggle sidebar" @click="showSidebar = !showSidebar">
                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
                 </button>
                 <div class="df-header__title-group">
@@ -247,7 +249,7 @@ document.addEventListener('alpine:init', () => {
 
                 {{-- More menu dropdown --}}
                 <div class="df-menu" x-data="{ open: false }" @click.away="open = false" @keydown.escape="open = false">
-                    <button @click="open = !open" class="df-btn df-btn--ghost df-btn--icon" title="More actions">
+                    <button @click="open = !open" class="df-btn df-btn--ghost df-btn--icon" aria-label="More actions" title="More actions">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
                     </button>
                     <div class="df-menu__dropdown" x-show="open" x-transition:enter="df-menu-enter" x-transition:leave="df-menu-leave" @click="open = false">
@@ -370,7 +372,7 @@ document.addEventListener('alpine:init', () => {
                                             <span class="df-selected-inc__sep">&mdash;</span>
                                             <span class="df-selected-inc__title" x-text="inc.title"></span>
                                         </div>
-                                        <button @click="removeIncident(idx)" class="df-selected-inc__remove">&times;</button>
+                                        <button @click="removeIncident(idx)" aria-label="Remove incident" class="df-selected-inc__remove">&times;</button>
                                     </div>
                                 </template>
                                 <div x-show="tokenEstimate !== null" x-transition class="df-token-warning"
@@ -492,7 +494,7 @@ document.addEventListener('alpine:init', () => {
                                 <div class="df-template-item">
                                     <button @click="applyTemplate(tpl)" class="df-template-item__name" x-text="tpl.name"></button>
                                     <span class="df-template-item__agents" x-text="(tpl.selected_agents?.length || 0) + ' agents'"></span>
-                                    <button @click="deleteTemplate(tpl.id)" class="df-template-item__delete" title="Delete template">&times;</button>
+                                    <button @click="deleteTemplate(tpl.id)" class="df-template-item__delete" aria-label="Delete template" title="Delete template">&times;</button>
                                 </div>
                             </template>
                         </div>
@@ -613,7 +615,7 @@ document.addEventListener('alpine:init', () => {
                                                     <span class="df-msg__role" x-text="msg.agent_role"></span>
                                                 </div>
                                             </div>
-                                            <button x-show="msg.content" @click="msg._expanded = !msg._expanded; scheduleMermaidRender()" class="df-msg__toggle">
+                                            <button x-show="msg.content" @click="msg._expanded = !msg._expanded; scheduleMermaidRender()" class="df-msg__toggle" aria-label="Toggle message details">
                                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                                                      :style="msg._expanded ? 'transform:rotate(180deg)' : ''" style="transition:transform 0.2s">
                                                     <path d="M19 9l-7 7-7-7"/>

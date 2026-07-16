@@ -8,6 +8,8 @@ export default defineConfig({
             input: [
                 'resources/css/app.css',
                 'resources/js/app.js',
+                'resources/js/mermaid.js',
+                'resources/js/analytics-charts.js',
             ],
             refresh: true,
         }),

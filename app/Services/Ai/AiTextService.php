@@ -4,7 +4,10 @@ namespace App\Services\Ai;
 
 use App\Models\AiSetting;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\Concerns\JsonExtractor;
+use App\Services\Ai\Concerns\NormalizesUsage;
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -13,6 +16,7 @@ use Illuminate\Support\Str;
 class AiTextService
 {
     use InteractsWithAiApi;
+    use NormalizesUsage;
 
     public function __construct(
         private AiUsageLogger $usageLogger,
@@ -97,7 +101,7 @@ class AiTextService
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
             $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
+            $usage = $this->normalizeUsage($responseData['usage'] ?? null);
             $promptTokens = $usage['prompt_tokens'] ?? null;
             $completionTokens = $usage['completion_tokens'] ?? null;
             $totalTokens = $usage['total_tokens'] ?? null;
@@ -199,6 +203,189 @@ class AiTextService
             ->toArray();
     }
 
+    /**
+     * Ping a single model through the gateway with a 1-token completion to gauge
+     * reachability + latency. Classified healthy / slow / unhealthy. Feeds the
+     * CircuitBreaker so the existing resilience layer benefits from proactive checks.
+     *
+     * @return array{model:string,status:string,latency_ms:?float,error:?string,checked_at:string}
+     */
+    public function pingModel(string $model): array
+    {
+        $checkedAt = now()->toIso8601String();
+
+        if (blank($this->getBaseUrl()) || blank($this->getApiKey())) {
+            return $this->pingResult($model, $checkedAt, 'unhealthy', null, 'Gateway base URL or API key not configured.');
+        }
+
+        $timeout = (int) config('ai.model_health.ping_timeout', 15);
+        $start = microtime(true);
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout($timeout)
+                // Minimal payload: just model + messages. We deliberately send NO
+                // max_tokens / max_completion_tokens / temperature — different
+                // providers reject different ones (Anthropic rejects any
+                // temperature≠1; some newer models reject bare max_tokens; reasoning
+                // models reject low max_completion_tokens). The minimal payload is
+                // the only universally-accepted form, which is what a reachability
+                // ping should use.
+                ->post($this->buildUrl(), [
+                    'model' => $model,
+                    'messages' => [['role' => 'user', 'content' => 'ping']],
+                ]);
+
+            $latencyMs = round((microtime(true) - $start) * 1000);
+
+            if ($response->failed()) {
+                $this->circuitBreaker->recordFailure($model);
+
+                return $this->pingResult($model, $checkedAt, 'unhealthy', $latencyMs, 'HTTP '.$response->status());
+            }
+
+            // A ping tests reachability + latency, not output quality. Several
+            // providers return 200 with blank content at low max_tokens — that's
+            // reachable, not unhealthy. Only a response with NO choices is broken.
+            if (blank($response->json('choices.0'))) {
+                $this->circuitBreaker->recordFailure($model);
+
+                return $this->pingResult($model, $checkedAt, 'unhealthy', $latencyMs, 'No choices in response.');
+            }
+
+            $this->circuitBreaker->recordSuccess($model);
+            $status = $latencyMs > (int) config('ai.model_health.slow_threshold_ms', 20000) ? 'slow' : 'healthy';
+
+            return $this->pingResult($model, $checkedAt, $status, $latencyMs);
+        } catch (ConnectionException $e) {
+            $this->circuitBreaker->recordFailure($model);
+            $msg = $e->getMessage();
+            $error = str_contains($msg, 'timed out') ? 'Request timed out.' : 'Connection failed: '.$msg;
+
+            return $this->pingResult($model, $checkedAt, 'unhealthy', round((microtime(true) - $start) * 1000), $error);
+        } catch (\Throwable $e) {
+            $this->circuitBreaker->recordFailure($model);
+
+            return $this->pingResult($model, $checkedAt, 'unhealthy', round((microtime(true) - $start) * 1000), 'Unexpected error: '.$e->getMessage());
+        }
+    }
+
+    /**
+     * Shape every ping result identically so callers (health table, picker badges,
+     * router) can rely on a stable 5-key structure.
+     *
+     * @return array{model:string,status:string,latency_ms:?float,error:?string,checked_at:string}
+     */
+    private function pingResult(string $model, string $checkedAt, string $status, ?float $latencyMs, ?string $error = null): array
+    {
+        return [
+            'model' => $model,
+            'status' => $status,
+            'latency_ms' => $latencyMs,
+            'error' => $error,
+            'checked_at' => $checkedAt,
+        ];
+    }
+
+    /**
+     * Ping every configured model, cache each result, and return the full map.
+     * A no-op (returns []) when the check is disabled, the gateway isn't
+     * configured, or no models are set.
+     *
+     * @return array<string, array>
+     */
+    public function checkModelsHealth(): array
+    {
+        if (! config('ai.model_health.enabled', true)) {
+            return [];
+        }
+
+        $models = $this->getAvailableModels();
+        if (empty($models)) {
+            return [];
+        }
+
+        $ttl = now()->addSeconds((int) config('ai.model_health.cache_ttl', 900));
+        $results = [];
+
+        // ponytail: pings run sequentially (one blocking HTTP call each). Fine at
+        // the current model count on a scheduled job; switch to Http::pool() if the
+        // roster grows and the wall-clock matters.
+        foreach (array_keys($models) as $modelId) {
+            $result = $this->pingModel($modelId);
+            $results[$modelId] = $result;
+            Cache::put("ai_model_health.{$modelId}", $result, $ttl);
+        }
+
+        Cache::put('ai_model_health', $results, $ttl);
+
+        return $results;
+    }
+
+    /**
+     * Cached health for every configured model — 'unknown' when never checked.
+     * Powers the AI Settings status table and the picker badges (no pinging here).
+     *
+     * @return array<string, array>
+     */
+    public function getModelsHealth(): array
+    {
+        // One Redis get for the whole map (checkModelsHealth writes this aggregate
+        // key alongside the per-model keys). Models added since the last ping — or
+        // before the first ping — surface as 'unknown', matching the old per-key
+        // read. Avoids one Cache::get per configured model on every call.
+        $cached = Cache::get('ai_model_health');
+
+        return collect($this->getAvailableModels())
+            ->mapWithKeys(function ($name, string $modelId) use ($cached): array {
+                $health = is_array($cached) ? ($cached[$modelId] ?? null) : null;
+
+                return [$modelId => $health ?? ['model' => $modelId, 'status' => 'unknown', 'latency_ms' => null, 'error' => null, 'checked_at' => null]];
+            })
+            ->toArray();
+    }
+
+    /**
+     * Model list for the pickers: only the working models are listed, so operators
+     * can register many models and the pickers self-curate to the healthy set.
+     *
+     *  - Unhealthy models (confirmed unreachable/errored by the last ping) are HIDDEN.
+     *  - Healthy models show latency ("Name · 2.1s"); slow ones add ⚠ ("Name · 25.0s ⚠").
+     *  - Models not yet checked (no cached health, or newly added) are shown raw so a
+     *    fresh model never disappears before its first ping, and pickers are never empty.
+     *
+     * @return array<string, string>
+     */
+    public function getModelsForPicker(): array
+    {
+        $health = $this->getModelsHealth();
+        $hasData = collect($health)->contains(fn ($h) => ($h['status'] ?? 'unknown') !== 'unknown');
+
+        return collect($this->getAvailableModels())
+            ->mapWithKeys(function (string $name, string $modelId) use ($health, $hasData): array {
+                $status = $health[$modelId]['status'] ?? 'unknown';
+
+                // No health data at all yet, or this model hasn't been classified: show it
+                // (raw) so pickers are never empty and a newly-added model is visible.
+                if (! $hasData || $status === 'unknown') {
+                    return [$modelId => $name];
+                }
+
+                // Confirmed broken by the last ping: hide from pickers.
+                if ($status === 'unhealthy') {
+                    return [];
+                }
+
+                $latency = $health[$modelId]['latency_ms'] ?? null;
+                $suffix = $status === 'slow'
+                    ? ' · '.number_format(($latency ?? 0) / 1000, 1).'s ⚠'
+                    : ($latency !== null ? ' · '.number_format($latency / 1000, 1).'s' : '');
+
+                return [$modelId => $name.$suffix];
+            })
+            ->toArray();
+    }
+
     public function suggestLabels(array $incidentData, array $availableLabels, ?string $model = null): array
     {
         $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
@@ -239,7 +426,7 @@ class AiTextService
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
             $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
+            $usage = $this->normalizeUsage($responseData['usage'] ?? null);
             $promptTokens = $usage['prompt_tokens'] ?? null;
             $completionTokens = $usage['completion_tokens'] ?? null;
             $totalTokens = $usage['total_tokens'] ?? null;
@@ -292,18 +479,10 @@ class AiTextService
 
     private function parseLabelSuggestions(string $content, array $availableLabels): array
     {
-        preg_match('/\{.*\}/s', $content, $matches);
-
-        if (empty($matches)) {
-            Log::warning('[Smart Labels] No JSON found in AI response', ['content' => substr($content, 0, 500)]);
-
-            return ['matched' => [], 'suggested' => []];
-        }
-
-        $parsed = json_decode($matches[0], true);
+        $parsed = JsonExtractor::extract($content);
 
         if (! is_array($parsed)) {
-            Log::warning('[Smart Labels] JSON decode failed', ['raw' => $matches[0], 'error' => json_last_error_msg()]);
+            Log::warning('[Smart Labels] No JSON found in AI response', ['content' => substr($content, 0, 500)]);
 
             return ['matched' => [], 'suggested' => []];
         }
@@ -726,7 +905,7 @@ class AiTextService
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
             $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
+            $usage = $this->normalizeUsage($responseData['usage'] ?? null);
 
             if ($response->failed()) {
                 Log::warning('AI document summarization failed', ['status' => $response->status(), 'filename' => $originalFilename]);
@@ -757,65 +936,114 @@ class AiTextService
     public function callAiForJson(string $fieldType, string $model, string $systemPrompt, string $userMessage, array $defaultResult, ?int $maxTokens = null): array
     {
         $inputLength = strlen($userMessage);
-        $startTime = microtime(true);
         $resolvedMaxTokens = $maxTokens ?? $this->getMaxTokensForType($fieldType);
+
+        $result = $this->sendJsonRequest($model, $systemPrompt, $userMessage, $resolvedMaxTokens);
+
+        if (! $result['ok']) {
+            $reason = $result['error'] ?? 'HTTP '.$result['status'];
+            Log::warning("[{$fieldType}] AI request failed", ['reason' => $reason]);
+            $this->logFeatureUsage($fieldType, $model, false, $inputLength, null, $result['usage'], $result['responseTimeMs'], $result['apiRequestId'], $reason);
+
+            return $defaultResult;
+        }
+
+        $parsed = $this->parseJsonContent($fieldType, $result['content']);
+
+        // One repair retry: cheaper models sometimes wrap JSON in prose/fences or
+        // emit a <think> block. A single nudge recovers most of these without
+        // paying for a retry on the (common) already-valid path.
+        if ($parsed === null && $result['content'] !== '') {
+            $retryUser = $userMessage."\n\nNOTE: Your previous output was not valid JSON. Return ONLY the JSON object — no prose, no code fences, no explanation.";
+            $retry = $this->sendJsonRequest($model, $systemPrompt, $retryUser, $resolvedMaxTokens);
+            if ($retry['ok'] && $retry['content'] !== '') {
+                $reparsed = $this->parseJsonContent($fieldType, $retry['content']);
+                if ($reparsed !== null) {
+                    $parsed = $reparsed;
+                    $result = $retry; // adopt the successful attempt's content/usage/timing
+                }
+            }
+        }
+
+        $success = $parsed !== null;
+        $this->logFeatureUsage($fieldType, $model, $success, $inputLength, strlen((string) $result['content']), $result['usage'], $result['responseTimeMs'], $result['apiRequestId']);
+
+        return $success ? array_merge($defaultResult, $parsed) : $defaultResult;
+    }
+
+    /**
+     * Send one structured (JSON) chat completion. Handles response_format
+     * (config-gated, with a graceful 4xx fallback) and provider usage normalization.
+     *
+     * @return array{ok:bool,status:int,content:string,usage:array,responseData:array,responseTimeMs:float,apiRequestId:?string,error:?string}
+     */
+    private function sendJsonRequest(string $model, string $systemPrompt, string $userMessage, int $maxTokens): array
+    {
+        $startTime = microtime(true);
+        $payload = [
+            'model' => $model,
+            'messages' => [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userMessage],
+            ],
+            'max_tokens' => $maxTokens,
+        ];
+
+        $useResponseFormat = (bool) config('ai.structured.response_format', false);
+        if ($useResponseFormat) {
+            $payload['response_format'] = ['type' => 'json_object'];
+        }
 
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($this->getTimeout())
-                ->post($this->buildUrl(), [
-                    'model' => $model,
-                    'messages' => [
-                        ['role' => 'system', 'content' => $systemPrompt],
-                        ['role' => 'user', 'content' => $userMessage],
-                    ],
-                    'max_tokens' => $resolvedMaxTokens,
-                    'temperature' => config('ai.temperatures.json_extraction', 0.1),
-                ]);
+                ->post($this->buildUrl(), $payload);
 
-            $responseTimeMs = (microtime(true) - $startTime) * 1000;
-            $responseData = $response->json();
-            $usage = $responseData['usage'] ?? [];
-
-            if ($response->failed()) {
-                Log::warning("[{$fieldType}] AI request failed", ['status' => $response->status()]);
-                $this->logFeatureUsage($fieldType, $model, false, $inputLength, null, $usage, $responseTimeMs, $responseData['id'] ?? null, 'HTTP '.$response->status());
-
-                return $defaultResult;
+            // Some gateways/models reject response_format with a 4xx — retry once without it.
+            if ($response->failed() && $useResponseFormat && $response->status() >= 400 && $response->status() < 500) {
+                unset($payload['response_format']);
+                $response = Http::withHeaders($this->buildHeaders())
+                    ->timeout($this->getTimeout())
+                    ->post($this->buildUrl(), $payload);
             }
+
+            $responseData = $response->json() ?? [];
+
+            return [
+                'ok' => $response->successful(),
+                'status' => $response->status(),
+                'content' => $response->json('choices.0.message.content', '') ?? '',
+                'usage' => $this->normalizeUsage($responseData['usage'] ?? null),
+                'responseData' => $responseData,
+                'responseTimeMs' => (microtime(true) - $startTime) * 1000,
+                'apiRequestId' => $responseData['id'] ?? null,
+                'error' => null,
+            ];
         } catch (\Throwable $e) {
-            $responseTimeMs = (microtime(true) - $startTime) * 1000;
-            Log::warning("[{$fieldType}] AI request failed", ['error' => $e->getMessage()]);
-            $this->logFeatureUsage($fieldType, $model, false, $inputLength, null, [], $responseTimeMs, null, $e->getMessage());
-
-            return $defaultResult;
+            return [
+                'ok' => false,
+                'status' => 0,
+                'content' => '',
+                'usage' => [],
+                'responseData' => [],
+                'responseTimeMs' => (microtime(true) - $startTime) * 1000,
+                'apiRequestId' => null,
+                'error' => $e->getMessage(),
+            ];
         }
+    }
 
-        $content = $response->json('choices.0.message.content', '');
-
-        if (empty($content)) {
+    private function parseJsonContent(string $fieldType, string $content): ?array
+    {
+        if ($content === '') {
             Log::warning("[{$fieldType}] Empty AI response");
-            $this->logFeatureUsage($fieldType, $model, false, $inputLength, null, $usage ?? [], $responseTimeMs, $responseData['id'] ?? null, 'Empty response');
 
-            return $defaultResult;
+            return null;
         }
 
         Log::info("[{$fieldType}] AI response", ['content' => substr($content, 0, 1000)]);
-        $parsed = $this->extractJson($content);
-        $this->logFeatureUsage($fieldType, $model, true, $inputLength, strlen($content), $usage, $responseTimeMs, $responseData['id'] ?? null);
 
-        return is_array($parsed) ? array_merge($defaultResult, $parsed) : $defaultResult;
-    }
-
-    private function extractJson(string $content): ?array
-    {
-        preg_match('/\{.*\}/s', $content, $matches);
-        if (empty($matches)) {
-            return null;
-        }
-        $parsed = json_decode($matches[0], true);
-
-        return is_array($parsed) ? $parsed : null;
+        return JsonExtractor::extract($content);
     }
 
     private function getMaxTokensForType(string $fieldType): int
@@ -846,7 +1074,6 @@ class AiTextService
                 ['role' => 'user', 'content' => $userMessage],
             ],
             'max_tokens' => config('ai.max_tokens.text_enhancement', 1000),
-            'temperature' => config('ai.temperatures.text_enhancement', 0.3),
         ];
     }
 

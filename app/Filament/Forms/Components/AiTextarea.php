@@ -34,7 +34,7 @@ class AiTextarea extends Textarea
         $fieldType = $this->getAiFieldType();
         $aiService = app(AiTextService::class);
 
-        $models = $aiService->getAvailableModels();
+        $models = $aiService->getModelsForPicker();
 
         return [
             'fieldType' => $fieldType,

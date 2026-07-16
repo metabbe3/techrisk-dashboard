@@ -69,7 +69,7 @@
             @mouseenter="cancelClose()"
             @mouseleave="close()"
             x-effect="if (show) { $el.style.top = top + 'px'; $el.style.left = left + 'px'; }"
-            class="fixed z-[9999] w-[400px]"
+            class="fixed z-[var(--z-tooltip)] w-[400px]"
             style="display: none;"
             x-cloak
         >

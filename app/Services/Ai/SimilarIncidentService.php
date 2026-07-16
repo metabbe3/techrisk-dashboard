@@ -3,12 +3,16 @@
 namespace App\Services\Ai;
 
 use App\Models\Incident;
+use App\Models\RagDocument;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\Concerns\JsonExtractor;
 use App\Services\Ai\Concerns\StripsThinkingTags;
+use App\Services\IncidentFormatter;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class SimilarIncidentService
 {
@@ -19,6 +23,7 @@ class SimilarIncidentService
     public function __construct(
         private readonly AiUsageLogger $usageLogger,
         private readonly CircuitBreaker $circuitBreaker,
+        private readonly RagService $ragService,
     ) {}
 
     public function isAvailable(): bool
@@ -113,7 +118,7 @@ class SimilarIncidentService
             }
 
             $content = StripsThinkingTags::stripStatic($content);
-            $parsed = $this->extractJson($content);
+            $parsed = JsonExtractor::extract($content);
 
             $this->usageLogger->log(
                 fieldType: 'similarity_think',
@@ -133,52 +138,118 @@ class SimilarIncidentService
     }
 
     /**
-     * Phase 2: FIND — gather candidates across multiple dimensions using SQL + RAG.
+     * Phase 2: FIND — ranked hybrid retrieval.
+     *
+     * RAG FULLTEXT (rag_documents.searchable_content) is the primary ranked
+     * retriever; structured dimensions (category / label / team / financial)
+     * add capped boosts. Each candidate gets a fused score; the collection is
+     * returned sorted by that score so VERIFY's later `->take(N)` keeps the
+     * strongest matches instead of an arbitrary (primary-key) slice.
      */
     private function findPhase(Incident $incident, array $thinkResult): Collection
     {
-        $lookbackMonths = config('ai.similarity.lookback_months', 24);
-        $maxCandidates = config('ai.similarity.max_candidates', 50);
-        $searchHints = $thinkResult['search_hints'] ?? [];
+        $lookbackMonths = (int) config('ai.similarity.lookback_months', 24);
+        $maxCandidates = (int) config('ai.similarity.max_candidates', 50);
 
-        $candidateIds = collect();
+        $ragScores = $this->searchByRag($incident, $thinkResult, $lookbackMonths);
 
-        // 1. Category search — SQL where JSON categories overlap
-        $categoryIds = $this->searchByCategories($incident, $lookbackMonths);
-        $candidateIds = $candidateIds->merge($categoryIds);
+        $dimensionIds = [
+            'category' => $this->searchByCategories($incident, $lookbackMonths),
+            'label' => $this->searchByLabels($incident, $lookbackMonths),
+            'team' => $this->searchByTeam($incident, $lookbackMonths),
+            'financial' => $this->searchByFinancial($incident, $lookbackMonths),
+        ];
 
-        // 2. Text/root cause search — RAG FULLTEXT with enriched terms
-        $textIds = $this->searchByText($incident, $searchHints, $lookbackMonths);
-        $candidateIds = $candidateIds->merge($textIds);
+        $ragWeight = (float) config('ai.similarity.rag_weight', 0.6);
+        $structWeight = (float) config('ai.similarity.struct_weight', 0.4);
+        $boosts = (array) config('ai.similarity.boost', []);
 
-        // 3. Financial pattern search — similar fund_status and fund_loss range
-        $financialIds = $this->searchByFinancial($incident, $lookbackMonths);
-        $candidateIds = $candidateIds->merge($financialIds);
+        $allIds = array_unique(array_merge(
+            array_keys($ragScores),
+            ...array_values($dimensionIds),
+        ));
+        $allIds = array_values(array_filter($allIds, fn ($id) => $id !== $incident->id));
 
-        // 4. Team/source search — same pic_id, incident_source, third_party_client
-        $teamIds = $this->searchByTeam($incident, $lookbackMonths);
-        $candidateIds = $candidateIds->merge($teamIds);
-
-        // 5. Label search — incidents sharing labels
-        $labelIds = $this->searchByLabels($incident, $lookbackMonths);
-        $candidateIds = $candidateIds->merge($labelIds);
-
-        // Deduplicate, exclude self, limit
-        $candidateIds = $candidateIds
-            ->unique()
-            ->filter(fn ($id) => $id !== $incident->id)
-            ->take($maxCandidates)
-            ->values()
-            ->toArray();
-
-        if (empty($candidateIds)) {
+        if (empty($allIds)) {
             return collect();
         }
 
-        return Incident::whereIn('id', $candidateIds)
-            ->with(['labels:id,name', 'actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date'])])
+        $scores = [];
+        foreach ($allIds as $id) {
+            $rag = (float) ($ragScores[$id] ?? 0.0);
+            $boostSum = 0.0;
+            foreach ($dimensionIds as $dim => $ids) {
+                if (in_array($id, $ids, true)) {
+                    $boostSum += (float) ($boosts[$dim] ?? 0);
+                }
+            }
+            $scores[$id] = ($rag * $ragWeight) + (min($boostSum, 1.0) * $structWeight);
+        }
+
+        arsort($scores);
+        $topIds = array_slice(array_keys($scores), 0, $maxCandidates);
+
+        if (empty($topIds)) {
+            return collect();
+        }
+
+        $candidates = Incident::whereIn('id', $topIds)
+            ->with(['labels:id,name', 'pic:id,name,email', 'actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date'])])
             ->select(Incident::EXTENDED_SIMILARITY_COLUMNS)
             ->get();
+
+        $candidates->each(fn ($c) => $c->retrieval_score = $scores[$c->id] ?? 0.0);
+
+        return $candidates->sortByDesc('retrieval_score')->values();
+    }
+
+    /**
+     * Primary ranked retriever: MySQL FULLTEXT over rag_documents.
+     * Returns [incident_id => normalized score 0..1]. Empty on failure (e.g.
+     * SQLite without FULLTEXT) so structured-only retrieval still proceeds.
+     */
+    private function searchByRag(Incident $incident, array $thinkResult, int $lookbackMonths): array
+    {
+        $hints = $thinkResult['search_hints'] ?? [];
+        $textHint = is_string($hints['text'] ?? null) ? $hints['text'] : '';
+        $rootCauseHints = (array) ($hints['root_cause'] ?? []);
+
+        $query = collect([
+            $incident->title,
+            $incident->summary,
+            $incident->root_cause,
+            $textHint,
+            ...$rootCauseHints,
+        ])->filter()->implode(' ');
+
+        if (trim($query) === '') {
+            return [];
+        }
+
+        $limit = (int) config('ai.similarity.rag_search_limit', 40);
+
+        try {
+            $results = $this->ragService->search($query, [
+                'date_from' => now()->subMonths($lookbackMonths)->toDateString(),
+            ], $limit);
+        } catch (\Throwable $e) {
+            Log::warning('[SimilarIncident] RAG search failed, using structured-only retrieval', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return [];
+        }
+
+        if ($results->isEmpty()) {
+            return [];
+        }
+
+        $max = (float) $results->max('relevance_score') ?: 1.0;
+
+        return $results
+            ->reject(fn ($doc) => $doc->incident_id === $incident->id)
+            ->mapWithKeys(fn ($doc) => [$doc->incident_id => min((float) $doc->relevance_score / $max, 1.0)])
+            ->toArray();
     }
 
     /**
@@ -203,50 +274,29 @@ class SimilarIncidentService
 
         $topCandidates = $candidates->take($maxVerify);
 
+        Log::info('[SimilarIncident] VERIFY selection', [
+            'candidates_found' => $candidates->count(),
+            'sent_to_verify' => $topCandidates->count(),
+            'dropped_at_verify' => $candidates->count() - $topCandidates->count(),
+        ]);
+
+        $contextMap = RagDocument::whereIn('incident_id', $topCandidates->pluck('id'))
+            ->pluck('context_content', 'incident_id');
+
         $userMessage = "## Source Incident Analysis\n";
         $userMessage .= json_encode($thinkResult, JSON_PRETTY_PRINT)."\n\n";
-        $userMessage .= "## Candidate Incidents (verify each one)\n\n";
+        $userMessage .= "## Candidate Incidents (verify each, ranked by retrieval signal)\n\n";
 
         foreach ($topCandidates as $i => $candidate) {
-            $userMessage .= ($i + 1).". [{$candidate->no}] {$candidate->title}\n";
-            $userMessage .= '   ID: '.$candidate->id."\n";
-            $userMessage .= '   Summary: '.str_limit($candidate->summary ?? 'N/A', 200)."\n";
-            $userMessage .= '   Root Cause: '.str_limit($candidate->root_cause ?? 'N/A', 200)."\n";
-            $userMessage .= '   Severity: '.($candidate->severity?->value ?? 'N/A')."\n";
-            $userMessage .= '   Type: '.($candidate->incident_type ?? 'N/A')."\n";
-            $userMessage .= '   Status: '.($candidate->incident_status?->value ?? 'N/A')."\n";
-            $userMessage .= '   Date: '.($candidate->incident_date?->toDateString() ?? 'N/A')."\n";
+            $rank = $i + 1;
+            $score = number_format((float) ($candidate->retrieval_score ?? 0), 2);
+            $userMessage .= "{$rank}. [{$candidate->no}] {$candidate->title}";
+            $userMessage .= " · Rank #{$rank} · retrieval {$score} · ID: {$candidate->id}\n";
 
-            $categories = collect([
-                ...(array) ($candidate->root_cause_category ?? []),
-                ...(array) ($candidate->business_category ?? []),
-                ...(array) ($candidate->responsible_team ?? []),
-            ])->unique()->implode(', ');
-            $userMessage .= '   Categories: '.($categories ?: 'None')."\n";
-
-            $labels = $candidate->labels->pluck('name')->implode(', ');
-            $userMessage .= '   Labels: '.($labels ?: 'None')."\n";
-
-            if ($candidate->fund_status) {
-                $userMessage .= '   Fund Status: '.$candidate->fund_status->value."\n";
-            }
-            if ((float) ($candidate->fund_loss ?? 0) > 0) {
-                $userMessage .= '   Fund Loss: '.$candidate->fund_loss."\n";
-            }
-            if ($candidate->mttr) {
-                $userMessage .= '   MTTR: '.$candidate->mttr."\n";
-            }
-            if ($candidate->incident_source) {
-                $userMessage .= '   Source: '.$candidate->incident_source."\n";
-            }
-            if ($candidate->improvements) {
-                $userMessage .= '   Improvements: '.str_limit($candidate->improvements, 150)."\n";
-            }
-            if ($candidate->evidence) {
-                $userMessage .= '   Evidence: '.str_limit($candidate->evidence, 100)."\n";
-            }
-
-            $userMessage .= "\n";
+            // Prefer the prebuilt RAG compact context (richer than truncated fields);
+            // fall back to a fresh compact render when no RAG doc exists.
+            $context = $contextMap->get($candidate->id) ?? IncidentFormatter::formatCompact($candidate);
+            $userMessage .= Str::limit($context, 800)."\n\n";
         }
 
         $userMessage .= 'Verify each candidate against the source incident analysis. Return ONLY valid JSON.';
@@ -282,7 +332,7 @@ class SimilarIncidentService
             }
 
             $content = StripsThinkingTags::stripStatic($content);
-            $parsed = $this->extractJson($content);
+            $parsed = JsonExtractor::extract($content);
 
             $this->usageLogger->log(
                 fieldType: 'similarity_verify',
@@ -305,11 +355,11 @@ class SimilarIncidentService
                 ->take($maxResults)
                 ->values();
 
-            $candidateMap = $candidates->keyBy('id');
+            $candidateById = $candidates->keyBy('id');
+            $candidateByNo = $candidates->keyBy(fn ($c) => $c->no);
 
-            $matches = $verified->map(function ($v) use ($candidateMap) {
-                $id = $v['id'] ?? null;
-                $matched = $candidateMap->get($id);
+            $matches = $verified->map(function ($v) use ($candidateById, $candidateByNo) {
+                $matched = $this->resolveCandidate($v, $candidateById, $candidateByNo);
 
                 if (! $matched) {
                     return null;
@@ -319,7 +369,7 @@ class SimilarIncidentService
                     'id' => $matched->id,
                     'no' => $matched->no,
                     'title' => $matched->title,
-                    'summary' => $matched->summary ? str_limit($matched->summary, 150) : '',
+                    'summary' => $matched->summary ? Str::limit($matched->summary, 150) : '',
                     'severity' => $matched->severity ?? '',
                     'incident_date' => $matched->incident_date?->toDateString(),
                     'incident_status' => $matched->incident_status ?? '',
@@ -382,102 +432,11 @@ class SimilarIncidentService
             return $matches;
         }
 
-        $model = config('ai.similarity.reasoning_model', 'REASONING-MODEL');
-        $timeout = config('ai.similarity.double_check_timeout', 30);
-        $maxTokens = config('ai.similarity.double_check_max_tokens', 1024);
-
-        $sourceContext = $this->buildIncidentContext($sourceIncident);
+        $batchSize = max(1, (int) config('ai.similarity.double_check_batch_size', 8));
         $confirmed = [];
 
-        foreach ($uncertain as $match) {
-            $candidate = Incident::with(['labels:id,name', 'actionImprovements'])
-                ->select(Incident::EXTENDED_SIMILARITY_COLUMNS)
-                ->find($match['id']);
-
-            if (! $candidate) {
-                continue;
-            }
-
-            $candidateContext = $this->buildIncidentContext($candidate);
-
-            $userMessage = "## SOURCE INCIDENT (the one being analyzed)\n{$sourceContext}\n\n";
-            $userMessage .= "## CANDIDATE INCIDENT (previously scored similarity: {$match['similarity']})\n{$candidateContext}\n\n";
-            $userMessage .= "Previous verifier said: \"{$match['reasoning']}\"\n\n";
-            $userMessage .= 'Is this a TRUE similar incident or a FALSE POSITIVE? Return ONLY valid JSON.';
-
-            $startTime = microtime(true);
-
-            try {
-                $response = Http::withHeaders($this->buildHeaders())
-                    ->timeout($timeout)
-                    ->post($this->buildUrl(), [
-                        'model' => $model,
-                        'messages' => [
-                            ['role' => 'system', 'content' => $systemPrompt],
-                            ['role' => 'user', 'content' => $userMessage],
-                        ],
-                        'max_tokens' => $maxTokens,
-                    ]);
-
-                $responseTimeMs = $this->elapsedMs($startTime);
-                $responseData = $response->json();
-                $usage = $responseData['usage'] ?? [];
-
-                if (! $response->successful()) {
-                    Log::warning('[SimilarIncident] DOUBLE-CHECK API error for candidate', [
-                        'candidate_id' => $match['id'],
-                        'status' => $response->status(),
-                    ]);
-                    $confirmed[] = $match; // Keep uncertain match if double-check fails
-
-                    continue;
-                }
-
-                $content = StripsThinkingTags::stripStatic(
-                    $responseData['choices'][0]['message']['content'] ?? ''
-                );
-                $parsed = $this->extractJson($content);
-
-                $this->usageLogger->log(
-                    fieldType: 'similarity_double_check',
-                    model: $model,
-                    success: true,
-                    outputLength: strlen($content),
-                    usage: $this->formatUsage($usage),
-                    responseTimeMs: $responseTimeMs,
-                    metadata: ['candidate_id' => $match['id']],
-                );
-
-                if (! is_array($parsed) || ($parsed['confirmed'] ?? false) !== true) {
-                    Log::info('[SimilarIncident] DOUBLE-CHECK rejected match', [
-                        'candidate_id' => $match['id'],
-                        'candidate_no' => $match['no'],
-                        'original_similarity' => $match['similarity'],
-                        'reason' => $parsed['reasoning'] ?? 'unknown',
-                    ]);
-
-                    continue; // Rejected
-                }
-
-                // Update with double-checked similarity and reasoning
-                $match['similarity'] = min(max((float) ($parsed['similarity'] ?? $match['similarity']), 0), 1);
-                $match['match_type'] = $parsed['match_type'] ?? $match['match_type'] ?? 'thematic';
-                $match['reasoning'] = $parsed['reasoning'] ?? $match['reasoning'];
-                $match['double_checked'] = true;
-                $confirmed[] = $match;
-
-                Log::info('[SimilarIncident] DOUBLE-CHECK confirmed match', [
-                    'candidate_id' => $match['id'],
-                    'candidate_no' => $match['no'],
-                    'similarity' => $match['similarity'],
-                ]);
-            } catch (\Throwable $e) {
-                Log::warning('[SimilarIncident] DOUBLE-CHECK failed for candidate', [
-                    'candidate_id' => $match['id'],
-                    'error' => $e->getMessage(),
-                ]);
-                $confirmed[] = $match; // Keep uncertain match if double-check fails
-            }
+        foreach (array_chunk($uncertain, $batchSize) as $batch) {
+            $confirmed = array_merge($confirmed, $this->doubleCheckBatch($sourceIncident, $batch, $systemPrompt));
         }
 
         $allMatches = array_merge($confident, $confirmed);
@@ -488,10 +447,153 @@ class SimilarIncidentService
             'uncertain_checked' => count($uncertain),
             'confirmed' => count($confirmed),
             'rejected' => count($uncertain) - count($confirmed),
+            'batches' => (int) ceil(count($uncertain) / $batchSize),
             'total_final' => count($allMatches),
         ]);
 
         return $allMatches;
+    }
+
+    /**
+     * Adjudicate one batch of uncertain matches in a single LLM call.
+     * On any failure (HTTP error, unparseable JSON, exception) the batch is
+     * returned unchanged so uncertain matches are never silently dropped.
+     */
+    private function doubleCheckBatch(Incident $sourceIncident, array $batch, string $systemPrompt): array
+    {
+        $model = config('ai.similarity.reasoning_model', 'REASONING-MODEL');
+        $timeout = (int) config('ai.similarity.double_check_timeout', 30);
+        // Expand the per-call budget with batch size so multi-verdict output isn't truncated.
+        $maxTokens = max((int) config('ai.similarity.double_check_max_tokens', 1024), 220 * count($batch));
+
+        $candidates = Incident::with(['labels:id,name', 'pic:id,name,email', 'actionImprovements'])
+            ->select(Incident::EXTENDED_SIMILARITY_COLUMNS)
+            ->whereIn('id', array_column($batch, 'id'))
+            ->get()
+            ->keyBy('id');
+
+        $sourceContext = $this->buildIncidentContext($sourceIncident);
+
+        $userMessage = "## SOURCE INCIDENT (the one being analyzed)\n{$sourceContext}\n\n";
+        $userMessage .= "## CANDIDATES TO ADJUDICATE (each previously scored uncertain)\n\n";
+
+        foreach ($batch as $i => $match) {
+            $candidate = $candidates->get($match['id']);
+            if (! $candidate) {
+                continue;
+            }
+            $userMessage .= ($i + 1).". [{$match['no']}] {$match['title']}";
+            $userMessage .= " (prior similarity {$match['similarity']}, ID {$match['id']})\n";
+            $userMessage .= 'Previous verifier said: "'.Str::limit($match['reasoning'] ?? '', 240)."\"\n";
+            $userMessage .= Str::limit($this->buildIncidentContext($candidate), 1200)."\n\n";
+        }
+
+        $userMessage .= 'For EACH numbered candidate decide TRUE similar incident or FALSE POSITIVE. ';
+        $userMessage .= 'Return ONLY valid JSON: {"verdicts": [{"id": <candidate id>, "confirmed": true/false, "similarity": 0.0-1.0, "match_type": "deep|thematic|false_positive", "reasoning": "..."}]}';
+
+        $startTime = microtime(true);
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout($timeout)
+                ->post($this->buildUrl(), [
+                    'model' => $model,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user', 'content' => $userMessage],
+                    ],
+                    'max_tokens' => $maxTokens,
+                ]);
+
+            $responseTimeMs = $this->elapsedMs($startTime);
+            $responseData = $response->json();
+            $usage = $responseData['usage'] ?? [];
+
+            if (! $response->successful()) {
+                Log::warning('[SimilarIncident] DOUBLE-CHECK batch API error', [
+                    'status' => $response->status(),
+                    'batch_size' => count($batch),
+                ]);
+
+                return $batch;
+            }
+
+            $content = StripsThinkingTags::stripStatic($responseData['choices'][0]['message']['content'] ?? '');
+
+            $this->usageLogger->log(
+                fieldType: 'similarity_double_check',
+                model: $model,
+                success: true,
+                outputLength: strlen($content),
+                usage: $this->formatUsage($usage),
+                responseTimeMs: $responseTimeMs,
+                metadata: ['batch_size' => count($batch)],
+            );
+
+            $parsed = JsonExtractor::extract($content);
+
+            if (! is_array($parsed)) {
+                Log::warning('[SimilarIncident] DOUBLE-CHECK batch unparseable, keeping uncertain', [
+                    'batch_size' => count($batch),
+                ]);
+
+                return $batch;
+            }
+
+            return $this->applyDoubleCheckVerdicts($batch, $parsed['verdicts'] ?? $parsed['candidates'] ?? []);
+        } catch (\Throwable $e) {
+            Log::warning('[SimilarIncident] DOUBLE-CHECK batch failed, keeping uncertain', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return $batch;
+        }
+    }
+
+    /**
+     * Apply one verdict per match in a double-check batch (matched by id or no).
+     */
+    private function applyDoubleCheckVerdicts(array $batch, array $verdicts): array
+    {
+        $byId = [];
+        $byNo = [];
+        foreach ($verdicts as $verdict) {
+            if (isset($verdict['id'])) {
+                $byId[(string) $verdict['id']] = $verdict;
+            }
+            if (isset($verdict['no'])) {
+                $byNo[(string) $verdict['no']] = $verdict;
+            }
+        }
+
+        $confirmed = [];
+
+        foreach ($batch as $match) {
+            $verdict = $byId[(string) $match['id']] ?? $byNo[(string) $match['no']] ?? null;
+
+            if (! $verdict || ($verdict['confirmed'] ?? false) !== true) {
+                Log::info('[SimilarIncident] DOUBLE-CHECK rejected match', [
+                    'candidate_no' => $match['no'],
+                    'original_similarity' => $match['similarity'],
+                    'reason' => $verdict['reasoning'] ?? 'unknown',
+                ]);
+
+                continue;
+            }
+
+            $match['similarity'] = min(max((float) ($verdict['similarity'] ?? $match['similarity']), 0), 1);
+            $match['match_type'] = $verdict['match_type'] ?? $match['match_type'] ?? 'thematic';
+            $match['reasoning'] = $verdict['reasoning'] ?? $match['reasoning'];
+            $match['double_checked'] = true;
+            $confirmed[] = $match;
+
+            Log::info('[SimilarIncident] DOUBLE-CHECK confirmed match', [
+                'candidate_no' => $match['no'],
+                'similarity' => $match['similarity'],
+            ]);
+        }
+
+        return $confirmed;
     }
 
     // --- Dimension-specific search methods ---
@@ -522,58 +624,6 @@ class SimilarIncidentService
             ->toArray();
     }
 
-    private function searchByText(Incident $incident, array $searchHints, int $lookbackMonths): array
-    {
-        $textHint = $searchHints['text'] ?? '';
-        $rootCauseHints = $searchHints['root_cause'] ?? [];
-
-        $allTerms = collect([
-            $incident->title,
-            $incident->summary,
-            $incident->root_cause,
-            $textHint,
-            ...(array) $rootCauseHints,
-        ])->filter()->flatMap(function ($term) {
-            $words = preg_split('/[\s,;]+/', $term, -1, PREG_SPLIT_NO_EMPTY);
-            $phrases = [];
-            $chunk = '';
-            foreach ($words as $word) {
-                if (strlen($word) < 3) {
-                    continue;
-                }
-                $chunk .= ($chunk ? ' ' : '').$word;
-                if (str_word_count($chunk) >= 2) {
-                    $phrases[] = $chunk;
-                    $chunk = '';
-                }
-            }
-            if ($chunk) {
-                $phrases[] = $chunk;
-            }
-
-            return $phrases;
-        })->unique()->take(10)->values()->toArray();
-
-        if (empty($allTerms)) {
-            return [];
-        }
-
-        return Incident::where('id', '!=', $incident->id)
-            ->where('incident_date', '>=', now()->subMonths($lookbackMonths))
-            ->where(function ($q) use ($allTerms) {
-                foreach ($allTerms as $term) {
-                    $q->orWhere('title', 'LIKE', "%{$term}%")
-                        ->orWhere('summary', 'LIKE', "%{$term}%")
-                        ->orWhere('root_cause', 'LIKE', "%{$term}%")
-                        ->orWhere('improvements', 'LIKE', "%{$term}%")
-                        ->orWhere('evidence', 'LIKE', "%{$term}%");
-                }
-            })
-            ->limit(self::MAX_CANDIDATES_PER_DIMENSION)
-            ->pluck('id')
-            ->toArray();
-    }
-
     private function searchByFinancial(Incident $incident, int $lookbackMonths): array
     {
         if (! $incident->fund_status || (float) ($incident->fund_loss ?? 0) <= 0) {
@@ -595,29 +645,31 @@ class SimilarIncidentService
 
     private function searchByTeam(Incident $incident, int $lookbackMonths): array
     {
-        $query = Incident::where('id', '!=', $incident->id)
-            ->where('incident_date', '>=', now()->subMonths($lookbackMonths));
-
-        $hasCondition = false;
-
+        $conditions = [];
         if ($incident->pic_id) {
-            $query->orWhere('pic_id', $incident->pic_id);
-            $hasCondition = true;
+            $conditions[] = ['pic_id', '=', $incident->pic_id];
         }
         if ($incident->incident_source) {
-            $query->orWhere('incident_source', $incident->incident_source);
-            $hasCondition = true;
+            $conditions[] = ['incident_source', '=', $incident->incident_source];
         }
         if ($incident->third_party_client) {
-            $query->orWhere('third_party_client', $incident->third_party_client);
-            $hasCondition = true;
+            $conditions[] = ['third_party_client', '=', $incident->third_party_client];
         }
 
-        if (! $hasCondition) {
+        if (empty($conditions)) {
             return [];
         }
 
-        return $query->limit(self::MAX_CANDIDATES_PER_DIMENSION)
+        // Group the ORs so the base filters (exclude self, lookback) still apply
+        // to every team/source match — otherwise the whole recent corpus matches.
+        return Incident::where('id', '!=', $incident->id)
+            ->where('incident_date', '>=', now()->subMonths($lookbackMonths))
+            ->where(function ($q) use ($conditions) {
+                foreach ($conditions as [$column, $op, $value]) {
+                    $q->orWhere($column, $op, $value);
+                }
+            })
+            ->limit(self::MAX_CANDIDATES_PER_DIMENSION)
             ->pluck('id')
             ->toArray();
     }
@@ -647,23 +699,25 @@ class SimilarIncidentService
         return $exporter->generateForContext($incident);
     }
 
-    private function extractJson(string $content): ?array
+    /**
+     * Resolve a verified entry to its Incident, tolerating the model echoing
+     * either the numeric `id` or the string `no` into either field.
+     */
+    private function resolveCandidate(array $v, Collection $byId, Collection $byNo): ?Incident
     {
-        if (preg_match('/```(?:json)?\s*(\{.*?\})\s*```/s', $content, $matches)) {
-            $parsed = json_decode($matches[1], true);
-            if (is_array($parsed)) {
-                return $parsed;
+        $id = $v['id'] ?? null;
+
+        if ($id !== null && $id !== '') {
+            if (is_numeric($id) && ($matched = $byId->get((int) $id))) {
+                return $matched;
+            }
+            if ($matched = $byNo->get((string) $id)) {
+                return $matched;
             }
         }
 
-        $jsonStart = strpos($content, '{');
-        $jsonEnd = strrpos($content, '}');
-        if ($jsonStart !== false && $jsonEnd !== false && $jsonEnd > $jsonStart) {
-            $candidate = substr($content, $jsonStart, $jsonEnd - $jsonStart + 1);
-            $parsed = json_decode($candidate, true);
-            if (is_array($parsed)) {
-                return $parsed;
-            }
+        if (($no = $v['no'] ?? null) !== null) {
+            return $byNo->get((string) $no);
         }
 
         return null;

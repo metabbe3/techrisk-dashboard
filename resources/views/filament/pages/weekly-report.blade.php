@@ -27,56 +27,21 @@
         </div>
     </x-filament::section>
 
-    <!-- Summary Stats -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Open Incidents -->
-        <x-filament::section class="border-l-4 border-l-amber-500">
-            <div class="flex items-center gap-4">
-                <div class="flex h-14 w-14 items-center justify-center rounded-lg bg-amber-50 dark:bg-amber-950">
-                    <x-filament::icon
-                        icon="heroicon-o-exclamation-triangle"
-                        class="h-7 w-7 text-amber-600 dark:text-amber-400"
-                    />
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Open Incidents</p>
-                    <p class="text-3xl font-bold text-gray-900 dark:text-white">{{ $totalOpen }}</p>
-                </div>
-            </div>
-        </x-filament::section>
-
-        <!-- Closed Incidents -->
-        <x-filament::section class="border-l-4 border-l-emerald-500">
-            <div class="flex items-center gap-4">
-                <div class="flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-950">
-                    <x-filament::icon
-                        icon="heroicon-o-check-circle"
-                        class="h-7 w-7 text-emerald-600 dark:text-emerald-400"
-                    />
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Closed Incidents</p>
-                    <p class="text-3xl font-bold text-gray-900 dark:text-white">{{ $totalClosed }}</p>
-                </div>
-            </div>
-        </x-filament::section>
-
-        <!-- Total Incidents -->
-        <x-filament::section class="border-l-4 border-l-primary-600">
-            <div class="flex items-center gap-4">
-                <div class="flex h-14 w-14 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary-950">
-                    <x-filament::icon
-                        icon="heroicon-o-chart-bar"
-                        class="h-7 w-7 text-primary-600 dark:text-primary-400"
-                    />
-                </div>
-                <div>
-                    <p class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Incidents</p>
-                    <p class="text-3xl font-bold text-gray-900 dark:text-white">{{ $grandTotal }}</p>
-                </div>
-            </div>
-        </x-filament::section>
-    </div>
+    {{-- Summary stats — compact divided strip (no side-stripes, no icon-card grid) --}}
+    <dl class="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 dark:divide-gray-700 rounded-xl bg-white dark:bg-gray-900 ring-1 ring-gray-950/5 dark:ring-white/10 overflow-hidden">
+        <div class="px-6 py-5">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Open Incidents</dt>
+            <dd class="mt-1 text-3xl font-bold text-amber-600 dark:text-amber-400">{{ $totalOpen }}</dd>
+        </div>
+        <div class="px-6 py-5">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Closed Incidents</dt>
+            <dd class="mt-1 text-3xl font-bold text-emerald-600 dark:text-emerald-400">{{ $totalClosed }}</dd>
+        </div>
+        <div class="px-6 py-5">
+            <dt class="text-sm font-medium text-gray-500 dark:text-gray-400">Total Incidents</dt>
+            <dd class="mt-1 text-3xl font-bold text-gray-900 dark:text-white">{{ $grandTotal }}</dd>
+        </div>
+    </dl>
 
     @include('filament.forms.components.ai-weekly-summary')
 

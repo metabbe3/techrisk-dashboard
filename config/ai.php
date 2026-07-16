@@ -12,6 +12,115 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Structured output
+    |--------------------------------------------------------------------------
+    |
+    | When the gateway/model supports it, send response_format: json_object on
+    | JSON feature calls (RCA, labels, weekly/trend, NL search, post-mortem, …)
+    | for provider-consistent, reliably-parseable output. AiTextService falls
+    | back to a fence/prose-tolerant extractor + one repair retry regardless.
+    | Off by default: some reasoning models reject response_format; the graceful
+    | 4xx fallback covers the rest, but enable only for a gateway known to work.
+    |
+    */
+    'structured' => [
+        'response_format' => env('AI_JSON_RESPONSE_FORMAT', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Model Tiers (health-aware routing)
+    |--------------------------------------------------------------------------
+    |
+    | Ordered alias chains per tier. ModelRouter::pick($tier) returns the first
+    | chain entry that is healthy (status != unhealthy) and circuit-breaker
+    | closed; 'unknown' health is treated as available (fail-open).
+    | Primary alias per tier is env-overridable; the rest are hardcoded fallbacks.
+    |
+    */
+    'tiers' => [
+        // Cost-optimized multi-vendor chains (lead = default; rest = health
+        // fallback). Chinese models lead where quality+speed suffice for cost;
+        // Western models are quality fallback/escalation. Leads are env-overridable.
+        // Chosen from live-measured health+latency: deepseek-v4-pro 109ms (strong+cheap),
+        // glm-5.2-fast 74ms (fastest cheap), qwen3.7-max 201ms (strong), with
+        // claude/gpt/gemini as premium fallbacks.
+        'reasoning' => array_values(array_filter([
+            env('AI_TIER_REASONING', 'deepseek-v4-pro'),
+            'qwen3.7-max',
+            'claude-opus-4-7',
+            'gpt-5',
+        ])),
+        'smart' => array_values(array_filter([
+            env('AI_TIER_SMART', 'deepseek-v4-pro'),
+            'qwen3.7-max',
+            'gemini-2.5-pro',
+            'claude-sonnet-5',
+        ])),
+        'fast' => array_values(array_filter([
+            env('AI_TIER_FAST', 'glm-5.2-fast'),
+            'qwen-turbo',
+            'gemini-2.5-flash',
+            'gpt-5-mini',
+        ])),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Embeddings (semantic retrieval)
+    |--------------------------------------------------------------------------
+    |
+    | Model used to embed incident text + queries for vector similarity (semantic
+    | RAG). Verified working via the gateway's /v1/embeddings endpoint.
+    |
+    */
+    'embeddings' => [
+        'model' => env('AI_EMBEDDING_MODEL', 'text-embedding-3-large'),
+        'endpoint' => '/v1/embeddings',
+        'dimensions' => (int) env('AI_EMBEDDING_DIMS', 3072),
+        'enabled' => env('AI_EMBEDDINGS_ENABLED', false),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Chat — relevant-incident retrieval
+    |--------------------------------------------------------------------------
+    |
+    | For free-text questions (no referenced incident IDs), pull the most
+    | relevant incidents from the corpus via hybrid retrieval + a fast reranker,
+    | so chat answers are grounded in the right incidents (not just the most
+    | recent). Gated + capped to control token cost.
+    |
+    */
+    'chat' => [
+        'relevant_incidents' => [
+            'enabled' => env('AI_CHAT_RELEVANT_INCIDENTS', true),
+            'limit' => (int) env('AI_CHAT_RELEVANT_LIMIT', 3),
+            'candidate_limit' => (int) env('AI_CHAT_RELEVANT_CANDIDATES', 8),
+            'min_length' => (int) env('AI_CHAT_RELEVANT_MIN_LENGTH', 15),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Rephrase Pipeline (frontier-skeleton -> cheap-render)
+    |--------------------------------------------------------------------------
+    |
+    | For long rephrase/render tasks: a reasoning model produces a structured
+    | skeleton (short), then a fast model renders it into human-readable prose.
+    | Only engaged for long outputs (long_turn_token_threshold) so short replies
+    | stay a single call.
+    |
+    */
+    'rephrase' => [
+        'enabled' => env('AI_REPHRASE_PIPELINE', true),
+        'long_turn_token_threshold' => (int) env('AI_REPHRASE_LONG_THRESHOLD', 600),
+        'skeleton_max_tokens' => (int) env('AI_REPHRASE_SKELETON_TOKENS', 1024),
+        'render_max_tokens' => (int) env('AI_REPHRASE_RENDER_TOKENS', 4096),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | AI Models
     |--------------------------------------------------------------------------
     |
@@ -23,6 +132,36 @@ return [
         'FAST-MODEL' => 'Fast Model',
         'SMART-MODEL' => 'Smart Model',
         'REASONING-MODEL' => 'Reasoning Model',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Model Health Check ("ping")
+    |--------------------------------------------------------------------------
+    |
+    | Each configured model is pinged through the gateway with a 1-token
+    | completion to measure reachability + latency. Results are cached and
+    | surfaced as badges on the model pickers (never hidden) and a status
+    | table on the AI Settings page. Run automatically on a schedule and
+    | on demand from AI Settings.
+    |
+    */
+    'model_health' => [
+        'enabled' => env('AI_MODEL_HEALTH_CHECK', true),
+        'ping_timeout' => (int) env('AI_PING_TIMEOUT', 15),
+        'slow_threshold_ms' => (int) env('AI_SLOW_MS', 20000),
+        // ~24h: the health check runs nightly (each ping consumes tokens), so the
+        // cached result must last all day. Real-time failure detection is the
+        // CircuitBreaker's job (trips on actual call failures), not this cache.
+        'cache_ttl' => (int) env('AI_HEALTH_TTL', 86400),
+    ],
+
+    // Chat rate limits, expressed in AI-CALL cost (not messages). Persona mode
+    // fires one call per selected agent, so it charges per persona.
+    'rate_limit' => [
+        'persona_calls_per_min' => (int) env('AI_PERSONA_CALLS_PER_MIN', 30),
+        'conversation_max_messages' => (int) env('AI_CONVO_MAX_MESSAGES', 200),
+        'conversation_token_budget' => (int) env('AI_CONVO_TOKEN_BUDGET', 500000),
     ],
 
     /*
@@ -72,7 +211,7 @@ return [
             'label' => 'Similarity Verify Phase',
         ],
         'similarity_double_check' => [
-            'system' => "You are a strict incident similarity judge performing a FINAL double-check.\n\nYou will receive FULL data for TWO incidents side-by-side: the SOURCE incident and one CANDIDATE that a previous verifier marked as \"uncertain\" (similarity between 0.4–0.69).\n\nYour job is to make the FINAL call: is this a TRUE similar incident or a FALSE POSITIVE?\n\nEVALUATION CRITERIA (be strict):\n1. **Root Cause**: Is the UNDERLYING root cause mechanism genuinely the same? (Not just same symptom or same affected component)\n2. **Failure Chain**: Does the chain of events leading to the incident follow the same path?\n3. **System Stack**: Are the same specific systems, APIs, databases, or infrastructure components involved at the same layer?\n4. **Resolution**: Would the same fix prevent both incidents?\n\nREJECTION CRITERIA — reject if ANY apply:\n- Root causes are fundamentally different (e.g., capacity issue vs authorization bug vs human error)\n- Same system but completely different failure type (e.g., DB timeout vs DB data corruption)\n- Only overlap is organizational (same team, same PIC, same business category) without technical similarity\n- The incidents are in the same domain but represent different failure modes\n- Text similarity is high but technical substance is different\n\nCONFIRM only if you can articulate a SPECIFIC shared root cause mechanism that connects BOTH incidents.\n\nReturn ONLY valid JSON:\n{\"confirmed\": true/false, \"similarity\": 0.0-1.0, \"match_type\": \"deep|thematic|false_positive\", \"reasoning\": \"2-3 sentences explaining your verdict with specific evidence from both incidents\"}",
+            'system' => "You are a strict incident similarity judge performing a FINAL double-check.\n\nYou will receive the SOURCE incident plus ONE OR MORE CANDIDATES that a previous verifier marked as \"uncertain\" (similarity between 0.4–0.69). Evaluate EACH candidate independently against the source.\n\nYour job is to make the FINAL call on each: is it a TRUE similar incident or a FALSE POSITIVE?\n\nEVALUATION CRITERIA (be strict):\n1. **Root Cause**: Is the UNDERLYING root cause mechanism genuinely the same? (Not just same symptom or same affected component)\n2. **Failure Chain**: Does the chain of events leading to the incident follow the same path?\n3. **System Stack**: Are the same specific systems, APIs, databases, or infrastructure components involved at the same layer?\n4. **Resolution**: Would the same fix prevent both incidents?\n\nREJECTION CRITERIA — reject if ANY apply:\n- Root causes are fundamentally different (e.g., capacity issue vs authorization bug vs human error)\n- Same system but completely different failure type (e.g., DB timeout vs DB data corruption)\n- Only overlap is organizational (same team, same PIC, same business category) without technical similarity\n- The incidents are in the same domain but represent different failure modes\n- Text similarity is high but technical substance is different\n\nCONFIRM only if you can articulate a SPECIFIC shared root cause mechanism that connects BOTH incidents.\n\nReturn ONLY valid JSON, one verdict per candidate:\n{\"verdicts\": [{\"id\": <candidate id>, \"confirmed\": true/false, \"similarity\": 0.0-1.0, \"match_type\": \"deep|thematic|false_positive\", \"reasoning\": \"2-3 sentences explaining your verdict with specific evidence from both incidents\"}]}",
             'label' => 'Similarity Double-Check',
         ],
         'weekly_report_summary' => [
@@ -146,27 +285,6 @@ return [
     ],
 
     'max_input_length' => env('AI_MAX_INPUT_LENGTH', 5000),
-
-    /*
-    |--------------------------------------------------------------------------
-    | Temperature Settings Per Task Type
-    |--------------------------------------------------------------------------
-    |
-    | Controls output randomness per task type. Lower = more deterministic.
-    | - json_extraction: Structured data extraction (labels, search, plans)
-    | - text_enhancement: Field enhancement (summary, root_cause, timeline)
-    | - analysis: Deep analysis (War Room agents, trend analysis, RCA)
-    | - chat: Conversational responses (chat assistant, synthesis)
-    | - creative: Generative tasks (prompt enhancement, skill suggestion)
-    |
-    */
-    'temperatures' => [
-        'json_extraction' => (float) env('AI_TEMP_JSON', 0.1),
-        'text_enhancement' => (float) env('AI_TEMP_ENHANCE', 0.3),
-        'analysis' => (float) env('AI_TEMP_ANALYSIS', 0.4),
-        'chat' => (float) env('AI_TEMP_CHAT', 0.7),
-        'creative' => (float) env('AI_TEMP_CREATIVE', 0.8),
-    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -261,10 +379,25 @@ return [
         'verify_max_tokens' => (int) env('AI_SIMILARITY_VERIFY_TOKENS', 4096),
         'lookback_months' => (int) env('AI_SIMILARITY_LOOKBACK_MONTHS', 24),
         'queue' => env('AI_SIMILARITY_QUEUE', 'default'),
+
+        // Hybrid retrieval fusion (FIND phase): RAG FULLTEXT is the primary ranked
+        // retriever; structured dimensions add capped boosts. Candidates are then
+        // ranked by the fused score so VERIFY always sees the strongest matches.
+        'rag_search_limit' => (int) env('AI_SIMILARITY_RAG_SEARCH_LIMIT', 40),
+        'rag_weight' => (float) env('AI_SIMILARITY_RAG_WEIGHT', 0.6),
+        'struct_weight' => (float) env('AI_SIMILARITY_STRUCT_WEIGHT', 0.4),
+        'boost' => [
+            'category' => (float) env('AI_SIMILARITY_BOOST_CATEGORY', 0.5),
+            'label' => (float) env('AI_SIMILARITY_BOOST_LABEL', 0.3),
+            'team' => (float) env('AI_SIMILARITY_BOOST_TEAM', 0.3),
+            'financial' => (float) env('AI_SIMILARITY_BOOST_FINANCIAL', 0.3),
+        ],
+
         'double_check_enabled' => env('AI_SIMILARITY_DOUBLE_CHECK', true),
         'double_check_threshold' => (float) env('AI_SIMILARITY_DOUBLE_CHECK_THRESHOLD', 0.7),
         'double_check_timeout' => (int) env('AI_SIMILARITY_DOUBLE_CHECK_TIMEOUT', 30),
         'double_check_max_tokens' => (int) env('AI_SIMILARITY_DOUBLE_CHECK_TOKENS', 1024),
+        'double_check_batch_size' => (int) env('AI_SIMILARITY_DOUBLE_CHECK_BATCH', 8),
     ],
 
     'war_room' => [
@@ -437,6 +570,9 @@ return [
         'min_messages_for_summary' => (int) env('AI_MEMORY_MIN_MESSAGES', 8),
         'stale_conversation_minutes' => (int) env('AI_MEMORY_STALE_MINUTES', 30),
         'max_memories_per_context' => (int) env('AI_MEMORY_MAX_PER_CONTEXT', 3),
+        // Re-summarize every N messages so the carried summary stays fresh on long
+        // chats (context compaction). 0 = summarize once only (legacy behaviour).
+        'compaction_interval' => (int) env('AI_MEMORY_COMPACTION_INTERVAL', 20),
     ],
 
     'circuit_breaker' => [

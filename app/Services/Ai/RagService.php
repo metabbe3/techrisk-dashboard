@@ -17,6 +17,11 @@ class RagService
         $searchableContent = $this->buildSearchableContent($incident);
         $contextContent = $this->buildContextContent($incident);
 
+        // Embed the searchable content for semantic retrieval (no-op when disabled).
+        $embedding = config('ai.embeddings.enabled', false)
+            ? app(EmbeddingService::class)->embed($searchableContent)
+            : null;
+
         return RagDocument::updateOrCreate(
             ['incident_id' => $incident->id],
             [
@@ -36,6 +41,7 @@ class RagService
                 'label_names' => $incident->labels->pluck('name')->toArray(),
                 'searchable_content' => $searchableContent,
                 'context_content' => $contextContent,
+                'embedding' => $embedding,
                 'indexed_at' => now(),
             ]
         );

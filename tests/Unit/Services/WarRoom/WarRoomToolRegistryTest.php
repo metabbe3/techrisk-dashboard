@@ -15,11 +15,11 @@ class WarRoomToolRegistryTest extends TestCase
         $this->registry = new WarRoomToolRegistry;
     }
 
-    public function test_get_tool_definitions_returns_all_6_tools(): void
+    public function test_get_tool_definitions_returns_all_12_tools(): void
     {
         $definitions = $this->registry->getToolDefinitions();
 
-        $this->assertCount(6, $definitions);
+        $this->assertCount(12, $definitions);
 
         foreach ($definitions as $definition) {
             $this->assertArrayHasKey('type', $definition);
@@ -47,7 +47,7 @@ class WarRoomToolRegistryTest extends TestCase
     {
         $definitions = $this->registry->getToolDefinitions(null);
 
-        $this->assertCount(6, $definitions);
+        $this->assertCount(12, $definitions);
     }
 
     public function test_get_tool_definitions_empty_array_returns_empty(): void
@@ -62,7 +62,7 @@ class WarRoomToolRegistryTest extends TestCase
     {
         $names = $this->registry->getAllToolNames();
 
-        $this->assertCount(6, $names);
+        $this->assertCount(12, $names);
 
         $expected = [
             'search_incidents',
@@ -71,6 +71,12 @@ class WarRoomToolRegistryTest extends TestCase
             'get_action_items',
             'web_search',
             'get_stats',
+            'get_timeline',
+            'get_metrics',
+            'search_by_severity',
+            'search_by_date_range',
+            'get_fund_loss',
+            'get_root_cause_categories',
         ];
 
         $this->assertSame($expected, $names);

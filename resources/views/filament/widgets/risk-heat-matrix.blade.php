@@ -46,13 +46,14 @@
                                             @endphp
                                             <td class="p-0.5">
                                                 @if ($count > 0)
-                                                    <a href="{{ route('filament.admin.resources.incidents.index') }}"
+                                                    <a href="{{ route('filament.admin.resources.incidents.index') }}?ids={{ $idsParam }}"
                                                        class="block rounded-md px-2 py-3 text-center transition-all hover:opacity-80 hover:scale-105 {{ $colorClass }}"
+                                                       aria-label="{{ $riskLabel }} risk: {{ $count }} incident{{ $count > 1 ? 's' : '' }}"
                                                        title="{{ $riskLabel }}: {{ $count }} incident{{ $count > 1 ? 's' : '' }}">
                                                         <span class="text-lg font-bold">{{ $count }}</span>
                                                     </a>
                                                 @else
-                                                    <div class="block rounded-md px-2 py-3 text-center bg-gray-50 text-gray-300">
+                                                    <div class="block rounded-md px-2 py-3 text-center bg-gray-50 text-gray-500">
                                                         <span class="text-lg font-medium">&ndash;</span>
                                                     </div>
                                                 @endif

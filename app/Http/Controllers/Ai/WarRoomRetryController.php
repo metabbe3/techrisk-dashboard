@@ -18,6 +18,7 @@ class WarRoomRetryController extends Controller
     public function __invoke(Request $request, string $id): JsonResponse
     {
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
+        $session->assertModifiable();
 
         $failedMessages = WarRoomMessage::where('session_id', $session->id)
             ->where('status', 'failed')
@@ -48,6 +49,7 @@ class WarRoomRetryController extends Controller
     public function retryAgent(Request $request, string $id, string $messageId): JsonResponse
     {
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
+        $session->assertModifiable();
 
         $message = WarRoomMessage::where('session_id', $session->id)
             ->where('id', $messageId)
@@ -68,6 +70,7 @@ class WarRoomRetryController extends Controller
     public function retryReport(Request $request, string $id): JsonResponse
     {
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
+        $session->assertModifiable();
 
         if ($session->status !== 'failed') {
             return $this->errorResponse('Session is not in a failed state', 400);
@@ -91,6 +94,7 @@ class WarRoomRetryController extends Controller
     public function regenerateReport(Request $request, string $id): JsonResponse
     {
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
+        $session->assertModifiable();
 
         if (! in_array($session->status, ['completed', 'failed'])) {
             return $this->errorResponse('Session must be completed or failed to regenerate report', 400);

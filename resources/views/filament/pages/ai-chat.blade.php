@@ -1,8 +1,11 @@
 <x-filament-panels::page>
 <div>
 @push('scripts')
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+{{-- marked + mermaid are vendored locally (no CDN): marked globally via app.js,
+     mermaid as a page-scoped Vite entry so the ~2MB payload stays off other pages.
+     Diagrams render on demand and consumers guard with `typeof mermaid`, so the
+     deferred module load is safe. --}}
+@vite(['resources/js/mermaid.js'])
 @endpush
 
 <div x-data="aiChat()" x-init="init()" class="ai-chat-container">
@@ -10,7 +13,7 @@
     <div class="ai-chat-sidebar" :class="{ 'ai-chat-sidebar-open': showSidebar }">
         <div class="ai-chat-sidebar-header">
             <h3 class="text-sm font-semibold text-gray-700 dark:text-gray-300">Conversations</h3>
-            <button @click="newConversation()" class="ai-chat-new-btn" title="New Chat">
+            <button @click="newConversation()" class="ai-chat-new-btn" aria-label="New chat" title="New Chat">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 4v16m8-8H4"/></svg>
             </button>
         </div>
@@ -21,7 +24,7 @@
             {{-- Pinned conversations --}}
             <template x-if="!searchQuery && conversations.filter(c => c.pinned).length > 0">
                 <div>
-                    <div class="px-3 py-1 text-[10px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">Pinned</div>
+                    <div class="px-3 py-1 text-[10px] font-semibold text-gray-500 dark:text-gray-500 uppercase tracking-wider">Pinned</div>
                     <template x-for="conv in conversations.filter(c => c.pinned)" :key="'p-'+conv.id">
                         <div class="relative">
                             <div @click="selectConversation(conv.id)"
@@ -43,7 +46,7 @@
                                         </template>
                                     </p>
                                     <div class="flex items-center gap-1 mt-0.5">
-                                        <p class="text-xs text-gray-400 dark:text-gray-500 truncate" x-text="conv.last_message"></p>
+                                        <p class="text-xs text-gray-500 dark:text-gray-500 truncate" x-text="conv.last_message"></p>
                                     </div>
                                     <div class="flex flex-wrap gap-1 mt-1">
                                         <template x-for="tag in (conv.tags || [])" :key="tag">
@@ -52,13 +55,13 @@
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-1">
-                                    <button @click.stop="startEditTitle(conv)" class="ai-chat-edit-btn" title="Rename">
+                                    <button @click.stop="startEditTitle(conv)" class="ai-chat-edit-btn" aria-label="Rename conversation" title="Rename">
                                         <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                                     </button>
                                     <button @click.stop="togglePin(conv)" class="text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300" title="Unpin">
                                         <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
                                     </button>
-                                    <button @click.stop="deleteConversation(conv.id)" class="ai-chat-delete-btn" title="Delete">
+                                    <button @click.stop="deleteConversation(conv.id)" class="ai-chat-delete-btn" aria-label="Delete conversation" title="Delete">
                                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                     </button>
                                 </div>
@@ -94,7 +97,7 @@
                                             </template>
                                         </p>
                                         <div class="flex items-center gap-1 mt-0.5">
-                                            <p class="text-xs text-gray-400 dark:text-gray-500 truncate" x-text="conv.last_message"></p>
+                                            <p class="text-xs text-gray-500 dark:text-gray-500 truncate" x-text="conv.last_message"></p>
                                         </div>
                                         <div class="flex flex-wrap gap-1 mt-1">
                                             <template x-for="tag in (conv.tags || []).slice(0, 3)" :key="tag">
@@ -103,13 +106,13 @@
                                         </div>
                                     </div>
                                     <div class="flex items-center gap-1">
-                                        <button @click.stop="startEditTitle(conv)" class="ai-chat-edit-btn" title="Rename">
+                                        <button @click.stop="startEditTitle(conv)" class="ai-chat-edit-btn" aria-label="Rename conversation" title="Rename">
                                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
                                         </button>
                                         <button @click.stop="togglePin(conv)" class="hover:text-amber-500" :class="conv.pinned ? 'text-amber-500' : 'text-gray-300'" title="Pin">
                                             <svg class="w-3 h-3" :fill="conv.pinned ? 'currentColor' : 'none'" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2l-2-2z"/></svg>
                                         </button>
-                                        <button @click.stop="deleteConversation(conv.id)" class="ai-chat-delete-btn" title="Delete">
+                                        <button @click.stop="deleteConversation(conv.id)" class="ai-chat-delete-btn" aria-label="Delete conversation" title="Delete">
                                             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                                         </button>
                                     </div>
@@ -118,7 +121,7 @@
                         </div>
                     </div>
                 </template>
-            <div x-show="conversations.length === 0" class="p-4 text-center text-xs text-gray-400 dark:text-gray-500">
+            <div x-show="conversations.length === 0" class="p-4 text-center text-xs text-gray-500 dark:text-gray-500">
                 No conversations yet. Start a new chat!
             </div>
         </div>
@@ -137,10 +140,10 @@
                     <span class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,.5)]" :class="loading ? 'animate-pulse' : ''"></span>
                 </h2>
                 <div class="flex items-center gap-2">
-                    <p class="text-xs text-gray-400 dark:text-gray-500">Ask anything about your incidents, patterns, trends, and data</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-500">Ask anything about your incidents, patterns, trends, and data</p>
                     <span class="ai-chat-freshness" x-show="dataFreshness">
                         <span x-text="dataFreshnessLabel"></span>
-                        <button @click="refreshContext()" class="ai-chat-refresh-btn" title="Refresh data">
+                        <button @click="refreshContext()" class="ai-chat-refresh-btn" aria-label="Refresh data" title="Refresh data">
                             <svg class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                         </button>
                     </span>
@@ -352,7 +355,7 @@
                         </template>
                     </div>
                     <div class="ai-chat-msg-content" :class="[msg.role, msg.persona ? 'persona-border' : '']"
-                         :style="msg.persona ? 'border-left: 3px solid ' + getPersonaColor(msg.persona.color, 0.6) : ''">
+                         :style="msg.persona ? 'border: 1px solid ' + getPersonaColor(msg.persona.color, 0.6) : ''">
                         <template x-if="msg.role === 'user'">
                             <div>
                                 <div x-show="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2 mb-2">
@@ -375,10 +378,11 @@
                                 <template x-if="msg.persona">
                                     <div class="flex items-center gap-1.5 mb-1.5">
                                         <span class="text-[11px] font-semibold" :style="'color:' + getPersonaColor(msg.persona.color)" x-text="msg.persona.name"></span>
-                                        <span class="text-[10px] text-gray-400 dark:text-gray-500">perspective</span>
+                                        <span class="text-[10px] text-gray-500 dark:text-gray-500">perspective</span>
                                     </div>
                                 </template>
-                                <div class="ai-chat-msg-text text-sm prose prose-sm dark:prose-invert max-w-none" x-html="msg.parsedHtml"></div>
+                                {{-- prose plugin is not installed; styling lives in .ai-chat-msg-text --}}
+                                <div class="ai-chat-msg-text text-sm max-w-none" x-html="msg.parsedHtml"></div>
                                 <div class="flex items-center gap-2 mt-2">
                                     <template x-if="msg.persona">
                                         <span class="text-[10px] px-1.5 py-0.5 rounded" :style="'background:' + getPersonaColor(msg.persona.color, 0.1) + '; color:' + getPersonaColor(msg.persona.color)" x-text="msg.persona.name"></span>
@@ -393,18 +397,18 @@
                                         </span>
                                     </template>
                                     <span x-show="msg.tokens_used" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400" x-text="msg.prompt_tokens ? msg.prompt_tokens + '→' + msg.completion_tokens + ' (' + msg.tokens_used + ')' : msg.tokens_used + ' tokens'"></span>
-                                    <button @click="copyMessage(msg.content)" class="ai-chat-action-btn" title="Copy">
+                                    <button @click="copyMessage(msg.content)" class="ai-chat-action-btn" aria-label="Copy message" title="Copy">
                                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                                     </button>
-                                    <button @click="regenerateResponse(idx)" class="ai-chat-action-btn" title="Regenerate">
+                                    <button @click="regenerateResponse(idx)" class="ai-chat-action-btn" aria-label="Regenerate response" title="Regenerate">
                                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
                                     </button>
                                     <template x-if="msg.role === 'assistant' && msg.id && !String(msg.id).startsWith('temp-')">
                                         <div class="flex items-center gap-0.5 ml-1">
-                                            <button @click="submitFeedback(msg.id, 'positive')" class="ai-chat-feedback-btn" :class="{'active positive': msg.feedback === 'positive'}" title="Helpful">
+                                            <button @click="submitFeedback(msg.id, 'positive')" class="ai-chat-feedback-btn" :class="{'active positive': msg.feedback === 'positive'}" aria-label="Mark helpful" title="Helpful">
                                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14z"/><path d="M7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" stroke-linejoin="round"/></svg>
                                             </button>
-                                            <button @click="submitFeedback(msg.id, 'negative')" class="ai-chat-feedback-btn" :class="{'active negative': msg.feedback === 'negative'}" title="Not helpful">
+                                            <button @click="submitFeedback(msg.id, 'negative')" class="ai-chat-feedback-btn" :class="{'active negative': msg.feedback === 'negative'}" aria-label="Mark not helpful" title="Not helpful">
                                                 <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M10 15v4a3 3 0 003 3l4-9V2H5.72a2 2 0 00-2 1.7l-1.38 9a2 2 0 002 2.3H10z"/><path d="M17 2h2.67A2.31 2.31 0 0122 4v7a2.31 2.31 0 01-2.33 2H17" stroke-linejoin="round"/></svg>
                                             </button>
                                         </div>
@@ -436,10 +440,10 @@
                                 </template>
                             </div>
                             <div class="ai-chat-typing"><span></span><span></span><span></span></div>
-                            <span class="text-[11px] text-gray-400 dark:text-gray-500">Preparing <span x-text="selectedPersonas.length"></span> perspectives...</span>
+                            <span class="text-[11px] text-gray-500 dark:text-gray-500">Preparing <span x-text="selectedPersonas.length"></span> perspectives...</span>
                         </div>
                         <div class="flex items-center gap-2 ml-8">
-                            <span class="text-xs text-gray-400 dark:text-gray-500" x-ref="elapsedDisplay" x-show="loading"></span>
+                            <span class="text-xs text-gray-500 dark:text-gray-500" x-ref="elapsedDisplay" x-show="loading"></span>
                             <button @click="stopGeneration()" class="ai-chat-stop-btn">
                                 <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
                                 Stop
@@ -455,7 +459,7 @@
                         <div class="ai-chat-msg-content assistant">
                             <div class="flex items-center gap-2">
                                 <div class="ai-chat-typing"><span></span><span></span><span></span></div>
-                                <span class="text-xs text-gray-400 dark:text-gray-500" x-ref="elapsedDisplay2" x-show="loading"></span>
+                                <span class="text-xs text-gray-500 dark:text-gray-500" x-ref="elapsedDisplay2" x-show="loading"></span>
                                 <button @click="stopGeneration()" class="ai-chat-stop-btn">
                                     <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
                                     Stop
@@ -525,14 +529,14 @@
 
                 {{-- Attach File button --}}
                 <input type="file" x-ref="fileInput" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.docx,.doc" @change="handleFileSelect($event)" multiple />
-                <button @click="$refs.fileInput.click()" type="button" class="ai-chat-attach-btn" :class="{'has-refs': pendingAttachments.length > 0}" title="Attach image or document">
+                <button @click="$refs.fileInput.click()" type="button" class="ai-chat-attach-btn" :class="{'has-refs': pendingAttachments.length > 0}" aria-label="Attach image or document" title="Attach image or document">
                     <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
                     <span x-show="pendingAttachments.length > 0" class="ai-chat-attach-badge" x-text="pendingAttachments.length"></span>
                 </button>
 
                 {{-- Attach Incident button --}}
                 <div class="relative">
-                    <button @click="showIncidentPicker = !showIncidentPicker" type="button" class="ai-chat-attach-btn" :class="{'has-refs': referencedIncidents.length > 0}" title="Reference incidents">
+                    <button @click="showIncidentPicker = !showIncidentPicker" type="button" class="ai-chat-attach-btn" :class="{'has-refs': referencedIncidents.length > 0}" aria-label="Reference incidents" title="Reference incidents">
                         <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/></svg>
                         <span x-show="referencedIncidents.length > 0" class="ai-chat-attach-badge" x-text="referencedIncidents.length"></span>
                     </button>
@@ -550,15 +554,15 @@
                                     <span class="ai-chat-ref-severity" :class="'severity-' + (inc.severity || '').toLowerCase().replace(' ', '')" x-text="inc.severity"></span>
                                     <div class="flex-1 min-w-0 text-left">
                                         <p class="text-xs font-medium truncate" x-text="inc.no"></p>
-                                        <p class="text-[11px] text-gray-400 dark:text-gray-500 truncate" x-text="inc.title"></p>
+                                        <p class="text-[11px] text-gray-500 dark:text-gray-500 truncate" x-text="inc.title"></p>
                                     </div>
-                                    <span class="text-[10px] text-gray-400 dark:text-gray-500" x-text="inc.date"></span>
+                                    <span class="text-[10px] text-gray-500 dark:text-gray-500" x-text="inc.date"></span>
                                     <span x-show="isIncidentReferenced(inc.no)" class="text-green-500 dark:text-green-400 text-xs">&#10003;</span>
                                 </button>
                             </template>
-                            <div x-show="incidentResults.length === 0 && incidentSearch.length >= 2 && !incidentSearchLoading" class="p-3 text-center text-xs text-gray-400 dark:text-gray-500">No incidents found</div>
-                            <div x-show="incidentSearchLoading" class="p-3 text-center text-xs text-gray-400 dark:text-gray-500">Searching...</div>
-                            <div x-show="incidentSearch.length < 2" class="p-3 text-center text-xs text-gray-400 dark:text-gray-500">Type at least 2 characters to search</div>
+                            <div x-show="incidentResults.length === 0 && incidentSearch.length >= 2 && !incidentSearchLoading" class="p-3 text-center text-xs text-gray-500 dark:text-gray-500">No incidents found</div>
+                            <div x-show="incidentSearchLoading" class="p-3 text-center text-xs text-gray-500 dark:text-gray-500">Searching...</div>
+                            <div x-show="incidentSearch.length < 2" class="p-3 text-center text-xs text-gray-500 dark:text-gray-500">Type at least 2 characters to search</div>
                         </div>
                     </div>
                 </div>
@@ -568,7 +572,7 @@
                     <button @click="showExportMenu = !showExportMenu" type="button"
                             :class="{ 'opacity-40 pointer-events-none': !activeConversationId || messages.length === 0 }"
                             class="ai-chat-attach-btn"
-                            title="Export conversation">
+                            aria-label="Export conversation" title="Export conversation">
                         <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     </button>
                     <div x-show="showExportMenu" @click.away="showExportMenu = false" x-transition
@@ -590,11 +594,11 @@
                         </a>
                     </div>
                 </div>
-                <button @click="sendMessage()" :disabled="loading || !inputText.trim()" class="ai-chat-send-btn">
+                <button @click="sendMessage()" :disabled="loading || !inputText.trim()" class="ai-chat-send-btn" aria-label="Send message">
                     <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
                 </button>
             </div>
-            <p class="text-[10px] text-gray-400 dark:text-gray-500 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span> <span x-show="selectedMode === 'plan'" class="font-medium text-purple-500" x-text="'| Mode: Plan'"></span></p>
+            <p class="text-[10px] text-gray-500 dark:text-gray-500 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span> <span x-show="selectedMode === 'plan'" class="font-medium text-purple-500" x-text="'| Mode: Plan'"></span></p>
             <p x-show="selectedPersonas.length >= 3" class="text-[10px] text-amber-500 dark:text-amber-400 text-center mt-0.5" x-text="selectedPersonas.length + ' personas will generate separate responses, increasing token usage.'"></p>
         </div>
     </div>
@@ -615,16 +619,46 @@ function aiChat() {
         yellow: '#eab308',
     };
 
+    // Promote emoji-led warning/note paragraphs to semantic callout boxes.
+    // Matches a <p> that STARTS with an emoji + <strong>Label</strong>, e.g.
+    // "⚠️ **Data quality caveat**: ..." → <aside class="ai-callout ai-callout--warning">.
+    // Emoji (not free text) drives the variant — bounded and predictable.
+    const CALLOUT_VARIANTS = {
+        '🚨': 'danger', '🔴': 'danger', '❗': 'danger', '❌': 'danger', '⛔': 'danger',
+        '⚠️': 'warning', '⚠': 'warning', '⚡': 'warning', '🔶': 'warning',
+        '✅': 'success', '✔️': 'success', '🟢': 'success',
+        '💡': 'info', 'ℹ️': 'info', 'ℹ': 'info', '📌': 'info', '🔑': 'info', '🧠': 'info', '🛡️': 'info', '📊': 'info',
+    };
+    function applyCallouts(html) {
+        const emojiAlt = Object.keys(CALLOUT_VARIANTS).map(e => e.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+        const re = new RegExp('<p>\\s*(' + emojiAlt + ')\\s*<strong>([\\s\\S]*?)</strong>([\\s\\S]*?)</p>', 'g');
+        return html.replace(re, (_m, emoji, label, rest) => {
+            const variant = CALLOUT_VARIANTS[emoji] || 'info';
+            const body = rest.replace(/^\s*:\s*/, '').trim();
+            return '<aside class="ai-callout ai-callout--' + variant + '">'
+                + '<p class="ai-callout__head"><span class="ai-callout__icon">' + emoji + '</span><strong>' + label + '</strong></p>'
+                + (body ? '<div class="ai-callout__body">' + body + '</div>' : '')
+                + '</aside>';
+        });
+    }
+
     // Markdown parser — caches result on message objects
     function parseMd(text) {
         if (!text) return '';
         // Strip AI reasoning/thinking tags (defense-in-depth for server-side filtering)
         text = text.replace(/<think(?:ing)?[^>]*>[\s\S]*?<\/think(?:ing)?>/gi, '');
-        if (typeof marked !== 'undefined') {
-            try { return marked.parse(text, { breaks: true, gfm: true }); }
-            catch { return text.replace(/\n/g, '<br>'); }
+        if (typeof marked === 'undefined') return text.replace(/\n/g, '<br>');
+        try {
+            let html = marked.parse(text, { breaks: true, gfm: true });
+            html = applyCallouts(html);
+            // AI output is model-influenced and bound via x-html — sanitize the chokepoint.
+            if (typeof DOMPurify !== 'undefined') {
+                html = DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+            }
+            return html;
+        } catch {
+            return text.replace(/\n/g, '<br>');
         }
-        return text.replace(/\n/g, '<br>');
     }
 
     // Enrich a message object with parsedHtml
@@ -716,8 +750,30 @@ function aiChat() {
                 .map(([cmd, desc]) => ({ cmd: '/' + cmd, desc }));
         },
 
+        ensureMarkedReady() {
+            if (typeof marked !== 'undefined') return;
+            const interval = setInterval(() => {
+                if (typeof marked !== 'undefined') {
+                    clearInterval(interval);
+                    this.rerenderMessages();
+                }
+            }, 50);
+        },
+
+        rerenderMessages() {
+            this.messages = this.messages.map(m =>
+                (m.role === 'assistant' || m.parsedHtml)
+                    ? { ...m, parsedHtml: parseMd(m.content) }
+                    : m
+            );
+        },
+
         init() {
             this.loadConversations();
+            this.ensureMarkedReady();
+            // Also listen for the explicit 'marked-ready' event dispatched by
+            // app.js the moment window.marked is set — covers the race definitively.
+            window.addEventListener('marked-ready', () => this.rerenderMessages());
             this.loadAgents();
             if (window.innerWidth >= 1024) this.showSidebar = true;
 
@@ -1460,6 +1516,32 @@ function aiChat() {
                             if (data.data_freshness) this.dataFreshness = data.data_freshness;
                             this.loadConversations();
                             this.scheduleMermaidRender();
+                        } else if (eventType === 'tool_call') {
+                            const data = JSON.parse(dataStr);
+                            // Track tool activity on the streaming message so the user
+                            // can see the AI is querying the database / taking action.
+                            const lastMsg = this.messages[this.messages.length - 1];
+                            if (lastMsg && lastMsg.isStreaming) {
+                                if (!lastMsg.toolCalls) lastMsg.toolCalls = [];
+                                lastMsg.toolCalls.push({ name: data.name || 'tool', status: 'running' });
+                                // Show a visible badge in the streaming area.
+                                lastMsg.parsedHtml = (lastMsg.parsedHtml || '').replace(/<span class="ai-chat-cursor">▌<\/span>/, '') +
+                                    '<div class="flex items-center gap-1.5 text-xs text-indigo-500 dark:text-indigo-400 py-1">🔧 <span class="font-medium">' + (data.name || 'tool') + '</span> — executing…</div><span class="ai-chat-cursor">▌</span>';
+                            }
+                        } else if (eventType === 'tool_result') {
+                            const data = JSON.parse(dataStr);
+                            const lastMsg = this.messages[this.messages.length - 1];
+                            if (lastMsg && lastMsg.toolCalls) {
+                                const tc = lastMsg.toolCalls.find(t => t.name === (data.name || '') && t.status === 'running');
+                                if (tc) tc.status = 'done';
+                                // Update the badge to show completion.
+                                if (lastMsg.parsedHtml) {
+                                    lastMsg.parsedHtml = lastMsg.parsedHtml.replace(
+                                        new RegExp('🔧.*?' + (data.name || 'tool') + '.*?executing…</div>'),
+                                        '<div class="flex items-center gap-1.5 text-xs text-emerald-500 dark:text-emerald-400 py-1">✅ <span class="font-medium">' + (data.name || 'tool') + '</span> — done</div>'
+                                    );
+                                }
+                            }
                         } else if (!eventType && dataStr) {
                             if (dataStr === '[DONE]') continue;
                             try {
@@ -1571,12 +1653,12 @@ function aiChat() {
                 const pKey = task.persona_key || '';
                 const personaClass = personaColors[pKey] || labelColors[task.label] || 'text-gray-600 dark:text-gray-400';
                 const personaLabel = task.label || (pKey ? pKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'General Analysis');
-                const preview = task.result_preview ? '<p class="text-[10px] text-gray-400 dark:text-gray-500 mt-1 truncate">' + task.result_preview + '</p>' : '';
+                const preview = task.result_preview ? '<p class="text-[10px] text-gray-500 dark:text-gray-500 mt-1 truncate">' + task.result_preview + '</p>' : '';
 
                 html += '<div class="flex items-start gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">';
                 html += '<div class="flex-shrink-0 mt-0.5"><span class="inline-block w-2 h-2 rounded-full ' + colorClass + '"></span></div>';
                 html += '<div class="flex-1 min-w-0">';
-                html += '<div class="flex items-center gap-2"><span class="text-xs font-semibold ' + personaClass + '">' + personaLabel + '</span><span class="text-[10px] text-gray-400">' + label + '</span>';
+                html += '<div class="flex items-center gap-2"><span class="text-xs font-semibold ' + personaClass + '">' + personaLabel + '</span><span class="text-[10px] text-gray-500">' + label + '</span>';
                 if (status === 'failed') {
                     html += '<button onclick="window.retryPlanSubtask(\'' + task.id + '\', this)" class="text-[10px] text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 underline cursor-pointer">Retry</button>';
                 }
@@ -2127,7 +2209,7 @@ function aiChat() {
                 } catch (e) {
                     // Show diagram source as a code block instead of the error message
                     const source = block.textContent || '';
-                    pre.innerHTML = '<div class="text-[10px] text-gray-400 dark:text-gray-500 mb-1 italic">Diagram preview unavailable</div><pre class="text-xs bg-gray-50 dark:bg-gray-800 rounded p-2 overflow-x-auto"><code>' + source.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code></pre>';
+                    pre.innerHTML = '<div class="text-[10px] text-gray-500 dark:text-gray-500 mb-1 italic">Diagram preview unavailable</div><pre class="text-xs bg-gray-50 dark:bg-gray-800 rounded p-2 overflow-x-auto"><code>' + source.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</code></pre>';
                     pre.dataset.mermaidRendered = 'error';
                 }
             }

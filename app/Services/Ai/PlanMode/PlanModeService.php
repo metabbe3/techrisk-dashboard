@@ -10,7 +10,9 @@ use App\Models\ChatPlanSubtask;
 use App\Models\WarRoomAgentConfig;
 use App\Services\Ai\AiUsageLogger;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\Concerns\JsonExtractor;
 use App\Services\Ai\Concerns\StripsThinkingTags;
+use App\Services\Ai\ModelRouter;
 use App\Services\Ai\PromptOptimizer;
 use App\Services\WarRoom\WarRoomStreamingService;
 use Illuminate\Http\Client\ConnectionException;
@@ -30,7 +32,7 @@ class PlanModeService
 
     public function analyzeQuestionDeep(string $userMessage, array $history, array $referencedIds = [], ?string $userModel = null): ?array
     {
-        $model = $userModel ?? config('ai.plan_mode.planning_model', config('ai.reasoning_model'));
+        $model = app(ModelRouter::class)->pick('reasoning', $userModel ?? config('ai.plan_mode.planning_model', config('ai.reasoning_model')));
         $timeout = config('ai.plan_mode.planning_timeout', 30);
         $maxTokens = 1024;
 
@@ -85,7 +87,7 @@ class PlanModeService
                 return null;
             }
 
-            $parsed = $this->extractJson($content);
+            $parsed = JsonExtractor::extract($content);
 
             $this->usageLogger->log(
                 fieldType: 'plan_mode_pre_analysis',
@@ -135,7 +137,7 @@ class PlanModeService
 
     public function thinkAndPlan(string $userMessage, array $history, array $personaKeys, array $referencedIds = [], ?string $userModel = null, ?array $preAnalysis = null): PlanResult
     {
-        $planningModel = $userModel ?? config('ai.plan_mode.planning_model', 'REASONING-MODEL');
+        $planningModel = app(ModelRouter::class)->pick('reasoning', $userModel ?? config('ai.plan_mode.planning_model', 'REASONING-MODEL'));
         $timeout = config('ai.plan_mode.planning_timeout', 30);
         $maxTokens = config('ai.plan_mode.max_planning_tokens', 4096);
 
@@ -321,7 +323,7 @@ class PlanModeService
             }
 
             $content = $response->json('choices.0.message.content', '');
-            $parsed = $this->extractJson($content);
+            $parsed = JsonExtractor::extract($content);
 
             if (is_array($parsed) && isset($parsed['score'])) {
                 return (float) $parsed['score'];
@@ -516,7 +518,7 @@ class PlanModeService
         $planText = $planMessage?->plan_metadata['plan_text'] ?? '';
         $preAnalysis = $planMessage?->plan_metadata['pre_analysis'] ?? null;
 
-        $synthesisModel = $userModel ?? config('ai.plan_mode.synthesis_model', 'REASONING-MODEL');
+        $synthesisModel = app(ModelRouter::class)->pick('reasoning', $userModel ?? config('ai.plan_mode.synthesis_model', 'REASONING-MODEL'));
         $maxTokens = config('ai.plan_mode.synthesis_max_tokens', 8192);
         $timeout = config('ai.plan_mode.synthesis_timeout', 120);
 
@@ -713,7 +715,7 @@ class PlanModeService
             ->where('plan_role', 'plan')
             ->first()?->plan_metadata['plan_text'] ?? '';
 
-        $model = $userModel ?? config('ai.plan_mode.gap_analysis_model', 'SMART-MODEL');
+        $model = app(ModelRouter::class)->pick('smart', $userModel ?? config('ai.plan_mode.gap_analysis_model', 'SMART-MODEL'));
         $timeout = config('ai.plan_mode.gap_analysis_timeout', 30);
         $maxTokens = config('ai.plan_mode.max_gap_analysis_tokens', 2048);
 
@@ -811,7 +813,7 @@ class PlanModeService
 
     private function parseClarificationJson(string $content): array
     {
-        $parsed = $this->extractJson($content);
+        $parsed = JsonExtractor::extract($content);
 
         if (! is_array($parsed)) {
             return ['needs_clarification' => false];
@@ -828,7 +830,7 @@ class PlanModeService
 
     private function parseGapAnalysisJson(string $content): array
     {
-        $parsed = $this->extractJson($content);
+        $parsed = JsonExtractor::extract($content);
 
         if (! is_array($parsed)) {
             return ['coverage_score' => 1.0, 'gaps' => [], 'research_needed' => false];
@@ -841,49 +843,9 @@ class PlanModeService
         ];
     }
 
-    private function extractJson(string $content): ?array
-    {
-        if (preg_match('/```(?:json)?\s*(\{.*?\})\s*```/s', $content, $matches)) {
-            $parsed = json_decode($matches[1], true);
-            if (is_array($parsed)) {
-                return $parsed;
-            }
-        }
-
-        $jsonStart = strpos($content, '{');
-        $jsonEnd = strrpos($content, '}');
-        if ($jsonStart !== false && $jsonEnd !== false && $jsonEnd > $jsonStart) {
-            $candidate = substr($content, $jsonStart, $jsonEnd - $jsonStart + 1);
-            $parsed = json_decode($candidate, true);
-            if (is_array($parsed)) {
-                return $parsed;
-            }
-        }
-
-        return null;
-    }
-
     private function parsePlanJson(string $content): ?array
     {
-        // Try extracting JSON from markdown code blocks
-        if (preg_match('/```(?:json)?\s*(\{.*?\})\s*```/s', $content, $matches)) {
-            $json = $matches[1];
-        } elseif (preg_match('/\{[^{]*"plan_text"[\s\S]*?"subtasks"/s', $content, $matches)) {
-            $json = $matches[0];
-        } else {
-            $json = $content;
-        }
-
-        $parsed = json_decode($json, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            // Broader extraction: find outermost { } pair
-            $jsonStart = strpos($content, '{');
-            $jsonEnd = strrpos($content, '}');
-            if ($jsonStart !== false && $jsonEnd !== false && $jsonEnd > $jsonStart) {
-                $candidate = substr($content, $jsonStart, $jsonEnd - $jsonStart + 1);
-                $parsed = json_decode($candidate, true);
-            }
-        }
+        $parsed = JsonExtractor::extract($content);
 
         if (! is_array($parsed) || ! isset($parsed['subtasks']) || ! is_array($parsed['subtasks'])) {
             return null;
@@ -1022,34 +984,27 @@ class PlanModeService
 
     private function resolveSubtaskModel(ChatPlanSubtask $subtask, ?string $userModel = null): string
     {
-        // User's explicit model selection takes priority
-        if ($userModel) {
-            return $userModel;
-        }
-
-        // Per-persona model override
-        if ($subtask->persona_key) {
-            $config = WarRoomAgentConfig::findByRole($subtask->persona_key);
-            if ($config?->model_override) {
-                return $config->model_override;
-            }
-        }
-
-        // Check routing config for this task type
         $isResearch = ($subtask->metadata['type'] ?? null) === 'research';
         $taskType = $this->classifySubtaskType($subtask->description, $isResearch);
-        $routing = config("ai.plan_mode.subtask_model_routing.{$taskType}");
-        if ($routing && ! empty($routing['model'])) {
-            return $routing['model'];
-        }
 
-        // Global override
-        $override = config('ai.plan_mode.subtask_model');
-        if ($override) {
-            return $override;
+        // Preferred model by priority: user > persona override > task-type routing > global > default.
+        $preferred = $userModel;
+        if (! $preferred && $subtask->persona_key) {
+            $preferred = WarRoomAgentConfig::findByRole($subtask->persona_key)?->model_override;
         }
+        if (! $preferred) {
+            $preferred = config("ai.plan_mode.subtask_model_routing.{$taskType}.model");
+        }
+        $preferred ??= config('ai.plan_mode.subtask_model');
+        $preferred ??= AiSetting::get('default_model', config('ai.default_model'));
 
-        return AiSetting::get('default_model', config('ai.default_model'));
+        // Health-aware: pick a healthy model for the task tier (retrieval→fast, else reasoning).
+        return app(ModelRouter::class)->pick($this->subtaskTier($taskType), $preferred);
+    }
+
+    private function subtaskTier(string $taskType): string
+    {
+        return $taskType === 'retrieval' ? 'fast' : 'reasoning';
     }
 
     private function resolveSubtaskMaxTokens(ChatPlanSubtask $subtask): int

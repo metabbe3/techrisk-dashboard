@@ -41,7 +41,6 @@ class ConversationMemoryService
                         ['role' => 'user', 'content' => $conversationText],
                     ],
                     'max_tokens' => 200,
-                    'temperature' => config('ai.temperatures.json_extraction', 0.1),
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;

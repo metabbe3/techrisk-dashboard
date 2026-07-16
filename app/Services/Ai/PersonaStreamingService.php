@@ -6,8 +6,6 @@ namespace App\Services\Ai;
 
 use App\Models\WarRoomAgentConfig;
 use App\Services\Ai\Concerns\StripsThinkingTags;
-use App\Services\Ai\ChatAttachmentService;
-use Illuminate\Support\Facades\Log;
 
 class PersonaStreamingService
 {
@@ -54,7 +52,7 @@ class PersonaStreamingService
 
         foreach ($personaList as $index => $persona) {
             $key = $persona->role_key;
-            $resolvedModel = $persona->model_override ?? $defaultModel ?? config('ai.default_model', 'SMART-MODEL');
+            $resolvedModel = app(ModelRouter::class)->pick('smart', $persona->model_override ?? $defaultModel ?? config('ai.default_model', 'SMART-MODEL'));
             $systemPrompt = $contextService->buildPersonaSystemPrompt($persona, $userMessage, $referencedIds ?? []);
 
             $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
@@ -191,6 +189,7 @@ class PersonaStreamingService
                     'persona' => $s['persona'],
                     'model' => $s['model'],
                 ];
+
                 continue;
             }
 
@@ -208,6 +207,7 @@ class PersonaStreamingService
                     'persona' => $s['persona'],
                     'model' => $s['model'],
                 ];
+
                 continue;
             }
 
@@ -261,6 +261,7 @@ class PersonaStreamingService
 
                 if (! str_starts_with($line, 'data: ')) {
                     $s['rawBody'] .= $line."\n";
+
                     continue;
                 }
 

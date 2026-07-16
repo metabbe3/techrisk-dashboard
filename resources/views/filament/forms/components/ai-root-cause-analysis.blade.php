@@ -4,7 +4,7 @@
     $markEnhancedEndpoint = route('ai.mark-enhanced');
     $csrf = csrf_token();
     $aiService = app(\App\Services\Ai\AiTextService::class);
-    $models = $aiService->getAvailableModels();
+    $models = $aiService->getModelsForPicker();
     $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
     $isAvailable = $aiService->isAvailable();
     $hasMultipleModels = count($models) > 1;
@@ -199,7 +199,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
     class="smart-label-wrapper"
 >
     <div class="sl-trigger-group">
-        <button type="button" class="sl-trigger" style="background: linear-gradient(135deg, #7c3aed, #6d28d9);" @click="{{ $hasMultipleModels ? 'rcaShowModelPicker = !rcaShowModelPicker' : 'analyze()' }}" :disabled="rcaLoading">
+        <button type="button" class="sl-trigger" style="background: var(--tr-violet-600);" @click="{{ $hasMultipleModels ? 'rcaShowModelPicker = !rcaShowModelPicker' : 'analyze()' }}" :disabled="rcaLoading">
             <span x-show="!rcaLoading" x-transition class="sl-trigger__idle">
                 <svg class="sl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 2 2 3 2 6H14c0-3 2-4 2-6a4 4 0 0 0-4-4Z"/><path d="M10 16h4"/><path d="M10 19h4"/><path d="M10 22h2"/><path d="M12 12v-2"/></svg>
                 <span x-text="{{ $hasMultipleModels ? "'AI Analysis (' + rcaSelectedModel + ')'" : "'AI Full Analysis'" }}"></span>
@@ -241,7 +241,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
     </div>
 
     <div x-show="rcaOpen" x-transition:enter="sl-slide-in" x-transition:enter-start="sl-slide-in-start" x-transition:enter-end="sl-slide-in-end" x-transition:leave="sl-slide-out" x-transition:leave-start="sl-slide-out-start" x-transition:leave-end="sl-slide-out-end" x-cloak class="sl-panel">
-        <div class="sl-panel__header" style="background: linear-gradient(135deg, rgba(124,58,237,.06), #f8fafc);">
+        <div class="sl-panel__header">
             <div class="sl-panel__header-left">
                 <svg class="sl-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 2 2 3 2 6H14c0-3 2-4 2-6a4 4 0 0 0-4-4Z"/><path d="M10 16h4"/><path d="M10 19h4"/><path d="M10 22h2"/></svg>
                 <span class="sl-panel__title">AI Full Analysis</span>
@@ -259,7 +259,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
                             Summary
                         </label>
                     </div>
-                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#eff6ff;padding:10px 12px;border-radius:6px;border:1px solid #bfdbfe;" x-html="simpleMd(rcaResults.summary)"></div>
+                    <div style="font-size:12px;line-height:1.7;color:var(--tr-ink);background:var(--tr-info-bg);padding:10px 12px;border-radius:6px;border:1px solid var(--tr-border);" x-html="simpleMd(rcaResults.summary)"></div>
                 </div>
             </template>
 
@@ -273,7 +273,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
                             Root Cause Analysis
                         </label>
                     </div>
-                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#f5f3ff;padding:10px 12px;border-radius:6px;border:1px solid #ddd6fe;" x-html="simpleMd(rcaResults.root_cause)"></div>
+                    <div style="font-size:12px;line-height:1.7;color:var(--tr-ink);background:var(--tr-violet-bg);padding:10px 12px;border-radius:6px;border:1px solid var(--tr-border);" x-html="simpleMd(rcaResults.root_cause)"></div>
                 </div>
             </template>
 
@@ -287,7 +287,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
                             Remarks
                         </label>
                     </div>
-                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#f8fafc;padding:10px 12px;border-radius:6px;border:1px solid #e2e8f0;" x-html="simpleMd(rcaResults.remark)"></div>
+                    <div style="font-size:12px;line-height:1.7;color:var(--tr-ink);background:var(--tr-surface);padding:10px 12px;border-radius:6px;border:1px solid var(--tr-border);" x-html="simpleMd(rcaResults.remark)"></div>
                 </div>
             </template>
 
@@ -300,7 +300,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
                     </div>
                     <div class="sl-tags">
                         <template x-for="(cat, idx) in rcaResults.categories" :key="'cat-'+idx">
-                            <span class="sl-tag" style="border-left-color:#7c3aed;" :style="'animation-delay:'+(idx*50)+'ms'" x-text="cat"></span>
+                            <span class="sl-tag" style="" :style="'animation-delay:'+(idx*50)+'ms'" x-text="cat"></span>
                         </template>
                     </div>
                 </div>
@@ -313,7 +313,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="m15 3 4 4L7 19H3v-4L15 3Z"/></svg>
                         Contributing Factors
                     </div>
-                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:#475569;">
+                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:var(--tr-muted);">
                         <template x-for="(factor, idx) in rcaResults.contributing_factors" :key="'f-'+idx">
                             <li x-text="factor"></li>
                         </template>
@@ -331,7 +331,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
                             Recommendation (append to Remark)
                         </label>
                     </div>
-                    <div style="font-size:12px;line-height:1.7;color:#334155;background:#f0fdf4;padding:10px 12px;border-radius:6px;border:1px solid #bbf7d0;" x-html="simpleMd(rcaResults.recommendation)"></div>
+                    <div style="font-size:12px;line-height:1.7;color:var(--tr-ink);background:var(--tr-success-bg);padding:10px 12px;border-radius:6px;border:1px solid var(--tr-border);" x-html="simpleMd(rcaResults.recommendation)"></div>
                 </div>
             </template>
 
@@ -343,14 +343,14 @@ if (typeof window.aiRootCauseData === 'undefined') {
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2.5"><path d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 0 1 0 2.828l-7 7a2 2 0 0 1-2.828 0l-7-7A2 2 0 0 1 3 12V7a4 4 0 0 1 4-4Z"/></svg>
                             Labels (click to toggle)
                         </span>
-                        <span style="font-size:10px;color:#94a3b8;" x-text="rcaSelectedLabels.length + ' selected'"></span>
+                        <span style="font-size:10px;color:var(--tr-muted-ink);" x-text="rcaSelectedLabels.length + ' selected'"></span>
                     </div>
                     <div class="sl-tags" style="gap:6px;">
                         <template x-for="(label, idx) in rcaResults.labels_matched" :key="'lm-'+idx">
-                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;border-left-color:#0d9488;transition:all .15s;" :class="isLabelSelected(label) ? 'rca-label--selected' : 'rca-label--unselected'" x-text="label"></button>
+                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;transition:all .15s;" :class="isLabelSelected(label) ? 'rca-label--selected' : 'rca-label--unselected'" x-text="label"></button>
                         </template>
                         <template x-for="(label, idx) in rcaResults.labels_suggested" :key="'ls-'+idx">
-                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;border-left-color:#f59e0b;transition:all .15s;" :class="isLabelSelected(label) ? 'rca-label-new--selected' : 'rca-label-new--unselected'" x-text="label + ' (new)'"></button>
+                            <button type="button" @click="toggleLabel(label)" class="sl-tag" style="cursor:pointer;transition:all .15s;" :class="isLabelSelected(label) ? 'rca-label-new--selected' : 'rca-label-new--unselected'" x-text="label + ' (new)'"></button>
                         </template>
                     </div>
                 </div>
@@ -358,7 +358,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
         </div>
         <div class="sl-panel__footer">
             <span class="sl-count" x-text="'Apply selected fields'"></span>
-            <button type="button" class="sl-apply" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);" :disabled="rcaApplying" @click="applySelected()">
+            <button type="button" class="sl-apply" style="background:var(--tr-violet-600);" :disabled="rcaApplying" @click="applySelected()">
                 <template x-if="!rcaApplying">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m4.5 12.75 6 6 9-13.5"/></svg>
                 </template>

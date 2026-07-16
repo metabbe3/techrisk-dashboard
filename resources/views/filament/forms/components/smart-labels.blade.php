@@ -3,7 +3,7 @@
     $applyEndpoint = route('ai.apply-labels');
     $csrf = csrf_token();
     $aiService = app(\App\Services\Ai\AiTextService::class);
-    $models = $aiService->getAvailableModels();
+    $models = $aiService->getModelsForPicker();
     $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
     $isAvailable = $aiService->isAvailable();
     $hasMultipleModels = count($models) > 1;

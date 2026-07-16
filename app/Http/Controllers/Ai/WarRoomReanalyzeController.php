@@ -27,6 +27,10 @@ class WarRoomReanalyzeController extends Controller
 
         $session = WarRoomSession::accessibleByUser()->findOrFail($id);
 
+        // Re-analysis re-runs every agent (token-expensive). Only the creator may
+        // trigger it; viewing stays open to all permitted users.
+        $session->assertModifiable();
+
         try {
             $session = $this->warRoomService->reanalyzeSession(
                 $session,

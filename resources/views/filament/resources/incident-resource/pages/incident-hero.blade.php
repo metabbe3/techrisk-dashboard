@@ -8,12 +8,12 @@
     $statusColor = $inc->incident_status?->color() ?? 'gray';
     $fundColor = $inc->fund_status?->color() ?? 'gray';
 
-    $sevGradient = match($sevColor) {
-        'danger' => 'from-red-600 to-red-500',
-        'warning' => 'from-amber-600 to-amber-500',
-        'info' => 'from-blue-600 to-blue-500',
-        'success' => 'from-emerald-600 to-emerald-500',
-        default => 'from-slate-600 to-slate-500',
+    $sevBg = match($sevColor) {
+        'danger' => 'bg-red-600',
+        'warning' => 'bg-amber-600',
+        'info' => 'bg-blue-600',
+        'success' => 'bg-emerald-600',
+        default => 'bg-slate-600',
     };
 
     $hasFinancials = $inc->potential_fund_loss > 0 || $inc->fund_loss > 0 || $inc->recovered_fund > 0;
@@ -21,18 +21,18 @@
 @endphp
 
 {{-- Hero Header --}}
-<div class="rounded-xl overflow-hidden mb-6 bg-gradient-to-r {{ $sevGradient }} shadow-lg">
+<div class="rounded-xl overflow-hidden mb-6 {{ $sevBg }} shadow-lg">
     <div class="px-6 py-5">
         <div class="flex flex-wrap items-center gap-2 mb-3">
             <span class="text-white/70 text-xs font-mono tracking-wider">{{ $inc->no }}</span>
-            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-white/20 text-white backdrop-blur-sm">{{ $inc->severity }}</span>
-            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-white/20 text-white backdrop-blur-sm">{{ $inc->incident_status }}</span>
+            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-white/20 text-white">{{ $inc->severity }}</span>
+            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-white/20 text-white">{{ $inc->incident_status }}</span>
             @if($inc->fund_status)
-                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-white/20 text-white backdrop-blur-sm">{{ $inc->fund_status }}</span>
+                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold bg-white/20 text-white">{{ $inc->fund_status }}</span>
             @endif
-            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 text-white/80 backdrop-blur-sm">{{ $inc->incident_type }}</span>
+            <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 text-white/80">{{ $inc->incident_type }}</span>
             @if($inc->classification)
-                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 text-white/80 backdrop-blur-sm">{{ $inc->classification }}</span>
+                <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-white/10 text-white/80">{{ $inc->classification }}</span>
             @endif
         </div>
         <h1 class="text-xl font-bold text-white leading-tight mb-3">{{ $inc->title }}</h1>

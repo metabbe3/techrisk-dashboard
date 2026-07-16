@@ -31,6 +31,17 @@ class ExternalToolExecutor
             $method = strtoupper($config['method'] ?? 'GET');
             $timeout = (int) ($config['timeout'] ?? 10);
 
+            // SSRF guard: the URL (and its {placeholders}) can be influenced by
+            // LLM-controlled arguments, which in turn consume untrusted text.
+            // Block non-http(s) schemes, private/loopback/link-local/metadata
+            // hosts, and (optionally) anything outside a per-tool allowlist.
+            $allowedHosts = $config['allowed_hosts'] ?? null;
+            if ($this->isUrlBlocked($url, $allowedHosts)) {
+                Log::warning("[ExternalTool] Blocked SSRF attempt for '{$tool->name}'", ['url' => $url]);
+
+                return "External tool '{$tool->display_name}' was blocked: target host is not allowed.";
+            }
+
             $http = Http::timeout($timeout);
 
             // Apply authentication
@@ -114,6 +125,57 @@ class ExternalToolExecutor
 
             return (string) ($arguments[$key] ?? $matches[0]);
         }, $template);
+    }
+
+    /**
+     * Reject URLs that are unsafe to fetch (SSRF defense). Blocks non-http(s)
+     * schemes, hosts that resolve to private/loopback/link-local/metadata IPs,
+     * and any host outside an optional allowlist. Fails closed (blocks) when the
+     * host can't be resolved. Residual risk: DNS-rebinding could race resolution;
+     * pinning the resolved IP at connect (curl RESOLVE) is the full mitigation.
+     */
+    private function isUrlBlocked(string $url, ?array $allowedHosts = null): bool
+    {
+        $parsed = parse_url($url);
+        $scheme = strtolower($parsed['scheme'] ?? '');
+
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            return true;
+        }
+
+        $host = strtolower($parsed['host'] ?? '');
+        if ($host === '') {
+            return true;
+        }
+
+        if ($allowedHosts !== null) {
+            $allowed = array_map('strtolower', $allowedHosts);
+
+            if (! in_array($host, $allowed, true)) {
+                return true;
+            }
+        }
+
+        // IP literal → check directly; hostname → resolve and check every record.
+        $ips = filter_var($host, FILTER_VALIDATE_IP) ? [$host] : (gethostbynamel($host) ?: []);
+
+        if (empty($ips)) {
+            return true;
+        }
+
+        foreach ($ips as $ip) {
+            if ($this->isPrivateOrReservedIp($ip)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function isPrivateOrReservedIp(string $ip): bool
+    {
+        // filter_var returns false when the IP IS private/reserved (NO_PRIV | NO_RES).
+        return filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false;
     }
 
     private function applyAuth($http, array $config)

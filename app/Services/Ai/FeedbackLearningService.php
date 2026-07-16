@@ -5,6 +5,7 @@ namespace App\Services\Ai;
 use App\Models\ChatMessage;
 use App\Models\UserAiPreference;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
+use App\Services\Ai\Concerns\JsonExtractor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -84,7 +85,6 @@ class FeedbackLearningService
                         ['role' => 'user', 'content' => "Based on these negative feedback samples, extract preference rules:\n\n{$feedbackSamples}"],
                     ],
                     'max_tokens' => 300,
-                    'temperature' => config('ai.temperatures.json_extraction', 0.1),
                 ]);
 
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
@@ -92,7 +92,7 @@ class FeedbackLearningService
             $usage = $responseData['usage'] ?? [];
             $content = $responseData['choices'][0]['message']['content'] ?? '';
 
-            $rules = json_decode($content, true);
+            $rules = JsonExtractor::extract($content);
 
             if (! is_array($rules)) {
                 $this->usageLogger->log(

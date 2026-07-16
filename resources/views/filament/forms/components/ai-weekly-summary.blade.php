@@ -2,7 +2,7 @@
     $endpoint = route('ai.weekly-summary');
     $csrf = csrf_token();
     $aiService = app(\App\Services\Ai\AiTextService::class);
-    $models = $aiService->getAvailableModels();
+    $models = $aiService->getModelsForPicker();
     $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
     $isAvailable = $aiService->isAvailable();
     $hasMultipleModels = count($models) > 1;
@@ -75,7 +75,7 @@
     style="margin-bottom:16px;"
 >
     <div class="sl-trigger-group">
-        <button type="button" class="sl-trigger" style="background:linear-gradient(135deg,#2563eb,#1d4ed8);" @click="{{ $hasMultipleModels ? 'wsShowModelPicker = !wsShowModelPicker' : 'generate()' }}" :disabled="wsLoading">
+        <button type="button" class="sl-trigger" style="background:var(--tr-blue-600);" @click="{{ $hasMultipleModels ? 'wsShowModelPicker = !wsShowModelPicker' : 'generate()' }}" :disabled="wsLoading">
             <span x-show="!wsLoading" x-transition class="sl-trigger__idle">
                 <svg class="sl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                 <span x-text="{{ $hasMultipleModels ? "'AI Summary (' + wsSelectedModel + ')'" : "'Generate AI Summary'" }}"></span>
@@ -111,7 +111,7 @@
     </div>
 
     <div x-show="wsOpen" x-transition:enter="sl-slide-in" x-transition:enter-start="sl-slide-in-start" x-transition:enter-end="sl-slide-in-end" x-transition:leave="sl-slide-out" x-transition:leave-start="sl-slide-out-start" x-transition:leave-end="sl-slide-out-end" x-cloak class="sl-panel">
-        <div class="sl-panel__header" style="background:linear-gradient(135deg,rgba(37,99,235,.06),#f8fafc);">
+        <div class="sl-panel__header">
             <div class="sl-panel__header-left">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
                 <span class="sl-panel__title">AI Executive Summary</span>
@@ -125,7 +125,7 @@
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg>
                         Summary
                     </div>
-                    <div style="font-size:12px;line-height:1.7;color:#334155;white-space:pre-wrap;background:#f8fafc;padding:10px 12px;border-radius:6px;border:1px solid #e2e8f0;" x-text="wsResults.summary"></div>
+                    <div style="font-size:12px;line-height:1.7;color:var(--tr-ink);white-space:pre-wrap;background:var(--tr-surface);padding:10px 12px;border-radius:6px;border:1px solid var(--tr-border);" x-text="wsResults.summary"></div>
                 </div>
             </template>
             <template x-if="wsResults?.key_highlights?.length > 0">
@@ -134,7 +134,7 @@
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10Z"/><path d="m9 12 2 2 4-4"/></svg>
                         Key Highlights
                     </div>
-                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:#475569;">
+                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:var(--tr-muted);">
                         <template x-for="(h, i) in wsResults.key_highlights" :key="'h-'+i"><li x-text="h"></li></template>
                     </ul>
                 </div>
@@ -145,7 +145,7 @@
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
                         Areas of Concern
                     </div>
-                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:#991b1b;">
+                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:var(--tr-red-700);">
                         <template x-for="(c, i) in wsResults.areas_of_concern" :key="'c-'+i"><li x-text="c"></li></template>
                     </ul>
                 </div>
@@ -156,7 +156,7 @@
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d97706" stroke-width="2.5"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/><path d="M11 8v6"/><path d="M8 11h6"/></svg>
                         Root Cause Insights
                     </div>
-                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:#92400e;">
+                    <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:var(--tr-amber-700);">
                         <template x-for="(r, i) in wsResults.root_cause_insights" :key="'rc-'+i"><li x-text="r"></li></template>
                     </ul>
                 </div>
@@ -167,13 +167,13 @@
                         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/></svg>
                         Recommendation
                     </div>
-                    <div style="font-size:12px;line-height:1.6;color:#334155;white-space:pre-wrap;background:#faf5ff;padding:8px 10px;border-radius:6px;border:1px solid #e9d5ff;" x-text="wsResults.recommendation"></div>
+                    <div style="font-size:12px;line-height:1.6;color:var(--tr-ink);white-space:pre-wrap;background:var(--tr-violet-bg);padding:8px 10px;border-radius:6px;border:1px solid var(--tr-border);" x-text="wsResults.recommendation"></div>
                 </div>
             </template>
         </div>
         <div class="sl-panel__footer">
             <span class="sl-count">AI-generated summary</span>
-            <button type="button" @click="wsOpen=false" style="font-size:12px;font-weight:600;padding:5px 14px;border:none;border-radius:6px;background:#e2e8f0;color:#334155;cursor:pointer;">Close</button>
+            <button type="button" @click="wsOpen=false" style="font-size:12px;font-weight:600;padding:5px 14px;border:none;border-radius:6px;background:var(--tr-border);color:var(--tr-ink);cursor:pointer;">Close</button>
         </div>
     </div>
 </div>

@@ -13,6 +13,12 @@ class WarRoomToolRegistry
             $this->getActionItems(),
             $this->webSearch(),
             $this->getStats(),
+            $this->getTimeline(),
+            $this->getMetrics(),
+            $this->searchBySeverity(),
+            $this->searchByDateRange(),
+            $this->getFundLoss(),
+            $this->getRootCauseCategories(),
         ];
 
         if ($enabledTools === null) {
@@ -33,6 +39,12 @@ class WarRoomToolRegistry
             'get_action_items',
             'web_search',
             'get_stats',
+            'get_timeline',
+            'get_metrics',
+            'search_by_severity',
+            'search_by_date_range',
+            'get_fund_loss',
+            'get_root_cause_categories',
         ];
     }
 
@@ -195,6 +207,128 @@ class WarRoomToolRegistry
                             'type' => 'string',
                             'enum' => ['this_month', 'this_quarter', 'this_year'],
                             'description' => 'Time period for statistics (default: this_year)',
+                        ],
+                    ],
+                    'required' => [],
+                ],
+            ],
+        ];
+    }
+
+    private function getTimeline(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'get_timeline',
+                'description' => 'Get the chronological timeline + status updates for a specific incident. Useful for understanding detection, containment, and resolution sequencing.',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'incident_no' => ['type' => 'string', 'description' => 'The incident display number (e.g., "2026_IN_0001")'],
+                    ],
+                    'required' => ['incident_no'],
+                ],
+            ],
+        ];
+    }
+
+    private function getMetrics(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'get_metrics',
+                'description' => 'Get quantitative metrics for a specific incident: MTTR, fund loss/potential loss/recovered, and key timestamps (discovered, stop-bleeding). Useful for impact assessment.',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'incident_no' => ['type' => 'string', 'description' => 'The incident display number'],
+                    ],
+                    'required' => ['incident_no'],
+                ],
+            ],
+        ];
+    }
+
+    private function searchBySeverity(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'search_by_severity',
+                'description' => 'List recent incidents at given severity levels (e.g., all P1/P2). Returns key fields, newest first.',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'severity' => [
+                            'type' => 'array',
+                            'items' => ['type' => 'string'],
+                            'description' => 'Severity levels: P1, P2, P3, P4, G, X1-X4',
+                        ],
+                        'limit' => ['type' => 'integer', 'description' => 'Max results (default 10, max 20)'],
+                    ],
+                    'required' => ['severity'],
+                ],
+            ],
+        ];
+    }
+
+    private function searchByDateRange(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'search_by_date_range',
+                'description' => 'List incidents within a date window. Returns key fields, newest first.',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'date_from' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
+                        'date_to' => ['type' => 'string', 'description' => 'End date (YYYY-MM-DD)'],
+                        'limit' => ['type' => 'integer', 'description' => 'Max results (default 10, max 20)'],
+                    ],
+                    'required' => ['date_from'],
+                ],
+            ],
+        ];
+    }
+
+    private function getFundLoss(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'get_fund_loss',
+                'description' => 'List incidents with financial impact (fund loss > 0), optionally filtered by fund status and date. Returns amounts + recovery. Useful for financial-impact analysis.',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'fund_status' => ['type' => 'string', 'description' => 'Optional fund status filter'],
+                        'date_from' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
+                        'date_to' => ['type' => 'string', 'description' => 'End date (YYYY-MM-DD)'],
+                        'limit' => ['type' => 'integer', 'description' => 'Max results (default 10, max 20)'],
+                    ],
+                    'required' => [],
+                ],
+            ],
+        ];
+    }
+
+    private function getRootCauseCategories(): array
+    {
+        return [
+            'type' => 'function',
+            'function' => [
+                'name' => 'get_root_cause_categories',
+                'description' => 'Get the distribution of root-cause categories over a period (this_month/this_quarter/this_year). Returns category → count, sorted desc. Useful for spotting systemic patterns.',
+                'parameters' => [
+                    'type' => 'object',
+                    'properties' => [
+                        'period' => [
+                            'type' => 'string',
+                            'enum' => ['this_month', 'this_quarter', 'this_year'],
+                            'description' => 'Time period (default: this_year)',
                         ],
                     ],
                     'required' => [],

@@ -27,7 +27,7 @@ class AiChat extends Page
     public function getViewData(): array
     {
         return [
-            'models' => app(\App\Services\Ai\AiTextService::class)->getAvailableModels(),
+            'models' => app(\App\Services\Ai\AiTextService::class)->getModelsForPicker(),
             'defaultModel' => \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL')),
         ];
     }

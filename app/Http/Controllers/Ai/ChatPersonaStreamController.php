@@ -46,11 +46,6 @@ class ChatPersonaStreamController
         ]);
 
         $userId = auth()->id() ?? 'guest';
-        if (! RateLimiter::attempt("ai-chat-persona:{$userId}", 20, fn () => true)) {
-            return new StreamedResponse(function () {
-                echo 'data: '.json_encode(['error' => 'Rate limit exceeded. Please wait a moment.'])."\n\n";
-            }, 429, ['Content-Type' => 'text/event-stream']);
-        }
 
         $userMessage = $request->input('message');
         $conversationId = $request->input('conversation_id');
@@ -58,6 +53,20 @@ class ChatPersonaStreamController
         $referencedIds = $request->input('referenced_incidents', []);
         $rawAttachments = $request->input('attachments', []);
         $personaKeys = $request->input('personas', []);
+
+        // Persona mode fires one AI call per selected agent, so the rate limit is
+        // charged per call (one hit per persona), not per message — keeping it
+        // cost-aligned with the default single-call chat path.
+        $personaCallBudget = (int) config('ai.rate_limit.persona_calls_per_min', 30);
+        $personaLimiterKey = "ai-chat-persona:{$userId}";
+        if (RateLimiter::remaining($personaLimiterKey, $personaCallBudget) < count($personaKeys)) {
+            return new StreamedResponse(function () {
+                echo 'data: '.json_encode(['error' => 'Rate limit exceeded. Please wait a moment.'])."\n\n";
+            }, 429, ['Content-Type' => 'text/event-stream']);
+        }
+        foreach (range(1, count($personaKeys)) as $_) {
+            RateLimiter::hit($personaLimiterKey);
+        }
 
         $slashCommand = null;
         $slashArgs = '';

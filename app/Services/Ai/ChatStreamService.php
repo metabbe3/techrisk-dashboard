@@ -23,6 +23,7 @@ class ChatStreamService
         private SseStreamingService $sseStreamingService,
         private AiUsageLogger $aiUsageLogger,
         private ConversationMemoryService $conversationMemoryService,
+        private ToolRegistryService $toolRegistry,
     ) {}
 
     public function handle(Request $request): StreamedResponse
@@ -73,6 +74,27 @@ class ChatStreamService
                 'model' => $model,
             ]);
 
+        // Guardrails: per-conversation message cap + token budget. Existing convos only
+        // (a brand-new one can't be over yet). Single aggregate query — a transactional
+        // lockForUpdate would be race-safe but risks deadlocks for a soft cap, so we
+        // accept a negligible boundary race. ponytail: soft cap, not a hard lock.
+        if ($conversationId) {
+            $maxMessages = (int) config('ai.rate_limit.conversation_max_messages', 200);
+            $tokenBudget = (int) config('ai.rate_limit.conversation_token_budget', 500000);
+            $agg = $conversation->messages()
+                ->selectRaw('COUNT(*) AS msg_count, COALESCE(SUM(tokens_used), 0) AS tokens_used')
+                ->first();
+            if (($agg->msg_count ?? 0) >= $maxMessages || ($agg->tokens_used ?? 0) >= $tokenBudget) {
+                $reason = ($agg->msg_count ?? 0) >= $maxMessages
+                    ? "This conversation reached its {$maxMessages}-message limit. Please start a new conversation."
+                    : "This conversation reached its token budget ({$tokenBudget}). Please start a new conversation.";
+
+                return new StreamedResponse(function () use ($reason) {
+                    echo 'data: '.json_encode(['error' => $reason])."\n\n";
+                }, 422, ['Content-Type' => 'text/event-stream']);
+            }
+        }
+
         $createData = [
             'conversation_id' => $conversation->id,
             'role' => 'user',
@@ -111,36 +133,46 @@ class ChatStreamService
                 $enriched = $this->contextService->enrichSlashCommand($slashCommand, $slashArgs, $referencedIds);
                 $userMessage = $enriched['message'];
                 if (! empty($enriched['extra_context'])) {
-                    $userMessage .= $enriched['extra_context'];
+                    $userMessage .= $this->contextService->fenceUntrusted($enriched['extra_context'], 'Retrieved context');
                 }
             }
         }
 
-        // Detect inline web search intent (without /search command at message start)
-        if (! $slashCommand && preg_match('/(?:\/search\b|\bsearch\s+(?:the\s+)?(?:web|internet|online)|look\s+up|check\s+online|\bsearch\s+for)\b/i', $userMessage)) {
-            $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
-            if ($searchContext) {
-                $userMessage .= "\n\n".$searchContext;
-                $userMessage .= "\n\nThe user wants external web references combined with internal incident data. Always cite external sources using markdown links.";
-                $searchEnriched = true;
-            }
-        }
+        // Web search is opt-in only: via the explicit `web_search` toggle or the
+        // `/search` slash command (handled above). The brittle free-text intent
+        // regex ("search the web", "look up", …) was removed — it false-triggered
+        // and miss-fired; the toggle is unambiguous.
 
         // Force web search when toggle is ON and not already enriched
         if ($request->boolean('web_search') && ! $searchEnriched && $slashCommand !== 'search') {
             $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
             if ($searchContext) {
-                $userMessage .= "\n\n".$searchContext;
+                // Fence web results as untrusted data (prompt-injection defense).
+                $userMessage .= $this->contextService->fenceUntrusted($searchContext, 'Retrieved web results');
                 $userMessage .= "\n\nSupplementary web search results are included above. Integrate external references with internal data where relevant. Cite external sources using markdown links.";
             }
         }
 
         // Build API messages
         $systemPrompt = $this->contextService->buildSystemPrompt($userMessage, $referencedIds);
-        $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
+
+        // Health-aware model routing: classify the turn's intent (thinking vs
+        // rephrase) and pick a healthy model for that tier. The user's manual UI
+        // pick ($model) is the preferred — used unless it's currently unhealthy.
+        $router = app(ModelRouter::class);
+        $resolvedModel = $router->pick(
+            $router->tierForIntent($userMessage),
+            $model ?? AiSetting::get('default_model', config('ai.default_model')),
+        );
         $maxTokens = config('ai.chat_max_tokens', 4000);
 
         $apiMessages = [['role' => 'system', 'content' => $systemPrompt]];
+
+        // Context compaction: carry the archived conversation summary so early detail
+        // isn't dropped when the 20-message history window truncates it.
+        if (! empty($conversation->summary)) {
+            $apiMessages[] = ['role' => 'system', 'content' => 'Prior conversation summary (for continuity): '.$conversation->summary];
+        }
 
         foreach ($history as $msg) {
             $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
@@ -174,47 +206,99 @@ class ChatStreamService
             @ini_set('output_buffering', 'off');
             @ini_set('zlib.output_compression', false);
 
-            echo "event: setup\ndata: ".json_encode([
+            $this->emit('setup', [
                 'conversation_id' => $conversationIdStr,
                 'user_message_id' => $userMsgIdStr,
                 'is_new' => $isNew,
-            ])."\n\n";
-
-            if (ob_get_level()) {
-                ob_flush();
-            }
-            flush();
+            ]);
 
             $sseService = $this->sseStreamingService;
+            $toolRegistry = $this->toolRegistry;
+            $toolDefs = config('ai.tools.enabled', true) ? $toolRegistry->getToolDefinitions() : [];
+            $maxToolRounds = (int) config('ai.tools.chat_max_rounds', 3);
             $fullContent = '';
+            $allToolCalls = [];
+            $apiMsgs = $apiMessages;
+            $result = null;
 
             try {
-                $result = $sseService->stream(
-                    $baseUrl,
-                    $apiKey,
-                    [
+                // Agentic tool-calling loop: stream → if tool_calls, execute + emit
+                // events → append results → stream again. Final round (no tool_calls)
+                // streams the answer tokens directly to the client.
+                for ($round = 0; $round <= $maxToolRounds; $round++) {
+                    $payload = [
                         'model' => $resolvedModel,
-                        'messages' => $apiMessages,
+                        'messages' => $apiMsgs,
                         'max_tokens' => $maxTokens,
                         'stream' => true,
-                    ],
-                    $timeout,
-                    function (string $delta) use (&$fullContent) {
-                        $fullContent .= $delta;
-                        echo 'data: '.json_encode(['delta' => $delta])."\n\n";
-                        if (ob_get_level()) {
-                            ob_flush();
-                        }
-                        flush();
-                    },
-                );
+                    ];
+                    if (! empty($toolDefs)) {
+                        $payload['tools'] = $toolDefs;
+                    }
+
+                    $fullContent = '';
+
+                    $result = $sseService->stream(
+                        $baseUrl,
+                        $apiKey,
+                        $payload,
+                        $timeout,
+                        function (string $delta) use (&$fullContent) {
+                            $fullContent .= $delta;
+                            $this->emit(null, ['delta' => $delta]);
+                        },
+                    );
+
+                    if ($result['error'] || $result['http_code'] >= 400) {
+                        $errorMsg = $result['error'] ?: 'AI service error (HTTP '.$result['http_code'].')';
+                        $this->emit('error', ['error' => $errorMsg]);
+
+                        return;
+                    }
+
+                    $toolCalls = $result['tool_calls'] ?? [];
+
+                    // No tool calls = final answer (already streamed via deltas).
+                    if (empty($toolCalls)) {
+                        break;
+                    }
+
+                    // Execute tool calls, emit events, append results for next round.
+                    $assistantMsg = ['role' => 'assistant'];
+                    if (! blank($result['content'])) {
+                        $assistantMsg['content'] = $result['content'];
+                    }
+                    $assistantMsg['tool_calls'] = $toolCalls;
+                    $apiMsgs[] = $assistantMsg;
+
+                    foreach ($toolCalls as $tc) {
+                        $toolName = $tc['function']['name'] ?? 'unknown';
+                        $toolArgs = $tc['function']['arguments'] ?? '{}';
+
+                        $this->emit('tool_call', [
+                            'name' => $toolName,
+                            'arguments' => json_decode($toolArgs, true) ?: $toolArgs,
+                        ]);
+
+                        $toolResult = $toolRegistry->executeToolCall($tc);
+                        $resultPreview = mb_substr($toolResult['content'] ?? 'OK', 0, 500);
+
+                        $this->emit('tool_result', [
+                            'name' => $toolName,
+                            'result' => $resultPreview,
+                        ]);
+
+                        $apiMsgs[] = $toolResult;
+                        $allToolCalls[] = [
+                            'name' => $toolName,
+                            'arguments' => $toolArgs,
+                            'result_length' => strlen($toolResult['content'] ?? ''),
+                        ];
+                    }
+                }
             } catch (\Throwable $e) {
                 Log::warning('AI stream error', ['error' => $e->getMessage()]);
-                echo "event: error\ndata: ".json_encode(['error' => $e->getMessage()])."\n\n";
-                if (ob_get_level()) {
-                    ob_flush();
-                }
-                flush();
+                $this->emit('error', ['error' => $e->getMessage()]);
 
                 return;
             }
@@ -227,11 +311,7 @@ class ChatStreamService
 
             if ($result['error'] || $httpCode >= 400) {
                 $errorMsg = $result['error'] ?: 'AI service error (HTTP '.$httpCode.')';
-                echo "event: error\ndata: ".json_encode(['error' => $errorMsg])."\n\n";
-                if (ob_get_level()) {
-                    ob_flush();
-                }
-                flush();
+                $this->emit('error', ['error' => $errorMsg]);
 
                 return;
             }
@@ -253,13 +333,9 @@ class ChatStreamService
                     'usage' => $usage,
                     'raw_error' => $rawBody ?: null,
                 ]);
-                echo "event: error\ndata: ".json_encode([
+                $this->emit('error', [
                     'error' => $userError,
-                ])."\n\n";
-                if (ob_get_level()) {
-                    ob_flush();
-                }
-                flush();
+                ]);
                 try {
                     $this->aiUsageLogger->log(
                         fieldType: 'chat_assistant',
@@ -284,18 +360,14 @@ class ChatStreamService
             }
 
             // Send metadata event with full content and usage
-            echo "event: metadata\ndata: ".json_encode([
+            $this->emit('metadata', [
                 'full_content' => $fullContent,
                 'usage' => $usage,
                 'model' => $resolvedModel,
                 'response_time_ms' => $responseTimeMs,
                 'finish_reason' => $finishReason,
                 'truncated' => $finishReason === 'length',
-            ])."\n\n";
-            if (ob_get_level()) {
-                ob_flush();
-            }
-            flush();
+            ]);
 
             // Save assistant message to database (server-side persistence)
             try {
@@ -308,6 +380,7 @@ class ChatStreamService
                     'prompt_tokens' => $usage['prompt_tokens'] ?? null,
                     'completion_tokens' => $usage['completion_tokens'] ?? null,
                     'web_search_used' => $searchEnriched,
+                    'tool_calls' => ! empty($allToolCalls) ? $allToolCalls : null,
                     'created_at' => now(),
                 ]);
             } catch (\Throwable $e) {
@@ -335,9 +408,18 @@ class ChatStreamService
                 Log::warning('Failed to log streaming chat usage', ['error' => $e->getMessage()]);
             }
 
-            // Archive conversation memory (async, non-blocking)
+            // Archive / re-summarize conversation memory. archiveConversation() only
+            // summarizes once (guards on memory_archived_at); reset the flag every N
+            // messages so long chats get a refreshed summary for context compaction.
             try {
                 $memoryService = $this->conversationMemoryService;
+                $interval = (int) config('ai.memory.compaction_interval', 0);
+                if ($interval > 0) {
+                    $msgCount = $conversation->messages()->count();
+                    if ($msgCount >= $interval && $msgCount % $interval === 0) {
+                        $conversation->update(['memory_archived_at' => null]);
+                    }
+                }
                 $memoryService->archiveConversation($conversation);
             } catch (\Throwable $e) {
                 Log::debug('Failed to archive conversation memory', ['error' => $e->getMessage()]);
@@ -348,5 +430,19 @@ class ChatStreamService
             'Connection' => 'keep-alive',
             'X-Accel-Buffering' => 'no',
         ]);
+    }
+
+    /**
+     * Emit one SSE frame and flush. Single chokepoint for the event/data framing
+     * and the ob_flush/flush ceremony so every streamed event is shaped identically.
+     */
+    private function emit(?string $event, array $data): void
+    {
+        echo ($event !== null ? "event: {$event}\n" : '')
+            .'data: '.json_encode($data)."\n\n";
+        if (ob_get_level()) {
+            ob_flush();
+        }
+        flush();
     }
 }
