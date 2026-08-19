@@ -256,6 +256,23 @@ class WarRoomServiceTest extends TestCase
         Queue::assertPushed(ProcessWarRoomAgent::class, 3);
     }
 
+    public function test_dispatch_round_is_idempotent_per_round(): void
+    {
+        Queue::fake();
+
+        $session = WarRoomSession::factory()->create([
+            'selected_agents' => ['sre', 'dba'],
+        ]);
+
+        $this->service->dispatchRound($session, 1);
+        $this->service->dispatchRound($session, 1); // second call is a no-op
+
+        $messages = WarRoomMessage::where('session_id', $session->id)->where('round', 1)->get();
+        $this->assertCount(2, $messages); // created once, not duplicated
+
+        Queue::assertPushed(ProcessWarRoomAgent::class, 2);
+    }
+
     // -----------------------------------------------------------------------
     // 4. onAgentCompleted - advances round when all done
     // -----------------------------------------------------------------------
@@ -502,6 +519,49 @@ class WarRoomServiceTest extends TestCase
             'agent_role' => 'sre',
             'status' => 'pending',
             'created_at' => now()->subSeconds(30),
+        ]);
+
+        $count = $this->service->markStuckMessages($session);
+
+        $this->assertSame(0, $count);
+        Queue::assertNotPushed(ProcessWarRoomAgent::class);
+    }
+
+    // -----------------------------------------------------------------------
+    // 7b. markStuckMessages - recovers a hung pre-analysis phase
+    // -----------------------------------------------------------------------
+
+    public function test_mark_stuck_messages_recovers_hung_pre_analysis(): void
+    {
+        Queue::fake();
+        Event::fake();
+
+        $stuckAfter = (int) config('ai.war_room.pre_analysis_timeout', 90)
+            + \App\Jobs\WarRoom\RunPreAnalysis::JOB_TIMEOUT + 60;
+
+        $session = WarRoomSession::factory()->running()->create([
+            'selected_agents' => ['sre', 'dba'],
+            'pre_analysis' => null,
+            'started_at' => now()->subSeconds($stuckAfter + 60),
+        ]);
+        // No messages — pre-analysis never completed.
+
+        $count = $this->service->markStuckMessages($session);
+
+        $this->assertSame(1, $count);
+        $round1 = WarRoomMessage::where('session_id', $session->id)->where('round', 1)->get();
+        $this->assertCount(2, $round1); // forwarded to round 1
+        Queue::assertPushed(ProcessWarRoomAgent::class, 2);
+    }
+
+    public function test_mark_stuck_messages_does_not_forward_recent_pre_analysis(): void
+    {
+        Queue::fake();
+
+        $session = WarRoomSession::factory()->running()->create([
+            'selected_agents' => ['sre', 'dba'],
+            'pre_analysis' => null,
+            'started_at' => now()->subSeconds(30), // freshly started, pre-analysis still in flight
         ]);
 
         $count = $this->service->markStuckMessages($session);

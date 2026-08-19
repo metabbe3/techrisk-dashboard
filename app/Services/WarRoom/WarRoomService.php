@@ -176,6 +176,12 @@ class WarRoomService
 
     public function dispatchRound(WarRoomSession $session, int $round): void
     {
+        // Idempotent per round: if messages already exist (a prior dispatch, or a
+        // late-failing pre-analysis job racing the self-heal), don't double-create.
+        if (WarRoomMessage::where('session_id', $session->id)->where('round', $round)->exists()) {
+            return;
+        }
+
         $agents = $session->getAgentRoles();
 
         foreach ($agents as $role) {
@@ -751,6 +757,31 @@ class WarRoomService
     {
         if ($session->status !== 'running') {
             return 0;
+        }
+
+        // Pre-analysis creates no WarRoomMessage rows, so the message-reaping below
+        // can't see it. If it has hung past its threshold, skip it and start round 1
+        // — the same graceful degradation RunPreAnalysis uses on failure. Recovery
+        // must not depend on curl/pcntl actually killing the job (they often don't).
+        if ($session->pre_analysis === null
+            && $session->started_at !== null
+            && $session->messages()->doesntExist()
+        ) {
+            $stuckAfter = (int) config('ai.war_room.pre_analysis_timeout', 90)
+                + RunPreAnalysis::JOB_TIMEOUT
+                + 60; // buffer for queue scheduling + retries
+
+            if ($session->started_at->lt(now()->subSeconds($stuckAfter))) {
+                Log::warning('[WarRoom] Pre-analysis hung — skipping to round 1', [
+                    'session_id' => $session->id,
+                    'started_at' => $session->started_at->toIso8601String(),
+                    'threshold_seconds' => $stuckAfter,
+                ]);
+
+                $this->dispatchRound($session->fresh(), 1);
+
+                return 1;
+            }
         }
 
         $runningTimeout = (int) config('ai.war_room.agent_timeout', 600);

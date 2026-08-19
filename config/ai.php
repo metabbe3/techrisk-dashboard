@@ -437,6 +437,10 @@ return [
         'context_compression_threshold' => (float) env('AI_WAR_ROOM_COMPRESSION_THRESHOLD', 0.50),
         'moderator_use_findings' => env('AI_WAR_ROOM_MODERATOR_FINDINGS', true),
         'pre_analysis_enabled' => env('AI_WAR_ROOM_PRE_ANALYSIS', true),
+        // Pre-analysis is a single non-streaming call (unlike agents/moderator). The connect
+        // timeout fails fast on dead sockets; the overall timeout bounds a stalled response.
+        'pre_analysis_timeout' => (int) env('AI_WAR_ROOM_PRE_ANALYSIS_TIMEOUT', 90),
+        'pre_analysis_connect_timeout' => (int) env('AI_WAR_ROOM_PRE_ANALYSIS_CONNECT_TIMEOUT', 15),
 
         'model_limits' => [
             'qwen3-32b' => ['input' => 32000, 'output' => 32768],

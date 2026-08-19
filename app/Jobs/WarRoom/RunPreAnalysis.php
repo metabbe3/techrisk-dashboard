@@ -19,9 +19,11 @@ class RunPreAnalysis implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
     use InteractsWithAiApi;
 
+    public const JOB_TIMEOUT = 120;
+
     public $tries = 2;
 
-    public $timeout = 120;
+    public $timeout = self::JOB_TIMEOUT;
 
     public function __construct(
         public WarRoomSession $session
@@ -42,12 +44,17 @@ class RunPreAnalysis implements ShouldQueue
             $systemPrompt = config('ai.prompts.war_room_pre_analysis.system');
             $model = app(\App\Services\Ai\ModelRouter::class)->pick('reasoning', $session->model ?? config('ai.default_model'));
 
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer '.$this->getApiKey(),
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout(90)
-                ->post($this->getBaseUrl(), [
+            // Post to the shared /chat/completions endpoint (buildUrl) like every other
+            // AI call — the old code hit the bare base URL, which can hang on providers
+            // whose root path never responds. Add a connect timeout so a dead socket
+            // fails fast: a call that blocks without throwing never reaches the catch /
+            // failed() round-1 dispatch, stranding the session at current_round=0.
+            $response = Http::withHeaders($this->buildHeaders())
+                ->withOptions([
+                    'connect_timeout' => (float) config('ai.war_room.pre_analysis_connect_timeout', 15),
+                    'timeout' => (float) config('ai.war_room.pre_analysis_timeout', 90),
+                ])
+                ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
                         ['role' => 'system', 'content' => $systemPrompt],
