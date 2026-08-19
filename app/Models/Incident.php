@@ -154,6 +154,18 @@ class Incident extends Model implements Auditable
             ->orWhereNotIn('fund_status', FundStatus::EXCLUDED_FROM_COUNTS));
     }
 
+    /**
+     * Incidents that count in AI-facing metrics: real incidents only
+     * (classification = Incident) and not fund-status-excluded. Single source
+     * of truth for chat context, quick stats, and WarRoom tools so every
+     * surface reports the same numbers for the same question.
+     */
+    public function scopeAiCounts($query): void
+    {
+        $query->where('classification', IncidentClassification::Incident->value)
+            ->excludedFromCounts();
+    }
+
     public function getRecoveryPercentageAttribute(): ?float
     {
         if (! $this->potential_fund_loss || $this->potential_fund_loss <= 0) {

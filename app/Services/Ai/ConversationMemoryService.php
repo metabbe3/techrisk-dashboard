@@ -111,10 +111,32 @@ class ConversationMemoryService
 
     public function getRelevantSummaries(int $userId, string $currentQuery, int $limit = 3): Collection
     {
-        return ChatConversation::where('user_id', $userId)
+        $conversations = ChatConversation::where('user_id', $userId)
             ->whereNotNull('summary')
             ->latest('updated_at')
-            ->limit($limit)
+            ->limit(20)
             ->get();
+
+        if ($conversations->isEmpty()) {
+            return $conversations;
+        }
+
+        // Score by keyword overlap with the current query so a payment
+        // question doesn't get anchored by an unrelated vendor summary.
+        // Recency breaks ties (collection order above); no embedding cost.
+        $words = collect(preg_split('/\W+/u', mb_strtolower($currentQuery)))
+            ->filter(fn ($w) => mb_strlen($w) > 3)
+            ->unique()
+            ->values();
+
+        if ($words->isEmpty()) {
+            return $conversations->take($limit);
+        }
+
+        return $conversations
+            ->sortByDesc(fn ($c) => $words
+                ->filter(fn ($w) => str_contains(mb_strtolower($c->summary ?? ''), $w))
+                ->count())
+            ->take($limit);
     }
 }

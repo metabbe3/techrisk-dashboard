@@ -2,7 +2,6 @@
 
 namespace App\Services\Ai;
 
-use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Models\Category;
 use App\Models\Incident;
@@ -16,6 +15,15 @@ use Illuminate\Support\Facades\Log;
 
 class ChatContextService
 {
+    /**
+     * Hard cap on smart-search/topic result hydration. Formatting is tiered,
+     * but the QUERY itself was unbounded — a broad match pulled the whole
+     * incidents table into PHP and blew up the prompt. ponytail: stats for the
+     * 51+ tier are computed from the capped subset and labelled as such;
+     * switch to SQL aggregates if that ever isn't good enough.
+     */
+    private const SEARCH_RESULT_CAP = 50;
+
     private const COLUMN_REGISTRY = [
         // === IDENTIFICATION (always included) ===
         'no' => ['category' => 'identification', 'stats' => [], 'sections' => ['header'], 'always' => true],
@@ -280,6 +288,11 @@ class ChatContextService
             $relevant = $this->buildRelevantIncidentsBlock($userMessage);
             if ($relevant !== '') {
                 $context .= "\n## Relevant Incidents (most relevant to your question)\n{$relevant}\n";
+            } elseif ($this->retrievalAttempted($userMessage)) {
+                $context .= "\n## Relevant Incidents (most relevant to your question)\n"
+                    .'NO RETRIEVAL RESULTS: no incident data was retrieved for this question. '
+                    .'If the user is asking about incidents or metrics, state clearly that no '
+                    ."matching incidents were found in the data; do not estimate or invent numbers.\n";
             }
         }
 
@@ -347,6 +360,18 @@ class ChatContextService
 
             return '';
         }
+    }
+
+    /**
+     * Whether retrieval was gated in (feature on + long enough message) —
+     * i.e. an empty block means "no data found", not "we didn't look".
+     */
+    private function retrievalAttempted(string $userMessage): bool
+    {
+        $cfg = config('ai.chat.relevant_incidents', []);
+
+        return ($cfg['enabled'] ?? true)
+            && mb_strlen(trim($userMessage)) >= (int) ($cfg['min_length'] ?? 15);
     }
 
     /**
@@ -481,46 +506,42 @@ class ChatContextService
         return Cache::remember('chat_quick_stats_v2', 300, function () {
             $year = now()->year;
 
-            $totalIncidents = Incident::where('classification', IncidentClassification::Incident->value)
+            $totalIncidents = Incident::aiCounts()
                 ->whereYear('incident_date', $year)
-                ->excludedFromCounts()
                 ->count();
 
-            $openIncidents = Incident::where('classification', IncidentClassification::Incident->value)
+            $openIncidents = Incident::aiCounts()
                 ->whereYear('incident_date', $year)
                 ->whereNotIn('incident_status', ['Completed'])
-                ->excludedFromCounts()
                 ->count();
 
-            $totalFundLoss = Incident::whereYear('incident_date', $year)
-                ->excludedFromCounts()
+            $totalFundLoss = Incident::aiCounts()
+                ->whereYear('incident_date', $year)
                 ->sum('fund_loss');
 
-            $avgMttr = Incident::whereYear('incident_date', $year)
-                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->where('mttr', '>=', 0)
-                ->excludedFromCounts()
-                ->avg('mttr');
-
-            $bySeverity = Incident::where('classification', IncidentClassification::Incident->value)
+            $avgMttr = Incident::aiCounts()
                 ->whereYear('incident_date', $year)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->excludedFromCounts()
+                ->where('mttr', '>=', 0)
+                ->avg('mttr');
+
+            $bySeverity = Incident::aiCounts()
+                ->whereYear('incident_date', $year)
+                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->selectRaw('severity, COUNT(*) as count')
                 ->groupBy('severity')
                 ->pluck('count', 'severity')
                 ->toArray();
 
-            $byStatus = Incident::where('classification', IncidentClassification::Incident->value)
+            $byStatus = Incident::aiCounts()
                 ->whereYear('incident_date', $year)
-                ->excludedFromCounts()
                 ->selectRaw('incident_status, COUNT(*) as count')
                 ->groupBy('incident_status')
                 ->pluck('count', 'incident_status')
                 ->toArray();
 
-            $topLabels = Incident::whereYear('incident_date', $year)
-                ->excludedFromCounts()
+            $topLabels = Incident::aiCounts()
+                ->whereYear('incident_date', $year)
                 ->with('labels')
                 ->get()
                 ->flatMap->labels
@@ -550,8 +571,8 @@ class ChatContextService
             }
 
             // Root cause category breakdown
-            $rootCauseCategories = Incident::whereYear('incident_date', $year)
-                ->excludedFromCounts()
+            $rootCauseCategories = Incident::aiCounts()
+                ->whereYear('incident_date', $year)
                 ->whereNotNull('root_cause_category')
                 ->get()
                 ->flatMap->root_cause_category
@@ -565,8 +586,8 @@ class ChatContextService
             }
 
             // Responsible team breakdown
-            $responsibleTeams = Incident::whereYear('incident_date', $year)
-                ->excludedFromCounts()
+            $responsibleTeams = Incident::aiCounts()
+                ->whereYear('incident_date', $year)
                 ->whereNotNull('responsible_team')
                 ->get()
                 ->flatMap->responsible_team
@@ -580,8 +601,8 @@ class ChatContextService
             }
 
             // Business category breakdown
-            $businessCategories = Incident::whereYear('incident_date', $year)
-                ->excludedFromCounts()
+            $businessCategories = Incident::aiCounts()
+                ->whereYear('incident_date', $year)
                 ->whereNotNull('business_category')
                 ->get()
                 ->flatMap->business_category
@@ -605,8 +626,7 @@ class ChatContextService
             : 'chat_recent_incidents_'.md5(implode(',', $columns));
 
         return Cache::remember($cacheKey, 300, function () use ($columns) {
-            $incidents = Incident::where('classification', IncidentClassification::Incident->value)
-                ->excludedFromCounts()
+            $incidents = Incident::aiCounts()
                 ->with(['pic', 'labels', 'actionImprovements', 'investigationDocuments'])
                 ->latest('incident_date')
                 ->take(8)
@@ -678,7 +698,7 @@ class ChatContextService
         // Detect trend/pattern questions — narrow trigger to avoid false positives
         if (preg_match('/\b(?:trend|pattern|over\s+time|monthly\s+(?:trend|stats|report))\b/i', $msg)) {
             $monthly = Cache::remember('chat_trend_context', 300, function () {
-                return Incident::excludedFromCounts()
+                return Incident::aiCounts()
                     ->selectRaw('MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss')
                     ->whereYear('incident_date', now()->year)
                     ->groupByRaw('MONTH(incident_date)')
@@ -694,7 +714,8 @@ class ChatContextService
         if (str_contains($msg, 'similar') || str_contains($msg, 'recurr') || str_contains($msg, 'repeat')) {
             if (! $gatingEnabled || $enrichmentBudget < $maxBlocks) {
                 $recurringData = Cache::remember('chat_recurring_context', 300, function () {
-                    $topRootCauses = Incident::whereNotNull('root_cause_category')
+                    $topRootCauses = Incident::aiCounts()
+                        ->whereNotNull('root_cause_category')
                         ->whereYear('incident_date', now()->year)
                         ->get()
                         ->flatMap(fn ($inc) => $inc->root_cause_category ?? [])
@@ -703,7 +724,8 @@ class ChatContextService
                         ->sortDesc()
                         ->take(5);
 
-                    $topTypes = Incident::whereYear('incident_date', now()->year)
+                    $topTypes = Incident::aiCounts()
+                        ->whereYear('incident_date', now()->year)
                         ->selectRaw('incident_type, COUNT(*) as cnt')
                         ->groupBy('incident_type')
                         ->orderByDesc('cnt')
@@ -724,8 +746,8 @@ class ChatContextService
         if (preg_match('/\b(?:pic|person|team|who\s+(?:is|are|was|handled|resolved|is\s+the\s+pic))\b/i', $msg)) {
             if (! $gatingEnabled || $enrichmentBudget < $maxBlocks) {
                 $topPics = Cache::remember('chat_pic_context', 300, function () {
-                    return Incident::whereYear('incident_date', now()->year)
-                        ->excludedFromCounts()
+                    return Incident::aiCounts()
+                        ->whereYear('incident_date', now()->year)
                         ->with('pic')
                         ->get()
                         ->groupBy(fn ($inc) => $inc->pic?->name ?? 'Unassigned')
@@ -743,8 +765,8 @@ class ChatContextService
         if (preg_match('/\b(?:rca|root\s+cause|investigation\s+analysis|investigation|investigation\s+document)\b/i', $msg)) {
             if (! $gatingEnabled || $enrichmentBudget < $maxBlocks) {
                 $rcaData = Cache::remember('chat_rca_context', 300, function () {
-                    $recentWithRca = Incident::whereYear('incident_date', now()->year)
-                        ->excludedFromCounts()
+                    $recentWithRca = Incident::aiCounts()
+                        ->whereYear('incident_date', now()->year)
                         ->whereNotNull('root_cause')
                         ->with(['actionImprovements', 'investigationDocuments'])
                         ->latest('incident_date')
@@ -1223,8 +1245,19 @@ class ChatContextService
 
     public function clearDataCache(): void
     {
-        Cache::forget('chat_quick_stats_v2');
-        Cache::forget('chat_recent_incidents_v2');
+        foreach ([
+            'chat_quick_stats_v2',
+            'chat_recent_incidents_v2',
+            'chat_trend_context',
+            'chat_recurring_context',
+            'chat_pic_context',
+            'chat_rca_context',
+            'chat_label_names',
+        ] as $key) {
+            Cache::forget($key);
+        }
+        // ponytail: hashed keys (chat_recent_incidents_{md5}, chat_topic_{md5})
+        // are not enumerated — they expire via their 300s TTL at worst.
     }
 
     /**
@@ -1361,10 +1394,10 @@ class ChatContextService
             $filters['date_from'] = now()->subQuarter()->startOfQuarter()->format('Y-m-d');
             $filters['date_to'] = now()->subQuarter()->endOfQuarter()->format('Y-m-d');
         }
-        // "Q1".."Q4"
-        elseif (preg_match('/\bq([1-4])\b/i', $msg, $m)) {
+        // "Q1".."Q4" (optionally with an explicit year: "Q1 2025")
+        elseif (preg_match('/\bq([1-4])(?:\s*[,of\s]+(20[2-9]\d))?\b/i', $msg, $m)) {
             $q = (int) $m[1];
-            $year = now()->year;
+            $year = isset($m[2]) ? (int) $m[2] : now()->year;
             $filters['date_from'] = now()->setDate($year, ($q - 1) * 3 + 1, 1)->startOfMonth()->format('Y-m-d');
             $filters['date_to'] = now()->setDate($year, $q * 3, 1)->endOfMonth()->format('Y-m-d');
         }
@@ -1373,22 +1406,28 @@ class ChatContextService
             $filters['date_from'] = now()->startOfYear()->format('Y-m-d');
             $filters['date_to'] = now()->endOfDay()->format('Y-m-d');
         }
-        // "from 1st January until/to now" / "from <date> until/to now"
-        elseif (preg_match('/\b(?:from|since)\s+(\d{1,2})(?:st|nd|rd|th)?\s*(january|february|march|april|may|june|july|august|september|october|november|december)\s*(?:\d{4})?\s*(?:until|to|till)?\s*(?:now|today)?\b/i', $msg, $m)) {
+        // "from 1st January 2025 until/to now" / "from <date> until/to now"
+        elseif (preg_match('/\b(?:from|since)\s+(\d{1,2})(?:st|nd|rd|th)?\s*(january|february|march|april|may|june|july|august|september|october|november|december)\s*(?:(20[2-9]\d))?\s*(?:until|to|till)?\s*(?:now|today)?\b/i', $msg, $m)) {
             $day = (int) $m[1];
             $monthNum = (int) date('m', strtotime($m[2].' 1'));
-            $year = now()->year;
+            $year = isset($m[3]) ? (int) $m[3] : now()->year;
             $filters['date_from'] = now()->setDate($year, $monthNum, min($day, 28))->format('Y-m-d');
             $filters['date_to'] = now()->format('Y-m-d');
         }
-        // "since <month>" (e.g., "since January")
-        elseif (preg_match('/\bsince\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b/i', $msg, $m)) {
+        // "since <month> [<year>]" (e.g., "since January", "since January 2025")
+        elseif (preg_match('/\bsince\s+(january|february|march|april|may|june|july|august|september|october|november|december)(?:\s+(20[2-9]\d))?\b/i', $msg, $m)) {
             $monthNum = (int) date('m', strtotime($m[1].' 1'));
-            $year = now()->year;
+            $year = isset($m[2]) ? (int) $m[2] : now()->year;
             $filters['date_from'] = now()->setDate($year, $monthNum, 1)->startOfMonth()->format('Y-m-d');
             $filters['date_to'] = now()->format('Y-m-d');
         }
-        // Month names
+        // "<month> <year>" — explicit year wins over the current-year default
+        elseif (preg_match('/\b(january|february|march|april|may|june|july|august|september|october|november|december)\s*,?\s*(20[2-9]\d)\b/i', $msg, $m)) {
+            $monthNum = date('m', strtotime($m[1].' 1'));
+            $filters['date_from'] = now()->setDate((int) $m[2], (int) $monthNum, 1)->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->setDate((int) $m[2], (int) $monthNum, 1)->endOfMonth()->format('Y-m-d');
+        }
+        // Month names (current year — the month+year forms above catch explicit years)
         elseif (preg_match('/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i', $msg, $m)) {
             $monthNum = date('m', strtotime($m[1].' 1'));
             $year = now()->year;
@@ -1555,7 +1594,7 @@ class ChatContextService
         // Limit to 2 words max, strip common English words
         if (preg_match('/\b([A-Z][A-Za-z]*(?:\s+[A-Z]?[a-z]+)?)\b/', $message, $match)) {
             $phrase = trim($match[1]);
-            $skipWords = '/^(the|this|that|how|can|what|when|who|why|show|tell|please|any|all|are|is|was|has|have|hello|hi|hey|good|thanks|sorry|yes|no|ok|okay|help|please|could|would|should|does|did|will|just|also|like|want|need|know|think|sure|maybe|right|really|hello|there|here|much|many|more|some|been|were|being|about|which|their|these|those|other|after|before|every|each|where|going|doing|having|getting|making|taking|coming|looking|working|give|find|get|make|use|try|see|say|new|long|great|little|own|old|big|high|small|large|next|early|young|important|last|different|better|able|incidents?|issues?|open|closed|fund|loss|tech|type|status|severity|month|quarter|year|week|day|pic|team|root|cause|rca|total|count|number|overview|summary|analysis|report|data|list|overview)$/i';
+            $skipWords = '/^(the|this|that|how|can|what|when|who|why|show|tell|please|any|all|are|is|was|has|have|hello|hi|hey|good|thanks|sorry|yes|no|ok|okay|help|please|could|would|should|does|did|will|just|also|like|want|need|know|think|sure|maybe|may|right|really|hello|there|here|much|many|more|some|been|were|being|about|which|their|these|those|other|after|before|every|each|where|going|doing|having|getting|making|taking|coming|looking|working|give|find|get|make|use|try|see|say|new|long|great|little|own|old|big|high|small|large|next|early|young|important|last|different|better|able|incidents?|issues?|open|closed|fund|loss|tech|type|status|severity|month|quarter|year|week|day|pic|team|root|cause|rca|total|count|number|overview|summary|analysis|report|data|list|overview|january|february|march|april|may|june|july|august|september|october|november|december)$/i';
             if (strlen($phrase) >= 3 && ! preg_match($skipWords, $phrase)) {
                 return $phrase;
             }
@@ -1568,6 +1607,8 @@ class ChatContextService
             '/\b(?:1st|2nd|3rd|[4-9]th|\d{1,2}(?:st|nd|rd|th))\b/i',
             '/\b\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}\b/',
             '/\b\d{4}\d{2}\d{2}\b/',
+            '/\b20[2-9]\d\b/',
+            '/\b(?:in|during|at|on)\b/i',
             '/\b(january|february|march|april|may|june|july|august|september|october|november|december)\b/i',
             '/\b(?:this|last|next)\s+(?:month|quarter|year|week|day)\b/i',
             '/\b(?:until|since|till|ago|now|today|yesterday)\b/i',
@@ -1614,7 +1655,7 @@ class ChatContextService
                 ->pluck('name')
                 ->toArray();
 
-            $incidents = Incident::excludedFromCounts()
+            $topicQuery = Incident::aiCounts()
                 ->where(function ($q) use ($topic, $fuzzyCategoryNames, $fuzzyLabelNames) {
                     $q->where('title', 'LIKE', "%{$topic}%");
                     $q->orWhere('summary', 'LIKE', "%{$topic}%");
@@ -1637,10 +1678,14 @@ class ChatContextService
                     if (! empty($fuzzyLabelNames)) {
                         $q->orWhereHas('labels', fn ($lq) => $lq->whereIn('name', $fuzzyLabelNames));
                     }
-                })
+                });
+
+            $total = (clone $topicQuery)->toBase()->count();
+            $incidents = $topicQuery
                 ->with(['pic', 'labels'])
                 ->orderByRaw('CASE WHEN title LIKE ? THEN 0 ELSE 1 END', ["%{$topic}%"])
                 ->orderByDesc('incident_date')
+                ->limit(self::SEARCH_RESULT_CAP)
                 ->get();
 
             // Tag each incident with which criteria matched
@@ -1690,7 +1735,7 @@ class ChatContextService
 
             return [
                 'topic' => $topic,
-                'total' => $incidents->count(),
+                'total' => $total,
                 'incidents' => $incidents,
                 'has_column_filters' => false,
             ];
@@ -1702,7 +1747,11 @@ class ChatContextService
      */
     private function executeFilterQuery(array $filters, array $excludeIds = []): array
     {
-        $query = Incident::excludedFromCounts();
+        // Default to counted incidents so smart-search totals always match
+        // Quick Stats; an explicit "issues" ask switches classification only.
+        $query = $filters['classification']
+            ? Incident::where('classification', $filters['classification'])->excludedFromCounts()
+            : Incident::aiCounts();
 
         // Exclude already-referenced incident IDs
         if (! empty($excludeIds)) {
@@ -1738,10 +1787,6 @@ class ChatContextService
 
         if (! empty($filters['incident_type'])) {
             $query->whereIn('incident_type', $filters['incident_type']);
-        }
-
-        if ($filters['classification']) {
-            $query->where('classification', $filters['classification']);
         }
 
         if ($filters['pic_name']) {
@@ -1786,8 +1831,10 @@ class ChatContextService
             });
         }
 
+        $total = (clone $query)->toBase()->count();
         $incidents = $query->with(['pic', 'labels'])
             ->orderByDesc('incident_date')
+            ->limit(self::SEARCH_RESULT_CAP)
             ->get();
 
         // Tag with match criteria for topic-based results
@@ -1825,7 +1872,7 @@ class ChatContextService
 
         return [
             'topic' => $filters['topic'],
-            'total' => $incidents->count(),
+            'total' => $total,
             'incidents' => $incidents,
             'has_column_filters' => true,
         ];
@@ -1922,13 +1969,17 @@ class ChatContextService
         }
 
         // Summary: 51+ matches
+        $shown = $incidents->count();
         $sevDist = $incidents->groupBy('severity')->map->count()->sortDesc();
         $statusDist = $incidents->groupBy('incident_status')->map->count()->sortDesc();
         $typeDist = $incidents->groupBy('incident_type')->map->count()->sortDesc();
         $totalLoss = $incidents->sum('fund_loss');
         $sample = $incidents->take(10);
 
-        $summary = "### Summary ({$total} results — too many to list individually)\n"
+        $capped = $total > $shown
+            ? " (showing {$shown} most recent of {$total}; stats below cover the shown subset only)\n"
+            : "\n";
+        $summary = "### Summary ({$total} results — too many to list individually){$capped}"
             .'Severity: '.$sevDist->map(fn ($c, $s) => "{$s}={$c}")->implode(', ')."\n"
             .'Status: '.$statusDist->map(fn ($c, $s) => "{$s}={$c}")->implode(', ')."\n"
             .'Type: '.$typeDist->map(fn ($c, $t) => "{$t}={$c}")->implode(', ')."\n"
@@ -1966,18 +2017,17 @@ class ChatContextService
         $thisMonth = now()->startOfMonth();
         $lastMonth = now()->subMonth()->startOfMonth();
 
-        $thisMonthCount = Incident::where('classification', IncidentClassification::Incident->value)->whereBetween('incident_date', [$thisMonth, now()])->excludedFromCounts()->count();
-        $lastMonthCount = Incident::where('classification', IncidentClassification::Incident->value)->whereBetween('incident_date', [$lastMonth, $thisMonth])->excludedFromCounts()->count();
+        $thisMonthCount = Incident::aiCounts()->whereBetween('incident_date', [$thisMonth, now()])->count();
+        $lastMonthCount = Incident::aiCounts()->whereBetween('incident_date', [$lastMonth, $thisMonth])->count();
         $change = $lastMonthCount > 0 ? round((($thisMonthCount - $lastMonthCount) / $lastMonthCount) * 100, 1) : ($thisMonthCount > 0 ? 100 : 0);
 
-        $thisMonthLoss = Incident::whereBetween('incident_date', [$thisMonth, now()])->excludedFromCounts()->sum('fund_loss');
-        $lastMonthLoss = Incident::whereBetween('incident_date', [$lastMonth, $thisMonth])->excludedFromCounts()->sum('fund_loss');
+        $thisMonthLoss = Incident::aiCounts()->whereBetween('incident_date', [$thisMonth, now()])->sum('fund_loss');
+        $lastMonthLoss = Incident::aiCounts()->whereBetween('incident_date', [$lastMonth, $thisMonth])->sum('fund_loss');
         $lossChange = $lastMonthLoss > 0 ? round((($thisMonthLoss - $lastMonthLoss) / $lastMonthLoss) * 100, 1) : 0;
 
-        $openP1P2 = Incident::where('classification', IncidentClassification::Incident->value)
+        $openP1P2 = Incident::aiCounts()
             ->whereIn('severity', ['P1', 'P2'])
             ->whereNotIn('incident_status', ['Completed'])
-            ->excludedFromCounts()
             ->with(['pic', 'labels'])
             ->latest('incident_date')
             ->get();
@@ -1986,9 +2036,8 @@ class ChatContextService
             ->where('due_date', '<', now())
             ->count();
 
-        $topIncidents = Incident::where('classification', IncidentClassification::Incident->value)
+        $topIncidents = Incident::aiCounts()
             ->whereBetween('incident_date', [$thisMonth, now()])
-            ->excludedFromCounts()
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->with(['pic'])
             ->orderByRaw("FIELD(severity, 'P1','P2','P3','P4')")
@@ -2023,14 +2072,14 @@ class ChatContextService
     {
         $year = now()->year;
 
-        $monthly = Incident::excludedFromCounts()
+        $monthly = Incident::aiCounts()
             ->whereYear('incident_date', $year)
             ->selectRaw('MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss, AVG(mttr) as avg_mttr')
             ->groupByRaw('MONTH(incident_date)')
             ->orderBy('m')
             ->get();
 
-        $sevMonthly = Incident::excludedFromCounts()
+        $sevMonthly = Incident::aiCounts()
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->selectRaw('MONTH(incident_date) as m, severity, COUNT(*) as cnt')
@@ -2049,15 +2098,15 @@ class ChatContextService
 
     private function getRiskContext(): string
     {
-        $openP1P2 = Incident::whereIn('severity', ['P1', 'P2'])
+        $openP1P2 = Incident::aiCounts()
+            ->whereIn('severity', ['P1', 'P2'])
             ->whereNotIn('incident_status', ['Completed'])
-            ->excludedFromCounts()
             ->with(['pic', 'actionImprovements'])
             ->latest('incident_date')
             ->get();
 
-        $topFundLoss = Incident::where('fund_loss', '>', 0)
-            ->excludedFromCounts()
+        $topFundLoss = Incident::aiCounts()
+            ->where('fund_loss', '>', 0)
             ->whereYear('incident_date', now()->year)
             ->with('pic')
             ->orderByDesc('fund_loss')

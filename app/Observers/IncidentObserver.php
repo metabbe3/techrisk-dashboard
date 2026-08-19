@@ -47,6 +47,8 @@ class IncidentObserver
 
         // Fire event for AI proactive analysis
         event(new IncidentCreatedEvent($incident));
+
+        $this->clearAiContextCache();
     }
 
     /**
@@ -152,6 +154,17 @@ class IncidentObserver
         if ($incident->isDirty('severity') && in_array($incident->severity, [Severity::P1, Severity::P2])) {
             event(new IncidentEscalatedEvent($incident, $incident->getOriginal('severity')));
         }
+
+        $this->clearAiContextCache();
+    }
+
+    /**
+     * AI chat context caches 5-minute aggregates; without this the chat
+     * answers with stale counts right after an incident is added/edited.
+     */
+    private function clearAiContextCache(): void
+    {
+        app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
     }
 
     /**

@@ -73,9 +73,9 @@ class WarRoomToolExecutorTest extends TestCase
 
     public function test_search_incidents_with_severity_filter(): void
     {
-        Incident::factory()->create(['severity' => 'p1', 'title' => 'Critical issue']);
-        Incident::factory()->create(['severity' => 'p2', 'title' => 'Major issue']);
-        Incident::factory()->create(['severity' => 'p3', 'title' => 'Minor issue']);
+        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'p1', 'title' => 'Critical issue']);
+        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'p2', 'title' => 'Major issue']);
+        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'p3', 'title' => 'Minor issue']);
 
         $result = $this->executor->execute($this->toolCall('search_incidents', [
             'severity' => ['p1'],
@@ -88,8 +88,8 @@ class WarRoomToolExecutorTest extends TestCase
 
     public function test_search_incidents_with_text_query(): void
     {
-        Incident::factory()->create(['title' => 'Database connection timeout']);
-        Incident::factory()->create(['title' => 'Network cable damaged']);
+        Incident::factory()->create(['classification' => 'Incident', 'title' => 'Database connection timeout']);
+        Incident::factory()->create(['classification' => 'Incident', 'title' => 'Network cable damaged']);
 
         $result = $this->executor->execute($this->toolCall('search_incidents', [
             'query' => 'Database',
@@ -106,6 +106,101 @@ class WarRoomToolExecutorTest extends TestCase
         ]));
 
         $this->assertStringContainsString('No incidents found', $result['content']);
+    }
+
+    // --- data-accuracy scoping: tools must match Quick Stats counting rules ---
+
+    public function test_search_incidents_excludes_issues_and_count_excluded_statuses(): void
+    {
+        $counted = Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_status' => null,
+            'title' => 'Counted incident',
+        ]);
+        Incident::factory()->create(['classification' => 'Issue', 'title' => 'A tech issue']);
+        Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_status' => 'Fully recovered',
+            'title' => 'Excluded from counts',
+        ]);
+
+        $result = $this->executor->execute($this->toolCall('search_incidents', []));
+
+        $this->assertStringContainsString('Counted incident', $result['content']);
+        $this->assertStringNotContainsString('A tech issue', $result['content']);
+        $this->assertStringNotContainsString('Excluded from counts', $result['content']);
+        $this->assertStringContainsString("id:{$counted->id}", $result['content']);
+    }
+
+    public function test_search_by_date_range_includes_events_later_on_end_date(): void
+    {
+        Incident::factory()->create([
+            'classification' => 'Incident',
+            'title' => 'Late in the day',
+            'incident_date' => '2026-05-01 15:30:00',
+        ]);
+
+        $result = $this->executor->execute($this->toolCall('search_by_date_range', [
+            'date_from' => '2026-05-01',
+            'date_to' => '2026-05-01',
+        ]));
+
+        $this->assertStringContainsString('Late in the day', $result['content']);
+    }
+
+    public function test_get_fund_loss_formats_money_and_includes_id(): void
+    {
+        $incident = Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_loss' => 1500000,
+            'recovered_fund' => 500000,
+            'title' => 'Big loss',
+        ]);
+
+        $result = $this->executor->execute($this->toolCall('get_fund_loss', []));
+
+        $this->assertStringContainsString('Loss: Rp 1.500.000', $result['content']);
+        $this->assertStringContainsString('Recovered: Rp 500.000', $result['content']);
+        $this->assertStringContainsString("id:{$incident->id}", $result['content']);
+    }
+
+    public function test_get_fund_loss_explicit_excluded_status_is_still_searchable(): void
+    {
+        Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_status' => 'Potential recovery',
+            'fund_loss' => 750000,
+            'title' => 'Recovery case',
+        ]);
+
+        $result = $this->executor->execute($this->toolCall('get_fund_loss', [
+            'fund_status' => 'Potential recovery',
+        ]));
+
+        $this->assertStringContainsString('Recovery case', $result['content']);
+    }
+
+    public function test_get_metrics_formats_mttr_and_money(): void
+    {
+        $fundIncident = Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_loss' => 2500000,
+            'title' => 'Fund incident',
+        ]);
+        $fundIncident->update(['mttr' => -2.5]); // metrics job on create overwrites mttr
+        $quickIncident = Incident::factory()->create([
+            'classification' => 'Incident',
+            'title' => 'Quick incident',
+        ]);
+        $quickIncident->update(['mttr' => 90]);
+
+        $fundResult = $this->executor->execute($this->toolCall('get_metrics', ['incident_no' => $fundIncident->no]));
+        $quickResult = $this->executor->execute($this->toolCall('get_metrics', ['incident_no' => $quickIncident->no]));
+
+        $this->assertStringContainsString('MTTR: 2.5 days', $fundResult['content']);
+        $this->assertStringContainsString('Fund loss: Rp 2.500.000', $fundResult['content']);
+        $this->assertStringContainsString("id:{$fundIncident->id}", $fundResult['content']);
+        $this->assertStringContainsString('MTTR: 90 minutes', $quickResult['content']);
     }
 
     // --- get_incident_details ---
