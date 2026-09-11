@@ -135,9 +135,11 @@ class PlanPromptBuilder
             $context = $this->contextService->buildTargetedContext($userMessage, $referencedIds, $requiredContext);
         } else {
             $context = $this->contextService->buildSystemPrompt($userMessage, $referencedIds);
-            $contextHeaderPos = strpos($context, '--- CURRENT DATA CONTEXT ---');
-            if ($contextHeaderPos !== false) {
-                $context = substr($context, $contextHeaderPos);
+            // Keep the COMPLETE untrusted fence: anchoring on the data header
+            // cut the opening fence/guard and left the closing marker dangling.
+            $fencePos = strpos($context, '<<<UNTRUSTED_CONTEXT>>>');
+            if ($fencePos !== false) {
+                $context = substr($context, $fencePos);
             }
         }
         $parts[] = "\n\n{$context}";
@@ -244,10 +246,10 @@ class PlanPromptBuilder
         ];
 
         $context = $this->contextService->buildSystemPrompt($userMessage, $referencedIds);
-        $contextHeaderPos = strpos($context, '--- CURRENT DATA CONTEXT ---');
-        if ($contextHeaderPos !== false) {
-            $dataContext = substr($context, $contextHeaderPos);
-            $parts[] = "\n\n--- CURRENT DATA CONTEXT ---\n".substr($dataContext, strlen('--- CURRENT DATA CONTEXT ---'));
+        // Complete fence, same as the subtask prompt (see buildSubtaskPrompt).
+        $fencePos = strpos($context, '<<<UNTRUSTED_CONTEXT>>>');
+        if ($fencePos !== false) {
+            $parts[] = "\n\n".substr($context, $fencePos);
         }
 
         return $systemPrompt."\n\n".implode("\n", $parts);

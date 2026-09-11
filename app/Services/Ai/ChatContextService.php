@@ -459,7 +459,9 @@ class ChatContextService
             }
         }
 
-        return $context;
+        // Same fence as buildDataContext: this context carries user-entered
+        // incident text into a subtask prompt — unfenced, it reads as instructions.
+        return $this->fenceUntrusted($context);
     }
 
     public function getTargetedStats(array $aspects): string
