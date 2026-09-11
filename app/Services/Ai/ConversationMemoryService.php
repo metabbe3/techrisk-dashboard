@@ -34,6 +34,7 @@ class ConversationMemoryService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(20)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [

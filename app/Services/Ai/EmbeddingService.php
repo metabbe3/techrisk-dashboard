@@ -32,6 +32,7 @@ class EmbeddingService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(30)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->embedUrl(), [
                     'model' => config('ai.embeddings.model', 'text-embedding-3-large'),
                     'input' => $text,

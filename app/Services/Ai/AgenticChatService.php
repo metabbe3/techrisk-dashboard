@@ -60,6 +60,7 @@ class AgenticChatService
 
                 $response = Http::withHeaders($this->buildHeaders())
                     ->timeout($this->getTimeout())
+                    ->connectTimeout($this->connectTimeout())
                     ->post($this->buildUrl(), $payload);
 
                 $responseTimeMs = $this->elapsedMs($startTime);

@@ -78,6 +78,7 @@ class FeedbackLearningService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(15)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [

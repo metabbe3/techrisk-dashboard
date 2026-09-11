@@ -92,6 +92,7 @@ class SimilarIncidentService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
@@ -306,6 +307,7 @@ class SimilarIncidentService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
@@ -496,6 +498,7 @@ class SimilarIncidentService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [

@@ -109,6 +109,7 @@ class WebSearchService
                 $response = $responses[$i] ?? null;
                 if (! $response || ! $response->successful()) {
                     Log::warning("Parallel search query {$i} failed", ['query' => $q['clean']]);
+
                     continue;
                 }
 
@@ -154,7 +155,7 @@ class WebSearchService
         $pool->as($index)->withHeaders([
             'Authorization' => 'Bearer '.$apiKey,
             'Content-Type' => 'application/json',
-        ])->timeout($timeout)->post("{$baseUrl}/chat/completions", [
+        ])->timeout($timeout)->connectTimeout((float) config('ai.connect_timeout', 10))->post("{$baseUrl}/chat/completions", [
             'model' => $model,
             'messages' => [
                 ['role' => 'system', 'content' => $this->buildGatewaySearchPrompt($incidentContext)],
@@ -172,7 +173,7 @@ class WebSearchService
 
         $pool->as($index)->withHeaders([
             'Content-Type' => 'application/json',
-        ])->timeout($timeout)->post("{$baseUrl}/models/{$model}:generateContent?key={$apiKey}", [
+        ])->timeout($timeout)->connectTimeout((float) config('ai.connect_timeout', 10))->post("{$baseUrl}/models/{$model}:generateContent?key={$apiKey}", [
             'contents' => [
                 ['parts' => [['text' => $this->buildGeminiSearchPrompt($query)]]],
             ],
@@ -438,6 +439,7 @@ class WebSearchService
                 'Content-Type' => 'application/json',
             ])
                 ->timeout($timeout)
+                ->connectTimeout((float) config('ai.connect_timeout', 10))
                 ->post("{$baseUrl}/chat/completions", [
                     'model' => $model,
                     'messages' => [
@@ -532,6 +534,7 @@ class WebSearchService
                 'Content-Type' => 'application/json',
             ])
                 ->timeout($timeout)
+                ->connectTimeout((float) config('ai.connect_timeout', 10))
                 ->post("{$baseUrl}/models/{$model}:generateContent?key={$apiKey}", [
                     'contents' => [
                         [

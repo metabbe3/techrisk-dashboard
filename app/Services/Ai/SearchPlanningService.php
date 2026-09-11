@@ -47,6 +47,7 @@ class SearchPlanningService
                 'Content-Type' => 'application/json',
             ])
                 ->timeout($timeout)
+                ->connectTimeout((float) config('ai.connect_timeout', 10))
                 ->post("{$baseUrl}/chat/completions", [
                     'model' => $model,
                     'messages' => [

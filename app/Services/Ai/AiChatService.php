@@ -59,6 +59,7 @@ class AiChatService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($this->getTimeout())
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $resolvedModel,
                     'messages' => $apiMessages,
@@ -151,6 +152,7 @@ class AiChatService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($this->getTimeout())
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $resolvedModel,
                     'messages' => $apiMessages,
@@ -222,6 +224,7 @@ class AiChatService
 
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(10)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [

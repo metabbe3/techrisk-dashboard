@@ -126,6 +126,7 @@ class WarRoomStreamingService
 
         $response = \Illuminate\Support\Facades\Http::withHeaders($this->buildHeaders())
             ->timeout($this->getTimeout())
+            ->connectTimeout($this->connectTimeout())
             ->post($this->buildUrl(), $payload);
 
         $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000) + $previousResponseTimeMs;

@@ -10,6 +10,10 @@ return [
 
     'timeout' => env('AI_API_TIMEOUT', 30),
 
+    // Connection-establishment cap applied to every non-streaming AI call
+    // (see InteractsWithAiApi::connectTimeout).
+    'connect_timeout' => env('AI_API_CONNECT_TIMEOUT', 10),
+
     /*
     |--------------------------------------------------------------------------
     | Structured output

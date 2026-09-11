@@ -35,6 +35,16 @@ trait InteractsWithAiApi
         return (int) AiSetting::get('timeout', config('ai.timeout', 60));
     }
 
+    /**
+     * Connection-establishment cap for every non-streaming AI call
+     * (BUG-004 class: CURLOPT_TIMEOUT alone never fires when a provider
+     * accepts the socket then stalls). Total runtime stays getTimeout().
+     */
+    protected function connectTimeout(): float
+    {
+        return (float) config('ai.connect_timeout', 10);
+    }
+
     protected function elapsedMs(float $startTime): float
     {
         return (microtime(true) - $startTime) * 1000;

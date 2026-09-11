@@ -2,7 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Services\Ai\AiTextService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Http;
 
@@ -48,6 +47,7 @@ class AiTestCommand extends Command
                 'Content-Type' => 'application/json',
             ])
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 ->post($url, [
                     'model' => $defaultModel,
                     'messages' => [['role' => 'user', 'content' => 'Say OK']],

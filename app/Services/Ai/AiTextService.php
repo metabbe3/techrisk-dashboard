@@ -92,6 +92,7 @@ class AiTextService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($this->getTimeout())
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), $this->buildPayload(
                     $prompt['system'],
                     $text,
@@ -182,6 +183,7 @@ class AiTextService
                 'Accept' => 'application/json',
             ])
                 ->timeout(10)
+                ->connectTimeout($this->connectTimeout())
                 ->get(rtrim($baseUrl, '/').'/models');
         } catch (\Throwable $e) {
             Log::warning('Failed to fetch models from AI gateway', ['error' => $e->getMessage()]);
@@ -224,6 +226,7 @@ class AiTextService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 // Minimal payload: just model + messages. We deliberately send NO
                 // max_tokens / max_completion_tokens / temperature — different
                 // providers reject different ones (Anthropic rejects any
@@ -415,6 +418,7 @@ class AiTextService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($this->getTimeout())
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $resolvedModel,
                     'messages' => [
@@ -894,6 +898,7 @@ class AiTextService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(120)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $resolvedModel,
                     'messages' => [
@@ -997,6 +1002,7 @@ class AiTextService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($this->getTimeout())
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), $payload);
 
             // Some gateways/models reject response_format with a 4xx — retry once without it.
@@ -1004,6 +1010,7 @@ class AiTextService
                 unset($payload['response_format']);
                 $response = Http::withHeaders($this->buildHeaders())
                     ->timeout($this->getTimeout())
+                    ->connectTimeout($this->connectTimeout())
                     ->post($this->buildUrl(), $payload);
             }
 

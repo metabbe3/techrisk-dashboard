@@ -62,6 +62,7 @@ class PlanModeService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
@@ -153,6 +154,7 @@ class PlanModeService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $planningModel,
                     'messages' => [
@@ -309,6 +311,7 @@ class PlanModeService
 
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout(15)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => config('ai.fast_model', $model),
                     'messages' => [
@@ -639,7 +642,7 @@ class PlanModeService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
-                ->connectTimeout(5)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
@@ -733,6 +736,7 @@ class PlanModeService
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($timeout)
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [

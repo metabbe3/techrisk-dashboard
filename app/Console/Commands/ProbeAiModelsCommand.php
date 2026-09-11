@@ -108,7 +108,7 @@ class ProbeAiModelsCommand extends Command
 
     private function enumerateModels(string $base): \Illuminate\Support\Collection
     {
-        $res = Http::withHeaders($this->buildHeaders())->timeout(30)->get("{$base}/v1/models");
+        $res = Http::withHeaders($this->buildHeaders())->timeout(30)->connectTimeout($this->connectTimeout())->get("{$base}/v1/models");
 
         if (! $res->successful()) {
             $this->error('GET /v1/models failed: HTTP '.$res->status().' '.$res->body());
@@ -145,7 +145,7 @@ class ProbeAiModelsCommand extends Command
         }
 
         try {
-            $r = Http::withHeaders($this->buildHeaders())->timeout(30)->post("{$base}/chat/completions", $payload);
+            $r = Http::withHeaders($this->buildHeaders())->timeout(30)->connectTimeout($this->connectTimeout())->post("{$base}/chat/completions", $payload);
             $err = null;
             if (! $r->successful()) {
                 $body = $r->json();

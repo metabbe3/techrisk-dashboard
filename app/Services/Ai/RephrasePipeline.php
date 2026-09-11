@@ -75,6 +75,7 @@ class RephrasePipeline
         try {
             $response = Http::withHeaders($this->buildHeaders())
                 ->timeout($this->getTimeout())
+                ->connectTimeout($this->connectTimeout())
                 ->post($this->buildUrl(), [
                     'model' => $model,
                     'messages' => [
