@@ -82,11 +82,23 @@ class AiModelHealthTest extends TestCase
         $this->assertSame('HTTP 500', $result['error']);
     }
 
-    public function test_empty_response_is_unhealthy(): void
+    public function test_blank_content_is_still_healthy(): void
     {
+        // A ping tests reachability, not output quality — several providers
+        // return 200 with blank content at low max_tokens (a0489ff semantics).
         Http::fake(fn () => Http::response(['choices' => [['message' => ['content' => '']]]], 200));
 
-        $this->assertSame('unhealthy', app(AiTextService::class)->pingModel('SMART-MODEL')['status']);
+        $this->assertSame('healthy', app(AiTextService::class)->pingModel('SMART-MODEL')['status']);
+    }
+
+    public function test_no_choices_response_is_unhealthy(): void
+    {
+        Http::fake(fn () => Http::response(['choices' => []], 200));
+
+        $result = app(AiTextService::class)->pingModel('SMART-MODEL');
+
+        $this->assertSame('unhealthy', $result['status']);
+        $this->assertSame('No choices in response.', $result['error']);
     }
 
     public function test_connection_timeout_is_unhealthy(): void
