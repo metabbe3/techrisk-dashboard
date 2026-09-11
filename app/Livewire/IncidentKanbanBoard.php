@@ -366,7 +366,9 @@ class IncidentKanbanBoard extends Component
         $query = IncidentResource::applyAccessControl($query);
 
         if (! empty($this->severity)) {
-            $query->whereIn('severity', $this->severity->value);
+            // $severity is an array — ->value on it is null, which compiles
+            // to WHERE 0=1 and empties the board (BUG-009).
+            $query->whereIn('severity', $this->severity);
         }
 
         if (! empty($this->incidentType)) {

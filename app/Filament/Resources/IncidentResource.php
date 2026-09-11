@@ -566,11 +566,6 @@ class IncidentResource extends Resource
                                 ->options(IncidentStatus::options())
                                 ->required()
                                 ->default(fn (Incident $record) => $record->incident_status),
-                            Forms\Components\DateTimePicker::make('update_date')
-                                ->label('Update Date')
-                                ->seconds(false)
-                                ->default(fn (Incident $record) => $record->incident_date)
-                                ->required(),
                             Forms\Components\Textarea::make('remark')
                                 ->label('Notes')
                                 ->required()
@@ -578,9 +573,12 @@ class IncidentResource extends Resource
                                 ->default(fn (Incident $record) => $record->remark),
                         ])
                         ->action(function (Incident $record, array $data) {
+                            // update_date belongs to the status_updates timeline,
+                            // NOT incident_date — writing it here corrupted the
+                            // occurrence date (and every MTTR/MTBF/year-scoped
+                            // number derived from it) on every routine update.
                             $record->update([
                                 'incident_status' => $data['incident_status'],
-                                'incident_date' => $data['update_date'],
                                 'remark' => $data['remark'],
                             ]);
                         })

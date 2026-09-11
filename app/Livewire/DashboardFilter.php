@@ -2,6 +2,7 @@
 
 namespace App\Livewire;
 
+use Carbon\Carbon;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
@@ -32,8 +33,18 @@ class DashboardFilter extends Component implements HasForms
             ]);
     }
 
-    public function updated(array $data): void
+    public function updated(string $name, mixed $value): void
     {
+        // Livewire 3 calls updated(string $name, mixed $value) — the old
+        // (array $data) signature threw a TypeError on every picker change.
+        if (str_starts_with($name, 'data.') && isset($this->data['end_date'])) {
+            // DatePicker values are midnight-only; consumers compare with
+            // whereBetween, so normalize to keep the last day in range.
+            $this->data['end_date'] = Carbon::parse($this->data['end_date'])
+                ->endOfDay()
+                ->format('Y-m-d H:i:s');
+        }
+
         $this->dispatch('dashboardFiltersUpdated', $this->data);
     }
 

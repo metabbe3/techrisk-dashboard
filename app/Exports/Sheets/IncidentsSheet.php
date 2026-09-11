@@ -28,6 +28,9 @@ class IncidentsSheet implements FromCollection, WithHeadings, WithTitle
                 if (is_array($value)) {
                     $value = implode(', ', $value);
                 }
+                // ponytail: enum-cast attrs (severity/status/classification) return
+                // BackedEnum instances — BUG-003's PhpSpreadsheet 500, third consumer.
+                $value = $value instanceof \BackedEnum ? $value->value : $value;
                 $row[] = $value;
             }
 
