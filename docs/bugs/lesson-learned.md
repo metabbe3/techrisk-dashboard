@@ -543,16 +543,124 @@ format (citations, currency, units) must be derivable from the data actually giv
 
 ---
 
+### [BUG-006] - Analytics page averaged MTTR over Non Incident / G rows
+
+**Date:** 2026-09-11
+**Discovered By:** User report (suspected non-incidents in MTBF/MTTR)
+**Severity:** Medium
+**Status:** Resolved
+
+### Description
+On the Analytics page, `Avg MTTR` / `Avg MTTR (days)` charts included rows with severity
+`Non Incident` and `G`. Every other surface (dashboard widgets, incident table footer,
+Reporting, SendReport, exports, AI chat, WarRoom) already filtered
+`Severity::METRIC_ELIGIBLE` (P1–P4, X1–X4); `AnalyticsQueryService` was the only path that
+averaged the `mttr` column unfiltered. The job `CalculateIncidentMetrics` stores `mttr`
+for ALL rows by design (per-row display + exports), so ineligible rows carried real values
+that leaked into the averages.
+
+Second bug found in the same file: `queryJsonArrayDimension()` never selected the
+`severity` column, so its eligibility check compared `null` — `avg_mtbf` grouped by
+business_category / root_cause_category / responsible_team was always 0.
+
+### Root Cause
+The eligibility filter was re-derived inline per query path (~6 call sites across the
+service) instead of being applied once where the query is built. The five dimension
+paths (time, enum, relation, pivot, JSON-array) had drifted: MTBF paths filtered,
+MTTR paths didn't, and the JSON path filtered on a column it never loaded.
+
+### Fix
+- Single choke point in `buildSingleDataset()`: when metric is `avg_mttr`,
+  `avg_mttr_days`, or `avg_mtbf`, scope the base query with
+  `whereIn('severity', Severity::METRIC_ELIGIBLE)` — covers all dimension paths.
+- Removed the now-redundant inline `whereIn` calls in the derived-metric branches.
+- Dropped the dead per-row severity check in `queryJsonArrayDimension()` (rows are
+  pre-scoped; only the `incident_date` null-check is needed).
+- Cache key bumped `analytics_` → `analytics_v2_` (15-min caches held the old scope).
+
+### Lesson Learned
+Same class as BUG-005: query preconditions copied into every branch drift one branch at a
+time. Apply the invariant once at query construction, not at each aggregate site. Extra
+wrinkle: a filter referencing a column the query never selects fails silently (null
+comparison), so "the check exists" in code review is not "the check runs".
+
+### Prevention Checklist
+- [x] Filter lives in one place (buildSingleDataset), not per-branch
+- [x] Tests written (AnalyticsQueryServiceTest, 3 cases incl. JSON-dimension MTBF)
+- [x] Full suite: 36 pre-existing failures (auth/notification/export) unchanged
+
+---
+
+**Reviewed By:** Claude
+**Review Date:** 2026-09-11
+
+---
+
+### [BUG-007] - Dashboard fund-loss cards: dead status filter, Issues counted, stale after money edits
+
+**Date:** 2026-09-11
+**Discovered By:** User report ("fund loss numbers don't update")
+**Severity:** Medium
+**Status:** Resolved
+
+### Description
+Three defects in the dashboard money cards, all reported as one symptom — "numbers don't update":
+
+1. **Potential Fund Loss never dropped when cases completed.** The widget filtered
+   `whereNotIn('incident_status', ['Closed', 'Resolved', 'Recovered'])` — none of those values
+   exist in `IncidentStatus` (`Open / In progress / Finalization / Completed`). The filter was a
+   no-op, so Completed cases stayed in the "open cases" sum forever.
+2. **Fund Loss card counted Issues.** No `classification` filter, while every other fund-loss
+   surface (AiTrendInsights, AnalyzeTrendsController, IncidentStatsOverview) is Incident-only.
+   Rule confirmed by user: Incident + Completed.
+3. **Cards went stale for up to 5 minutes after editing money fields.** `IncidentObserver`
+   dispatched `CalculateIncidentMetrics` (which bumps `dashboard_cache_version`, busting the
+   widget cache key) only on status/severity/type/fund_status/recovered_fund/classification/date
+   changes — `fund_loss` and `potential_fund_loss` were missing from the trigger list.
+
+### Root Cause
+Same drift class as BUG-005/006: query preconditions and cache-invalidation triggers were
+re-derived per surface instead of defined once. The dead enum filter is the nastier variant of
+BUG-006's dead null-comparison: a `whereNotIn` listing values that don't exist in the enum
+matches everything, silently, forever — no error, no log, just a wrong number.
+
+### Fix
+- `PotentialFundLoss.php`: `whereNotIn('incident_status', [IncidentStatus::Completed->value])`.
+- `DashboardStatsOverview.php`: Fund Loss query + `classification = Incident`.
+- `IncidentObserver.php`: `fund_loss` / `potential_fund_loss` added to `$needsCategoryRecalculation`.
+- `DashboardFundLossTest` (3 tests): Completed excluded from potential-loss card, Issues excluded
+  from fund-loss card, money edit bumps `dashboard_cache_version`.
+- Action Improvements tab/button verified correct post-BUG-004/005 fix (`5c712a0`) — no code change.
+
+### Lesson Learned
+A `whereIn`/`whereNotIn` on an enum column is only as good as its literal list — there is no
+runtime error when the values don't exist, the filter just matches everything (or nothing).
+Write these filters from the enum (`IncidentStatus::Completed->value`), never from memory, and
+when a cache is keyed on a version counter, every field that feeds the cached number must be in
+the observer's bump triggers.
+
+### Prevention Checklist
+- [x] Enum filters reference enum cases, not hand-typed strings
+- [x] Tests written (DashboardFundLossTest, 3 cases)
+- [x] Full suite compared with/without fix (stashed): 40 → 38 problems, failing families identical (auth/notification/export, pre-existing flaky)
+
+---
+
+**Reviewed By:** Claude
+**Review Date:** 2026-09-11
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 5 |
+| Total Bugs | 7 |
 | Critical | 0 |
 | High | 4 |
-| Medium | 0 |
+| Medium | 2 |
 | Low | 0 |
-| Resolved | 5 |
+| Resolved | 7 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -565,8 +673,8 @@ format (citations, currency, units) must be derivable from the data actually giv
 | Database/Migration | 0 |
 | Frontend/CSS | 0 |
 | Queue/Job | 1 |
-| Other | 1 |
+| Other | 3 |
 
 ---
 
-*Last Updated: 2026-08-19*
+*Last Updated: 2026-09-11*

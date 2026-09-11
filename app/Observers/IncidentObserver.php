@@ -108,7 +108,8 @@ class IncidentObserver
         $needsRecalculation = $incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at');
         $needsCategoryRecalculation = $incident->isDirty('incident_status') || $incident->isDirty('severity') ||
             $incident->isDirty('incident_type') || $incident->isDirty('fund_status') ||
-            $incident->isDirty('recovered_fund') || $incident->isDirty('classification');
+            $incident->isDirty('recovered_fund') || $incident->isDirty('fund_loss') ||
+            $incident->isDirty('potential_fund_loss') || $incident->isDirty('classification');
         $needsAutoLabel = $incident->isDirty('summary') || $incident->isDirty('root_cause');
 
         // Dispatch metrics calculation to queue if needed

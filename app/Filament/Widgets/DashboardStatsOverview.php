@@ -61,6 +61,7 @@ class DashboardStatsOverview extends BaseWidget
 
         $fundLossTotal = Incident::query()
             ->tap($incidentDateFilter)
+            ->where('classification', IncidentClassification::Incident->value)
             ->where('incident_status', 'Completed')
             ->excludedFromCounts()
             ->sum('fund_loss');

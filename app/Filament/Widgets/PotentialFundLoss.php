@@ -3,6 +3,7 @@
 namespace App\Filament\Widgets;
 
 use App\Enums\IncidentClassification;
+use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -32,7 +33,7 @@ class PotentialFundLoss extends BaseWidget
         $query = Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->whereNotIn('incident_status', ['Closed', 'Resolved', 'Recovered']);
+            ->whereNotIn('incident_status', [IncidentStatus::Completed->value]);
 
         $descriptionPeriod = 'this year';
         if ($this->start_date && $this->end_date) {
