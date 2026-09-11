@@ -48,7 +48,7 @@ class AnalyticsQueryService
 
     public function build(string $metric, string $dimension, string $chartType, array $filters = [], ?array $comparison = null): array
     {
-        $cacheKey = 'analytics_'.md5(json_encode(compact('metric', 'dimension', 'filters')));
+        $cacheKey = 'analytics_v2_'.md5(json_encode(compact('metric', 'dimension', 'filters')));
 
         $primary = Cache::remember($cacheKey, now()->addMinutes(15), fn () => $this->buildSingleDataset($metric, $dimension, $filters));
 
@@ -63,7 +63,7 @@ class AnalyticsQueryService
 
         if ($comparison && ($comparison['enabled'] ?? false)) {
             $compFilters = $this->deriveComparisonFilters($filters, $comparison);
-            $compCacheKey = 'analytics_'.md5(json_encode(['metric' => $metric, 'dimension' => $dimension, 'filters' => $compFilters]));
+            $compCacheKey = 'analytics_v2_'.md5(json_encode(['metric' => $metric, 'dimension' => $dimension, 'filters' => $compFilters]));
             $secondary = Cache::remember($compCacheKey, now()->addMinutes(15), fn () => $this->buildSingleDataset($metric, $dimension, $compFilters));
 
             $secondaryAligned = $this->alignToLabels($secondary, $primary['labels']);
@@ -80,6 +80,14 @@ class AnalyticsQueryService
     public function buildSingleDataset(string $metric, string $dimension, array $filters): array
     {
         $query = $this->baseQuery($filters);
+
+        // MTTR/MTBF only count metric-eligible severities (P1-P4, X1-X4) —
+        // Non Incident / G rows carry mttr/mtbf values for per-row display
+        // but must never reach these averages. Single choke point for every
+        // dimension path below.
+        if (in_array($metric, ['avg_mttr', 'avg_mttr_days', 'avg_mtbf'], true)) {
+            $query->whereIn('severity', Severity::METRIC_ELIGIBLE);
+        }
 
         return match ($dimension) {
             'monthly', 'quarterly' => $this->queryTimeDimension($query, $metric, $dimension, $filters),
@@ -144,7 +152,7 @@ class AnalyticsQueryService
             : "DATE_FORMAT(incident_date, '%Y-%m')";
 
         if ($this->isDerivedMetric($metric)) {
-            $rows = $query->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            $rows = $query
                 ->selectRaw("{$dimSql} as dim, MIN(incident_date) as min_date, MAX(incident_date) as max_date, COUNT(*) as cnt")
                 ->groupByRaw($dimSql)
                 ->orderBy('dim')
@@ -193,7 +201,7 @@ class AnalyticsQueryService
         };
 
         if ($this->isDerivedMetric($metric)) {
-            $rows = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            $rows = $query->clone()
                 ->selectRaw("{$column} as dim, MIN(incident_date) as min_date, MAX(incident_date) as max_date, COUNT(*) as cnt")
                 ->groupBy($column)
                 ->get();
@@ -240,7 +248,7 @@ class AnalyticsQueryService
     private function queryRelationDimension(\Illuminate\Database\Eloquent\Builder $query, string $metric): array
     {
         if ($this->isDerivedMetric($metric)) {
-            $rows = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            $rows = $query->clone()
                 ->join('users', 'incidents.pic_id', '=', 'users.id')
                 ->selectRaw('users.name as dim, MIN(incident_date) as min_date, MAX(incident_date) as max_date, COUNT(*) as cnt')
                 ->groupBy('users.name')
@@ -284,7 +292,7 @@ class AnalyticsQueryService
     private function queryPivotDimension(\Illuminate\Database\Eloquent\Builder $query, string $metric): array
     {
         if ($this->isDerivedMetric($metric)) {
-            $cloned = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
+            $cloned = $query->clone();
             $cloned->join('incident_label', 'incidents.id', '=', 'incident_label.incident_id')
                 ->join('labels', 'incident_label.label_id', '=', 'labels.id')
                 ->selectRaw('labels.name as dim, MIN(incident_date) as min_date, MAX(incident_date) as max_date, COUNT(*) as cnt')
@@ -366,7 +374,9 @@ class AnalyticsQueryService
                 $grouped[$val]['potential_sum'] += (float) ($incident->potential_fund_loss ?? 0);
                 $grouped[$val]['recovered_sum'] += (float) ($incident->recovered_fund ?? 0);
 
-                if ($incident->incident_date && in_array($incident->severity ?? '', Severity::METRIC_ELIGIBLE)) {
+                if ($incident->incident_date) {
+                    // severity eligibility already enforced by the pre-scoped
+                    // query in buildSingleDataset() — no per-row check needed
                     $grouped[$val]['mtbf_dates'][] = Carbon::parse($incident->incident_date)->startOfDay();
                 }
             }
