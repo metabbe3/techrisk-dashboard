@@ -14,7 +14,6 @@ use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
 use App\Models\Category;
 use App\Models\Incident;
-use App\Models\UserAuditLogSetting;
 use Filament\Forms;
 use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\DateTimePicker;
@@ -647,21 +646,6 @@ class IncidentResource extends Resource
     {
         $query = $query->where('classification', '!=', IncidentClassification::Issue->value);
 
-        $user = auth()->user();
-        if (! $user) {
-            return $query;
-        }
-
-        if ($user->hasRole('admin')) {
-            return $query;
-        }
-
-        $settings = UserAuditLogSetting::forUser($user);
-
-        if (! $settings->can_view_all_logs && ! empty($settings->allowed_years)) {
-            $query->whereYear('incident_date', $settings->allowed_years);
-        }
-
-        return $query;
+        return $query->applyUserYearAccess(auth()->user());
     }
 }

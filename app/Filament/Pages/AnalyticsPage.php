@@ -245,12 +245,14 @@ class AnalyticsPage extends Page implements HasForms
         );
         $this->chartVisible = true;
 
-        $this->js('$nextTick(() => { window.dispatchEvent(new CustomEvent("analytics-chart-updated", { detail: ' . json_encode(['chartData' => $this->chartData, 'chartType' => $data['chart_type']]) . ' })) })');
+        $this->js('$nextTick(() => { window.dispatchEvent(new CustomEvent("analytics-chart-updated", { detail: '.json_encode(['chartData' => $this->chartData, 'chartType' => $data['chart_type']]).' })) })');
     }
 
     private function loadTemplate(string $templateId, callable $set): void
     {
-        $template = ChartConfiguration::find($templateId);
+        // Scoped like the list/delete paths — an unscoped find() loads
+        // another user's template by guessable ID.
+        $template = ChartConfiguration::where('user_id', auth()->id())->find($templateId);
         if (! $template) {
             return;
         }

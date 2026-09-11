@@ -873,16 +873,83 @@ closing marker follows it.
 
 ---
 
+### [BUG-012] - Access-control batch: prefix-matching token scopes, ungated page, IDOR, dead raw-SQL feature
+
+**Date:** 2026-09-11
+**Discovered By:** Full-codebase audit (code audit)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Five access-control defects, each invisible in normal UI flows but reachable by
+URL or token crafting:
+
+1. `ApiEndpoint::matchesRoute` authorized by `str_contains($path, $pattern)` —
+   a token scoped to `incidents` also authorized `v1/incidents-by-no` (the
+   pattern `v1/incidents` is a substring of the sibling route). Subpath
+   matching (`v1/incidents/5`) only worked *through* the same loose check, so
+   the fix had to replace it with exact-segment-or-child matching, not delete it.
+2. `Reporting` page: `shouldRegisterNavigation(false)` hid it from the menu but
+   it had no `canAccess()` — any authenticated user could open `/admin/reporting`
+   by URL and run the full incident export.
+3. `AnalyticsPage::loadTemplate` used unscoped `ChartConfiguration::find($id)`
+   while the list and delete paths scoped by `user_id` — guessable-ID IDOR that
+   loaded another user's saved chart config into the form.
+4. `IssueResource` never registered its `view` page although `EditIssue` links
+   a ViewAction to it (404), and had no query scoping — users restricted by
+   year (UserAuditLogSetting) saw all years in Issues while Incidents was
+   restricted.
+5. Dead widget feature (`StatWidget`/`ChartWidget`/`DashboardWidgetResource`,
+   disabled via `canViewAny() === false`) carried a public `?string $query`
+   Livewire property executed as raw SQL after a SELECT-prefix check — one
+   flipped boolean away from arbitrary-DB-read via deserialization. Deleted
+   (7 files); table + migrations kept for data.
+
+### Root Cause
+Access checks were written per-page/per-callback instead of following one
+pattern; the scoping that existed (year access on IncidentResource) was
+inlined rather than shared, so the sibling resource never got it. Substring
+route matching is the URL twin of BUG-007's dead enum filter: a check that
+silently over-matches instead of silently under-matching.
+
+### Fix
+- `matchesRoute`: strip `api/` from both sides, then
+  `$path === $pattern || str_starts_with($path, $pattern.'/')` — exact segment
+  or true subpath only.
+- `Reporting::canAccess()` gated on `view incidents` (house pattern).
+- `loadTemplate` scoped `where('user_id', auth()->id())`.
+- `scopeApplyUserYearAccess` extracted to `Incident`, reused by
+  `IncidentResource::applyAccessControl` and new `IssueResource::getEloquentQuery()`
+  (+ `view` page registered).
+- Audit claim that the 3 AI-config resources were ungated was **disproven**
+  (Filament `canAccess()` defaults to `canViewAny()`, which all three define
+  with `manage incidents`) — verified against vendor source before acting.
+
+### Lesson Learned
+Two rules: (1) A route authorizer must match path *segments*, never substrings —
+`incidents-by-no` is not under `/incidents`. (2) When a permission/scoping rule
+is inlined in one surface, its siblings are already drifting — extract the scope
+the moment a second consumer appears. And before deleting "ungated" surfaces,
+check what the framework's defaults actually gate (a false audit claim would
+have added useless `canAccess` noise to 3 already-gated resources).
+
+### Prevention Checklist
+- [x] Sibling-prefix negative assertions in MiddlewareTest (incidents ≠ incidents-by-no)
+- [x] Year-access scope shared + tested (admin/guest/restricted-user paths)
+- [x] `php artisan route:list` boot-check after feature deletion
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 11 |
+| Total Bugs | 12 |
 | Critical | 0 |
-| High | 8 |
+| High | 9 |
 | Medium | 2 |
 | Low | 0 |
-| Resolved | 11 |
+| Resolved | 12 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -890,8 +957,8 @@ closing marker follows it.
 |-----------|-------|
 | Model | 0 |
 | Controller | 0 |
-| Filament Resource | 4 |
-| API Endpoint | 0 |
+| Filament Resource | 5 |
+| API Endpoint | 1 |
 | Database/Migration | 0 |
 | Frontend/CSS | 0 |
 | Queue/Job | 2 |

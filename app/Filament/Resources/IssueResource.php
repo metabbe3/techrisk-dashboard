@@ -212,12 +212,22 @@ class IssueResource extends Resource
             ]);
     }
 
+    public static function getEloquentQuery(): Builder
+    {
+        // Mirror IncidentResource::applyAccessControl for the Issue half of the
+        // table: classification = Issue plus the shared year-access scope.
+        return parent::getEloquentQuery()
+            ->where('classification', IncidentClassification::Issue->value)
+            ->applyUserYearAccess(auth()->user());
+    }
+
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListIssues::route('/'),
             'create' => Pages\CreateIssue::route('/create'),
             'edit' => Pages\EditIssue::route('/{record}/edit'),
+            'view' => Pages\ViewIssue::route('/{record}'),
         ];
     }
 }

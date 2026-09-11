@@ -104,7 +104,7 @@ Before editing any file below, check the "consumed by" column — a rule change 
 
 - **Service Layer:** Complex business logic goes in `app/Services/{Domain}/`, not controllers. Use dependency injection.
 - **Observers:** Use for side effects (notifications, cache invalidation, metrics). Never block — use queues for heavy operations.
-- **Query Modification:** `IssueResource` extends `IncidentResource` with `getEloquentQuery()` filter for `classification = 'Issue'`.
+- **Query Modification:** `IssueResource` (own Resource on `Incident`, does NOT extend `IncidentResource`) scopes its `getEloquentQuery()` to `classification = 'Issue'` + `Incident::applyUserYearAccess()` — the same year-access scope `IncidentResource::applyAccessControl()` uses. Change year-access rules in the scope, never in one resource.
 - **Caching:** Use tag-based caching (`Cache::tags(['incidents'])->flush()`). Cache expensive queries.
 - **Validation:** Use Form Request classes for all non-trivial validation.
 - **API:** API Resources for responses, versioned routes (`/api/v1/...`), `ApiResponser` trait.

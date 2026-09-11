@@ -166,6 +166,24 @@ class Incident extends Model implements Auditable
             ->excludedFromCounts();
     }
 
+    /**
+     * Restrict to the viewing user's allowed years (UserAuditLogSetting).
+     * Shared by Incident and Issue resources so year-based access control
+     * cannot drift between the two classification views.
+     */
+    public function scopeApplyUserYearAccess($query, ?\App\Models\User $user): void
+    {
+        if (! $user || $user->hasRole('admin')) {
+            return;
+        }
+
+        $settings = \App\Models\UserAuditLogSetting::forUser($user);
+
+        if (! $settings->can_view_all_logs && ! empty($settings->allowed_years)) {
+            $query->whereYear('incident_date', $settings->allowed_years);
+        }
+    }
+
     public function getRecoveryPercentageAttribute(): ?float
     {
         if (! $this->potential_fund_loss || $this->potential_fund_loss <= 0) {

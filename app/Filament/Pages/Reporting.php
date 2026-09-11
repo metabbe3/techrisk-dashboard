@@ -37,6 +37,13 @@ class Reporting extends Page implements HasForms
         return false;
     }
 
+    // Hidden from nav but reachable by URL — gates the full report + export
+    // to the same permission that guards the incident table itself.
+    public static function canAccess(): bool
+    {
+        return auth()->user()?->can('view incidents') ?? false;
+    }
+
     public ?array $data = [];
 
     public $incidents = [];

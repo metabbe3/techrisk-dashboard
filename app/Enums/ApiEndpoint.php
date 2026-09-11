@@ -66,10 +66,11 @@ enum ApiEndpoint: string
     public function matchesRoute(string $path): bool
     {
         $pattern = str_replace('api/', '', $this->routePattern());
+        $path = str_replace('api/', '', $path);
 
-        // Check exact match or starts with pattern
-        return str_starts_with($path, $pattern) ||
-            $path === 'api/'.$pattern ||
-            str_contains($path, $pattern);
+        // Exact-segment match only: str_contains let an `incidents`-scoped
+        // token authorize `v1/incidents-by-no`. Subpaths (`v1/incidents/5`)
+        // stay in scope; sibling routes sharing the prefix do not.
+        return $path === $pattern || str_starts_with($path, $pattern.'/');
     }
 }

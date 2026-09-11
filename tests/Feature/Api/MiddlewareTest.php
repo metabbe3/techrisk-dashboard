@@ -500,6 +500,18 @@ class MiddlewareTest extends TestCase
         $this->assertFalse(ApiEndpoint::LABELS->matchesRoute('v1/incidents'));
     }
 
+    public function test_api_endpoint_does_not_match_sibling_prefix_route(): void
+    {
+        // An incidents-scoped token must not authorize incidents-by-no (the
+        // old str_contains match let it through).
+        $this->assertFalse(ApiEndpoint::INCIDENTS->matchesRoute('v1/incidents-by-no'));
+        $this->assertFalse(ApiEndpoint::INCIDENTS->matchesRoute('api/v1/incidents-by-no'));
+        $this->assertFalse(ApiEndpoint::INCIDENTS->matchesRoute('api/v1/incidents-markdown'));
+
+        // Subpaths of the scoped route stay in scope.
+        $this->assertTrue(ApiEndpoint::INCIDENTS->matchesRoute('api/v1/incidents/5'));
+    }
+
     public function test_api_endpoint_all_returns_all_values(): void
     {
         $all = ApiEndpoint::all();
