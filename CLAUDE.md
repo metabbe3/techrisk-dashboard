@@ -80,7 +80,8 @@ Before editing any file below, check the "consumed by" column — a rule change 
 | `app/Enums/IncidentStatus.php` | `Open / In progress / Finalization / Completed` — no other values exist | status filters everywhere |
 | `app/Models/Incident.php` | `excludedFromCounts()` scope; `aiCounts()` scope (single source of truth for AI-facing counts); `shouldCalculateMttrByDays()` | widgets, AI services, exports |
 | `app/Observers/IncidentObserver.php` | Gate for every Incident write; decides when `CalculateIncidentMetrics` dispatches. Its dirty-field trigger list must contain **every field that feeds a cached number** (`fund_loss`, `potential_fund_loss`, `recovered_fund`, status/severity/type/fund_status/classification/dates) | — |
-| `app/Jobs/CalculateIncidentMetrics.php` | Writes per-row `mttr`, `mtbf`, `mtbf_*` columns; `flushIncidentCache()` bumps `dashboard_cache_version` | invoked only via observer + `incidents:recalculate-metrics` |
+| `app/Services/Metrics/IncidentMetricsCalculator.php` | **All per-row metric formulas** (`computeMttr`/`computeMtbf`/`computeCategoryMtbf`/`computeMtbfAll`) + `METRIC_COLUMNS` list; sets attributes, never saves | job + recalc command (BUG-008: the two had drifted into 4 copies) |
+| `app/Jobs/CalculateIncidentMetrics.php` | Pipeline only: persistence, adjacent-row repair (date/classification edits), `flushIncidentCache()` bumps `dashboard_cache_version`. Formulas live in the calculator | invoked only via observer |
 | `app/Services/Analytics/AnalyticsQueryService.php` | Analytics page charts; severity scope applied once in `buildSingleDataset()` | `AnalyticsPage` |
 | `app/Policies/ActionImprovementPolicy.php` | `viewAny`: `view incidents` OR `access api`; write ops need `manage incidents` | Action Improvements tab + add button |
 

@@ -5,7 +5,7 @@ namespace App\Jobs;
 use App\Enums\Severity;
 use App\Models\Incident;
 use App\Models\Label;
-use Carbon\Carbon;
+use App\Services\Metrics\IncidentMetricsCalculator;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -38,9 +38,10 @@ class CalculateIncidentMetrics implements ShouldQueue
     ) {}
 
     /**
-     * Execute the job.
+     * Execute the job. Formulas live in IncidentMetricsCalculator; this job
+     * owns the pipeline — persistence, adjacent-row repair, cache busting.
      */
-    public function handle(): void
+    public function handle(IncidentMetricsCalculator $calculator): void
     {
         // Reload the incident to ensure we have the latest data
         $this->incident = $this->incident->fresh();
@@ -49,17 +50,16 @@ class CalculateIncidentMetrics implements ShouldQueue
             $this->autoLabel();
         }
 
-        $this->calculateMetrics();
-        $this->calculateCategoryMtbf($this->incident);
-        $this->calculateMtbfAll();
+        $calculator->computeAll($this->incident);
+        $this->incident->saveQuietly();
 
         if ($this->shouldUpdateAdjacent) {
-            $this->updateAdjacentIncidentMetrics();
+            $this->updateAdjacentIncidentMetrics($calculator);
 
             // If classification changed, also update adjacent incidents in the OLD classification
             // since this incident left their group
             if ($this->previousClassification && $this->previousClassification !== $this->incident->classification->value) {
-                $this->updateAdjacentForClassification($this->previousClassification);
+                $this->updateAdjacentForClassification($this->previousClassification, $calculator);
             }
         }
 
@@ -67,77 +67,10 @@ class CalculateIncidentMetrics implements ShouldQueue
     }
 
     /**
-     * Calculate MTTR and MTBF for an incident.
+     * Update MTBF and MTTR for the next incident — its "previous" row (this
+     * incident) may have changed.
      */
-    private function calculateMetrics(): void
-    {
-        $incident = $this->incident;
-
-        // Calculate MTTR
-        if ($incident->stop_bleeding_at) {
-            if ($incident->shouldCalculateMttrByDays()) {
-                $days = abs($incident->incident_date->startOfDay()
-                    ->diffInDays($incident->stop_bleeding_at->startOfDay())) + 1;
-                $incident->mttr = -$days;
-            } else {
-                $incident->mttr = $incident->incident_date->diffInMinutes($incident->stop_bleeding_at);
-            }
-        } else {
-            $incident->mttr = null;
-        }
-
-        // Calculate MTBF using optimized query
-        $this->recalculateBaseMtbfFor($incident);
-
-        $incident->saveQuietly();
-    }
-
-    /**
-     * Base MTBF for one incident: days since the previous metric-eligible
-     * row of the same classification/year, or from Jan 1 when it is the
-     * first of the year (null past 90 days). Shared by the main path and
-     * the classification-change adjacent path — one formula for both.
-     */
-    private function recalculateBaseMtbfFor(Incident $incident): void
-    {
-        $year = $incident->incident_date->year;
-        $previousIncident = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification->value)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->where(function ($query) use ($incident) {
-                $query->where('incident_date', '<', $incident->incident_date)
-                    ->orWhere(function ($query) use ($incident) {
-                        $query->where('incident_date', '=', $incident->incident_date)
-                            ->where('id', '<', $incident->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previousIncident) {
-            $incident->mtbf = abs($incident->incident_date->startOfDay()
-                ->diffInDays($previousIncident->incident_date->startOfDay()));
-        } else {
-            // First incident of the year - calculate from Jan 1st
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $daysSinceYearStart = abs($incident->incident_date->startOfDay()
-                ->diffInDays($yearStart));
-
-            // If MTBF from year start is unrealistically large (> 90 days), set to null
-            // This will be displayed as "N/A" or 0 in the UI
-            if ($daysSinceYearStart > 90) {
-                $incident->mtbf = null;
-            } else {
-                $incident->mtbf = $daysSinceYearStart;
-            }
-        }
-    }
-
-    /**
-     * Update MTBF and MTTR for adjacent incidents.
-     */
-    private function updateAdjacentIncidentMetrics(): void
+    private function updateAdjacentIncidentMetrics(IncidentMetricsCalculator $calculator): void
     {
         $incident = $this->incident;
         $year = $incident->incident_date->year;
@@ -157,27 +90,10 @@ class CalculateIncidentMetrics implements ShouldQueue
             ->first();
 
         if ($nextIncident) {
-            // Update base MTBF — days from this incident to next
-            $nextIncident->mtbf = abs($nextIncident->incident_date->startOfDay()
-                ->diffInDays($incident->incident_date->startOfDay()));
-
-            // Update MTTR
-            if ($nextIncident->stop_bleeding_at) {
-                if ($nextIncident->shouldCalculateMttrByDays()) {
-                    $days = abs($nextIncident->incident_date->startOfDay()
-                        ->diffInDays($nextIncident->stop_bleeding_at->startOfDay())) + 1;
-                    $nextIncident->mttr = -$days;
-                } else {
-                    $nextIncident->mttr = $nextIncident->incident_date->diffInMinutes($nextIncident->stop_bleeding_at);
-                }
-            } else {
-                $nextIncident->mttr = null;
-            }
-
-            // Recalculate category MTBF for the next incident — its "previous"
-            // (this incident) may have changed date, affecting category gaps
-            $this->calculateCategoryMtbf($nextIncident);
-            $this->recalculateMtbfAllFor($nextIncident);
+            $calculator->computeMtbf($nextIncident);
+            $calculator->computeMttr($nextIncident);
+            $calculator->computeCategoryMtbf($nextIncident);
+            $calculator->computeMtbfAll($nextIncident);
 
             $nextIncident->saveQuietly();
         }
@@ -188,7 +104,7 @@ class CalculateIncidentMetrics implements ShouldQueue
      * This incident left that group, so the next incident's MTBF (which was relative to this one)
      * now needs to find a new "previous" incident.
      */
-    private function updateAdjacentForClassification(string $oldClassification): void
+    private function updateAdjacentForClassification(string $oldClassification, IncidentMetricsCalculator $calculator): void
     {
         $incident = $this->incident;
         $year = $incident->incident_date->year;
@@ -208,149 +124,12 @@ class CalculateIncidentMetrics implements ShouldQueue
             ->first();
 
         if ($nextInOldGroup) {
-            // The departed incident was this row's "previous" — rebuild its
-            // base mtbf and mtbf_all from the old group, not just categories.
-            $this->recalculateBaseMtbfFor($nextInOldGroup);
-            $this->calculateCategoryMtbf($nextInOldGroup);
-            $this->recalculateMtbfAllFor($nextInOldGroup);
+            $calculator->computeMtbf($nextInOldGroup);
+            $calculator->computeCategoryMtbf($nextInOldGroup);
+            $calculator->computeMtbfAll($nextInOldGroup);
+
             $nextInOldGroup->saveQuietly();
         }
-    }
-
-    /**
-     * Recalculate mtbf_all for a given incident.
-     */
-    private function recalculateMtbfAllFor(Incident $target): void
-    {
-        $year = $target->incident_date->year;
-
-        $previous = Incident::whereYear('incident_date', $year)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->where(function ($query) use ($target) {
-                $query->where('incident_date', '<', $target->incident_date)
-                    ->orWhere(function ($query) use ($target) {
-                        $query->where('incident_date', '=', $target->incident_date)
-                            ->where('id', '<', $target->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previous) {
-            $target->mtbf_all = abs($target->incident_date->startOfDay()
-                ->diffInDays($previous->incident_date->startOfDay()));
-        } else {
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $target->mtbf_all = abs($target->incident_date->startOfDay()
-                ->diffInDays($yearStart));
-        }
-    }
-
-    /**
-     * Calculate MTBF for all category types. Runs for the job's incident and
-     * for adjacent incidents whose "previous" row may have changed (date or
-     * classification edits) — one category definition for all callers.
-     */
-    private function calculateCategoryMtbf(Incident $incident): void
-    {
-        $year = $incident->incident_date->year;
-
-        $categories = [
-            'completed' => ['incident_status' => 'Completed'],
-            'p4' => ['severity' => 'P4'],
-            'non_tech' => ['incident_type' => 'Non-tech'],
-            'fund_loss' => ['fund_status' => 'Confirmed loss'],
-            'non_fund_loss' => ['fund_status' => 'Non fundLoss'],
-            'potential_recovery' => ['fund_status' => 'Potential recovery'],
-            'fully_recovered' => ['fund_status' => 'Fully recovered'],
-            'non_tech_loss' => ['fund_status' => 'Non Tech Loss'],
-            'non_incident' => ['severity' => 'Non Incident'],
-        ];
-
-        foreach ($categories as $key => $condition) {
-            $previousIncident = Incident::whereYear('incident_date', $year)
-                ->where('classification', $incident->classification->value)
-                ->where($condition)
-                ->where(function ($query) use ($incident) {
-                    $query->where('incident_date', '<', $incident->incident_date)
-                        ->orWhere(function ($query) use ($incident) {
-                            $query->where('incident_date', '=', $incident->incident_date)
-                                ->where('id', '<', $incident->id);
-                        });
-                })
-                ->orderBy('incident_date', 'desc')
-                ->orderBy('id', 'desc')
-                ->first();
-
-            if ($previousIncident) {
-                $incident->{"mtbf_{$key}"} = abs($incident->incident_date->startOfDay()
-                    ->diffInDays($previousIncident->incident_date->startOfDay()));
-            } else {
-                $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-                $incident->{"mtbf_{$key}"} = abs($incident->incident_date->startOfDay()
-                    ->diffInDays($yearStart));
-            }
-        }
-
-        // Special handling for 'recovered' category
-        $previousRecovered = Incident::whereYear('incident_date', $year)
-            ->where('classification', $incident->classification->value)
-            ->where('recovered_fund', '>', 0)
-            ->where(function ($query) use ($incident) {
-                $query->where('incident_date', '<', $incident->incident_date)
-                    ->orWhere(function ($query) use ($incident) {
-                        $query->where('incident_date', '=', $incident->incident_date)
-                            ->where('id', '<', $incident->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previousRecovered) {
-            $incident->mtbf_recovered = abs($incident->incident_date->startOfDay()
-                ->diffInDays($previousRecovered->incident_date->startOfDay()));
-        } else {
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf_recovered = abs($incident->incident_date->startOfDay()
-                ->diffInDays($yearStart));
-        }
-
-        $incident->saveQuietly();
-    }
-
-    /**
-     * Calculate MTBF for ALL incidents + issues combined.
-     */
-    private function calculateMtbfAll(): void
-    {
-        $incident = $this->incident;
-        $year = $incident->incident_date->year;
-
-        $previousRecord = Incident::whereYear('incident_date', $year)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->where(function ($query) use ($incident) {
-                $query->where('incident_date', '<', $incident->incident_date)
-                    ->orWhere(function ($query) use ($incident) {
-                        $query->where('incident_date', '=', $incident->incident_date)
-                            ->where('id', '<', $incident->id);
-                    });
-            })
-            ->orderBy('incident_date', 'desc')
-            ->orderBy('id', 'desc')
-            ->first();
-
-        if ($previousRecord) {
-            $incident->mtbf_all = abs($incident->incident_date->startOfDay()
-                ->diffInDays($previousRecord->incident_date->startOfDay()));
-        } else {
-            $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-            $incident->mtbf_all = abs($incident->incident_date->startOfDay()
-                ->diffInDays($yearStart));
-        }
-
-        $incident->saveQuietly();
     }
 
     /**
