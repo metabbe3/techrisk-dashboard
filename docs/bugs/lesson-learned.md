@@ -796,6 +796,13 @@ surfaces that stopped matching the card totals:
    scheduled report's type filter silently matched nothing. Its `end_date` was also
    parsed at midnight, excluding the final day (the exact BUG-005 boundary bug, missed
    here).
+5. Chat/trends members of the same class: `getCompareContext` averaged `AVG(mttr)` with
+   no METRIC_ELIGIBLE / non-negative guard while `getQuickStats` (same feature, same
+   number) filtered both → day-encoded negatives dragged the compare average; the
+   executive summary's top-3 sorted by a hand-typed `FIELD('P1'..'P4')` so X1–X4 ranked
+   0 and crowded out P1s; `AnalyzeTrendsController` counted with classification-only
+   while chat used `aiCounts()` → two totals for one question, plus the same midnight
+   `end_date` boundary and a `cached` flag computed after `remember()` (always true).
 
 ### Root Cause
 Each new surface re-derived the count/filter rules instead of calling the shared scope

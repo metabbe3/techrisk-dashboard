@@ -2040,7 +2040,9 @@ class ChatContextService
             ->whereBetween('incident_date', [$thisMonth, now()])
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->with(['pic'])
-            ->orderByRaw("FIELD(severity, 'P1','P2','P3','P4')")
+            // Built from enum cases (BUG-007): the hand-typed P1-P4 list gave
+            // X1-X4 rank 0, letting them crowd out P1s from the top-3.
+            ->orderByRaw(Severity::fieldOrderExpression())
             ->take(3)
             ->get();
 
@@ -2072,9 +2074,15 @@ class ChatContextService
     {
         $year = now()->year;
 
+        // AVG applies the MTTR eligibility INSIDE the aggregate (CASE → NULL →
+        // skipped by AVG): filtering the whole query would also shrink cnt/loss.
+        // Mirrors getQuickStats: metric-eligible severity, minutes-encoded mttr
+        // only — day-encoded negatives must not drag a minutes average.
+        $eligible = collect(Severity::METRIC_ELIGIBLE)->map(fn ($s) => "'{$s}'")->implode(',');
+
         $monthly = Incident::aiCounts()
             ->whereYear('incident_date', $year)
-            ->selectRaw('MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss, AVG(mttr) as avg_mttr')
+            ->selectRaw("MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss, AVG(CASE WHEN severity IN ({$eligible}) AND mttr >= 0 THEN mttr END) as avg_mttr")
             ->groupByRaw('MONTH(incident_date)')
             ->orderBy('m')
             ->get();

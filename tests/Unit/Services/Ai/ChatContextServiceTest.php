@@ -92,4 +92,48 @@ class ChatContextServiceTest extends TestCase
 
         $this->assertStringNotContainsString('NO RETRIEVAL RESULTS', $prompt);
     }
+
+    // ponytail: getCompareContext (/compare) can't run under sqlite — it
+    // groups by MONTH() and FIELD()-sorts, both MySQL-only — so its AVG-CASE
+    // eligibility fix is verified by reading. The same invariant is covered
+    // runnable here through getQuickStats.
+
+    public function test_quick_stats_avg_mttr_skips_ineligible_and_day_encoded(): void
+    {
+        Cache::forget('chat_quick_stats_v2');
+
+        // Eligible minutes-encoded row (60-min bleed window) — the only one
+        // AVG may count. mttr is observer-computed from stop_bleeding_at.
+        Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_status' => 'Non fundLoss',
+            'severity' => 'P2',
+            'incident_date' => now()->startOfYear()->setDay(5)->setTime(10, 0),
+            'stop_bleeding_at' => now()->startOfYear()->setDay(5)->setTime(11, 0),
+        ]);
+
+        // Day-encoded negative (Confirmed loss + multi-day bleed) — must not
+        // drag the minutes average.
+        Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_status' => 'Confirmed loss',
+            'severity' => 'P2',
+            'incident_date' => now()->startOfYear()->setDay(6)->setTime(10, 0),
+            'stop_bleeding_at' => now()->startOfYear()->setDay(9)->setTime(10, 0),
+        ]);
+
+        // G severity: not metric-eligible for MTTR, but still a counted incident.
+        Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_status' => 'Non fundLoss',
+            'severity' => 'G',
+            'incident_date' => now()->startOfYear()->setDay(7)->setTime(10, 0),
+            'stop_bleeding_at' => now()->startOfYear()->setDay(7)->setTime(10, 30),
+        ]);
+
+        $stats = $this->service->getQuickStats();
+
+        $this->assertStringContainsString('Avg MTTR: 60.0 minutes', $stats);
+        $this->assertStringContainsString('Total Incidents ('.now()->year.'): 3', $stats);
+    }
 }

@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Ai;
 
-use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Http\Controllers\Controller;
 use App\Models\Incident;
@@ -42,11 +41,12 @@ class AnalyzeTrendsController extends Controller
             Cache::forget($cacheKey);
         }
 
+        // Must be checked BEFORE remember() — after it, the key always exists.
+        $fromCache = ! $request->boolean('force_refresh') && Cache::has($cacheKey);
+
         $result = Cache::remember($cacheKey, 1800, function () use ($startDate, $endDate, $validated) {
             return $this->runAnalysis($startDate, $endDate, $validated['model'] ?? null);
         });
-
-        $fromCache = ! $request->boolean('force_refresh') && Cache::has($cacheKey);
 
         return $this->successResponse([
             'success' => true,
@@ -63,13 +63,16 @@ class AnalyzeTrendsController extends Controller
     {
         $dateFilter = function ($query) use ($startDate, $endDate) {
             if ($startDate && $endDate) {
-                $query->whereBetween('incident_date', [$startDate, $endDate]);
+                // Request dates are midnight-only — include the final day.
+                $query->whereBetween('incident_date', [$startDate, \Carbon\Carbon::parse($endDate)->endOfDay()]);
             } else {
                 $query->whereYear('incident_date', now()->year);
             }
         };
 
-        $baseQuery = Incident::where('classification', IncidentClassification::Incident->value)->tap($dateFilter);
+        // aiCounts(): same scope the chat context uses — fund-status-excluded
+        // incidents stay out so trends and chat agree on the same totals.
+        $baseQuery = Incident::aiCounts()->tap($dateFilter);
 
         $monthlyData = (clone $baseQuery)
             ->selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
@@ -80,7 +83,7 @@ class AnalyzeTrendsController extends Controller
             ])
             ->toArray();
 
-        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->where('classification', IncidentClassification::Incident->value)->tap($dateFilter)])
+        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->aiCounts()->tap($dateFilter)])
             ->having('incidents_count', '>', 0)
             ->orderByDesc('incidents_count')
             ->limit(10)
