@@ -38,7 +38,9 @@ class ProcessWarRoomAgent implements ShouldQueue
     public function handle(WarRoomService $warRoomService): void
     {
         try {
-            $warRoomService->processAgent($this->session, $this->agentRole, $this->round);
+            // Attempt 2+ is a queue-level retry (worker died mid-run, status
+            // still 'running') — processAgent must let it back in.
+            $warRoomService->processAgent($this->session, $this->agentRole, $this->round, $this->attempts() > 1);
         } catch (\Throwable $e) {
             Log::error('War Room agent processing failed', [
                 'session_id' => $this->session->id,

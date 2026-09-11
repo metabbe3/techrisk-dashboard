@@ -486,6 +486,13 @@ class PlanModeService
                         ->onQueue(config('ai.plan_mode.queue', 'war-room'));
                 }
             }
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            // The lock holder runs the completion check — a timeout here used
+            // to escape as a job failure, and the retry hit the subtask's
+            // completed guard, so the plan never synthesized (BUG-004 class).
+            Log::warning('Plan completion lock timeout — lock holder will finish the check', [
+                'plan_id' => $planId,
+            ]);
         } finally {
             optional($lock)->release();
         }

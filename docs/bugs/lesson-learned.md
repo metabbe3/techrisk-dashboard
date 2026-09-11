@@ -708,16 +708,76 @@ job constructors crash on it.
 
 ---
 
+### [BUG-009] - Async hang class: dead catch, missing re-entry guard, queue wait counted as runtime
+
+**Date:** 2026-09-11
+**Discovered By:** Full-codebase audit (code audit)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Four defects in the WarRoom/PlanMode async coordination layer, each capable of hanging a
+session or plan permanently (same user-facing class as BUG-004):
+
+1. `WarRoomService::onAgentCompleted` caught
+   `\Illuminate\Contracts\Cache\LockTimeout` — a class that does not exist (the contract is
+   `LockTimeoutException`). The catch could never match, so a lock timeout escaped the
+   service; round completion was skipped and the session hung in `running`.
+2. `PlanModeService::onSubtaskCompleted` used `$lock->block(5)` with **no** catch at all.
+   On timeout the job failed; the retry hit the subtask's completed guard and returned
+   early, so `AnalyzePlanGaps`/`SynthesizePlanResults` were never dispatched — the plan
+   never synthesized.
+3. `WarRoomService::processAgent` had no re-entry guard. The self-heal re-dispatch
+   (pending >120s) races the original job: both stream, content is appended twice, tokens
+   double-spent. Conversely a queue-level retry (worker died mid-run, status stuck at
+   `running`) must NOT be debounced — the guard needs to distinguish the two via
+   `$this->attempts() > 1`.
+4. The stuck-running reaper measured "execution time" from `created_at`, which includes
+   queue wait — an agent that sat in a busy queue past the timeout was failed the moment
+   it started. Fixed with a `running_since` timestamp stamped in `markRunning()`.
+
+### Root Cause
+Error handling written per-call-site instead of at the state machine, plus no timing
+column to distinguish "waiting" from "executing". The dead catch is the PHP-level twin of
+BUG-004's missing `connect_timeout`: an invariant assumed present but never verified by
+a runnable check.
+
+### Fix
+- `LockTimeout` → `LockTimeoutException` with a warning log (round completion is
+  idempotent under the lock — the holder completes the check).
+- `onSubtaskCompleted` catches `LockTimeoutException` and returns; the lock holder runs
+  the completion check.
+- `processAgent(WarRoomSession, string, int, bool $isQueueRetry = false)` skips when the
+  message is `completed`, or past `pending` unless this is a queue retry; the job passes
+  `$this->attempts() > 1`.
+- Migration adds nullable `running_since` to `war_room_messages`; `markRunning()` stamps
+  it, `markCompleted()`/`markFailed()` clear it; the reaper measures from it with a
+  `created_at` fallback for legacy rows.
+
+### Lesson Learned
+A `catch` block whose class doesn't exist is a silent no-op — the code *looks* guarded.
+For any cache-lock `block()`, the caught contract is
+`Illuminate\Contracts\Cache\LockTimeoutException`; verify with a test that forces the
+timeout path. And any idempotency guard on a retried job must account for *which kind* of
+duplicate is arriving (healer re-dispatch vs queue retry) — `attempts()` is the signal.
+
+### Prevention Checklist
+- [x] Re-entry guard + queue-retry signal tested (skips running/completed, runs retry)
+- [x] Reaper measures `running_since`, not `created_at` (both directions tested)
+- [x] Related suites green (WarRoomService 28, WarRoom/PlanMode family 156)
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 8 |
+| Total Bugs | 9 |
 | Critical | 0 |
-| High | 5 |
+| High | 6 |
 | Medium | 2 |
 | Low | 0 |
-| Resolved | 8 |
+| Resolved | 9 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -729,7 +789,7 @@ job constructors crash on it.
 | API Endpoint | 0 |
 | Database/Migration | 0 |
 | Frontend/CSS | 0 |
-| Queue/Job | 1 |
+| Queue/Job | 2 |
 | Other | 3 |
 
 ---

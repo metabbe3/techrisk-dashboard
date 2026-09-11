@@ -826,4 +826,154 @@ class WarRoomServiceTest extends TestCase
         $this->assertSame('heroicon-o-server', $sreMsg['agent_icon']);
         $this->assertSame('blue', $sreMsg['agent_color']);
     }
+
+    // -----------------------------------------------------------------------
+    // processAgent re-entry guard (healer-race debounce)
+    // -----------------------------------------------------------------------
+
+    public function test_process_agent_skips_when_message_already_running(): void
+    {
+        Queue::fake();
+        Event::fake();
+
+        $session = WarRoomSession::factory()->running()->create([
+            'selected_agents' => ['sre'],
+        ]);
+
+        WarRoomMessage::factory()->running()->create([
+            'session_id' => $session->id,
+            'round' => 1,
+            'agent_role' => 'sre',
+        ]);
+
+        // A fresh dispatch (healer re-dispatch race) must NOT stream again —
+        // if the guard fails, this unexpected mock call throws.
+        $this->streamingService->shouldReceive('streamCompletion')->never();
+
+        $this->service->processAgent($session, 'sre', 1);
+
+        $this->assertSame('running', $session->messages()->first()->status);
+        $this->assertNull($session->messages()->first()->content);
+    }
+
+    public function test_process_agent_skips_when_message_completed(): void
+    {
+        Queue::fake();
+        Event::fake();
+
+        $session = WarRoomSession::factory()->running()->create([
+            'selected_agents' => ['sre'],
+        ]);
+
+        WarRoomMessage::factory()->completed()->create([
+            'session_id' => $session->id,
+            'round' => 1,
+            'agent_role' => 'sre',
+            'content' => 'original analysis',
+        ]);
+
+        $this->streamingService->shouldReceive('streamCompletion')->never();
+
+        $this->service->processAgent($session, 'sre', 1);
+
+        $this->assertSame('original analysis', $session->messages()->first()->content);
+    }
+
+    public function test_process_agent_runs_queue_retry_when_message_still_running(): void
+    {
+        Queue::fake();
+        Event::fake();
+
+        // Worker died mid-run (status stuck at 'running'), queue retries the
+        // job — attempt 2 must be allowed back in, not debounced away.
+        $session = WarRoomSession::factory()->running()->create([
+            'selected_agents' => ['sre'],
+            'max_rounds' => 1,
+        ]);
+
+        WarRoomMessage::factory()->running()->create([
+            'session_id' => $session->id,
+            'round' => 1,
+            'agent_role' => 'sre',
+        ]);
+
+        $this->promptBuilder->shouldReceive('buildAgentPrompt')->andReturn('system prompt');
+        $this->promptBuilder->shouldReceive('buildRoundUserMessage')->andReturn('user message');
+        $this->streamingService->shouldReceive('streamCompletion')->once()->andReturn([
+            'content' => 'Retry analysis complete.',
+            'finish_reason' => 'stop',
+            'usage' => ['prompt_tokens' => 10, 'completion_tokens' => 5, 'total_tokens' => 15],
+            'error' => null,
+            'tool_calls' => [],
+            'reasoning_content' => null,
+            'reasoning_tokens' => null,
+        ]);
+
+        $this->service->processAgent($session, 'sre', 1, isQueueRetry: true);
+
+        $message = $session->messages()->first();
+        $this->assertSame('completed', $message->status);
+        $this->assertSame('Retry analysis complete.', $message->content);
+        // Final round done → report synthesis dispatched, session not hung.
+        Queue::assertPushed(SynthesizeWarRoomReport::class);
+    }
+
+    // -----------------------------------------------------------------------
+    // stuck-running reaper measures execution time, not queue wait
+    // -----------------------------------------------------------------------
+
+    public function test_mark_stuck_messages_spares_long_queued_but_recently_started_agent(): void
+    {
+        Queue::fake();
+        Event::fake();
+
+        $timeout = config('ai.war_room.agent_timeout', 600);
+
+        $session = WarRoomSession::factory()->running()->create([
+            'selected_agents' => ['sre'],
+        ]);
+
+        // Sat in the queue past the timeout, but only started executing just
+        // now — the old created_at-based query would have failed this agent.
+        WarRoomMessage::factory()->running()->create([
+            'session_id' => $session->id,
+            'round' => 1,
+            'agent_role' => 'sre',
+            'created_at' => now()->subSeconds($timeout + 300),
+            'running_since' => now()->subSeconds(30),
+        ]);
+
+        $count = $this->service->markStuckMessages($session);
+
+        $this->assertSame(0, $count);
+        $this->assertSame('running', $session->messages()->first()->status);
+    }
+
+    public function test_mark_stuck_messages_fails_agent_running_past_timeout(): void
+    {
+        Queue::fake();
+        Event::fake();
+
+        $timeout = config('ai.war_room.agent_timeout', 600);
+
+        $session = WarRoomSession::factory()->running()->create([
+            'selected_agents' => ['sre'],
+        ]);
+
+        // Created recently (short queue wait) but executing past the timeout.
+        WarRoomMessage::factory()->running()->create([
+            'session_id' => $session->id,
+            'round' => 1,
+            'agent_role' => 'sre',
+            'created_at' => now()->subSeconds(60),
+            'running_since' => now()->subSeconds($timeout + 60),
+        ]);
+
+        $count = $this->service->markStuckMessages($session);
+
+        $this->assertSame(1, $count);
+        $message = $session->messages()->first();
+        $this->assertSame('failed', $message->status);
+        $this->assertStringContainsString('timed out', $message->error_message);
+    }
 }

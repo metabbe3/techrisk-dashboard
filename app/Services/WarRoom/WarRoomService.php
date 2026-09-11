@@ -237,7 +237,10 @@ class WarRoomService
                     SynthesizeWarRoomReport::dispatch($session);
                 }
             });
-        } catch (\Illuminate\Contracts\Cache\LockTimeout $e) {
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            // The real contract is LockTimeoutException — the previous
+            // non-existent LockTimeout catch never matched, so a lock
+            // timeout escaped and the round never completed (BUG-004 class).
             Log::warning('[WarRoom] Could not acquire round completion lock', [
                 'session_id' => $session->id,
                 'round' => $message->round,
@@ -245,7 +248,7 @@ class WarRoomService
         }
     }
 
-    public function processAgent(WarRoomSession $session, string $agentRole, int $round): void
+    public function processAgent(WarRoomSession $session, string $agentRole, int $round, bool $isQueueRetry = false): void
     {
         $session->loadMissing('incidents');
 
@@ -253,6 +256,20 @@ class WarRoomService
             ->where('agent_role', $agentRole)
             ->where('round', $round)
             ->firstOrFail();
+
+        // Debounce the self-heal re-dispatch: if the message already advanced
+        // past pending and this is not a queue-level retry, another job owns
+        // it — running again would append content twice and double-spend.
+        if ($message->status === 'completed' || ($message->status !== 'pending' && ! $isQueueRetry)) {
+            Log::info('[WarRoom] Skipping agent run — message already '.$message->status, [
+                'session_id' => $session->id,
+                'agent_role' => $agentRole,
+                'round' => $round,
+                'is_queue_retry' => $isQueueRetry,
+            ]);
+
+            return;
+        }
 
         $message->markRunning();
 
@@ -802,10 +819,17 @@ class WarRoomService
             ProcessWarRoomAgent::dispatch($session, $message->agent_role, $message->round);
         }
 
-        // Mark running messages that exceeded the timeout as failed
+        // Mark running messages that exceeded the timeout as failed. Measured
+        // from running_since (actual execution start) — created_at includes
+        // queue wait, which used to fail agents that merely sat in a busy queue.
+        // Legacy rows without running_since fall back to created_at.
         $stuckRunning = WarRoomMessage::where('session_id', $session->id)
             ->where('status', 'running')
-            ->where('created_at', '<', now()->subSeconds($runningTimeout))
+            ->where(function ($query) use ($runningTimeout) {
+                $cutoff = now()->subSeconds($runningTimeout);
+                $query->where('running_since', '<', $cutoff)
+                    ->orWhere(fn ($q) => $q->whereNull('running_since')->where('created_at', '<', $cutoff));
+            })
             ->get();
 
         foreach ($stuckRunning as $message) {
