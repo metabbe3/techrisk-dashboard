@@ -25,7 +25,8 @@ class IncidentStatsService
             ->excludedFromCounts()
             ->count();
 
-        $fundLoss = Incident::whereBetween('incident_date', [$from, $to])
+        $fundLoss = Incident::where('classification', IncidentClassification::Incident->value)
+            ->whereBetween('incident_date', [$from, $to])
             ->excludedFromCounts()
             ->sum('fund_loss');
 

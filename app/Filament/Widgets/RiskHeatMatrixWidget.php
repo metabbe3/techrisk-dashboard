@@ -46,6 +46,7 @@ class RiskHeatMatrixWidget extends Widget
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
+            'v' => Cache::get('dashboard_cache_version', 0),
         ]));
 
         $cached = Cache::remember($cacheKey, now()->addMinutes(15), function () {

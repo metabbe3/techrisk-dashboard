@@ -28,6 +28,7 @@ class MonthlyIncidentsChart extends ChartWidget
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
+            'v' => Cache::get('dashboard_cache_version', 0),
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {

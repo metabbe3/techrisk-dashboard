@@ -27,13 +27,14 @@ class IncidentsByPicChart extends ChartWidget
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
+            'v' => Cache::get('dashboard_cache_version', 0),
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Incident::query()
                 ->select('users.name as pic_name', DB::raw('count(incidents.id) as total'))
                 ->join('users', 'incidents.pic_id', '=', 'users.id')
-                ->excludedFromCounts()
+                ->aiCounts()
                 ->groupBy('users.name');
 
             if ($this->start_date && $this->end_date) {

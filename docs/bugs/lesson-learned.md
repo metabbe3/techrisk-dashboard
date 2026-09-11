@@ -768,16 +768,70 @@ duplicate is arriving (healer re-dispatch vs queue retry) — `attempts()` is th
 
 ---
 
+### [BUG-010] - Chart/report surfaces drifted from count rules + caches ignoring the freshness version
+
+**Date:** 2026-09-11
+**Discovered By:** Full-codebase audit (code audit)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+The BUG-005/007 drift class, next generation — dashboard chart and scheduled-report
+surfaces that stopped matching the card totals:
+
+1. Incidents-by-Type / by-PIC / by-Label and Fund-Loss-Trend charts used
+   `excludedFromCounts()` but no classification filter → **Issues appeared in dashboard
+   charts** while the stat cards next to them excluded Issues. `IncidentStatsService`
+   fund_loss sum had the same one-query drift (total/open/severity filtered
+   classification, fund_loss didn't) → WarRoom quick stats overstated losses.
+2. Eight widget caches (monthly, severity, type, pic, label, fund-loss trend, risk heat,
+   action improvements) had no `dashboard_cache_version` in the key → after an incident
+   edit, stat cards refreshed instantly while the charts beside them served stale data
+   for up to 15 minutes — a self-contradicting dashboard.
+3. `mtbf_{tab}_{year}` table-column cache (1-hour TTL) was never invalidated by
+   `flushIncidentCache()` → the MTBF column showed pre-edit numbers long after every
+   other metric updated.
+4. `SendReport` filtered `whereIn('incident_type_id', …)` but the saved filter holds
+   IncidentType enum values (the Reporting page correctly uses `incident_type`) → the
+   scheduled report's type filter silently matched nothing. Its `end_date` was also
+   parsed at midnight, excluding the final day (the exact BUG-005 boundary bug, missed
+   here).
+
+### Root Cause
+Each new surface re-derived the count/filter rules instead of calling the shared scope
+(`aiCounts()`), and cache keys were copy-pasted without the version component the stat
+cards already had.
+
+### Fix
+Charts and the stats service now use `aiCounts()` / explicit classification; every widget
+cache key embeds `dashboard_cache_version`; the mtbf column key embeds the version (bump
+invalidates for free, no pattern enumeration needed); SendReport filters
+`incident_type` with `endOfDay()`.
+
+### Lesson Learned
+A cache key is part of the freshness contract: if one surface keys on
+`dashboard_cache_version`, every surface serving the same data must too — otherwise the
+dashboard contradicts itself after every write. And a filter is only as good as the
+column it queries: `incident_type` (enum string) vs `incident_type_id` (FK) — a whereIn
+on the wrong one is a silent match-nothing.
+
+### Prevention Checklist
+- [x] Chart queries via shared `aiCounts()` scope, not hand-rolled filters
+- [x] Version component in every incident-derived widget cache key
+- [x] getBaseStats fund_loss exclusion tested (IncidentStatsServiceTest)
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 9 |
+| Total Bugs | 10 |
 | Critical | 0 |
-| High | 6 |
+| High | 7 |
 | Medium | 2 |
 | Low | 0 |
-| Resolved | 9 |
+| Resolved | 10 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -785,7 +839,7 @@ duplicate is arriving (healer re-dispatch vs queue retry) — `attempts()` is th
 |-----------|-------|
 | Model | 0 |
 | Controller | 0 |
-| Filament Resource | 3 |
+| Filament Resource | 4 |
 | API Endpoint | 0 |
 | Database/Migration | 0 |
 | Frontend/CSS | 0 |

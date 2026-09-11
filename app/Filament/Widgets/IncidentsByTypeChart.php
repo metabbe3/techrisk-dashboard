@@ -26,11 +26,14 @@ class IncidentsByTypeChart extends ChartWidget
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
+            'v' => Cache::get('dashboard_cache_version', 0),
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+            // aiCounts(): classification Incident + fund-status exclusion — Issues
+            // must not appear on the dashboard charts (card totals exclude them).
             $query = Incident::select('incident_type', \DB::raw('count(*) as total'))
-                ->excludedFromCounts();
+                ->aiCounts();
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

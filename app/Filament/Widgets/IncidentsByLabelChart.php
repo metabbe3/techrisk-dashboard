@@ -26,12 +26,13 @@ class IncidentsByLabelChart extends ChartWidget
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
+            'v' => Cache::get('dashboard_cache_version', 0),
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Label::query()
                 ->withCount(['incidents' => function ($query) {
-                    $query->excludedFromCounts();
+                    $query->aiCounts();
                     if ($this->start_date && $this->end_date) {
                         $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
                     } else {

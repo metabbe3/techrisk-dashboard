@@ -49,11 +49,14 @@ class SendReport extends Command
         }
 
         if ($data['end_date']) {
-            $query->where('incident_date', '<=', Carbon::parse($data['end_date']));
+            // DatePicker values are midnight-only — include the final day.
+            $query->where('incident_date', '<=', Carbon::parse($data['end_date'])->endOfDay());
         }
 
         if (! empty($data['incident_types'])) {
-            $query->whereIn('incident_type_id', $data['incident_types']);
+            // Filter stores IncidentType enum values (same as Reporting page);
+            // incident_type_id is the FK column and never matched them.
+            $query->whereIn('incident_type', $data['incident_types']);
         }
 
         if (! empty($data['statuses'])) {

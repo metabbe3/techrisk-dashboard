@@ -27,6 +27,7 @@ class FundLossTrendChart extends ChartWidget
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
+            'v' => Cache::get('dashboard_cache_version', 0),
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
@@ -34,7 +35,7 @@ class FundLossTrendChart extends ChartWidget
                 DB::raw('SUM(fund_loss) as total_fund_loss'),
                 DB::raw('MONTH(incident_date) as month')
             )
-                ->excludedFromCounts()
+                ->aiCounts()
                 ->groupBy('month');
 
             if ($this->start_date && $this->end_date) {

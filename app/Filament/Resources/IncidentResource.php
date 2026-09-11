@@ -295,7 +295,9 @@ class IncidentResource extends Resource
                     ->state(function (Incident $record): int {
                         $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
                         $year = $record->incident_date->year;
-                        $cacheKey = "mtbf_{$tab}_{$year}";
+                        // Version in the key: a dashboard_cache_version bump (metrics
+                        // recalculation) invalidates this 1-hour cache for free.
+                        $cacheKey = "mtbf_{$tab}_{$year}_v".Cache::get('dashboard_cache_version', 0);
 
                         $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($tab, $year) {
                             $query = Incident::whereYear('incident_date', $year)
