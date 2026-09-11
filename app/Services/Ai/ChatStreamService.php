@@ -5,6 +5,7 @@ namespace App\Services\Ai;
 use App\Models\AiSetting;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
+use App\Models\Incident;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -121,7 +122,7 @@ class ChatStreamService
         // If no referenced incidents sent, scan conversation history for previously mentioned IDs
         if (empty($referencedIds)) {
             $historyText = collect($history)->map(fn ($m) => $m['content'])->implode(' ');
-            if (preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $historyText, $historyMatches)) {
+            if (preg_match_all(Incident::ID_PATTERN, $historyText, $historyMatches)) {
                 $referencedIds = array_unique($historyMatches[0]);
             }
         }
@@ -135,6 +136,9 @@ class ChatStreamService
                 if (! empty($enriched['extra_context'])) {
                     $userMessage .= $this->contextService->fenceUntrusted($enriched['extra_context'], 'Retrieved context');
                 }
+                // /search already ran the web search — recorded on the message
+                // as web_search_used and used to skip the toggle path below.
+                $searchEnriched = $slashCommand === 'search';
             }
         }
 
@@ -144,12 +148,13 @@ class ChatStreamService
         // and miss-fired; the toggle is unambiguous.
 
         // Force web search when toggle is ON and not already enriched
-        if ($request->boolean('web_search') && ! $searchEnriched && $slashCommand !== 'search') {
+        if ($request->boolean('web_search') && ! $searchEnriched) {
             $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
             if ($searchContext) {
                 // Fence web results as untrusted data (prompt-injection defense).
                 $userMessage .= $this->contextService->fenceUntrusted($searchContext, 'Retrieved web results');
                 $userMessage .= "\n\nSupplementary web search results are included above. Integrate external references with internal data where relevant. Cite external sources using markdown links.";
+                $searchEnriched = true;
             }
         }
 
@@ -220,6 +225,7 @@ class ChatStreamService
             $allToolCalls = [];
             $apiMsgs = $apiMessages;
             $result = null;
+            $toolBudgetExhausted = false;
 
             try {
                 // Agentic tool-calling loop: stream → if tool_calls, execute + emit
@@ -295,6 +301,12 @@ class ChatStreamService
                             'result_length' => strlen($toolResult['content'] ?? ''),
                         ];
                     }
+
+                    // Last allowed round ended on tool calls: the loop exits
+                    // without a final answer turn.
+                    if ($round === $maxToolRounds) {
+                        $toolBudgetExhausted = true;
+                    }
                 }
             } catch (\Throwable $e) {
                 Log::warning('AI stream error', ['error' => $e->getMessage()]);
@@ -323,9 +335,11 @@ class ChatStreamService
                     $errorData = json_decode($rawBody, true);
                     $rawError = $errorData['error']['message'] ?? ($errorData['message'] ?? $rawBody);
                 }
-                $userError = $rawError
-                    ? 'AI error: '.$rawError
-                    : 'AI returned an empty response. Try rephrasing your question.';
+                $userError = match (true) {
+                    $rawError !== null => 'AI error: '.$rawError,
+                    $toolBudgetExhausted => 'The assistant ran out of tool-calling rounds while gathering data. Try narrowing your question.',
+                    default => 'AI returned an empty response. Try rephrasing your question.',
+                };
                 Log::warning('AI stream returned empty response', [
                     'model' => $resolvedModel,
                     'finish_reason' => $finishReason,
@@ -379,7 +393,8 @@ class ChatStreamService
                     'tokens_used' => $usage['total_tokens'] ?? null,
                     'prompt_tokens' => $usage['prompt_tokens'] ?? null,
                     'completion_tokens' => $usage['completion_tokens'] ?? null,
-                    'web_search_used' => $searchEnriched,
+                    'web_search_used' => $searchEnriched
+                        || collect($allToolCalls)->contains(fn ($t) => ($t['name'] ?? '') === 'web_search'),
                     'tool_calls' => ! empty($allToolCalls) ? $allToolCalls : null,
                     'created_at' => now(),
                 ]);

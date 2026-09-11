@@ -13,6 +13,7 @@ use App\Models\Incident;
 use App\Models\IncidentType;
 use App\Models\Label;
 use App\Models\StatusUpdate;
+use App\Models\User;
 use App\Observers\ActionImprovementObserver;
 use App\Observers\CategoryObserver;
 use App\Observers\IncidentObserver;
@@ -20,6 +21,7 @@ use App\Observers\IncidentTypeObserver;
 use App\Observers\LabelObserver;
 use App\Observers\RagDocumentObserver;
 use App\Observers\StatusUpdateObserver;
+use App\Observers\UserCacheObserver;
 use App\Policies\ActionImprovementPolicy;
 use App\Policies\IncidentPolicy;
 use App\Services\SensitiveDataFilter;
@@ -113,6 +115,7 @@ class AppServiceProvider extends ServiceProvider
         Label::observe(LabelObserver::class);
         IncidentType::observe(IncidentTypeObserver::class);
         Category::observe(CategoryObserver::class);
+        User::observe(UserCacheObserver::class);
 
         Gate::policy(Incident::class, IncidentPolicy::class);
         Gate::policy(ActionImprovement::class, ActionImprovementPolicy::class);

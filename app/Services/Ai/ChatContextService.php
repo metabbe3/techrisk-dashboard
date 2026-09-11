@@ -279,7 +279,7 @@ class ChatContextService
             }
         } else {
             $context .= "## Quick Stats (this year)\n{$stats}\n\n";
-            $context .= "## Recent Incidents (last 10)\n{$recent}\n";
+            $context .= "## Recent Incidents (last 8)\n{$recent}\n";
 
             if ($enriched) {
                 $context .= "\n## Additional Context (based on your question)\n{$enriched}\n";

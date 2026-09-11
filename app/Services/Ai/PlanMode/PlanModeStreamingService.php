@@ -5,6 +5,7 @@ namespace App\Services\Ai\PlanMode;
 use App\Models\AiSetting;
 use App\Models\ChatConversation;
 use App\Models\ChatMessage;
+use App\Models\Incident;
 use App\Services\Ai\AiUsageLogger;
 use App\Services\Ai\ChatContextService;
 use App\Services\Ai\Concerns\StripsThinkingTags;
@@ -65,7 +66,7 @@ class PlanModeStreamingService
 
         if (empty($referencedIds)) {
             $historyText = collect($history)->map(fn ($m) => $m['content'])->implode(' ');
-            if (preg_match_all('/\d{4}_(?:IN|IS)_\d{4}/', $historyText, $matches)) {
+            if (preg_match_all(Incident::ID_PATTERN, $historyText, $matches)) {
                 $referencedIds = array_unique($matches[0]);
             }
         }

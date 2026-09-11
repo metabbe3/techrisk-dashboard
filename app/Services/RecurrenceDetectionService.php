@@ -285,11 +285,14 @@ class RecurrenceDetectionService
 
     private function fetchCandidates(Incident $incident)
     {
+        // limit() without orderBy returns arbitrary rows — the most recent
+        // (most likely true recurrences) could never be scored.
         return Incident::whereIn('classification', [IncidentClassification::Incident->value, IncidentClassification::Issue->value])
             ->where('id', '!=', $incident->id)
             ->where('incident_date', '>=', now()->subMonths(self::LOOKBACK_MONTHS))
             ->with(['actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date']), 'labels:id,name'])
             ->select(Incident::SIMILARITY_COLUMNS)
+            ->latest('incident_date')
             ->limit(self::CANDIDATE_LIMIT)
             ->get();
     }

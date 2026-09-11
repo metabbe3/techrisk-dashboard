@@ -965,11 +965,7 @@ class WarRoomService
                 );
             }
 
-            if (! empty($results['context'])) {
-                return $results['context'];
-            }
-
-            return is_string($results) ? $results : null;
+            return ! empty($results['context']) ? $results['context'] : null;
         } catch (\Throwable $e) {
             Log::warning("[WarRoom] Web search failed for agent {$agentRole}", ['error' => $e->getMessage()]);
 
@@ -1003,18 +999,6 @@ class WarRoomService
         }
 
         return '';
-    }
-
-    private function extractReasoning(array $responseData): array
-    {
-        $msgData = $responseData['choices'][0]['message'] ?? [];
-
-        return [
-            'content' => $msgData['reasoning_content'] ?? $msgData['thinking'] ?? null,
-            'tokens' => $responseData['usage']['completion_tokens_details']['reasoning_tokens']
-                ?? $responseData['usage']['reasoning_tokens']
-                ?? null,
-        ];
     }
 
     protected function getTimeout(): int

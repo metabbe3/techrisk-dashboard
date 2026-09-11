@@ -21,7 +21,6 @@ class WarRoomStreamingService
         int $maxTokens,
         array $tools = [],
         ?callable $onDelta = null,
-        ?callable $onComplete = null,
     ): array {
         $baseUrl = $this->getBaseUrl();
         $apiKey = $this->getApiKey();
@@ -94,10 +93,6 @@ class WarRoomStreamingService
             'error' => $result['error'],
             'http_code' => $result['http_code'],
         ];
-
-        if ($onComplete) {
-            $onComplete($warRoomResult);
-        }
 
         return $warRoomResult;
     }
