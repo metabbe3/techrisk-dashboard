@@ -2,8 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Enums\FundStatus;
-use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Models\Incident;
 use App\Models\Label;
@@ -52,7 +50,7 @@ class CalculateIncidentMetrics implements ShouldQueue
         }
 
         $this->calculateMetrics();
-        $this->calculateCategoryMtbf();
+        $this->calculateCategoryMtbf($this->incident);
         $this->calculateMtbfAll();
 
         if ($this->shouldUpdateAdjacent) {
@@ -89,6 +87,19 @@ class CalculateIncidentMetrics implements ShouldQueue
         }
 
         // Calculate MTBF using optimized query
+        $this->recalculateBaseMtbfFor($incident);
+
+        $incident->saveQuietly();
+    }
+
+    /**
+     * Base MTBF for one incident: days since the previous metric-eligible
+     * row of the same classification/year, or from Jan 1 when it is the
+     * first of the year (null past 90 days). Shared by the main path and
+     * the classification-change adjacent path — one formula for both.
+     */
+    private function recalculateBaseMtbfFor(Incident $incident): void
+    {
         $year = $incident->incident_date->year;
         $previousIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification->value)
@@ -121,8 +132,6 @@ class CalculateIncidentMetrics implements ShouldQueue
                 $incident->mtbf = $daysSinceYearStart;
             }
         }
-
-        $incident->saveQuietly();
     }
 
     /**
@@ -167,7 +176,7 @@ class CalculateIncidentMetrics implements ShouldQueue
 
             // Recalculate category MTBF for the next incident — its "previous"
             // (this incident) may have changed date, affecting category gaps
-            $this->recalculateCategoryMtbfFor($nextIncident);
+            $this->calculateCategoryMtbf($nextIncident);
             $this->recalculateMtbfAllFor($nextIncident);
 
             $nextIncident->saveQuietly();
@@ -199,69 +208,13 @@ class CalculateIncidentMetrics implements ShouldQueue
             ->first();
 
         if ($nextInOldGroup) {
-            $this->recalculateCategoryMtbfFor($nextInOldGroup);
+            // The departed incident was this row's "previous" — rebuild its
+            // base mtbf and mtbf_all from the old group, not just categories.
+            $this->recalculateBaseMtbfFor($nextInOldGroup);
+            $this->calculateCategoryMtbf($nextInOldGroup);
+            $this->recalculateMtbfAllFor($nextInOldGroup);
             $nextInOldGroup->saveQuietly();
         }
-    }
-
-    /**
-     * Recalculate all category MTBF columns for a given incident.
-     * Used when updating adjacent incidents whose "previous" may have changed.
-     */
-    private function recalculateCategoryMtbfFor(Incident $target): void
-    {
-        $year = $target->incident_date->year;
-
-        // Load all incidents for this year + classification once, sorted for MTBF calculation
-        $yearIncidents = Incident::whereYear('incident_date', $year)
-            ->where('classification', $target->classification->value)
-            ->orderBy('incident_date')->orderBy('id')
-            ->get(['id', 'incident_date', 'severity', 'fund_status', 'recovered_fund', 'incident_type']);
-
-        // Find target's index in the sorted collection
-        $targetIndex = $yearIncidents->search(fn ($inc) => $inc->id === $target->id);
-
-        $categories = [
-            'mtbf_ongoing' => fn ($inc) => $inc->incident_status !== IncidentStatus::Completed,
-            'mtbf_completed' => fn ($inc) => $inc->incident_status === IncidentStatus::Completed,
-            'mtbf_p4' => fn ($inc) => $inc->severity === Severity::P4,
-            'mtbf_tech' => fn ($inc) => $inc->incident_type === 'Tech',
-            'mtbf_non_tech' => fn ($inc) => $inc->incident_type === 'Non-tech',
-            'mtbf_fund_loss' => fn ($inc) => $inc->fund_status === FundStatus::ConfirmedLoss,
-            'mtbf_potential_recovery' => fn ($inc) => $inc->fund_status === FundStatus::PotentialRecovery,
-            'mtbf_fully_recovered' => fn ($inc) => $inc->fund_status === FundStatus::FullyRecovered,
-            'mtbf_non_tech_loss' => fn ($inc) => $inc->fund_status === FundStatus::NonTechLoss,
-            'mtbf_non_incident' => fn ($inc) => $inc->severity === Severity::NonIncident,
-        ];
-
-        $yearStart = Carbon::create($year, 1, 1)->startOfDay();
-
-        foreach ($categories as $column => $filter) {
-            // Get all incidents matching this category, before the target
-            $previous = null;
-            for ($i = ($targetIndex !== false ? $targetIndex - 1 : $yearIncidents->count() - 1); $i >= 0; $i--) {
-                if ($filter($yearIncidents[$i])) {
-                    $previous = $yearIncidents[$i];
-                    break;
-                }
-            }
-
-            $target->{$column} = $previous
-                ? abs($target->incident_date->startOfDay()->diffInDays($previous->incident_date->startOfDay()))
-                : abs($target->incident_date->startOfDay()->diffInDays($yearStart));
-        }
-
-        // Recovered category (recovered_fund > 0)
-        $previousRecovered = null;
-        for ($i = ($targetIndex !== false ? $targetIndex - 1 : $yearIncidents->count() - 1); $i >= 0; $i--) {
-            if ($yearIncidents[$i]->recovered_fund > 0) {
-                $previousRecovered = $yearIncidents[$i];
-                break;
-            }
-        }
-        $target->mtbf_recovered = $previousRecovered
-            ? abs($target->incident_date->startOfDay()->diffInDays($previousRecovered->incident_date->startOfDay()))
-            : abs($target->incident_date->startOfDay()->diffInDays($yearStart));
     }
 
     /**
@@ -295,11 +248,12 @@ class CalculateIncidentMetrics implements ShouldQueue
     }
 
     /**
-     * Calculate MTBF for all category types.
+     * Calculate MTBF for all category types. Runs for the job's incident and
+     * for adjacent incidents whose "previous" row may have changed (date or
+     * classification edits) — one category definition for all callers.
      */
-    private function calculateCategoryMtbf(): void
+    private function calculateCategoryMtbf(Incident $incident): void
     {
-        $incident = $this->incident;
         $year = $incident->incident_date->year;
 
         $categories = [

@@ -651,16 +651,73 @@ the observer's bump triggers.
 
 ---
 
+### [BUG-008] - Metrics job: ghost columns + observer TypeError killed every adjacent recalculation
+
+**Date:** 2026-09-11
+**Discovered By:** Full-codebase audit (code audit)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Five defects in the `CalculateIncidentMetrics` job / `IncidentObserver` pair, all on the
+"adjacent recalculation" path (run when an incident has an eligible successor in the same
+classification/year, or when classification changes):
+
+1. `recalculateCategoryMtbfFor()` wrote `mtbf_ongoing` and `mtbf_tech` — columns that exist
+   in no migration and have zero consumers. `saveQuietly()` threw `QueryException` (unknown
+   column), the job died across all 3 retries, and `flushIncidentCache()` — which runs after
+   the adjacent block — never executed, so `dashboard_cache_version` never bumped.
+2. The same method's category closures read `$inc->incident_status`, but the `get()` never
+   selected that column — every row compared as null (BUG-006's dead-filter class).
+3. The adjacent category list lacked `non_fund_loss`, which the main path writes — the two
+   lists inside one file had drifted.
+4. `IncidentObserver` passed `getOriginal('classification')` (an enum instance via EnumCast)
+   into the job's `?string $previousClassification` — `TypeError` on every classification
+   change, meaning the classification-change path was unreachable end-to-end.
+5. `updateAdjacentForClassification()` never recalculated the old-group successor's base
+   `mtbf`/`mtbf_all` at all — masked by defect 4 crashing first.
+
+In production (redis queue) the QueryException/TypeError surfaced only in `failed_jobs`;
+the incident's own row metrics were already saved, so the failure was silent.
+
+### Root Cause
+The adjacent/classification-change path had no test coverage and had drifted from the main
+path inside the same file — the fourth instance of the repo's core drift class
+(BUG-005/006/007): the same invariant re-derived per path instead of shared.
+
+### Fix
+- One category definition: `calculateCategoryMtbf(Incident $target)` parameterized and used
+  by the main path and both adjacent call sites; the drifted `recalculateCategoryMtbfFor()`
+  deleted.
+- Base MTBF block extracted to `recalculateBaseMtbfFor()` (shared by `calculateMetrics()` and
+  the classification-change path, which now also rebuilds base `mtbf` and `mtbf_all`).
+- Observer passes `getOriginal('classification')?->value`.
+- Tests: `tests/Feature/CalculateIncidentMetricsAdjacentTest.php` (insert-between and
+  classification-change, both failed before the fix).
+
+### Lesson Learned
+Two implementations of one metric in the same file drift exactly like two implementations
+in two files — parameterize the shared function instead of writing a "recalculate" twin.
+And an enum-cast model's `getOriginal()` returns the enum instance, not the string: typed
+job constructors crash on it.
+
+### Prevention Checklist
+- [x] Single parameterized implementation for main + adjacent paths
+- [x] Tests written (CalculateIncidentMetricsAdjacentTest, 2 cases)
+- [x] Related suites green (Observers 11, Analytics 3, DashboardFundLoss 3)
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 7 |
+| Total Bugs | 8 |
 | Critical | 0 |
-| High | 4 |
+| High | 5 |
 | Medium | 2 |
 | Low | 0 |
-| Resolved | 7 |
+| Resolved | 8 |
 | Open | 0 |
 
 ### Bug Trends by Component

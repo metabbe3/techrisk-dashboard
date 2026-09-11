@@ -114,8 +114,9 @@ class IncidentObserver
 
         // Dispatch metrics calculation to queue if needed
         if ($needsRecalculation || $needsCategoryRecalculation || $needsAutoLabel) {
+            // getOriginal() returns the EnumCast instance — the job wants the string value.
             $previousClassification = $incident->isDirty('classification')
-                ? $incident->getOriginal('classification')
+                ? $incident->getOriginal('classification')?->value
                 : null;
 
             dispatch(new CalculateIncidentMetrics(
