@@ -69,6 +69,36 @@ app/
 
 ---
 
+## Key Files & Dependency Map
+
+Before editing any file below, check the "consumed by" column — a rule change must reach **every** listed surface, not just the one you came to fix. BUG-005/006/007 were all one surface drifting while the rest stayed correct.
+
+| File | Role | Consumed by |
+|------|------|-------------|
+| `app/Enums/Severity.php` | `METRIC_ELIGIBLE` = P1–P4, X1–X4 — the ONLY definition of who counts in MTTR/MTBF (excludes `G`, `Non Incident`) | every metrics surface below |
+| `app/Enums/FundStatus.php` | `EXCLUDED_FROM_COUNTS` = Potential recovery / Fully recovered / Non Tech Loss | all count/fund queries |
+| `app/Enums/IncidentStatus.php` | `Open / In progress / Finalization / Completed` — no other values exist | status filters everywhere |
+| `app/Models/Incident.php` | `excludedFromCounts()` scope; `aiCounts()` scope (single source of truth for AI-facing counts); `shouldCalculateMttrByDays()` | widgets, AI services, exports |
+| `app/Observers/IncidentObserver.php` | Gate for every Incident write; decides when `CalculateIncidentMetrics` dispatches. Its dirty-field trigger list must contain **every field that feeds a cached number** (`fund_loss`, `potential_fund_loss`, `recovered_fund`, status/severity/type/fund_status/classification/dates) | — |
+| `app/Jobs/CalculateIncidentMetrics.php` | Writes per-row `mttr`, `mtbf`, `mtbf_*` columns; `flushIncidentCache()` bumps `dashboard_cache_version` | invoked only via observer + `incidents:recalculate-metrics` |
+| `app/Services/Analytics/AnalyticsQueryService.php` | Analytics page charts; severity scope applied once in `buildSingleDataset()` | `AnalyticsPage` |
+| `app/Policies/ActionImprovementPolicy.php` | `viewAny`: `view incidents` OR `access api`; write ops need `manage incidents` | Action Improvements tab + add button |
+
+**Surfaces that must stay in sync for MTTR/MTBF/fund numbers:** `Filament/Widgets/DashboardStatsOverview`, `Widgets/MttrMtbfTrendChart`, `Widgets/AiTrendInsights`, `Widgets/PotentialFundLoss`, `IncidentResource/Pages/ListIncidents` (footer + export), `Pages/Reporting`, `Console/Commands/SendReport`, `Http/Controllers/Ai/AnalyzeTrendsController`, `Services/Ai/ChatContextService`, `Services/WarRoom/WarRoomToolExecutor`, `Exports/Sheets/*`, `Services/Analytics/AnalyticsQueryService`.
+
+**Business rules (confirmed):** MTTR positive = minutes, negative = days (fund-status driven). Fund Loss card = classification `Incident` + status `Completed` + `excludedFromCounts`. "Open cases" = `incident_status != Completed`. Base MTBF = calendar year window.
+
+**Cache keys that gate freshness:** `dashboard_cache_version` (bump refreshes dashboard widget cache), `analytics_v2_*` (15 min), `chat_quick_stats_v2` (5 min, cleared by `ChatContextService::clearDataCache()`).
+
+### Edit-Safety Rules (from BUG-005/006/007)
+
+1. Enum filters are written from enum cases (`IncidentStatus::Completed->value`), never hand-typed strings — a `whereNotIn` listing values that don't exist is a silent no-op.
+2. Adding a field that feeds a dashboard/AI number → it must join the observer's recalculation trigger list, or caches serve stale numbers until TTL.
+3. Changing a counting/metric rule → walk the whole surface list above; fix the shared scope, not one call site.
+4. A filter is only real if the query actually selects the column it checks (comparing a never-selected column = comparing null).
+
+---
+
 ## Architecture Rules
 
 - **Service Layer:** Complex business logic goes in `app/Services/{Domain}/`, not controllers. Use dependency injection.
