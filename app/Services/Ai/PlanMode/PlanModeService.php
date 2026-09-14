@@ -770,6 +770,11 @@ class PlanModeService
                 && count($parsed['gaps'] ?? []) > 0
                 && ($parsed['coverage_score'] ?? 1.0) < config('ai.plan_mode.min_coverage_score', 0.8);
 
+            // Cache the FILTERED decision, not the model's raw flag: both streamer
+            // loops re-derive research_needed from this entry without the coverage
+            // precondition and would announce research the AnalyzePlanGaps job
+            // (which uses the filtered PlanResult) never runs.
+            $parsed['research_needed'] = $researchNeeded;
             Cache::put("plan_gap_analysis:{$planId}", $parsed, now()->addHours(1));
 
             if (! $researchNeeded) {

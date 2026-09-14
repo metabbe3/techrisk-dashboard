@@ -5,7 +5,6 @@ namespace App\Jobs\Ai;
 use App\Models\Incident;
 use App\Models\ProactiveInsight;
 use App\Services\Ai\AiTextService;
-use App\Services\Ai\AiUsageLogger;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -28,7 +27,7 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
         $this->onQueue('default');
     }
 
-    public function handle(AiTextService $textService, AiUsageLogger $usageLogger): void
+    public function handle(AiTextService $textService): void
     {
         $incident = Incident::with(['pic', 'labels', 'actionImprovements'])->find($this->incidentId);
 
@@ -39,7 +38,6 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
         $model = config('ai.perception.proactive_analysis_model', 'FAST-MODEL');
         $prompt = config('ai.prompts.proactive_analysis.system', '');
         $userMessage = $this->buildPrompt($incident);
-        $startTime = microtime(true);
 
         try {
             $result = $textService->callAiForJson(
@@ -50,8 +48,6 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
                 ['risk_level' => 'low', 'key_risks' => [], 'recommended_actions' => [], 'similar_patterns' => '', 'escalation_needed' => false],
                 maxTokens: 500,
             );
-
-            $responseTimeMs = (microtime(true) - $startTime) * 1000;
 
             if (empty($result) || ! isset($result['risk_level'])) {
                 Log::warning('[Perception] Empty or invalid proactive analysis response', [
@@ -74,22 +70,16 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
                 'incident_id' => $incident->id,
                 'type' => $this->insightType,
             ]);
-
         } catch (\Throwable $e) {
-            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            // callAiForJson already records usage for every AI outcome (and never
+            // throws — sendJsonRequest swallows transport errors). The only
+            // thrower here is ProactiveInsight::create (a DB error), which is
+            // NOT an AI-usage event — logging it as one inflated the AI failure
+            // rate on the usage dashboard.
             Log::warning('[Perception] Failed to analyze incident', [
                 'incident_id' => $this->incidentId,
                 'error' => $e->getMessage(),
             ]);
-
-            $usageLogger->log(
-                fieldType: 'proactive_incident_analysis',
-                model: $model,
-                success: false,
-                responseTimeMs: $responseTimeMs,
-                errorMessage: $e->getMessage(),
-                metadata: ['incident_id' => $this->incidentId, 'insight_type' => $this->insightType],
-            );
         }
     }
 

@@ -398,6 +398,12 @@ class AiTextService
             return ['matched' => [], 'suggested' => []];
         }
 
+        // Same resilience contract as enhance(): breaker gate before the call,
+        // outcome recorded after (BUG-class: unprotected duplicate AI path).
+        if (! $this->circuitBreaker->isAvailable($resolvedModel)) {
+            return ['matched' => [], 'suggested' => []];
+        }
+
         $userMessage = "Incident data:\n";
         foreach ($incidentData as $key => $value) {
             if (filled($value)) {
@@ -438,6 +444,7 @@ class AiTextService
 
             if ($response->failed()) {
                 Log::warning('[Smart Labels] AI request failed', ['status' => $response->status()]);
+                $this->circuitBreaker->recordFailure($resolvedModel);
                 $this->logLabelUsage($resolvedModel, false, $inputLength, null, $promptTokens, $completionTokens, $totalTokens, $responseTimeMs, $apiRequestId, 'HTTP '.$response->status());
 
                 return ['matched' => [], 'suggested' => []];
@@ -445,6 +452,7 @@ class AiTextService
         } catch (\Throwable $e) {
             $responseTimeMs = (microtime(true) - $startTime) * 1000;
             Log::warning('AI label suggestion failed', ['error' => $e->getMessage()]);
+            $this->circuitBreaker->recordFailure($resolvedModel);
             $this->logLabelUsage($resolvedModel, false, $inputLength, null, null, null, null, $responseTimeMs, null, $e->getMessage());
 
             return ['matched' => [], 'suggested' => []];
@@ -454,6 +462,7 @@ class AiTextService
 
         if (empty($content)) {
             Log::warning('[Smart Labels] Empty content from AI', ['status' => $response->status()]);
+            $this->circuitBreaker->recordFailure($resolvedModel);
             $this->logLabelUsage($resolvedModel, false, $inputLength, null, $promptTokens, $completionTokens, $totalTokens, $responseTimeMs, $apiRequestId, 'Empty response');
 
             return ['matched' => [], 'suggested' => []];
@@ -461,6 +470,7 @@ class AiTextService
 
         Log::info('[Smart Labels] AI response', ['content' => substr($content, 0, 1000)]);
         $result = $this->parseLabelSuggestions($content, $availableLabels);
+        $this->circuitBreaker->recordSuccess($resolvedModel);
         $this->logLabelUsage($resolvedModel, true, $inputLength, strlen($content), $promptTokens, $completionTokens, $totalTokens, $responseTimeMs, $apiRequestId);
 
         return $result;
@@ -924,17 +934,21 @@ class AiTextService
                 }
             }
 
-            $this->logUsage('document_summary', $resolvedModel, $result, $inputLength);
-
             return $result;
         } catch (ConnectionException $e) {
             Log::error('AI connection timeout during document summarization', ['filename' => $originalFilename]);
 
-            return AiTextResult::failure('Connection timed out. The document may be too large.', $resolvedModel ?? null, 0);
+            return $result = AiTextResult::failure('Connection timed out. The document may be too large.', $resolvedModel ?? null, 0);
         } catch (\Exception $e) {
             Log::error('Document summarization exception', ['error' => $e->getMessage()]);
 
-            return AiTextResult::failure('An unexpected error occurred while summarizing the document.', $resolvedModel ?? null, 0);
+            return $result = AiTextResult::failure('An unexpected error occurred while summarizing the document.', $resolvedModel ?? null, 0);
+        } finally {
+            // Every path is billed tokens or budget latency — record failures too,
+            // not just HTTP outcomes (usage blind spot on timeout/exception).
+            if ($result) {
+                $this->logUsage('document_summary', $resolvedModel, $result, $inputLength);
+            }
         }
     }
 

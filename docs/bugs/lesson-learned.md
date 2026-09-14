@@ -940,16 +940,82 @@ have added useless `canAccess` noise to 3 already-gated resources).
 
 ---
 
+### [BUG-013] - Usage-log blind spots, unprotected label path, plan-mode research announced but never run
+
+**Date:** 2026-09-14
+**Discovered By:** Full-codebase audit (code audit)
+**Severity:** Medium
+**Status:** Resolved
+
+### Description
+Four consistency defects around AI-call accounting and the plan-mode
+research decision:
+
+1. `AiTextService::summarizeDocument` logged usage only on the
+   HTTP-response paths; the `ConnectionException`/`\Exception` catches
+   returned without recording — failed document summaries (the calls that
+   cost the most latency) were invisible on the usage dashboard.
+2. `ProactiveIncidentAnalysisJob`'s catch block recorded an AI usage
+   FAILURE whenever `ProactiveInsight::create` threw (a DB error) — a
+   non-AI failure miscategorized as an AI-call failure, inflating the
+   failure rate the dashboard shows.
+3. `AiTextService::suggestLabels` is a duplicate AI HTTP path that never
+   joined the CircuitBreaker contract `enhance()` follows: label-call
+   failures never counted toward the breaker, and an open breaker never
+   gated it.
+4. `PlanModeService::analyzeGaps` acted on the FILTERED research decision
+   (`flag && gaps>0 && coverage<threshold`) but cached the model's RAW
+   flag; both streamer loops re-derived from the cache without the
+   coverage precondition → the UI announced "starting research on N
+   topics" for research the `AnalyzePlanGaps` job never dispatched
+   (it went straight to synthesis).
+
+### Root Cause
+Same drift class as BUG-005/007: a decision (or its recording) re-derived
+per surface from an upstream artifact, instead of the artifact carrying
+the finished decision. The cache entry and the returned `PlanResult` are
+two projections of ONE decision — caching the unfiltered projection let
+every consumer reconstruct a different verdict. Item 2 inverted the usual
+direction: the audit claimed the success path was unlogged, but the callee
+(`callAiForJson` → `logFeatureUsage`) already records every outcome — the
+caller's extra failure log was the actual defect.
+
+### Fix
+- `summarizeDocument`: `$result` assigned in both catches, `logUsage` moved
+  into `finally` (guarded against a still-null result).
+- `ProactiveIncidentAnalysisJob`: miscategorized catch-log and dead
+  `$startTime`/`$responseTimeMs` removed (callee owns usage logging;
+  `sendJsonRequest` never throws transport errors).
+- `suggestLabels`: breaker gate before the call + `recordSuccess`/
+  `recordFailure` after every outcome — identical contract to `enhance()`.
+- `analyzeGaps`: cache the filtered decision
+  (`$parsed['research_needed'] = $researchNeeded`) — one write site; both
+  streamer loops became consistent without touching them.
+
+### Lesson Learned
+Two rules: (1) When a value is cached for consumers to act on, cache the
+POST-CONDITION decision, not raw model output — otherwise every consumer
+re-implements the filter and drifts. (2) An audit claim is a hypothesis:
+verify which layer already owns the invariant before "fixing" it — here
+the fix for "success path not logged" was deleting the caller's log, not
+adding one.
+
+### Prevention Checklist
+- [x] PlanGapAnalysisTest: cached flag must equal the filtered decision
+      (RED-verified via stash before the fix)
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 12 |
+| Total Bugs | 13 |
 | Critical | 0 |
 | High | 9 |
-| Medium | 2 |
+| Medium | 3 |
 | Low | 0 |
-| Resolved | 12 |
+| Resolved | 13 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -962,8 +1028,8 @@ have added useless `canAccess` noise to 3 already-gated resources).
 | Database/Migration | 0 |
 | Frontend/CSS | 0 |
 | Queue/Job | 2 |
-| Other | 4 |
+| Other | 5 |
 
 ---
 
-*Last Updated: 2026-09-11*
+*Last Updated: 2026-09-14*
