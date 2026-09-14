@@ -279,6 +279,34 @@ Three-angle audit (unified API response, DRY, OOP/architecture). Each finding ha
 - **Location:** `app/Http/Controllers/Api/IncidentController.php:180,212`.
 - **Recommended Action (Phase 2):** `Cache::tags(['incidents','labels'])->remember(...)` per CLAUDE.md tag-based caching.
 
+### [A-1] Dual status vocabulary in `status_updates.status` (from 2026-09 audit)
+- **Category:** Architecture · **Severity:** Medium · **Status:** Open
+- **Location:** Relation manager writes Open/Investigation/Monitoring/Resolved/Closed/Recovered; `IncidentKanbanBoard` writes `IncidentStatus` enum values into the same column.
+- **Impact:** Any filter on `status_updates.status` silently misses half the vocabulary; `SendReport`'s status filter depends on this vocabulary and was left unfixed for the same reason.
+- **Recommended Action:** Product decision on one vocabulary + data migration; then fix SendReport's filter to match. (Cache-flush and `incident_type` column fixes from the same audit already shipped.)
+
+### [A-2] Three ways to compute MTBF display values
+- **Category:** Technical Debt · **Severity:** Medium · **Status:** Open
+- **Location:** stored `mtbf_*` columns (IncidentMetricsCalculator) vs `mtbf_display` on-the-fly formatting vs export-time computation in `Exports/Sheets/*`.
+- **Impact:** Same number rendered differently per surface; the 2026-09 audit unified the recalculation pipeline but not the display paths.
+- **Recommended Action:** One `MtbfFormatter`-style helper consumed by widget, model accessor, and export.
+
+### [A-3] `PlanModeStreamingService::streamPlanResume` duplicates `streamPlanResponse` (~300 lines) + raw curl fallback
+- **Category:** Technical Debt · **Severity:** Medium · **Status:** Open
+- **Location:** `app/Services/Ai/PlanMode/PlanModeStreamingService.php`.
+- **Recommended Action:** Large refactor without a test net — deferred deliberately; extract the shared phase pipeline when plan-mode tests exist.
+
+### [A-4] `DetectSimilarController` has no cache or rate limit
+- **Category:** Code Quality · **Severity:** Low · **Status:** Open
+- **Location:** `app/Http/Controllers/Ai/DetectSimilarController.php`.
+- **Impact:** Every hit runs the similarity pipeline (multiple AI calls).
+- **Recommended Action:** Rate limit per user + short-TTL result cache keyed by incident id + content hash.
+
+### [A-5] Recurrence candidate set intentionally includes Issues (kept behavior)
+- **Category:** Code Quality · **Severity:** Low · **Status:** Won't Fix
+- **Location:** `RecurrenceDetectionService::fetchCandidates` filters `classification IN (Incident, Issue)`.
+- **Rationale:** Similarity retrieval ≠ metric counting; `aiCounts()` binds the counts, not retrieval. Finding similar *Issues* is a feature. Documented here so a future audit doesn't flag it.
+
 ---
 
 ## Summary Statistics
@@ -288,18 +316,18 @@ Three-angle audit (unified API response, DRY, OOP/architecture). Each finding ha
 |----------|----------|------|--------|-----|-------|
 | Performance | 0 | 0 | 0 | 0 | 0 |
 | Security | 0 | 1 | 1 | 2 | 4 |
-| Architecture | 0 | 6 | 2 | 2 | 10 |
-| Technical Debt | 0 | 3 | 5 | 2 | 10 |
-| Code Quality | 0 | 1 | 5 | 1 | 7 |
-| **Total** | **0** | **11** | **13** | **7** | **31** |
+| Architecture | 0 | 6 | 3 | 2 | 11 |
+| Technical Debt | 0 | 3 | 7 | 2 | 12 |
+| Code Quality | 0 | 1 | 5 | 3 | 9 |
+| **Total** | **0** | **11** | **16** | **9** | **36** |
 
 ### By Status
 | Status | Count |
 |--------|-------|
-| Open | 31 |
+| Open | 35 |
 | In Progress | 0 |
 | Resolved | 0 |
-| Won't Fix | 0 |
+| Won't Fix | 1 |
 
 ---
 
@@ -311,4 +339,4 @@ Three-angle audit (unified API response, DRY, OOP/architecture). Each finding ha
 
 ---
 
-*Last Updated: 2026-06-29*
+*Last Updated: 2026-09-14*
