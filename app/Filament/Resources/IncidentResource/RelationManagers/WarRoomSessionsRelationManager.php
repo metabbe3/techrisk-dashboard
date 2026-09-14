@@ -54,6 +54,7 @@ class WarRoomSessionsRelationManager extends RelationManager
                     ->sortable()
                     ->placeholder('—'),
             ])
+            ->modifyQueryUsing(fn ($query) => $query->with('user')) // user.name column — avoid per-row query
             ->defaultSort('started_at', 'desc')
             ->actions([
                 Tables\Actions\Action::make('open')

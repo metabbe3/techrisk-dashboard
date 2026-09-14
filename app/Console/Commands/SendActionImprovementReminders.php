@@ -9,12 +9,18 @@ use App\Notifications\ActionImprovementEscalated;
 use App\Notifications\ActionImprovementOverdue;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 
 class SendActionImprovementReminders extends Command
 {
     protected $signature = 'reminders:send-action-improvements';
 
     protected $description = 'Send reminders for action improvements: due soon, overdue, and escalated.';
+
+    /** @var array<string, User> PIC users by lowercase email — one query instead of per-action lookups */
+    private array $usersByEmail = [];
+
+    private ?Collection $adminsCache = null;
 
     public function handle()
     {
@@ -58,11 +64,28 @@ class SendActionImprovementReminders extends Command
 
         $this->info("Found {$escalatedActions->count()} escalated action improvements (7+ days overdue).");
 
+        // One lookup for every PIC email across all three batches (was one
+        // query per action per email below). Keyed lowercase to keep the old
+        // case-insensitive WHERE semantics.
+        $this->usersByEmail = User::whereIn(
+            'email',
+            $dueSoonActions->merge($overdueActions)->merge($escalatedActions)
+                ->flatMap(fn ($a) => $a->pic_email ?? [])
+                ->filter()
+                ->unique()
+                ->values()
+        )->get()->keyBy(fn ($u) => strtolower($u->email))->all();
+
         foreach ($escalatedActions as $action) {
             $this->sendEscalatedNotification($action);
         }
 
         $this->info('Done.');
+    }
+
+    private function admins(): Collection
+    {
+        return $this->adminsCache ??= User::whereHas('roles', fn ($q) => $q->where('name', 'admin'))->get();
     }
 
     private function sendDueSoonNotification(ActionImprovement $action): void
@@ -71,7 +94,7 @@ class SendActionImprovementReminders extends Command
         $notified = [];
 
         foreach ($action->pic_email as $picEmail) {
-            $user = User::where('email', $picEmail)->first();
+            $user = $this->usersByEmail[strtolower($picEmail)] ?? null;
             if ($user && ! in_array($user->id, $notified)) {
                 $user->notify(new ActionImprovementDueSoon($action, $daysRemaining));
                 $notified[] = $user->id;
@@ -92,7 +115,7 @@ class SendActionImprovementReminders extends Command
         $notified = [];
 
         foreach ($action->pic_email as $picEmail) {
-            $user = User::where('email', $picEmail)->first();
+            $user = $this->usersByEmail[strtolower($picEmail)] ?? null;
             if ($user && ! in_array($user->id, $notified)) {
                 $user->notify(new ActionImprovementOverdue($action, $daysOverdue));
                 $notified[] = $user->id;
@@ -115,11 +138,11 @@ class SendActionImprovementReminders extends Command
         $this->sendOverdueNotification($action);
 
         // Escalate to admins
-        $admins = User::whereHas('roles', fn ($q) => $q->where('name', 'admin'))->get();
+        $admins = $this->admins();
         $notified = [];
 
         foreach ($action->pic_email as $picEmail) {
-            $user = User::where('email', $picEmail)->first();
+            $user = $this->usersByEmail[strtolower($picEmail)] ?? null;
             if ($user) {
                 $notified[] = $user->id;
             }

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Enums\Severity;
 use App\Http\Requests\Api\ApiFormRequest;
+use Illuminate\Validation\Rules\Enum;
 
 class StoreIncidentRequest extends ApiFormRequest
 {
@@ -20,7 +22,7 @@ class StoreIncidentRequest extends ApiFormRequest
             'summary' => ['required', 'string'],
             'no' => ['required', 'string', 'max:255', 'unique:incidents,no'],
             'root_cause' => ['nullable', 'string'],
-            'severity' => ['required', 'string'],
+            'severity' => ['required', 'string', new Enum(Severity::class)],
             'incident_type' => ['required', 'in:Tech,Non-tech'],
             'incident_source' => ['required', 'in:Internal,External'],
             'goc_upload' => ['boolean'],

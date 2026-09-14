@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Api\V1;
 
+use App\Enums\Severity;
 use App\Http\Requests\Api\ApiFormRequest;
+use Illuminate\Validation\Rules\Enum;
 
 class UpdateIncidentRequest extends ApiFormRequest
 {
@@ -20,7 +22,7 @@ class UpdateIncidentRequest extends ApiFormRequest
             'summary' => ['string'],
             'no' => ['string', 'max:255', 'unique:incidents,no,'.$this->route('incident')?->id],
             'root_cause' => ['nullable', 'string'],
-            'severity' => ['string'],
+            'severity' => ['string', new Enum(Severity::class)],
             'incident_type' => ['in:Tech,Non-tech'],
             'incident_source' => ['in:Internal,External'],
             'goc_upload' => ['boolean'],

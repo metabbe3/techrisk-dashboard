@@ -25,10 +25,6 @@ class GenerateWeeklySummaryController extends Controller
         $year = $validated['year'];
         $weeklyData = $this->weeklyDataService->getWeeklyData($year);
 
-        $totalOpen = collect($weeklyData)->sum('incident_open');
-        $totalClosed = collect($weeklyData)->sum('incident_closed');
-        $grandTotal = collect($weeklyData)->sum('total');
-
         if (empty($weeklyData)) {
             return $this->successResponse([
                 'success' => false,
@@ -40,6 +36,10 @@ class GenerateWeeklySummaryController extends Controller
                 'recommendation' => '',
             ]);
         }
+
+        $totalOpen = collect($weeklyData)->sum('incident_open');
+        $totalClosed = collect($weeklyData)->sum('incident_closed');
+        $grandTotal = collect($weeklyData)->sum('total');
 
         $result = $this->aiService->generateWeeklySummary(
             weeklyData: $weeklyData,
