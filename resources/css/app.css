@@ -2100,10 +2100,17 @@
     box-shadow: 0 20px 60px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.03);
     z-index: 50;
     width: 520px;
-    max-height: 75vh;
+    /* Cap to what's left inside .ai-chat-container (which is overflow:hidden and
+       clips the panel when 75vh exceeds it on short viewports). Container height
+       is 100vh - 180px; subtract header (~60px) + 8px gap + safety margin. */
+    max-height: calc(100vh - 180px - 76px);
     overflow: hidden;
     display: flex;
     flex-direction: column;
+}
+/* Match the container's dvh variant (mobile toolbar compensation). */
+@supports (height: 100dvh) {
+    .ai-chat-persona-panel { max-height: calc(100dvh - 180px - 76px); }
 }
 :root.dark .ai-chat-persona-panel {
     background: #1e293b;
