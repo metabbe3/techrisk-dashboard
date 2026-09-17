@@ -7,6 +7,7 @@ namespace App\Models;
 use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
+use App\Enums\Severity;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -155,15 +156,28 @@ class Incident extends Model implements Auditable
     }
 
     /**
+     * Rows that count on ANY incident-count surface: metric-eligible severity
+     * (G / Non Incident never count — product rule, 2026-09-17) and not
+     * fund-status-excluded. Composed by aiCounts() and by the
+     * all-classification count on the dashboard.
+     */
+    public function scopeCountEligible($query): void
+    {
+        $query->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->excludedFromCounts();
+    }
+
+    /**
      * Incidents that count in AI-facing metrics: real incidents only
-     * (classification = Incident) and not fund-status-excluded. Single source
-     * of truth for chat context, quick stats, and WarRoom tools so every
-     * surface reports the same numbers for the same question.
+     * (classification = Incident) and countEligible (severity + fund status).
+     * Single source of truth for chat context, quick stats, WarRoom tools,
+     * and the dashboard's Total Incidents card so every surface reports the
+     * same numbers for the same question.
      */
     public function scopeAiCounts($query): void
     {
         $query->where('classification', IncidentClassification::Incident->value)
-            ->excludedFromCounts();
+            ->countEligible();
     }
 
     /**

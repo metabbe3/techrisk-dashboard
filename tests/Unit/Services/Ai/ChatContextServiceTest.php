@@ -122,7 +122,7 @@ class ChatContextServiceTest extends TestCase
             'stop_bleeding_at' => now()->startOfYear()->setDay(9)->setTime(10, 0),
         ]);
 
-        // G severity: not metric-eligible for MTTR, but still a counted incident.
+        // G severity: never counted (2026-09-17 rule) — not in MTTR, not in totals.
         Incident::factory()->create([
             'classification' => 'Incident',
             'fund_status' => 'Non fundLoss',
@@ -134,6 +134,6 @@ class ChatContextServiceTest extends TestCase
         $stats = $this->service->getQuickStats();
 
         $this->assertStringContainsString('Avg MTTR: 60.0 minutes', $stats);
-        $this->assertStringContainsString('Total Incidents ('.now()->year.'): 3', $stats);
+        $this->assertStringContainsString('Total Incidents ('.now()->year.'): 2', $stats);
     }
 }

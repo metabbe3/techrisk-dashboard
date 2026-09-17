@@ -21,7 +21,9 @@ class DashboardStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $cacheKey = 'dashboard_stats_v5_'.md5(json_encode([
+        // v6: counting rule changed (severity G / Non Incident excluded) —
+        // bump so pre-change cached numbers are never served.
+        $cacheKey = 'dashboard_stats_v6_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -48,15 +50,18 @@ class DashboardStatsOverview extends BaseWidget
             $descriptionPeriod = 'in the selected period';
         }
 
+        // Both count cards share the severity rule (G / Non Incident never
+        // count) via the model scopes — the same rule every AI-facing count
+        // uses. aiCounts() = Incident classification; countEligible() adds
+        // Issues back for the "Incidents + Issues" card.
         $totalIncidentsOnly = Incident::query()
-            ->where('classification', IncidentClassification::Incident->value)
+            ->aiCounts()
             ->tap($incidentDateFilter)
-            ->excludedFromCounts()
             ->count();
 
         $totalIncidents = Incident::query()
+            ->countEligible()
             ->tap($incidentDateFilter)
-            ->excludedFromCounts()
             ->count();
 
         $fundLossTotal = Incident::query()

@@ -14,15 +14,16 @@ class IncidentStatsService
 {
     public function getBaseStats(Carbon $from, Carbon $to): array
     {
-        $total = Incident::where('classification', IncidentClassification::Incident->value)
+        // aiCounts(): classification Incident + severity G/Non Incident excluded
+        // + fund-status excluded — the one counting rule shared with the
+        // dashboard cards and every AI-facing count.
+        $total = Incident::aiCounts()
             ->whereBetween('incident_date', [$from, $to])
-            ->excludedFromCounts()
             ->count();
 
-        $open = Incident::where('classification', IncidentClassification::Incident->value)
+        $open = Incident::aiCounts()
             ->whereBetween('incident_date', [$from, $to])
             ->whereNotIn('incident_status', ['Completed'])
-            ->excludedFromCounts()
             ->count();
 
         $fundLoss = Incident::where('classification', IncidentClassification::Incident->value)
@@ -30,9 +31,8 @@ class IncidentStatsService
             ->excludedFromCounts()
             ->sum('fund_loss');
 
-        $bySeverity = Incident::where('classification', IncidentClassification::Incident->value)
+        $bySeverity = Incident::aiCounts()
             ->whereBetween('incident_date', [$from, $to])
-            ->excludedFromCounts()
             ->selectRaw('severity, COUNT(*) as count')
             ->groupBy('severity')
             ->pluck('count', 'severity')

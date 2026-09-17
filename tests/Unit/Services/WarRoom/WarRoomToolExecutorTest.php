@@ -73,12 +73,12 @@ class WarRoomToolExecutorTest extends TestCase
 
     public function test_search_incidents_with_severity_filter(): void
     {
-        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'p1', 'title' => 'Critical issue']);
-        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'p2', 'title' => 'Major issue']);
-        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'p3', 'title' => 'Minor issue']);
+        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'P1', 'title' => 'Critical issue']);
+        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'P2', 'title' => 'Major issue']);
+        Incident::factory()->create(['classification' => 'Incident', 'severity' => 'P3', 'title' => 'Minor issue']);
 
         $result = $this->executor->execute($this->toolCall('search_incidents', [
-            'severity' => ['p1'],
+            'severity' => ['P1'],
         ]));
 
         $this->assertStringContainsString('Critical issue', $result['content']);
@@ -182,15 +182,20 @@ class WarRoomToolExecutorTest extends TestCase
 
     public function test_get_metrics_formats_mttr_and_money(): void
     {
+        // Explicit dates (fund before quick): the create-job's adjacent repair
+        // recalculates later rows, which would wipe the hand-set mttr below
+        // whenever faker's random dates order quick before fund.
         $fundIncident = Incident::factory()->create([
             'classification' => 'Incident',
             'fund_loss' => 2500000,
             'title' => 'Fund incident',
+            'incident_date' => '2026-03-01 10:00:00',
         ]);
         $fundIncident->update(['mttr' => -2.5]); // metrics job on create overwrites mttr
         $quickIncident = Incident::factory()->create([
             'classification' => 'Incident',
             'title' => 'Quick incident',
+            'incident_date' => '2026-03-02 10:00:00',
         ]);
         $quickIncident->update(['mttr' => 90]);
 
@@ -250,7 +255,7 @@ class WarRoomToolExecutorTest extends TestCase
         $mock = $this->createMock(\App\Services\RecurrenceDetectionService::class);
         $mock->method('detect')->willReturn([
             'matches' => [
-                ['no' => '2025_IN_P1_001', 'severity' => 'p1', 'score' => 0.85, 'reason' => 'Same category'],
+                ['no' => '2025_IN_P1_001', 'severity' => 'P1', 'score' => 0.85, 'reason' => 'Same category'],
             ],
         ]);
         $this->app->instance(\App\Services\RecurrenceDetectionService::class, $mock);

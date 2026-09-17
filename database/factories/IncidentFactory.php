@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Enums\Severity;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -16,7 +17,11 @@ class IncidentFactory extends Factory
      */
     public function definition(): array
     {
-        $severity = $this->faker->randomElement(['P1', 'P2', 'P3', 'P4']);
+        // Canonical enum case only (edit-safety rule 1): lowercase values are
+        // masked by MySQL's case-insensitive collation in prod but silently
+        // fail METRIC_ELIGIBLE/enum filters under the case-sensitive SQLite
+        // the test suite runs on.
+        $severity = $this->faker->randomElement(Severity::METRIC_ELIGIBLE);
         $year = $this->faker->year();
         $randomNumber = $this->faker->unique()->randomNumber(3, true); // Generates a 3-digit number
 
@@ -24,7 +29,7 @@ class IncidentFactory extends Factory
             'no' => $year.'_IN_'.$severity.'_'.str_pad($randomNumber, 3, '0', STR_PAD_LEFT),
             'title' => $this->faker->sentence,
             'summary' => $this->faker->paragraph,
-            'severity' => $this->faker->randomElement(['p1', 'p2', 'p3', 'p4']),
+            'severity' => $severity,
             'classification' => $this->faker->randomElement(['Incident', 'Issue']),
             'incident_type' => $this->faker->randomElement(['Tech', 'Non-tech']),
             'incident_source' => $this->faker->randomElement(['Internal', 'External']),
