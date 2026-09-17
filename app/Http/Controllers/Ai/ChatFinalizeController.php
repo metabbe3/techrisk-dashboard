@@ -52,7 +52,10 @@ class ChatFinalizeController extends Controller
             ->first();
 
         if (! $assistantMessage) {
-            // Fallback: create if not found (non-streaming path)
+            // Fallback: create if not found (non-streaming path, or the stream was
+            // aborted client-side before the server could persist). This branch is
+            // also the ONLY place finalize logs usage — the streaming path already
+            // logged, so logging here unconditionally double-counted every turn.
             $assistantMessage = ChatMessage::create([
                 'conversation_id' => $conversation->id,
                 'role' => 'assistant',
@@ -63,26 +66,24 @@ class ChatFinalizeController extends Controller
                 'completion_tokens' => $request->input('completion_tokens'),
                 'created_at' => now(),
             ]);
+
+            $this->chatService->logChatUsage(
+                $request->input('model'),
+                new AiTextResult(
+                    success: true,
+                    text: $responseText,
+                    model: $request->input('model'),
+                    promptTokens: $request->input('prompt_tokens'),
+                    completionTokens: $request->input('completion_tokens'),
+                    totalTokens: $request->input('total_tokens'),
+                    responseTimeMs: $request->input('response_time_ms'),
+                ),
+                strlen($request->input('first_message', '')),
+                (string) $assistantMessage->id,
+            );
         }
 
         $conversation->update(['updated_at' => now()]);
-
-        // Log usage
-        $result = new AiTextResult(
-            success: true,
-            text: $responseText,
-            model: $request->input('model'),
-            promptTokens: $request->input('prompt_tokens'),
-            completionTokens: $request->input('completion_tokens'),
-            totalTokens: $request->input('total_tokens'),
-            responseTimeMs: $request->input('response_time_ms'),
-        );
-        $this->chatService->logChatUsage(
-            $request->input('model'),
-            $result,
-            strlen($request->input('first_message', '')),
-            (string) $assistantMessage->id,
-        );
 
         // Generate title for new conversations (only if title is still default)
         $updatedTitle = null;

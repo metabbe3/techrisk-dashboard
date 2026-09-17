@@ -1752,7 +1752,7 @@ class ChatContextService
         // Default to counted incidents so smart-search totals always match
         // Quick Stats; an explicit "issues" ask switches classification only.
         $query = $filters['classification']
-            ? Incident::where('classification', $filters['classification'])->excludedFromCounts()
+            ? Incident::where('classification', $filters['classification'])->countEligible()
             : Incident::aiCounts();
 
         // Exclude already-referenced incident IDs

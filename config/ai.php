@@ -168,6 +168,16 @@ return [
         'conversation_token_budget' => (int) env('AI_CONVO_TOKEN_BUDGET', 500000),
     ],
 
+    // Chat attachments: how much extracted document content follows the
+    // conversation. Earlier turns get their documents re-injected so follow-up
+    // questions still see the file, bounded by turns + token budget + per-doc cap.
+    'attachments' => [
+        'history_turns' => (int) env('AI_ATTACH_HISTORY_TURNS', 5),
+        'history_token_budget' => (int) env('AI_ATTACH_HISTORY_TOKEN_BUDGET', 6000),
+        'history_char_cap' => (int) env('AI_ATTACH_CHAR_CAP', 8000),
+        'xlsx_max_rows' => (int) env('AI_ATTACH_XLSX_MAX_ROWS', 200),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Field-Specific Prompts

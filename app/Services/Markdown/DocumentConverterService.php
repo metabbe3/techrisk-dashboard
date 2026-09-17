@@ -9,6 +9,7 @@ use App\Services\EncryptionService;
 use Iamgerwin\PdfToMarkdownParser\PdfToMarkdownParser;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use PhpOffice\PhpSpreadsheet\IOFactory as SpreadsheetIOFactory;
 use PhpOffice\PhpWord\IOFactory;
 use PhpOffice\PhpWord\PhpWord;
 
@@ -91,7 +92,7 @@ class DocumentConverterService
     {
         $extension = strtolower($extension);
 
-        if (! in_array($extension, ['pdf', 'docx', 'doc'])) {
+        if (! in_array($extension, ['pdf', 'docx', 'doc', 'xlsx'])) {
             return null;
         }
 
@@ -144,6 +145,7 @@ class DocumentConverterService
         return match ($extension) {
             'pdf' => $this->convertPdf($content),
             'docx', 'doc' => $this->convertDocx($content),
+            'xlsx' => $this->convertXlsx($content),
             default => throw new \Exception("Unsupported file type: {$extension}"),
         };
     }
@@ -198,6 +200,67 @@ class DocumentConverterService
                 );
             }
             throw $e;
+        } finally {
+            if (file_exists($tempPath)) {
+                unlink($tempPath);
+            }
+        }
+    }
+
+    /**
+     * Convert XLSX content to Markdown tables. Sheets are capped (count, rows,
+     * cols) so a huge spreadsheet can't flood the chat prompt.
+     */
+    private function convertXlsx(string $content): string
+    {
+        $tempDir = storage_path('app/temp');
+        if (! file_exists($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+
+        $tempPath = $tempDir.'/'.uniqid().'.xlsx';
+        file_put_contents($tempPath, $content);
+
+        try {
+            $spreadsheet = SpreadsheetIOFactory::load($tempPath);
+
+            $maxSheets = 5;
+            $maxRows = (int) config('ai.attachments.xlsx_max_rows', 200);
+            $maxCols = 30;
+            $markdown = '';
+
+            foreach (array_slice(iterator_to_array($spreadsheet->getAllSheets()), 0, $maxSheets) as $sheet) {
+                $markdown .= '### Sheet: '.$sheet->getTitle()."\n\n";
+
+                $highestRow = min($sheet->getHighestDataRow(), $maxRows + 1); // +1: header row
+                $highestCol = min(\PhpOffice\PhpSpreadsheet\Cell\Coordinate::columnIndexFromString($sheet->getHighestDataColumn()), $maxCols);
+                $totalRows = $sheet->getHighestDataRow();
+
+                $rows = [];
+                for ($row = 1; $row <= $highestRow; $row++) {
+                    $cells = [];
+                    for ($col = 1; $col <= $highestCol; $col++) {
+                        $value = $sheet->getCellByColumnAndRow($col, $row)->getFormattedValue();
+                        $cells[] = str_replace('|', '\\|', (string) $value);
+                    }
+                    $rows[] = '| '.implode(' | ', $cells).' |';
+                }
+
+                if (! empty($rows)) {
+                    $header = $rows[0];
+                    $markdown .= $header."\n";
+                    $markdown .= '|'.str_repeat('---|', substr_count($header, '|'))."\n";
+                    $markdown .= implode("\n", array_slice($rows, 1))."\n";
+                }
+
+                if ($totalRows > $highestRow) {
+                    $markdown .= "\n*(showing first {$highestRow} of {$totalRows} rows)*\n";
+                }
+
+                $markdown .= "\n";
+            }
+
+            return trim($markdown);
         } finally {
             if (file_exists($tempPath)) {
                 unlink($tempPath);

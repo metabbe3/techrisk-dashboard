@@ -128,7 +128,11 @@
     </div>
 
     {{-- Main Chat Area --}}
-    <div class="ai-chat-main">
+    <div class="ai-chat-main"
+         @dragenter.prevent="dragDepth++"
+         @dragover.prevent
+         @dragleave="dragDepth = Math.max(0, dragDepth - 1)"
+         @drop.prevent="handleDrop($event)">
         {{-- Header --}}
         <div class="ai-chat-header">
             <button @click="showSidebar = !showSidebar" class="lg:hidden p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
@@ -291,7 +295,7 @@
         </div>
 
         {{-- Messages --}}
-        <div class="ai-chat-messages" x-ref="messageContainer">
+        <div class="ai-chat-messages" x-ref="messageContainer" @scroll.passive="onMessagesScroll()">
             {{-- Empty State --}}
             <div x-show="messages.length === 0 && !loading" class="ai-chat-empty">
                 <div class="ai-chat-empty-icon">
@@ -361,7 +365,7 @@
                                 <div x-show="msg.attachments && msg.attachments.length > 0" class="flex flex-wrap gap-2 mb-2">
                                     <template x-for="att in (msg.attachments || [])" :key="att.id">
                                         <span x-show="att.type === 'image'">
-                                            <img :src="'/admin/ai/chat/attachment/' + att.id" class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-600" loading="lazy" />
+                                            <img :src="'/admin/ai/chat/attachment/' + att.id" @click="lightboxUrl = '/admin/ai/chat/attachment/' + att.id" class="w-20 h-20 object-cover rounded-lg border border-gray-200 dark:border-gray-600 cursor-zoom-in hover:opacity-90 transition-opacity" loading="lazy" />
                                         </span>
                                         <span x-show="att.type === 'document'" class="inline-flex items-center gap-1 px-2 py-1 text-[11px] rounded-md bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400">
                                             <span>📄</span>
@@ -369,8 +373,30 @@
                                         </span>
                                     </template>
                                 </div>
-                                <p class="text-sm" x-text="msg.content"></p>
-                                <p class="ai-chat-msg-time" x-text="new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></p>
+                                <template x-if="editingMessageId === msg.id">
+                                    <div>
+                                        <textarea x-model="editingMessageValue" class="ai-chat-edit-box" rows="3" @keydown.escape.stop="cancelEdit()"></textarea>
+                                        <div class="flex items-center gap-2 mt-2">
+                                            <button @click="saveEditAndSend(idx)" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors">Save &amp; Send</button>
+                                            <button @click="cancelEdit()" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Cancel</button>
+                                        </div>
+                                    </div>
+                                </template>
+                                <template x-if="editingMessageId !== msg.id">
+                                    <div>
+                                        <p class="text-sm" x-text="msg.content"></p>
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <p class="ai-chat-msg-time" x-text="new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></p>
+                                            <button @click="copyMessage(msg.content)" class="ai-chat-action-btn" aria-label="Copy message" title="Copy">
+                                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+                                            </button>
+                                            <button @click="editMessage(idx)" class="ai-chat-action-btn" aria-label="Edit and resend" title="Edit & resend">
+                                                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                                            </button>
+                                            <span x-show="msg.copied" class="text-[10px] text-green-500 dark:text-green-400">Copied!</span>
+                                        </div>
+                                    </div>
+                                </template>
                             </div>
                         </template>
                         <template x-if="msg.role === 'assistant'">
@@ -415,6 +441,7 @@
                                     </template>
                                     <span x-show="msg.copied" class="text-[10px] text-green-500 dark:text-green-400">Copied!</span>
                                 </div>
+                                <p class="ai-chat-msg-time mt-1" x-text="new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})"></p>
                                 {{-- Follow-up suggestions --}}
                                 <div x-show="msg.follow_ups && msg.follow_ups.length > 0" class="ai-chat-followups">
                                     <template x-for="(q, qi) in (msg.follow_ups || [])" :key="qi">
@@ -468,6 +495,14 @@
                         </div>
                     </div>
                 </template>
+            </div>
+
+            {{-- Jump to latest — floats over messages while scrolled up during a stream --}}
+            <div class="ai-chat-jump-wrap">
+                <button x-show="userScrolledUp" x-transition.opacity @click="userScrolledUp = false; scrollToBottom(true)" class="ai-chat-jump-btn" aria-label="Jump to latest message" title="Jump to latest">
+                    <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+                    Latest
+                </button>
             </div>
         </div>
 
@@ -528,7 +563,7 @@
                           @input="onInput()"></textarea>
 
                 {{-- Attach File button --}}
-                <input type="file" x-ref="fileInput" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.docx,.doc" @change="handleFileSelect($event)" multiple />
+                <input type="file" x-ref="fileInput" class="hidden" accept="image/png,image/jpeg,image/gif,image/webp,.pdf,.docx,.xlsx,.txt,.md,.csv,.json" @change="handleFileSelect($event)" multiple />
                 <button @click="$refs.fileInput.click()" type="button" class="ai-chat-attach-btn" :class="{'has-refs': pendingAttachments.length > 0}" aria-label="Attach image or document" title="Attach image or document">
                     <svg class="w-4.5 h-4.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
                     <span x-show="pendingAttachments.length > 0" class="ai-chat-attach-badge" x-text="pendingAttachments.length"></span>
@@ -601,6 +636,20 @@
             <p class="text-[10px] text-gray-500 dark:text-gray-500 text-center mt-1.5">AI can produce inaccurate information. Always verify important data. <span x-text="'Model: ' + selectedModelLabel"></span> <span x-show="selectedMode === 'plan'" class="font-medium text-purple-500" x-text="'| Mode: Plan'"></span></p>
             <p x-show="selectedPersonas.length >= 3" class="text-[10px] text-amber-500 dark:text-amber-400 text-center mt-0.5" x-text="selectedPersonas.length + ' personas will generate separate responses, increasing token usage.'"></p>
         </div>
+
+        {{-- Drag-and-drop overlay --}}
+        <div x-show="dragActive" x-transition.opacity class="ai-chat-drop-overlay">
+            <svg class="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path d="M12 16.5V9.75m0 0l3 3m-3-3l-3 3M6.75 19.5a4.5 4.5 0 01-1.41-8.775 5.25 5.25 0 0110.233-2.33 3 3 0 013.758 3.848A3.752 3.752 0 0118 19.5H6.75z"/></svg>
+            <span>Drop files to attach</span>
+        </div>
+    </div>
+
+    {{-- Image lightbox --}}
+    <div x-show="lightboxUrl" x-transition.opacity class="ai-chat-lightbox"
+         @click.self="lightboxUrl = null"
+         @keydown.escape.window="lightboxUrl = null"
+         x-cloak>
+        <img :src="lightboxUrl" alt="Attachment preview" />
     </div>
 </div>
 
@@ -703,6 +752,17 @@ function aiChat() {
         editingTitleValue: '',
         collapsedGroups: {},
         pendingAttachments: [],
+        userScrolledUp: false,
+        dragDepth: 0,
+        lightboxUrl: null,
+        editingMessageId: null,
+        editingMessageValue: '',
+
+        get dragActive() {
+            // dragenter/dragleave fire on every child element crossing — a depth
+            // counter keeps the overlay stable while dragging over nested nodes.
+            return this.dragDepth > 0;
+        },
 
         get selectedModelLabel() {
             return this.models[this.selectedModel] || this.selectedModel;
@@ -980,7 +1040,7 @@ function aiChat() {
                         if (msg.persona && msg.persona.key) personaKeys.add(msg.persona.key);
                     }
                     this.selectedPersonas = [...personaKeys];
-                    this.$nextTick(() => { this.scrollToBottom(); this.scheduleMermaidRender(); });
+                    this.$nextTick(() => { this.userScrolledUp = false; this.scrollToBottom(true); this.scheduleMermaidRender(); });
                 }
             } catch (e) { console.error(e); }
             if (window.innerWidth < 1024) this.showSidebar = false;
@@ -1112,6 +1172,15 @@ function aiChat() {
             }
         },
 
+        handleDrop(event) {
+            this.dragDepth = 0;
+            const files = event.dataTransfer?.files;
+            if (!files || files.length === 0) return;
+            for (const file of files) {
+                this.uploadAttachment(file);
+            }
+        },
+
         removeAttachment(idx) {
             const att = this.pendingAttachments[idx];
             if (att?.previewUrl) URL.revokeObjectURL(att.previewUrl);
@@ -1147,7 +1216,8 @@ function aiChat() {
             this.inputText = '';
             this.pendingAttachments = [];
             this.autoResize();
-            this.scrollToBottom();
+            this.userScrolledUp = false;
+            this.scrollToBottom(true);
 
             this.loading = true;
             this.activePersonaKey = null;
@@ -1167,6 +1237,7 @@ function aiChat() {
             if (_timer) { clearInterval(_timer); _timer = null; }
             _elapsed = 0;
             this.showIncidentPicker = false;
+            this.onMessagesScroll();
             this.$nextTick(() => this.scrollToBottom());
         },
 
@@ -1244,7 +1315,9 @@ function aiChat() {
                         } else {
                             renderQueued = false;
                         }
-                        if (idx >= 0 && idx < this.messages.length) {
+                        // Skip when the message was finalized meanwhile (stop button,
+                        // metadata event) — a late frame would re-append the cursor.
+                        if (idx >= 0 && idx < this.messages.length && this.messages[idx].isStreaming !== false) {
                             const msg = { ...this.messages[idx] };
                             msg.content = content;
                             msg._raw = content;
@@ -1587,7 +1660,23 @@ function aiChat() {
                     this.messages[streamingIdx] = msg;
                 }
             } catch (e) {
-                if (e.name === 'AbortError') return;
+                if (e.name === 'AbortError') {
+                    // Stop button: keep the partial response instead of discarding it.
+                    // Render clean (no cursor) and persist via finalize — the server
+                    // died mid-stream so its fallback branch creates the message.
+                    for (let i = 0; i < this.messages.length; i++) {
+                        if (this.messages[i]?.isStreaming) {
+                            const msg = { ...this.messages[i] };
+                            msg.parsedHtml = parseMd(msg.content || '');
+                            msg.isStreaming = false;
+                            this.messages[i] = msg;
+                        }
+                    }
+                    if (streamingIdx >= 0 && setupData && !isPersona && !isPlan && streamingContent) {
+                        await this.finalizeStream({ full_content: streamingContent, model: this.selectedModel, usage: {} }, setupData, text);
+                    }
+                    return;
+                }
                 console.error('Stream error:', e);
                 this.messages = [...this.messages, withHtml({ id: 'error-' + Date.now(), role: 'assistant', content: '⚠️ Network error. Please check your connection and try again.', model: null, created_at: new Date().toISOString() })];
             }
@@ -2055,10 +2144,63 @@ function aiChat() {
             userText = userText.replace(/^(\[[\w_]+\]\s*)+/, '').trim();
             if (!userText) return;
 
-            // Remove everything from the user message onward (user msg + all responses)
-            this.messages = this.messages.slice(0, userMsgIdx);
+            // Remove everything from the user message onward (user msg + all
+            // responses) — server-side too, so the model's history window no
+            // longer contains the stale branch being regenerated.
+            await this.truncateFromMessage(userMsgIdx);
             this.inputText = userText;
             this.sendMessage();
+        },
+
+        // Edit & resend (ChatGPT-style): open an editor on a user message.
+        editMessage(idx) {
+            const msg = this.messages[idx];
+            if (!msg || msg.role !== 'user' || this.loading) return;
+            this.editingMessageId = msg.id;
+            // Prefill without baked reference prefixes — sendMessage re-adds chips.
+            this.editingMessageValue = (msg.content || '').replace(/^(\[[\w_]+\]\s*)+/, '').trim();
+            this.$nextTick(() => {
+                const boxes = this.$refs.messageContainer?.querySelectorAll('.ai-chat-edit-box');
+                const box = boxes ? boxes[boxes.length - 1] : null;
+                if (box) { box.focus(); box.setSelectionRange(box.value.length, box.value.length); }
+            });
+        },
+
+        cancelEdit() {
+            this.editingMessageId = null;
+            this.editingMessageValue = '';
+        },
+
+        async saveEditAndSend(idx) {
+            const msg = this.messages[idx];
+            if (!msg || this.editingMessageId !== msg.id) return;
+            const newText = (this.editingMessageValue || '').trim();
+            this.cancelEdit();
+            if (!newText) return;
+            await this.truncateFromMessage(idx);
+            this.inputText = newText;
+            this.sendMessage();
+        },
+
+        // Delete the branch from messages[idx] onward: server-side (so the model
+        // history matches) then locally. Client-side temp ids skip the server call.
+        async truncateFromMessage(idx) {
+            const msg = this.messages[idx];
+            if (!msg) return;
+            const id = String(msg.id || '');
+            const isRealId = id && !id.startsWith('temp-') && !id.startsWith('error-') && !id.startsWith('streaming-');
+            if (this.activeConversationId && isRealId) {
+                try {
+                    const token = document.querySelector('meta[name="csrf-token"]')?.content;
+                    await fetch('/admin/ai/chat/conversations/' + this.activeConversationId + '/messages/' + id + '/truncate', {
+                        method: 'POST',
+                        headers: { 'Accept': 'application/json', 'X-CSRF-TOKEN': token, 'X-Requested-With': 'XMLHttpRequest' },
+                    });
+                } catch (e) {
+                    console.warn('Server truncate failed; continuing client-side only', e);
+                }
+            }
+            this.messages = this.messages.slice(0, idx);
         },
 
         async submitFeedback(messageId, feedback) {
@@ -2185,8 +2327,56 @@ function aiChat() {
 
         scheduleMermaidRender() {
             requestAnimationFrame(() => {
-                this.$nextTick(() => this.renderMermaidDiagrams());
+                this.$nextTick(() => {
+                    this.renderMermaidDiagrams();
+                    this.enhanceCodeBlocks();
+                });
             });
+        },
+
+        // Add language label + copy button to code blocks and syntax-highlight
+        // them (highlight.js, loaded via app.js). Follows the mermaid pattern:
+        // runs post-done/finalize — never during streaming frames — and a
+        // dataset flag prevents double-enhancing the same block.
+        enhanceCodeBlocks() {
+            const container = this.$refs.messageContainer;
+            if (!container) return;
+
+            const blocks = container.querySelectorAll('pre > code');
+            for (const code of blocks) {
+                if (code.classList.contains('language-mermaid')) continue;
+                const pre = code.closest('pre');
+                if (!pre || pre.dataset.codeEnhanced) continue;
+                pre.dataset.codeEnhanced = 'true';
+
+                if (typeof hljs !== 'undefined') {
+                    try { hljs.highlightElement(code); } catch (e) { /* leave plain */ }
+                }
+
+                const lang = (code.className.match(/language-([\w+-]+)/) || [])[1];
+                const header = document.createElement('div');
+                header.className = 'ai-code-header';
+                if (lang) {
+                    const label = document.createElement('span');
+                    label.className = 'ai-code-lang';
+                    label.textContent = lang;
+                    header.appendChild(label);
+                } else {
+                    header.appendChild(document.createElement('span'));
+                }
+                const btn = document.createElement('button');
+                btn.className = 'ai-code-copy';
+                btn.type = 'button';
+                btn.textContent = 'Copy';
+                btn.addEventListener('click', () => {
+                    navigator.clipboard.writeText(code.textContent).then(() => {
+                        btn.textContent = 'Copied!';
+                        setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+                    });
+                });
+                header.appendChild(btn);
+                pre.prepend(header);
+            }
         },
 
         async renderMermaidDiagrams() {
@@ -2215,9 +2405,19 @@ function aiChat() {
             }
         },
 
-        scrollToBottom() {
+        scrollToBottom(force = false) {
+            // While the user has scrolled up to read, stream-driven auto-scroll
+            // pauses; only an explicit action (send, click the jump button) forces it.
             const el = this.$refs.messageContainer;
-            if (el) el.scrollTop = el.scrollHeight;
+            if (!el) return;
+            if (this.userScrolledUp && !force) return;
+            el.scrollTop = el.scrollHeight;
+        },
+
+        onMessagesScroll() {
+            const el = this.$refs.messageContainer;
+            if (!el) return;
+            this.userScrolledUp = el.scrollHeight - el.scrollTop - el.clientHeight > 80;
         },
 
         autoResize() {

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ai;
 
 use App\Http\Controllers\Controller;
+use App\Models\ChatMessage;
 use App\Services\Ai\ChatAttachmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -38,6 +39,19 @@ class ChatAttachmentController extends Controller
 
     public function show(string $id, ChatAttachmentService $service)
     {
+        // Ownership: the uuid must appear in a message belonging to one of the
+        // authenticated user's own conversations. No attachments table exists —
+        // the attachments JSON on chat_messages is the link. Unknown/foreign
+        // uuids are indistinguishable (404, not 403) so ids can't be probed.
+        $owns = ChatMessage::query()
+            ->where('attachments', 'like', '%'.$id.'%')
+            ->whereHas('conversation', fn ($q) => $q->where('user_id', auth()->id()))
+            ->exists();
+
+        if (! $owns) {
+            abort(404);
+        }
+
         $path = $service->getAttachmentUrl($id);
 
         if (! $path || ! Storage::disk('local')->exists($path)) {

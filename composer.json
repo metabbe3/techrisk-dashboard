@@ -18,6 +18,7 @@
         "maatwebsite/excel": "^3.1",
         "owen-it/laravel-auditing": "^14.0",
         "parsedown/parsedown": "^1.8",
+        "phpoffice/phpspreadsheet": "^1.30",
         "phpoffice/phpword": "^1.4",
         "spatie/laravel-permission": "^6.21"
     },

@@ -14,6 +14,7 @@ use App\Http\Controllers\Ai\ChatFinalizeController;
 use App\Http\Controllers\Ai\ChatListController;
 use App\Http\Controllers\Ai\ChatMessageFeedbackController;
 use App\Http\Controllers\Ai\ChatMessagesController;
+use App\Http\Controllers\Ai\ChatMessageTruncateController;
 use App\Http\Controllers\Ai\ChatPersonaStreamController;
 use App\Http\Controllers\Ai\ChatPlanResumeController;
 use App\Http\Controllers\Ai\ChatPlanStreamController;
@@ -168,6 +169,9 @@ Route::get('/admin/ai/chat/folders', [ChatConversationUpdateController::class, '
 Route::post('/admin/ai/chat/messages/{id}/feedback', ChatMessageFeedbackController::class)
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.feedback');
+Route::post('/admin/ai/chat/conversations/{conversationId}/messages/{messageId}/truncate', ChatMessageTruncateController::class)
+    ->middleware(['auth', 'can:access ai chat'])
+    ->name('ai.chat.truncate');
 Route::get('/admin/ai/chat/proactive-insights', \App\Http\Controllers\Ai\ChatProactiveInsightsController::class.'@index')
     ->middleware(['auth', 'can:access ai chat'])
     ->name('ai.chat.proactive-insights');

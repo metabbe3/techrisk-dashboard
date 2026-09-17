@@ -75,6 +75,32 @@ class ChatConversation extends Model implements Auditable
         return $this->pinned_at !== null;
     }
 
+    /**
+     * Per-conversation guardrails: message cap + cumulative token budget.
+     * Returns the user-facing reason when exceeded, null when under budget.
+     * Single aggregate query — a transactional lockForUpdate would be race-safe
+     * but risks deadlocks for a soft cap. ponytail: soft cap, not a hard lock.
+     */
+    public function budgetExceeded(): ?string
+    {
+        $maxMessages = (int) config('ai.rate_limit.conversation_max_messages', 200);
+        $tokenBudget = (int) config('ai.rate_limit.conversation_token_budget', 500000);
+
+        $agg = $this->messages()
+            ->selectRaw('COUNT(*) AS msg_count, COALESCE(SUM(tokens_used), 0) AS tokens_used')
+            ->first();
+
+        if (($agg->msg_count ?? 0) >= $maxMessages) {
+            return "This conversation reached its {$maxMessages}-message limit. Please start a new conversation.";
+        }
+
+        if (($agg->tokens_used ?? 0) >= $tokenBudget) {
+            return "This conversation reached its token budget ({$tokenBudget}). Please start a new conversation.";
+        }
+
+        return null;
+    }
+
     public static function getFolders(): array
     {
         return static::where('user_id', auth()->id())

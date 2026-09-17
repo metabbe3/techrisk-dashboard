@@ -10,6 +10,7 @@ use App\Models\WarRoomAgentConfig;
 use App\Services\Ai\AiChatService;
 use App\Services\Ai\AiTextResult;
 use App\Services\Ai\AiUsageLogger;
+use App\Services\Ai\ChatAttachmentService;
 use App\Services\Ai\ChatContextService;
 use App\Services\Ai\PersonaStreamingService;
 use Illuminate\Http\Request;
@@ -24,6 +25,7 @@ class ChatPersonaStreamController
         private PersonaStreamingService $personaStreamingService,
         private AiUsageLogger $aiUsageLogger,
         private AiChatService $aiChatService,
+        private ChatAttachmentService $attachmentService,
     ) {}
 
     public function __invoke(Request $request): StreamedResponse
@@ -84,6 +86,13 @@ class ChatPersonaStreamController
                 'model' => $model,
             ]);
 
+        // Guardrails: same per-conversation caps as the main chat path.
+        if ($conversationId && $reason = $conversation->budgetExceeded()) {
+            return new StreamedResponse(function () use ($reason) {
+                echo 'data: '.json_encode(['error' => $reason])."\n\n";
+            }, 422, ['Content-Type' => 'text/event-stream']);
+        }
+
         $createData = [
             'conversation_id' => $conversation->id,
             'role' => 'user',
@@ -101,8 +110,12 @@ class ChatPersonaStreamController
             ->get()
             ->reverse()
             ->values()
-            ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content])
+            ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content, 'attachments' => $m->attachments])
             ->toArray();
+
+        // Re-inject documents attached in earlier turns (same as the main chat path);
+        // the current message's attachments are expanded in PersonaStreamingService.
+        $history = $this->attachmentService->expandHistory($history);
 
         if (empty($referencedIds)) {
             $historyText = collect($history)->map(fn ($m) => $m['content'])->implode(' ');
@@ -118,24 +131,22 @@ class ChatPersonaStreamController
                 $enriched = $this->contextService->enrichSlashCommand($slashCommand, $slashArgs, $referencedIds);
                 $userMessage = $enriched['message'];
                 if (! empty($enriched['extra_context'])) {
-                    $userMessage .= $enriched['extra_context'];
+                    // Fence retrieved context as untrusted (prompt-injection defense),
+                    // mirroring the main chat path.
+                    $userMessage .= $this->contextService->fenceUntrusted($enriched['extra_context'], 'Retrieved context');
                 }
+                $searchEnriched = $slashCommand === 'search';
             }
         }
 
-        if (! $slashCommand && preg_match('/(?:\/search\b|\bsearch\s+(?:the\s+)?(?:web|internet|online)|look\s+up|check\s+online|\bsearch\s+for)\b/i', $userMessage)) {
-            $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
-            if ($searchContext) {
-                $userMessage .= "\n\n".$searchContext;
-                $userMessage .= "\n\nThe user wants external web references combined with internal incident data. Always cite external sources using markdown links.";
-                $searchEnriched = true;
-            }
-        }
+        // Web search is opt-in only: via the explicit `web_search` toggle or the
+        // `/search` slash command (handled above) — same policy as the main path.
 
         if ($request->boolean('web_search') && ! $searchEnriched && $slashCommand !== 'search') {
             $searchContext = $this->contextService->getSearchContextFromMessage($userMessage, $referencedIds);
             if ($searchContext) {
-                $userMessage .= "\n\n".$searchContext;
+                // Fence web results as untrusted data (prompt-injection defense).
+                $userMessage .= $this->contextService->fenceUntrusted($searchContext, 'Retrieved web results');
                 $userMessage .= "\n\nSupplementary web search results are included above. Integrate external references with internal data where relevant. Cite external sources using markdown links.";
                 $searchEnriched = true;
             }

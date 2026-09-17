@@ -38,6 +38,10 @@ Schedule::command('reminders:send-weekly-overdue-digest')->weeklyOn(1, '09:00');
 Schedule::command('notifications:clean')->dailyAt('02:00');
 // Re-index stale RAG documents — daily at 02:30
 Schedule::command('rag:reindex-stale')->dailyAt('02:30');
+// Purge chat attachment files (originals + .md sidecars) older than 24h — daily at 03:10
+Schedule::call(fn () => app(\App\Services\Ai\ChatAttachmentService::class)->cleanupOldAttachments())
+    ->dailyAt('03:10')
+    ->description('Delete chat attachment files older than 24h');
 
 // Scheduled report templates — one schedule per template, by cadence. Wrapped
 // in a try/catch because this file loads at console-kernel boot (including the

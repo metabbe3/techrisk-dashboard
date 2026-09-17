@@ -674,7 +674,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-DNgv4Yj4.css",
+    "file": "assets/app-CV49kZSu.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "names": [
@@ -688,12 +688,15 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-DedAXoj0.js",
+    "file": "assets/app-C6DTV4al.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,
     "imports": [
       "_purify.es-DtPWw-aR.js"
+    ],
+    "css": [
+      "assets/app-BEHUn5zE.css"
     ]
   },
   "resources/js/mermaid.js": {

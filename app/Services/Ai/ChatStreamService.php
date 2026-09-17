@@ -76,24 +76,12 @@ class ChatStreamService
             ]);
 
         // Guardrails: per-conversation message cap + token budget. Existing convos only
-        // (a brand-new one can't be over yet). Single aggregate query — a transactional
-        // lockForUpdate would be race-safe but risks deadlocks for a soft cap, so we
-        // accept a negligible boundary race. ponytail: soft cap, not a hard lock.
-        if ($conversationId) {
-            $maxMessages = (int) config('ai.rate_limit.conversation_max_messages', 200);
-            $tokenBudget = (int) config('ai.rate_limit.conversation_token_budget', 500000);
-            $agg = $conversation->messages()
-                ->selectRaw('COUNT(*) AS msg_count, COALESCE(SUM(tokens_used), 0) AS tokens_used')
-                ->first();
-            if (($agg->msg_count ?? 0) >= $maxMessages || ($agg->tokens_used ?? 0) >= $tokenBudget) {
-                $reason = ($agg->msg_count ?? 0) >= $maxMessages
-                    ? "This conversation reached its {$maxMessages}-message limit. Please start a new conversation."
-                    : "This conversation reached its token budget ({$tokenBudget}). Please start a new conversation.";
-
-                return new StreamedResponse(function () use ($reason) {
-                    echo 'data: '.json_encode(['error' => $reason])."\n\n";
-                }, 422, ['Content-Type' => 'text/event-stream']);
-            }
+        // (a brand-new one can't be over yet). Shared with the persona path via
+        // ChatConversation::budgetExceeded().
+        if ($conversationId && $reason = $conversation->budgetExceeded()) {
+            return new StreamedResponse(function () use ($reason) {
+                echo 'data: '.json_encode(['error' => $reason])."\n\n";
+            }, 422, ['Content-Type' => 'text/event-stream']);
         }
 
         $createData = [
@@ -107,14 +95,16 @@ class ChatStreamService
         }
         $userMsg = ChatMessage::create($createData);
 
-        // Load history BEFORE enrichment so /search can use conversation context
+        // Load history BEFORE enrichment so /search can use conversation context.
+        // Attachments ride along so expandHistory() can re-inject document
+        // content from earlier turns (see ChatAttachmentService::expandHistory).
         $history = $conversation->messages()
             ->orderBy('created_at', 'desc')
             ->take(config('ai.chat_max_history', 20))
             ->get()
             ->reverse()
             ->values()
-            ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content])
+            ->map(fn ($m) => ['role' => $m->role, 'content' => $m->content, 'attachments' => $m->attachments])
             ->toArray();
 
         $searchEnriched = false;
@@ -178,6 +168,10 @@ class ChatStreamService
         if (! empty($conversation->summary)) {
             $apiMessages[] = ['role' => 'system', 'content' => 'Prior conversation summary (for continuity): '.$conversation->summary];
         }
+
+        // Re-inject documents attached in earlier turns (bounded by turn/token budget);
+        // the current message's attachments are expanded below via buildMessageContent().
+        $history = $this->attachmentService->expandHistory($history);
 
         foreach ($history as $msg) {
             $apiMessages[] = ['role' => $msg['role'], 'content' => $msg['content']];
