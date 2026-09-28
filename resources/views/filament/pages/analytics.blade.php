@@ -57,8 +57,6 @@
             </x-filament::section>
         @endif
     @endif
-</x-filament-panels::page>
-
 @once
 {{-- chart.js vendored locally as a page-scoped Vite entry (no CDN). Renders on
      demand via `analytics-chart-updated`, so the deferred module is ready in time. --}}
@@ -141,3 +139,4 @@ function renderAnalyticsChart(chartData, chartType) {
 }
 </script>
 @endonce
+</x-filament-panels::page>

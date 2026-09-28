@@ -147,9 +147,17 @@ class AnalyticsQueryService
 
     private function queryTimeDimension(\Illuminate\Database\Eloquent\Builder $query, string $metric, string $dimension, array $filters): array
     {
-        $dimSql = $dimension === 'quarterly'
-            ? "CONCAT(YEAR(incident_date), '-Q', QUARTER(incident_date))"
-            : "DATE_FORMAT(incident_date, '%Y-%m')";
+        // Portable date-dimension SQL: MySQL (YEAR/QUARTER/CONCAT/DATE_FORMAT)
+        // vs SQLite (strftime) — both produce 'YYYY-Qn' / 'YYYY-MM' labels.
+        if ($dimension === 'quarterly') {
+            $dimSql = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite'
+                ? "strftime('%Y', incident_date) || '-Q' || ((CAST(strftime('%m', incident_date) AS INTEGER) + 2) / 3)"
+                : "CONCAT(YEAR(incident_date), '-Q', QUARTER(incident_date))";
+        } else {
+            $dimSql = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite'
+                ? "strftime('%Y-%m', incident_date)"
+                : "DATE_FORMAT(incident_date, '%Y-%m')";
+        }
 
         if ($this->isDerivedMetric($metric)) {
             $rows = $query

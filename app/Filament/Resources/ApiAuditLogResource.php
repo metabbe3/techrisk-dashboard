@@ -15,6 +15,7 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class ApiAuditLogResource extends Resource
 {
@@ -283,8 +284,11 @@ class ApiAuditLogResource extends Resource
     protected static function getAvailableYears(UserAuditLogSetting $settings): array
     {
         if ($settings->can_view_all_logs || auth()->user()->hasRole('admin')) {
-            // Get all years that have audit logs
-            $years = ApiAuditLog::selectRaw('DISTINCT YEAR(request_timestamp) as year')
+            // Get all years that have audit logs (portable across MySQL & SQLite)
+            $yearExpr = DB::connection()->getDriverName() === 'sqlite'
+                ? "strftime('%Y', request_timestamp)"
+                : 'YEAR(request_timestamp)';
+            $years = ApiAuditLog::selectRaw("DISTINCT {$yearExpr} as year")
                 ->orderBy('year', 'desc')
                 ->pluck('year', 'year')
                 ->toArray();
