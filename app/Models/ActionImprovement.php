@@ -26,6 +26,9 @@ class ActionImprovement extends Model implements Auditable
 
     protected $casts = [
         'pic_email' => 'array',
+        // MySQL DATE columns don't need this, but SQLite tests store raw strings —
+        // cast keeps ->format() working on both drivers (notification mail depends on it).
+        'due_date' => 'date',
     ];
 
     public function incident(): BelongsTo

@@ -56,6 +56,10 @@ class IncidentObserver
      */
     public function updated(Incident $incident): void
     {
+        // Relations loaded before the update are stale after save — the cached ->pic
+        // still points at the OLD user, so PIC-change notifications went to the
+        // previous assignee (caught by test_pic_change_sends_assignment_to_new_pic).
+        $incident->unsetRelations();
         $pic = $incident->pic;
         $currentUser = auth()->user();
 
@@ -98,7 +102,9 @@ class IncidentObserver
         }
 
         // Handle PIC assignment change
-        if ($incident->isDirty('pic_id') && $incident->pic_id && $pic) {
+        // NOTE: in updated() the model is already saved, so isDirty() is always false here —
+        // use wasChanged() or PIC-change notifications silently never fire (caught by test).
+        if ($incident->wasChanged('pic_id') && $incident->pic_id && $pic) {
             $pic->notify(new AssignedAsPicNotification($incident));
 
             $this->notifyAdminsOfPicAssignment($incident, $pic);

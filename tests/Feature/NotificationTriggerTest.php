@@ -136,7 +136,10 @@ class NotificationTriggerTest extends TestCase
         $incident->update(['pic_id' => $newPic->id]);
 
         $this->assertEquals(1, $this->notificationsFor($newPic, 'incident_assignment'));
-        $this->assertEquals(2, $this->notificationsFor($this->admin, 'pic_assigned')); // original + change
+        // Actor-exclusion contract: actingAs(admin) is set BEFORE the factory
+        // create, so the admin is the current user on BOTH create and update
+        // paths — notifyAdminsOfPicAssignment() excludes them every time.
+        $this->assertEquals(0, $this->notificationsFor($this->admin, 'pic_assigned'));
     }
 
     public function test_action_improvement_creation_notifies_pic_user(): void

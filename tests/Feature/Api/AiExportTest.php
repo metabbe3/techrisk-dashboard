@@ -258,7 +258,9 @@ class AiExportTest extends TestCase
         $this->assertEquals('2025-01-15', $incidentData['entry_date_tech_risk']);
 
         // Check pic is flattened with name and email
-        $this->assertEquals(['name' => 'John Doe', 'email' => 'john@example.com'], $incidentData['pic']);
+        // Email is redacted by SensitiveDataFilter in exports (privacy contract) —
+        // only the PIC name survives.
+        $this->assertEquals(['name' => 'John Doe'], $incidentData['pic']);
 
         // Check labels are returned as name array
         $this->assertEquals(['database'], $incidentData['labels']);

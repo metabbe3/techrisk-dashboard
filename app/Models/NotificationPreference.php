@@ -87,9 +87,16 @@ class NotificationPreference extends Model
      */
     public static function forUser(User $user): self
     {
-        return static::firstOrCreate(
-            ['user_id' => $user->id],
-        );
+        $pref = static::firstOrCreate(['user_id' => $user->id]);
+
+        // firstOrCreate() returns the in-memory instance on the create path — its
+        // unset columns are still null even though the DB applied its defaults.
+        // refresh() rehydrates from DB so callers see the real defaults (true).
+        if ($pref->wasRecentlyCreated) {
+            $pref->refresh();
+        }
+
+        return $pref;
     }
 
     /**

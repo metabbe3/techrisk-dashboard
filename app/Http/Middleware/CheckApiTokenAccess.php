@@ -33,7 +33,14 @@ class CheckApiTokenAccess
 
         $requestPath = $request->path();
 
-        if (! $this->tokenCanAccessEndpoint($token, $requestPath)) {
+        // Meta endpoints (token self-info/logout) are always reachable by a valid
+        // token — endpoint restrictions gate DATA endpoints, not a token's ability
+        // to inspect or disable itself. Without this, a token restricted to
+        // `incidents` could never call /v1/token/info or /logout.
+        $isMetaEndpoint = str_starts_with($requestPath, 'api/token')
+            || str_starts_with($requestPath, 'api/v1/token');
+
+        if (! $isMetaEndpoint && ! $this->tokenCanAccessEndpoint($token, $requestPath)) {
             \Log::warning('API token access denied', [
                 'token_id' => $token->id,
                 'token_name' => $token->name,

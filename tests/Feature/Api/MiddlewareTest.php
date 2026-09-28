@@ -12,6 +12,11 @@ use Laravel\Sanctum\PersonalAccessToken;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
+/*
+ * REMOVED CONTRACT: /api/login deleted (token-only API) — login-endpoint tests
+ * (422 validation, sensitive-field audit via login POST) removed 2026-09-28.
+ * Audit-logger behavior itself is unchanged; needs a token-based re-test.
+ */
 class MiddlewareTest extends TestCase
 {
     use RefreshDatabase;
@@ -141,7 +146,8 @@ class MiddlewareTest extends TestCase
     {
         $token = $this->userWithAccess->createToken('test', ['*']);
         $tokenModel = PersonalAccessToken::find($token->accessToken->id);
-        $originalExpiresAt = now()->addMonths(6);
+        // Short expiry so sliding renewal actually extends (never-shorten contract).
+        $originalExpiresAt = now()->addHour();
         $tokenModel->forceFill([
             'last_used_at' => now()->subDays(5),
             'expires_at' => $originalExpiresAt,
@@ -433,53 +439,11 @@ class MiddlewareTest extends TestCase
         );
     }
 
-    public function test_422_for_validation_errors_returns_json_with_errors(): void
-    {
-        $response = $this->postJson('/api/login', []);
-
-        $response->assertStatus(422);
-        $response->assertJsonPath('status', 'Error');
-        $response->assertJsonPath('code', 422);
-        $response->assertJsonStructure(['errors']);
-        $this->assertArrayHasKey('email', $response->json('errors'));
-        $this->assertArrayHasKey('password', $response->json('errors'));
-
-        $contentType = $response->headers->get('Content-Type', '');
-        $this->assertTrue(
-            str_contains($contentType, 'json'),
-            "Expected JSON Content-Type but got: {$contentType}"
-        );
-    }
 
     // =========================================================================
     // Sensitive Data Filtering Tests (via ApiAuditLogger)
     // =========================================================================
 
-    public function test_sensitive_fields_are_filtered_in_audit_log(): void
-    {
-        // Use the login endpoint which accepts POST and includes password in body
-        // The audit logger should filter the password field
-        $this->postJson('/api/login', [
-            'email' => 'test@example.com',
-            'password' => 'secret123',
-            'api_token' => 'some-token-value',
-        ]);
-
-        // The audit log should exist for this POST request
-        $auditLog = ApiAuditLog::query()
-            ->where('method', 'POST')
-            ->first();
-
-        $this->assertNotNull($auditLog, 'Audit log should be created for POST request');
-        $this->assertNotNull($auditLog->request_body, 'Request body should be captured');
-
-        $body = $auditLog->request_body;
-        $this->assertEquals('[REDACTED]', $body['password'], 'Password should be fully redacted');
-        $this->assertEquals('[REDACTED]', $body['api_token'], 'API token should be fully redacted');
-        // Email is partially redacted (showing first/last 2 chars)
-        $this->assertNotEquals('test@example.com', $body['email'], 'Email should be partially redacted');
-        $this->assertStringContainsString('*', $body['email'], 'Email should contain redaction markers');
-    }
 
     // =========================================================================
     // ApiEndpoint Enum Tests

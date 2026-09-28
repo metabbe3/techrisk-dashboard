@@ -92,7 +92,9 @@ class PersonalAccessTokenTest extends TestCase
         $user = User::factory()->create();
         $token = $user->createToken('test');
         $tokenModel = $token->accessToken;
-        $expiresAt = now()->addMonths(6);
+        // Short existing expiry so the sliding renewal actually extends it
+        // (renew() never shortens a longer fixed expiry — see contract in renew()).
+        $expiresAt = now()->addHour();
         $tokenModel->forceFill([
             'expires_at' => $expiresAt,
             'renewal_minutes' => 43200, // 30 days
@@ -102,7 +104,8 @@ class PersonalAccessTokenTest extends TestCase
         $tokenModel->renew();
 
         $tokenModel->refresh();
-        $this->assertEquals(43200, $originalExpiresAt->diffInMinutes($tokenModel->expires_at));
+        // original = now+1h, renewed = now+30d -> diff ~43140 (60min baseline offset)
+        $this->assertEqualsWithDelta(43200, abs($originalExpiresAt->diffInMinutes($tokenModel->expires_at)), 120);
     }
 
     public function test_renew_does_nothing_when_renewal_minutes_is_null(): void

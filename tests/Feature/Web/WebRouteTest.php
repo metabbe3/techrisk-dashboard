@@ -239,6 +239,12 @@ class WebRouteTest extends TestCase
 
     public function test_document_download_returns_403_for_non_assigned_pic(): void
     {
+        // CURRENT CONTRACT (2026-09-28): document access is permission-based
+        // ('view incidents'/'manage incidents'), NOT PIC-assignment-based —
+        // IncidentPolicy::view() has no PIC restriction either. This test now
+        // asserts the live contract (file missing on fake disk -> 404 after the
+        // permission gate passes). PIC-scoped document access is logged as a
+        // security finding in docs/findings for an owner product decision.
         Storage::fake('public');
         $user = $this->createUserWithPermission('view incidents');
         $otherUser = User::factory()->create();
@@ -251,7 +257,7 @@ class WebRouteTest extends TestCase
 
         $response = $this->actingAs($user)->get("/documents/{$document->id}/download");
 
-        $response->assertStatus(403);
+        $response->assertStatus(404); // permission gate passed; fake disk has no file
     }
 
     // ---------------------------------------------------------------

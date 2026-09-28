@@ -33,7 +33,9 @@ class PersonalAccessToken extends BasePersonalAccessToken
             return false;
         }
 
-        return now()->diffInDays($this->last_used_at) > $thresholdDays;
+        // Carbon 3 diffInDays() is SIGNED: now()->diffInDays($past) returns a
+        // negative number, so an inactive token slipped through as "active".
+        return abs(now()->diffInDays($this->last_used_at)) > $thresholdDays;
     }
 
     public function renew(): void
