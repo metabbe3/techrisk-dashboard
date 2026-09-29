@@ -10,7 +10,6 @@ use App\Exports\IncidentTableExport;
 use App\Exports\MultiSheetIncidentsExport;
 use App\Filament\Resources\IncidentResource;
 use Filament\Actions;
-use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\Select;
 use Filament\Resources\Components\Tab;
@@ -99,36 +98,154 @@ class ListIncidents extends ListRecords
                 ])
                 ->form(function () {
                     $columnOptions = self::getColumnOptions();
+                    $severityOptions = collect(Severity::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
+                    $statusOptions = collect(IncidentStatus::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
+                    $typeOptions = collect(IncidentType::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
+                    $fundOptions = collect(FundStatus::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
+                    $picOptions = \App\Models\User::orderBy('name')->pluck('name', 'id')->all();
+                    $businessOptions = Incident::distinct()->get('business_category')
+                        ->pluck('business_category')->filter()->flatMap(fn ($a) => $a)->unique()->sort()->values()->all();
+                    $rootCauseOptions = Incident::distinct()->get('root_cause_category')
+                        ->pluck('root_cause_category')->filter()->flatMap(fn ($a) => $a)->unique()->sort()->values()->all();
 
                     return [
-                        Checkbox::make('export_all_tabs')
-                            ->label('Export all tabs as separate sheets (XLSX only)')
-                            ->live(),
+                        \Filament\Forms\Components\Radio::make('preset')
+                            ->label('What do you want to export?')
+                            ->options([
+                                'executive' => '📊 Executive Report — KPI cards + 4 charts + data (recommended)',
+                                'group_by' => '🗂️ Group By — one sheet per category/division + MTTR/MTBF summary',
+                                'all_tabs' => '📚 All Tabs — one sheet per tab (XLSX)',
+                                'custom' => '⚙️ Custom — pick columns & format',
+                            ])
+                            ->default('executive')
+                            ->live()
+                            ->descriptions([
+                                'executive' => 'Summary sheet with KPIs and native Excel charts, plus a clean data sheet.',
+                                'all_tabs' => '16 sheets mirroring the table tabs, incl. Issues metrics.',
+                                'group_by' => 'Pick a dimension: business category, root cause, division, PIC, severity. Each value gets its own sheet (multi-category incidents appear in each). Summary sheet has per-group MTTR/MTBF.',
+                                'custom' => 'Full control: choose columns, XLSX or CSV.',
+                            ]),
+
+                        \Filament\Forms\Components\Section::make('Filter export (optional — applies to every preset)')
+                            ->description('Leave empty to export the filtered set you see in the table right now.')
+                            ->collapsed()
+                            ->schema([
+                                Select::make('f_severity')
+                                    ->label('Severity')
+                                    ->options($severityOptions)
+                                    ->multiple()
+                                    ->placeholder('All severities'),
+                                Select::make('f_status')
+                                    ->label('Incident Status')
+                                    ->options($statusOptions)
+                                    ->multiple()
+                                    ->placeholder('All statuses'),
+                                Select::make('f_incident_type')
+                                    ->label('Incident Type')
+                                    ->options($typeOptions)
+                                    ->multiple()
+                                    ->placeholder('All types'),
+                                Select::make('f_fund_status')
+                                    ->label('Fund Status')
+                                    ->options($fundOptions)
+                                    ->multiple()
+                                    ->placeholder('All fund statuses'),
+                                Select::make('f_pic')
+                                    ->label('PIC')
+                                    ->options($picOptions)
+                                    ->multiple()
+                                    ->searchable()
+                                    ->placeholder('All PICs'),
+                                Select::make('f_business_category')
+                                    ->label('Business Category')
+                                    ->options(array_combine($businessOptions, $businessOptions))
+                                    ->multiple()
+                                    ->placeholder('All categories'),
+                                Select::make('f_root_cause')
+                                    ->label('Root Cause Category')
+                                    ->options(array_combine($rootCauseOptions, $rootCauseOptions))
+                                    ->multiple()
+                                    ->placeholder('All root causes'),
+                            ]),
+
+                        Select::make('group_dim')
+                            ->label('Group sheets by')
+                            ->options([
+                                'business_category' => 'Business Category (Fraud, Operational, ...)',
+                                'root_cause_category' => 'Root Cause Category (Human Error, System Bug, ...)',
+                                'responsible_team' => 'Division / Responsible Team (Engineering, Ops, ...)',
+                                'pic' => 'PIC (person)',
+                                'severity' => 'Severity (P1..P4, X1..X4)',
+                                'incident_type' => 'Incident Type (Tech / Non-tech / Company Loss)',
+                            ])
+                            ->default('business_category')
+                            ->visible(fn ($get) => $get('preset') === 'group_by'),
+
                         Select::make('format')
                             ->label('Format')
                             ->options(['xlsx' => 'XLSX', 'csv' => 'CSV'])
+                            ->default('xlsx')
                             ->required()
-                            ->visible(fn ($get) => ! $get('export_all_tabs')),
+                            ->visible(fn ($get) => $get('preset') === 'custom'),
+
                         CheckboxList::make('columns')
                             ->label('Columns to Export')
                             ->options($columnOptions)
                             ->default(array_keys($columnOptions))
                             ->columns(3)
-                            ->required(),
+                            ->required()
+                            ->visible(fn ($get) => $get('preset') === 'custom'),
                     ];
                 })
                 ->action(function (array $data) {
                     $query = $this->getFilteredTableQuery()->clone();
-                    $selectedColumns = $data['columns'];
-                    $columnOptions = self::getColumnOptions();
-                    $headings = array_values(array_intersect_key($columnOptions, array_flip($selectedColumns)));
 
-                    if ($data['export_all_tabs']) {
+                    // Optional export filters (apply on top of the table's current filters)
+                    $query->when(! empty($data['f_severity'] ?? []), fn (Builder $q) => $q->whereIn('severity', $data['f_severity']))
+                        ->when(! empty($data['f_status'] ?? []), fn (Builder $q) => $q->whereIn('incident_status', $data['f_status']))
+                        ->when(! empty($data['f_incident_type'] ?? []), fn (Builder $q) => $q->whereIn('incident_type', $data['f_incident_type']))
+                        ->when(! empty($data['f_fund_status'] ?? []), fn (Builder $q) => $q->whereIn('fund_status', $data['f_fund_status']))
+                        ->when(! empty($data['f_pic'] ?? []), fn (Builder $q) => $q->whereIn('pic_id', $data['f_pic']))
+                        ->when(! empty($data['f_business_category'] ?? []), function (Builder $q) use ($data): void {
+                            $q->where(function (Builder $q2) use ($data): void {
+                                foreach ($data['f_business_category'] as $cat) {
+                                    $q2->orWhereJsonContains('business_category', $cat);
+                                }
+                            });
+                        })
+                        ->when(! empty($data['f_root_cause'] ?? []), function (Builder $q) use ($data): void {
+                            $q->where(function (Builder $q2) use ($data): void {
+                                foreach ($data['f_root_cause'] as $cat) {
+                                    $q2->orWhereJsonContains('root_cause_category', $cat);
+                                }
+                            });
+                        });
+
+                    if (($data['preset'] ?? 'executive') === 'executive') {
                         return Excel::download(
-                            new MultiSheetIncidentsExport($query, $headings, $selectedColumns),
+                            new \App\Exports\ExecutiveIncidentsExport($query),
+                            'executive-report-'.now()->format('Y-m-d').'.xlsx'
+                        );
+                    }
+
+                    if ($data['preset'] === 'group_by') {
+                        return Excel::download(
+                            new \App\Exports\GroupedIncidentsExport($query, $data['group_dim'] ?? 'business_category'),
+                            'incidents-by-'.($data['group_dim'] ?? 'business_category').'-'.now()->format('Y-m-d').'.xlsx'
+                        );
+                    }
+
+                    if ($data['preset'] === 'all_tabs') {
+                        return Excel::download(
+                            new MultiSheetIncidentsExport($query, array_values(self::getColumnOptions()), array_keys(self::getColumnOptions())),
                             'incidents-all-tabs-'.now()->format('Y-m-d').'.xlsx'
                         );
                     }
+
+                    // custom
+                    $selectedColumns = $data['columns'];
+                    $columnOptions = self::getColumnOptions();
+                    $headings = array_values(array_intersect_key($columnOptions, array_flip($selectedColumns)));
 
                     $format = $data['format'];
 
