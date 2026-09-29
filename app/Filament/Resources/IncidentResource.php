@@ -163,10 +163,10 @@ class IncidentResource extends Resource
                             Section::make('Incident Dates')
                                 ->icon('heroicon-o-calendar')
                                 ->schema([
-                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required(),
-                                    DateTimePicker::make('discovered_at'),
-                                    DateTimePicker::make('stop_bleeding_at'),
-                                    DateTimePicker::make('entry_date_tech_risk')->required(),
+                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required()->maxDate(now()),
+                                    DateTimePicker::make('discovered_at')->afterOrEqual('incident_date'),
+                                    DateTimePicker::make('stop_bleeding_at')->afterOrEqual('incident_date'),
+                                    DateTimePicker::make('entry_date_tech_risk')->required()->maxDate(now()),
                                 ])->columns(['default' => 1, 'sm' => 2, 'lg' => 4]),
 
                             Section::make('Categories')
@@ -190,9 +190,9 @@ class IncidentResource extends Resource
                                 ->icon('heroicon-o-currency-dollar')
                                 ->schema([
                                     Select::make('fund_status')->options(FundStatus::options()),
-                                    TextInput::make('potential_fund_loss')->numeric()->prefix('Rp')->default(0),
-                                    TextInput::make('recovered_fund')->numeric()->prefix('Rp')->default(0)->required(),
-                                    TextInput::make('fund_loss')->numeric()->prefix('Rp')->default(0)->required(),
+                                    TextInput::make('potential_fund_loss')->numeric()->minValue(0)->prefix('Rp')->default(0),
+                                    TextInput::make('recovered_fund')->numeric()->minValue(0)->prefix('Rp')->default(0)->required(),
+                                    TextInput::make('fund_loss')->numeric()->minValue(0)->prefix('Rp')->default(0)->required(),
                                     TextInput::make('loss_taken_by')->label('Loss Taken By'),
                                 ])->columns(['default' => 1, 'sm' => 2, 'xl' => 5]),
                         ]),
