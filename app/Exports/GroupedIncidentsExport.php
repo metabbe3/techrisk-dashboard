@@ -5,6 +5,8 @@ namespace App\Exports;
 use App\Enums\Severity;
 use App\Filament\Statistics\IncidentStatsFooterData;
 use Illuminate\Database\Eloquent\Builder;
+use App\Exports\Sheets\GroupSummarySheet;
+use App\Exports\Sheets\PerCategorySheet;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 use Maatwebsite\Excel\Concerns\WithTitle;
 
@@ -110,51 +112,5 @@ class GroupedIncidentsExport implements WithMultipleSheets
         }
 
         return $sheets;
-    }
-}
-
-/**
- * Front summary: one row per group with counts and MTTR/MTBF aggregates.
- */
-class GroupSummarySheet implements \Maatwebsite\Excel\Concerns\FromCollection, \Maatwebsite\Excel\Concerns\ShouldAutoSize, \Maatwebsite\Excel\Concerns\WithHeadings, \Maatwebsite\Excel\Concerns\WithMapping, \Maatwebsite\Excel\Concerns\WithTitle
-{
-    protected array $groupStats;
-
-    protected string $label;
-
-    public function __construct(array $groupStats, string $label)
-    {
-        $this->groupStats = $groupStats;
-        $this->label = $label;
-    }
-
-    public function title(): string
-    {
-        return 'Summary';
-    }
-
-    public function headings(): array
-    {
-        return [$this->label, 'Cases', 'Avg MTTR (min)', 'Avg MTTR (days)', 'Avg MTBF (days)', 'Cases w/ MTTR', 'Potential Loss', 'Actual Loss', 'Recovered'];
-    }
-
-    public function collection()
-    {
-        return collect($this->groupStats);
-    }
-
-    public function map($row): array
-    {
-        return [
-            $row['label'],
-            $row['count'],
-            $row['avgMttrMins'],
-            $row['avgMttrDays'],
-            $row['avgMtbf'],
-            $row['mttrDataCount'],
-            $row['potential'],
-            $row['actual'],
-            $row['recovered'],
-        ];
     }
 }

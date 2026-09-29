@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Exports;
+namespace App\Exports\Sheets;
 
 use App\Enums\Severity;
 use Illuminate\Database\Eloquent\Builder;
