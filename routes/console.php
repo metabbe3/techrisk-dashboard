@@ -22,6 +22,16 @@ Schedule::command('model:prune', ['--model' => ApiAuditLog::class])->daily()->de
 // No-ops when AI_MODEL_HEALTH_CHECK=false.
 Schedule::command('ai:check-model-health')->dailyAt('02:17')->withoutOverlapping()->description('Nightly model health ping; cached ~24h (CircuitBreaker covers real-time failures)');
 
+// User-defined AI Agents — dispatch a queued run for every cron-scheduled agent
+// that is due this minute (plus fail stale runs from dead workers). Per-agent
+// overlap is guarded by an atomic lock inside RunAiAgentJob; the same-minute
+// dedupe lives in the command's query.
+Schedule::command('ai:dispatch-due-agents')->everyMinute()->withoutOverlapping()->description('Dispatch due cron-scheduled AI agent runs');
+
+// Prune completed AI agent runs older than the retention window (default 90 days).
+// See \App\Models\AiAgentRun::prunable().
+Schedule::command('model:prune', ['--model' => \App\Models\AiAgentRun::class])->dailyAt('02:45')->description('Prune AI agent runs older than retention');
+
 // ---------------------------------------------------------------------------
 // Reminders, maintenance & scheduled reports.
 // Ported from the legacy App\Console\Kernel::schedule(), which this app's

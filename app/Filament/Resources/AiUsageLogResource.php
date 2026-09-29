@@ -19,11 +19,12 @@ use Illuminate\Database\Eloquent\Builder;
 class AiUsageLogResource extends Resource
 {
     use ReadOnlyResource;
+
     protected static ?string $model = AiUsageLog::class;
 
     protected static ?string $navigationIcon = 'heroicon-o-sparkles';
 
-    protected static ?string $navigationGroup = 'System';
+    protected static ?string $navigationGroup = 'AI';
 
     protected static ?int $navigationSort = 101;
 
@@ -70,6 +71,7 @@ class AiUsageLogResource extends Resource
                         'root_cause' => 'warning',
                         'timeline' => 'success',
                         'remark' => 'gray',
+                        'agent' => 'primary',
                         default => 'gray',
                     })
                     ->formatStateUsing(fn (string $state): string => ucfirst(str_replace('_', ' ', $state)))
@@ -125,6 +127,7 @@ class AiUsageLogResource extends Resource
                         'root_cause' => 'Root Cause',
                         'timeline' => 'Timeline',
                         'remark' => 'Remark',
+                        'agent' => 'Agent',
                     ]),
 
                 SelectFilter::make('success')
