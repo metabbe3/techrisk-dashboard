@@ -10,6 +10,7 @@ use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\ChartWidget;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class MonthlyIncidentsChart extends ChartWidget
 {
@@ -33,7 +34,10 @@ class MonthlyIncidentsChart extends ChartWidget
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
-            $query = Incident::selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
+            $monthExpr = DB::connection()->getDriverName() === 'sqlite'
+                ? "CAST(strftime('%m', incident_date) AS INTEGER)"
+                : 'MONTH(incident_date)';
+            $query = Incident::selectRaw($monthExpr.' as month, COUNT(*) as count')
                 ->where('classification', IncidentClassification::Incident->value)
                 ->excludedFromCounts();
 

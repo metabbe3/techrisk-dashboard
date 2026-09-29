@@ -152,11 +152,15 @@ class AiTrendInsights extends Widget
             }
         };
 
+        $monthExpr = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite'
+            ? "CAST(strftime('%m', incident_date) AS INTEGER)"
+            : 'MONTH(incident_date)';
+
         $baseQuery = Incident::where('classification', IncidentClassification::Incident->value)->tap($dateFilter);
 
         $monthlyData = (clone $baseQuery)
-            ->selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
-            ->groupBy(DB::raw('MONTH(incident_date)'))
+            ->selectRaw($monthExpr.' as month, COUNT(*) as count')
+            ->groupBy(DB::raw($monthExpr))
             ->pluck('count', 'month')
             ->mapWithKeys(fn ($count, $month) => [
                 date('F', mktime(0, 0, 0, $month, 1)) => $count,

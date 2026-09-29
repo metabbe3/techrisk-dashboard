@@ -39,10 +39,9 @@ class IncidentsByLabelChart extends ChartWidget
                     } else {
                         $query->whereYear('incident_date', now()->year);
                     }
-                }])
-                ->having('incidents_count', '>', 0);
+                }]);
 
-            return $query->pluck('incidents_count', 'name');
+            return $query->pluck('incidents_count', 'name')->filter(fn ($c) => $c > 0);
         });
 
         $count = $data->count();

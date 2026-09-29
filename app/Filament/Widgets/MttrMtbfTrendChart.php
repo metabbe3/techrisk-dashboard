@@ -26,13 +26,16 @@ class MttrMtbfTrendChart extends ChartWidget
 
     protected function getData(): array
     {
+        $monthExpr = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite'
+            ? "CAST(strftime('%m', incident_date) AS INTEGER)"
+            : 'MONTH(incident_date)';
         $cacheKey = 'mttr_mtbf_trend_v4_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
         ]));
 
-        $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+        $data = Cache::remember($cacheKey, now()->addMinutes(15), function () use ($monthExpr) {
             $baseQuery = Incident::where('classification', '!=', IncidentClassification::Issue->value);
 
             if ($this->start_date && $this->end_date) {
@@ -44,16 +47,16 @@ class MttrMtbfTrendChart extends ChartWidget
             // MTTR Non Fund Loss per month (minutes) — average of positive values
             $mttrNonFundData = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('AVG(CASE WHEN mttr >= 0 THEN mttr ELSE NULL END) as avg_mttr'))
-                ->groupBy(DB::raw('MONTH(incident_date)'))
+                ->select(DB::raw($monthExpr.' as month'), DB::raw('AVG(CASE WHEN mttr >= 0 THEN mttr ELSE NULL END) as avg_mttr'))
+                ->groupBy(DB::raw($monthExpr))
                 ->get()
                 ->keyBy('month');
 
             // MTTR Fund Loss per month (days) — average of negative values (absolute)
             $mttrFundData = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('AVG(CASE WHEN mttr < 0 THEN ABS(mttr) ELSE NULL END) as avg_mttr'))
-                ->groupBy(DB::raw('MONTH(incident_date)'))
+                ->select(DB::raw($monthExpr.' as month'), DB::raw('AVG(CASE WHEN mttr < 0 THEN ABS(mttr) ELSE NULL END) as avg_mttr'))
+                ->groupBy(DB::raw($monthExpr))
                 ->get()
                 ->keyBy('month');
 
@@ -61,8 +64,8 @@ class MttrMtbfTrendChart extends ChartWidget
             $mtbfNonFundRows = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->where('fund_status', 'Non fundLoss')
-                ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
-                ->groupBy(DB::raw('MONTH(incident_date)'))
+                ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
+                ->groupBy(DB::raw($monthExpr))
                 ->get();
 
             $mtbfNonFundData = [];
@@ -80,8 +83,8 @@ class MttrMtbfTrendChart extends ChartWidget
             $mtbfFundRows = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->where('fund_status', 'Confirmed loss')
-                ->select(DB::raw('MONTH(incident_date) as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
-                ->groupBy(DB::raw('MONTH(incident_date)'))
+                ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
+                ->groupBy(DB::raw($monthExpr))
                 ->get();
 
             $mtbfFundData = [];

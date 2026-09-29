@@ -32,9 +32,12 @@ class FundLossTrendChart extends ChartWidget
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
+            $monthExpr = DB::connection()->getDriverName() === 'sqlite'
+                ? "CAST(strftime('%m', incident_date) AS INTEGER)"
+                : 'MONTH(incident_date)';
             $query = Incident::select(
                 DB::raw('SUM(fund_loss) as total_fund_loss'),
-                DB::raw('MONTH(incident_date) as month')
+                DB::raw($monthExpr.' as month')
             )
                 ->aiCounts()
                 ->groupBy('month');
