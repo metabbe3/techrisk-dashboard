@@ -42,3 +42,18 @@ Calm and authoritative. Trustworthy, institutional, and unflappable — the tool
 ## Accessibility & Inclusion
 
 Target **WCAG 2.1 AA**. Particular attention to two areas this tool leans on hard: **semantic color** (severity, status, heat-matrix, fund-loss exposure must never rely on color alone — always paired with label, icon, or position), and **reduced motion** (the dashboard uses real-time updates and chart animations; every animation needs a `prefers-reduced-motion` fallback). Dense data tables and the kanban board need strong focus states and keyboard reachability for operators who work without a mouse. Contrast on muted labels against tinted surfaces is a known risk area — body text must hold ≥4.5:1.
+
+## Exports & Reporting (2026-09-29)
+
+Incident data leaves the tool through one Export button with four presets, all filterable on top of the operator's current table view:
+
+- **Executive Report** — the board-pack view: KPI summary sheet (total cases, MTTR, MTBF, recovery), 4 native Excel charts (incidents per month, severity mix, MTTR trend, potential vs recovered funds), plus a clean data sheet. Opens correctly in Excel, Numbers, and QuickLook.
+- **Group By** — one sheet per business category / root cause / division / PIC / severity / incident type, with a front Summary sheet carrying per-group MTTR/MTBF. Built for reviews where the room asks "show me Fraud only" or "walk me through IT Infrastructure".
+- **All Tabs** — the full 16-sheet working file for auditors.
+- **Custom** — operator picks columns and format (XLSX/CSV).
+
+Data-entry guardrails back this: fund amounts cannot be negative, timelines cannot precede the incident, dates cannot be in the future — so exports carry clean data by construction, not by cleanup.
+
+## Operating Cadence
+
+The tool is expected to improve daily. Changes land through a documented pipeline (PM -> agent -> QA -> docs), lessons are captured per bug, and every merge must keep the test suite above its recorded baseline. Owner approval is reserved for guardrail-class changes only (prod DB, credentials, auth/payments); everything else ships when green.

@@ -23,6 +23,16 @@ Initiatives to improve application performance and resource utilization.
 
 ---
 
+### [CI-0XX] Export UX Redesign + Validation Hardening (2026-09-29)
+
+**Category:** Process Improvements / Best Practice Adoption
+**Status:** Completed
+**Outcome:**
+- Export reduced from a single all-tabs dump to 4 task-shaped presets (Executive / Group By / All Tabs / Custom) with optional filters — executives get a chart pack, reviewers get per-dimension sheets, auditors get the full file.
+- Incident form hardened against 4 classes of silent bad data (negative funds, reversed timelines, future dates, duplicate year typos) via live adversarial QA matrix, not guesswork.
+- Export code restructured to PSR-4 one-class-per-file with shared schema/filter/stats classes (bf40c08).
+- Test baseline raised and recorded: 529 tests / 1,765 assertions.
+
 ## Active Initiatives
 
 ### [CI-001] Code Quality Standards

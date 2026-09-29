@@ -1006,6 +1006,75 @@ adding one.
 
 ---
 
+## [BUG-011] Table stats footer rendered NULL — page hook not executed on loadTable path
+
+**Date:** 2026-09-29
+**Severity:** P1
+**Component:** `IncidentResource/Pages/ListIncidents` + `IncidentResource::table()`
+**Status:** Fixed (commit f6779e2)
+
+### Root Cause
+`getTableContentFooter()` page-hook is not executed on the Livewire `loadTable` render path used by Filament 3.3 table pages. Server HTML for the initial render included the footer, but every subsequent table interaction (filter/sort/page) re-renders without calling the hook — footer silently disappeared.
+
+### Fix
+Declarative config: `->contentFooter()` on the resource `table()`. Stats extracted to `App\Filament\Statistics\IncidentStatsFooterData` (reused by exports — single formula source).
+
+### Prevention
+Prefer declarative resource-level config over page hooks for anything that must survive table re-renders. Verified by asserting the footer text appears inside `<tfoot>` of the `loadTable` HTML response.
+
+---
+
+## [BUG-012] DateTimePicker `maxValue()` does not exist — wrong API throws 500
+
+**Date:** 2026-09-29
+**Severity:** P2
+**Component:** `IncidentResource` form
+**Status:** Fixed (commit 45abd9b follow-up)
+
+### Root Cause
+`maxValue()` exists for numeric/text fields; `DateTimePicker` exposes `maxDate()`. Using the wrong one throws `BadMethodCallException` at render time — caught immediately in live QA smoke (500 + laravel.log).
+
+### Prevention
+When adding date constraints, check `vendor/filament/forms/src/Components/DateTimePicker.php` for the real API. Numeric-style helpers (`minValue`/`maxValue`) do not apply to date pickers (`minDate`/`maxDate` do).
+
+---
+
+## [BUG-013] Native Excel charts blank in Numbers/QuickLook — writer omits value caches
+
+**Date:** 2026-09-29
+**Severity:** P2
+**Component:** `Exports/Sheets/ExecutiveCalcSheet` charts
+**Status:** Fixed (commit 6d783c4)
+
+### Root Cause
+PhpSpreadsheet chart writer emits series references (`<c:f>`) without cached values (`numCache`/`strCache`). Excel recalculates on open; Numbers/QuickLook do not — charts render empty.
+
+### Fix
+Post-write pass over the XLSX zip: parse chart XML, read the referenced Calc-sheet ranges, inject `<c:numCache>`/`<c:strCache>` blocks.
+
+### Prevention
+Any exported chart must ship with value caches. Verify by unzipping the artifact and asserting `<c:v>` points exist in `xl/charts/chartN.xml` before handing the file to a non-Excel viewer.
+
+---
+
+## [BUG-014] Incident form accepted invalid data silently (negatives, reversed timeline, future dates)
+
+**Date:** 2026-09-29
+**Severity:** P1
+**Component:** `IncidentResource` form validation
+**Status:** Fixed (commit 45abd9b)
+
+### Root Cause
+Validation covered required/numeric/unique but not domain sanity. Live HTTP-submit matrix proved: fund fields stored `-5000`, `discovered_at`/`stop_bleeding_at` before `incident_date` stored, `incident_date` in 2027 (typo year) stored.
+
+### Fix
+`minValue(0)` on the three fund fields; `maxDate(now())` on `incident_date` + `entry_date_tech_risk`; `afterOrEqual('incident_date')` on `discovered_at` + `stop_bleeding_at`. Re-tested live: all invalid inputs blocked with server-side messages; valid control still saves.
+
+### Prevention
+Form QA must submit an adversarial matrix (letters in numeric, negatives, out-of-order dates, far-future dates, duplicates) — not just the happy path. Required/numeric/unique passing does not mean the data is sane.
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |

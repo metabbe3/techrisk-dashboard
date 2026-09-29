@@ -340,3 +340,9 @@ Three-angle audit (unified API response, DRY, OOP/architecture). Each finding ha
 ---
 
 *Last Updated: 2026-09-14*
+
+### [A-6] `php artisan serve` uses regular opcache despite `enable_cli=0` (2026-09-29)
+`opcache.enable_cli=0` only affects plain CLI scripts. `artisan serve` runs the cli-server SAPI which honors `opcache.enable=1` — file edits appear stale until the serve process restarts. Dev-only (production uses nginx+PHP-FPM with its own reload), but it burned a full debug cycle masquerading as "cache problem". Rule: after editing PHP under `artisan serve`, restart the serve process before concluding anything about caching.
+
+### [A-7] Export action surface (2026-09-29, resolved same day — kept as record)
+Export logic briefly lived as a 362-line multi-class file + inline form/handler in `ListIncidents`. Resolved in bf40c08: one class per file under `Exports/` + `Exports/Sheets/`, form+filters extracted to `Filament/Actions/ExportActionSchema`, stats shared via `Statistics/IncidentStatsFooterData`. Recorded so future exports follow the split, not the monolith.

@@ -191,7 +191,51 @@ $table->string('markdown_conversion_status')->default('pending');
 
 ---
 
+
+### [PROJ-005] Export Redesign — Executive Report, Group By, Form Validation
+
+**Status:** Done
+**Priority:** P1
+**PM:** Claude (PM Agent)
+**Assigned Agents:** PM, backend-architect-engineer, backend-qa-engineer
+**Start Date:** 2026-09-29
+**Target Completion:** 2026-09-29
+
+#### Description
+Rework the incident Export button from a single all-tabs dump into a 4-preset workflow (Executive Report with native Excel charts + KPI cards, Group By dimension sheets with per-group MTTR/MTBF, All Tabs, Custom), add optional export filters, and harden the incident form against bad data (negative funds, reversed timelines, future dates).
+
+#### Technical Approach
+- `App\Filament\Actions\ExportActionSchema` — single source for form schema, `applyFilters()`, `columnOptions()`
+- `App\Exports\ExecutiveIncidentsExport` + `Sheets/Executive{Data,Calc,Summary}Sheet` — KPI + 4 native charts; post-write XML pass injects chart `numCache`/`strCache` (PhpSpreadsheet omits them; blank charts in Numbers/QuickLook otherwise)
+- `App\Exports\GroupedIncidentsExport` + `Sheets/GroupSummarySheet` + `Sheets/PerCategorySheet` — per-dimension sheets, multi-category incidents appear in each
+- Shared stats via `App\Filament\Statistics\IncidentStatsFooterData` (also powers the table footer)
+- Form validation: `minValue(0)` on fund fields, `maxDate(now())` on incident/entry dates, `afterOrEqual('incident_date')` on discovered/stop-bleeding (found via live HTTP-submit QA matrix)
+
+#### Tasks
+- [x] Preset form + handler — backend — Done
+- [x] Executive report with charts + cache injection — backend — Done
+- [x] Group By export (6 dimensions) — backend — Done
+- [x] Optional export filters — backend — Done
+- [x] Form validation hardening (4 gaps found live) — backend — Done
+- [x] PSR-4 refactor: one class per file — backend — Done
+- [x] Full suite regression — QA — Done (529/1765 green)
+
+#### Dependencies
+- maatwebsite/excel 3.1 (WithCharts), phpoffice/phpspreadsheet chart writers
+
+#### Blockers
+None
+
+#### Progress Updates
+- 2026-09-29: Shipped in commits 6d783c4, 45abd9b, bf40c08. Charts verified in Excel/Numbers via cached values; QA matrix re-run post-fix (all invalid inputs blocked).
+
+---
+
 ## Completed Projects
+
+### [PROJ-005] Export Redesign — Executive Report, Group By, Form Validation
+- **Completed:** 2026-09-29
+- **Outcome:** 4-preset export (Executive/GroupBy/AllTabs/Custom) + filters + validation hardening; 529/1765 green
 
 ### [PROJ-001] Initial SOP and Documentation Setup
 - **Completed:** 2026-02-02
@@ -199,4 +243,4 @@ $table->string('markdown_conversion_status')->default('pending');
 
 ---
 
-*Last Updated: 2026-02-02*
+*Last Updated: 2026-09-29*

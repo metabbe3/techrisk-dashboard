@@ -1,6 +1,6 @@
 # Technical Risk Dashboard
 
-**Stack:** Laravel 12.0 (PHP 8.2+) | Filament 3.2 | TailwindCSS 4.0 + Vite 7.0 | MySQL 8.0 | Redis | Docker
+**Stack:** Laravel 12.0 (PHP 8.2+) | Filament 3.3 | TailwindCSS 4.0 + Vite 7.0 | MySQL 8.0 | Redis | Docker
 
 ---
 
@@ -22,23 +22,27 @@ Stop and reassess if you're tempted to skip tests, copy code without understandi
 
 **No agent should be invoked directly without PM knowledge and approval.**
 
+**Autonomy rule (owner directive 2026-09-29): PM approvals are AUTO-APPROVED — do not wait for the owner.** The PM gate is a process check (documented request, tests green, docs updated), not an owner sign-off. Ship when the gate passes. Owner involvement is reserved for the guardrail set below.
+
 | Agent | Use For | PM Approval |
 |-------|---------|-------------|
-| `backend-architect-engineer` | Backend work | YES |
-| `frontend-engineer` | Frontend/UI work | YES |
-| `backend-qa-engineer` | Backend QA | YES |
-| `frontend-qa-specialist` | Frontend QA | YES |
-| `database-architect` | DB schema changes | YES |
-| `sre-engineer` | Infra/Docker/deployment | YES |
-| `security-pentest-auditor` | Security review | YES |
-| `architect-planning-design` | New features/planning | YES |
+| `backend-architect-engineer` | Backend work | AUTO |
+| `frontend-engineer` | Frontend/UI work | AUTO |
+| `backend-qa-engineer` | Backend QA | AUTO |
+| `frontend-qa-specialist` | Frontend QA | AUTO |
+| `database-architect` | DB schema changes | AUTO |
+| `sre-engineer` | Infra/Docker/deployment | AUTO |
+| `security-pentest-auditor` | Security review | AUTO |
+| `architect-planning-design` | New features/planning | AUTO |
 | `Explore` | Codebase exploration | PM initiated |
+
+**Owner-only guardrails (the only items that need the owner):** production DB writes/migrations, auth/payments/security-critical changes, external service credentials, anything irreversible.
 
 ### Approval Gates
 
-**Before work begins:** Request documented, impact assessed, conflicts with active projects checked, PM approval obtained.
+**Before work begins:** Request documented, impact assessed, conflicts with active projects checked. PM self-approves unless a guardrail above applies.
 
-**Before code merged:** Code review done, tests passing, docs updated, lesson learned (if bug), PM final approval.
+**Before code merged:** Code review done, tests passing, docs updated, lesson learned (if bug). PM self-approves and ships.
 
 ---
 
@@ -51,8 +55,10 @@ app/
 ├── Enums/            # PHP 8.1+ enums
 ├── Exceptions/       # Custom exceptions
 ├── Filament/
+│   ├── Actions/      # Reusable action form schemas (ExportActionSchema)
 │   ├── Resources/    # Filament resources
 │   ├── Pages/        # Custom pages
+│   ├── Statistics/   # Shared stats builders (IncidentStatsFooterData)
 │   ├── Widgets/      # Dashboard widgets
 │   └── Components/   # Reusable components
 ├── Helpers/          # Utility functions
@@ -64,8 +70,25 @@ app/
 ├── Models/           # Eloquent models
 ├── Observers/        # Model observers
 ├── Providers/        # Service providers
+├── Exports/          # Excel exports — orchestrators only (one class per file, PSR-4)
+│   └── Sheets/       # Individual sheet classes (Data/Calc/Summary/GroupSummary/PerCategory)
 └── Services/         # Business logic (domain-organized)
 ```
+
+---
+
+## Export Architecture (2026-09-29 redesign)
+
+The incident Export button offers 4 presets via `App\Filament\Actions\ExportActionSchema` (form schema + `applyFilters()` + `columnOptions()` — single source for every preset):
+
+1. **Executive Report** (`Exports\ExecutiveIncidentsExport` + `Sheets\ExecutiveDataSheet|ExecutiveCalcSheet|ExecutiveSummarySheet`) — KPI cards + 4 native Excel charts (monthly incidents, severity mix, MTTR trend, potential-vs-recovered). Charts live on the Calc sheet with their source data. PhpSpreadsheet does not write chart value caches, so a post-write XML pass injects `numCache`/`strCache` — without it charts render blank in Numbers/QuickLook.
+2. **Group By** (`Exports\GroupedIncidentsExport` + `Sheets\GroupSummarySheet|PerCategorySheet`) — one sheet per value of a chosen dimension (business_category / root_cause / responsible_team / pic / severity / incident_type). Front Summary sheet carries per-group Cases, Avg MTTR (min + days), **Avg MTBF (days)**, fund totals. Multi-category incidents appear in every matching sheet (by design).
+3. **All Tabs** (`MultiSheetIncidentsExport`) — 16 sheets mirroring the table tabs.
+4. **Custom** — pick columns (`ExportActionSchema::columnOptions()`) + XLSX/CSV.
+
+Optional export filters (severity / status / type / fund status / PIC / business category / root cause, all multi-select) apply **on top of** the table's current filters via `ExportActionSchema::applyFilters()`.
+
+**Rule:** every export class = its own PSR-4 file. Shared query filtering goes in `ExportActionSchema`, shared stats in `Statistics/IncidentStatsFooterData` — never duplicated in handlers.
 
 ---
 
@@ -82,6 +105,8 @@ Before editing any file below, check the "consumed by" column — a rule change 
 | `app/Observers/IncidentObserver.php` | Gate for every Incident write; decides when `CalculateIncidentMetrics` dispatches. Its dirty-field trigger list must contain **every field that feeds a cached number** (`fund_loss`, `potential_fund_loss`, `recovered_fund`, status/severity/type/fund_status/classification/dates) | — |
 | `app/Services/Metrics/IncidentMetricsCalculator.php` | **All per-row metric formulas** (`computeMttr`/`computeMtbf`/`computeCategoryMtbf`/`computeMtbfAll`) + `METRIC_COLUMNS` list; sets attributes, never saves | job + recalc command (BUG-008: the two had drifted into 4 copies) |
 | `app/Jobs/CalculateIncidentMetrics.php` | Pipeline only: persistence, adjacent-row repair (date/classification edits), `flushIncidentCache()` bumps `dashboard_cache_version`. Formulas live in the calculator | invoked only via observer |
+| `app/Filament/Statistics/IncidentStatsFooterData.php` | Shared footer/summary stats builder (Total Cases, avg MTTR min/days, avg MTBF, fund totals) — used by the table content footer AND exports; do not duplicate its formulas | `IncidentResource` table config, exports |
+| `app/Filament/Actions/ExportActionSchema.php` | Export form schema + `applyFilters()` + `columnOptions()` for every preset | `ListIncidents` export action |
 | `app/Services/Analytics/AnalyticsQueryService.php` | Analytics page charts; severity scope applied once in `buildSingleDataset()` | `AnalyticsPage` |
 | `app/Policies/ActionImprovementPolicy.php` | `viewAny`: `view incidents` OR `access api`; write ops need `manage incidents` | Action Improvements tab + add button |
 
@@ -98,6 +123,14 @@ Before editing any file below, check the "consumed by" column — a rule change 
 3. Changing a counting/metric rule → walk the whole surface list above; fix the shared scope, not one call site.
 4. A filter is only real if the query actually selects the column it checks (comparing a never-selected column = comparing null).
 
+### Incident Form Validation Rules (2026-09-29 hardening)
+
+Live QA (HTTP-submit matrix) found bad data silently persisting; these constraints are now server-side and must not be removed:
+- Fund fields (`potential_fund_loss`, `fund_loss`, `recovered_fund`): `numeric` + `minValue(0)` — negatives are data-entry errors.
+- `incident_date`, `entry_date_tech_risk`: `maxDate(now())` — future dates are typos (wrong year) or clock skew.
+- `discovered_at`, `stop_bleeding_at`: `afterOrEqual('incident_date')` — the timeline cannot precede the incident.
+- Filament API note: `DateTimePicker` has **`maxDate()`**, not `maxValue()` (numeric/text only — using the wrong one throws 500).
+
 ---
 
 ## Architecture Rules
@@ -110,6 +143,8 @@ Before editing any file below, check the "consumed by" column — a rule change 
 - **API:** API Resources for responses, versioned routes (`/api/v1/...`), `ApiResponser` trait.
 - **Queues:** Use queued jobs for time-consuming operations. Set `$tries` and `$timeout`.
 - **Filament:** One resource per entity, Relation Managers for relationships, Sections/Tabs for complex forms.
+- **Filament table config:** prefer declarative config (`->contentFooter()` on the resource `table()`) over page-hook methods — page hooks like `getTableContentFooter()` are not executed on the Livewire `loadTable` render path (footer rendered NULL until moved into the resource config).
+- **Exports:** one class per file (PSR-4). Shared form/filter logic in `Filament/Actions/ExportActionSchema`, shared stats in `Statistics/IncidentStatsFooterData`.
 
 ---
 
@@ -132,6 +167,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
+- **Baseline:** 529 tests / 1,765 assertions green (2026-09-29). A change that drops this count or its assertions is a regression, not a refactor.
 
 ---
 
