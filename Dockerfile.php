@@ -38,9 +38,11 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 RUN git config --global --add safe.directory /var/www/html
 
 # Install Node.js 20.x (Required for Vite/Filament 3.x)
+# npm@latest is pinned to major 11: npm 12 requires node >=22 and EBADENGINEs
+# the build (unpinned @latest is a time bomb — it broke the prod build 2026-09-29)
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && npm install -g npm@latest
+    && npm install -g npm@11
 
 # Install supervisor for queue workers
 RUN mkdir -p /var/log/supervisor
