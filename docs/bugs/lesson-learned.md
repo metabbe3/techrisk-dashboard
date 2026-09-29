@@ -1135,16 +1135,39 @@ Trait/contract pairing rule: the trait brings behavior, the interface is what th
 
 ---
 
+### [BUG-020] - Production served a dev-built bundle: every page tried wss://localhost:8081
+
+**Date:** 2026-09-29
+**Discovered By:** User (console errors on dashboard/incident pages)
+**Severity:** Medium
+**Status:** Resolved
+
+### Description
+Console on https://techrisk.paas.dana.id: `WebSocket connection to 'wss://localhost:8081/app/local-key' failed` from `app-C6DTV4al.js`. Production serves assets from the git-committed `public/build` (bind-mounted repo, `/.gitignore` line for `/public/build` deliberately commented out) — and that bundle was Vite-built on a dev machine against the **development** `.env`, so `VITE_REVERB_HOST=localhost`, `VITE_REVERB_PORT=8081`, `VITE_REVERB_APP_KEY=local-key` were baked into the minified Echo config. Every production visitor's browser tried to open a WebSocket to its own localhost.
+
+### Root Cause
+`VITE_*` values are compile-time: whatever `.env` is present during `npm run build` is permanently embedded in the committed asset. Committing built assets couples the artifact to the machine that built it — the dev/prod env split existed only server-side (.env is not committed), so nothing flagged the mismatch. The failing WS also left `modal.js` `showModal` InvalidStateError noise in its wake (degraded realtime state), which disappears with it.
+
+### Fix
+`resources/js/bootstrap.js` now constructs `window.Echo` only when the baked `wsHost` matches `window.location.hostname` (localhost/127.0.0.1 treated as equivalent). A stale dev-built bundle served from any other origin makes zero connection attempts; dev realtime is unchanged. Assets rebuilt and committed (`app-Guw3Ten2.js`). Enabling realtime in production later = build with `VITE_REVERB_HOST=<public host>`, `VITE_REVERB_SCHEME=https`, `VITE_REVERB_PORT=443` and route `/app/*` (WebSocket upgrade) at the ingress to the `reverb` container (published on host port 8081).
+
+### Prevention Checklist
+- [x] Echo init is origin-guarded — any future cross-env build is harmless by construction
+- [x] `.env.example` documents the production `VITE_REVERB_*` values
+- [ ] (optional future) stop committing `public/build`; build in the server deploy step instead
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 19 |
+| Total Bugs | 20 |
 | Critical | 0 |
 | High | 12 |
-| Medium | 5 |
+| Medium | 6 |
 | Low | 0 |
-| Resolved | 19 |
+| Resolved | 20 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -1155,7 +1178,7 @@ Trait/contract pairing rule: the trait brings behavior, the interface is what th
 | Filament Resource | 5 |
 | API Endpoint | 1 |
 | Database/Migration | 0 |
-| Frontend/CSS | 0 |
+| Frontend/CSS | 1 |
 | Queue/Job | 2 |
 | Other | 5 |
 
