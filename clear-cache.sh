@@ -62,13 +62,15 @@ docker compose exec app mkdir -p storage/app/public/investigation-forms
 docker compose exec app mkdir -p storage/framework/cache
 docker compose exec app mkdir -p storage/framework/sessions
 docker compose exec app mkdir -p storage/framework/views
+docker compose exec app mkdir -p bootstrap/cache
 
 # Set permissions so www-data can read/write
 docker compose exec app chmod -R 775 storage/app/temp
 docker compose exec app chmod -R 775 storage/app/private
 docker compose exec app chmod -R 775 storage/app/public
 docker compose exec app chmod -R 775 storage/framework
-docker compose exec app chown -R www-data:www-data storage
+docker compose exec app chmod -R 775 bootstrap/cache
+docker compose exec app chown -R www-data:www-data storage bootstrap/cache
 
 echo "  ✓ Storage permissions fixed"
 
@@ -84,7 +86,9 @@ docker compose restart
 echo ""
 echo "11. Caching Laravel config for production..."
 sleep 3
-docker compose exec app php artisan config:cache
+# -u www-data: run as the web user so config.php isn't root-owned (root-owned
+# cache files are the "Permission denied" 500s this step 8 exists to fix)
+docker compose exec -u www-data app php artisan config:cache
 echo "  ✓ Config cached"
 
 echo ""
