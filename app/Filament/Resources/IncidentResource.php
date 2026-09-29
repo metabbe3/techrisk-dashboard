@@ -617,7 +617,10 @@ class IncidentResource extends Resource
                         ->databaseTransaction()
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 ]),
-            ]);
+            ])
+            ->contentFooter(fn () => view('livewire.incident-stats-footer', [
+                'stats' => app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build(),
+            ]));
     }
 
     public static function getRelations(): array
