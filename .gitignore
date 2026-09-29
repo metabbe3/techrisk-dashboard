@@ -59,3 +59,5 @@ storage/redis/
 /skills/
 skills-lock.json
 .codeartsdoer/
+
+/storage/redis/
