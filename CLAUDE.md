@@ -167,7 +167,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
-- **Baseline:** 614 tests / 2,037 assertions green (2026-09-29). A change that drops this count or its assertions is a regression, not a refactor.
+- **Baseline:** 615 tests / 2,055 assertions green (2026-09-29). A change that drops this count or its assertions is a regression, not a refactor.
 
 ---
 

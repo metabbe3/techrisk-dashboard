@@ -106,7 +106,12 @@ final class ChartCacheInjector
     private static function fillChartXml(string $xml, array $sheets): string
     {
         return preg_replace_callback(
-            '#<(c:strRef|c:numRef)><c:f>([^<]+)</c:f>(?:<(c:strCache|c:numCache)><c:ptCount val="(\d+)"/></c:\3>)?#',
+            // Group 3 captures the tag WITH its "c:" prefix, so the closing
+            // backreference must be </\3> — </c:\3> demands literal
+            // "</c:c:numCache>", never matches, and the filled cache gets
+            // APPENDED beside the writer's empty one: two caches in one ref
+            // violate the OOXML schema and Excel prompts to repair the file.
+            '#<(c:strRef|c:numRef)><c:f>([^<]+)</c:f>(?:<(c:strCache|c:numCache)><c:ptCount val="(\d+)"/></\3>)?#',
             function ($m) use ($sheets) {
                 [$all, $refKind, $ref, $cacheTag, $ptCount] = [$m[0], $m[1], $m[2], $m[3] ?? null, $m[4] ?? null];
                 $isStr = $refKind === 'c:strRef';
