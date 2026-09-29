@@ -940,7 +940,23 @@ have added useless `canAccess` noise to 3 already-gated resources).
 
 ---
 
-### [BUG-013] - Usage-log blind spots, unprotected label path, plan-mode research announced but never run
+### [BUG-018] Incident footer "Total Cases" counted all years for admins
+
+**Date:** 2026-09-29
+**Severity:** P1 (wrong numbers shown to the primary user)
+**Component:** `Filament/Statistics/IncidentStatsFooterData`
+**Status:** Fixed (commit f8160eb)
+
+### Root Cause
+The footer's default query applied `applyUserYearAccess()`, which is a **no-op for admins** — so the admin footer counted every year while the table under it defaults to QuickPeriod "This Year" (58 vs 38 live). Two different concepts were conflated: per-user year *access control* vs the table's active *period filter*.
+
+### Fix
+`baseQuery()` now mirrors the active `quick_period` table filter (week/month/year/all, default year). Footer == table by construction.
+
+### Prevention
+A summary that sits under a filtered table must read the table's filter state, not assume an access-control scope equals a display filter. Parity check: footer numbers must equal the export of the same filtered set (38 = 38 verified).
+
+## [BUG-013] - Usage-log blind spots, unprotected label path, plan-mode research announced but never run
 
 **Date:** 2026-09-14
 **Discovered By:** Full-codebase audit (code audit)
@@ -1044,13 +1060,13 @@ When adding date constraints, check `vendor/filament/forms/src/Components/DateTi
 **Date:** 2026-09-29
 **Severity:** P2
 **Component:** `Exports/Sheets/ExecutiveCalcSheet` charts
-**Status:** Fixed (commit 6d783c4)
+**Status:** Fixed for real (commit f8160eb — 6d783c4 documented the pass but shipped no code; charts were being patched by hand off-repo)
 
 ### Root Cause
 PhpSpreadsheet chart writer emits series references (`<c:f>`) without cached values (`numCache`/`strCache`). Excel recalculates on open; Numbers/QuickLook do not — charts render empty.
 
 ### Fix
-Post-write pass over the XLSX zip: parse chart XML, read the referenced Calc-sheet ranges, inject `<c:numCache>`/`<c:strCache>` blocks.
+`App\Exports\Concerns\ChartCacheInjector` — post-write pass over the XLSX zip: parse chart XML, resolve referenced sheet ranges (shared strings included), inject `<c:numCache>`/`<c:strCache>` with `<c:pt>` values. Wired into the executive download path (store → inject → download). E2E verified 2026-09-29: downloaded artifact carries 65 cache points across all 4 charts.
 
 ### Prevention
 Any exported chart must ship with value caches. Verify by unzipping the artifact and asserting `<c:v>` points exist in `xl/charts/chartN.xml` before handing the file to a non-Excel viewer.
