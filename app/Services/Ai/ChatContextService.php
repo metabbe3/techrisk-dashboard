@@ -1,10 +1,10 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ai;
 
 use App\Enums\IncidentStatus;
-
 use App\Enums\Severity;
 use App\Models\Category;
 use App\Models\Incident;
@@ -524,11 +524,13 @@ class ChatContextService
                 ->whereYear('incident_date', $year)
                 ->sum('fund_loss');
 
-            $avgMttr = Incident::aiCounts()
+            // BUG-021: DECIMAL aggregates are strings on MySQL — cast for
+            // number_format() under strict_types.
+            $avgMttr = (float) (Incident::aiCounts()
                 ->whereYear('incident_date', $year)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->where('mttr', '>=', 0)
-                ->avg('mttr');
+                ->avg('mttr') ?? 0);
 
             $bySeverity = Incident::aiCounts()
                 ->whereYear('incident_date', $year)
@@ -2105,7 +2107,7 @@ class ChatContextService
         $lines = ["## Monthly Comparison Data ({$year})"];
         foreach ($monthly as $row) {
             $sevs = $sevMonthly->where('m', $row->m)->map(fn ($s) => "{$s->severity->value}={$s->cnt}")->implode(', ');
-            $lines[] = "Month {$row->m}: {$row->cnt} incidents | Fund Loss: ".MarkdownFormatter::formatMoney((float) ($row->loss ?? 0)).' | Avg MTTR: '.number_format($row->avg_mttr ?? 0, 0)." min | Severity: {$sevs}";
+            $lines[] = "Month {$row->m}: {$row->cnt} incidents | Fund Loss: ".MarkdownFormatter::formatMoney((float) ($row->loss ?? 0)).' | Avg MTTR: '.number_format((float) ($row->avg_mttr ?? 0), 0)." min | Severity: {$sevs}";
         }
 
         return implode("\n", $lines);

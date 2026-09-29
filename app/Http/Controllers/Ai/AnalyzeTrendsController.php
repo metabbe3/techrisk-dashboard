@@ -1,10 +1,10 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Ai;
 
 use App\Enums\IncidentStatus;
-
 use App\Enums\Severity;
 use App\Http\Controllers\Controller;
 use App\Models\Incident;
@@ -103,7 +103,9 @@ class AnalyzeTrendsController extends Controller
             ->toArray();
 
         $total = (clone $baseQuery)->count();
-        $avgMttr = (clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
+        // BUG-021: DECIMAL aggregates are strings on MySQL — cast at the producer
+        // so every round()/number_format() below is safe under strict_types.
+        $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0);
 
         $mtbfAgg = (clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->selectRaw('COUNT(*) as cnt, MIN(incident_date) as min_date, MAX(incident_date) as max_date')
@@ -113,7 +115,7 @@ class AnalyzeTrendsController extends Controller
             $avgMtbf = round(\Carbon\Carbon::parse($mtbfAgg->min_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($mtbfAgg->max_date)->startOfDay()) / ($mtbfAgg->cnt - 1), 2);
         }
 
-        $fundLoss = (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
+        $fundLoss = (float) (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
 
         $result = $this->aiService->analyzeTrends(
             monthlyData: $monthlyData,

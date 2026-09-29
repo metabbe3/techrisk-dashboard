@@ -1,15 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports;
 
 use App\Enums\Severity;
-use App\Filament\Statistics\IncidentStatsFooterData;
-use Illuminate\Database\Eloquent\Builder;
 use App\Exports\Sheets\GroupSummarySheet;
 use App\Exports\Sheets\PerCategorySheet;
+use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
-use Maatwebsite\Excel\Concerns\WithTitle;
 
 /**
  * Grouped export: one sheet per group value for the chosen dimension
@@ -87,8 +86,10 @@ class GroupedIncidentsExport implements WithMultipleSheets
             $groupStats[] = [
                 'label' => $this->dimension === 'pic' ? ($names[$value] ?? "PIC {$value}") : (string) $value,
                 'count' => $groupRows->count(),
-                'avgMttrMins' => round($eligible->where('mttr', '>=', 0)->avg('mttr') ?? 0, 1),
-                'avgMttrDays' => round(abs($eligible->where('mttr', '<', 0)->avg('mttr') ?? 0), 1),
+                // BUG-021: cast aggregates for round()/abs() under strict_types — uniform
+                // pattern even though Collection::avg() returns float (MySQL rule).
+                'avgMttrMins' => round((float) ($eligible->where('mttr', '>=', 0)->avg('mttr') ?? 0), 1),
+                'avgMttrDays' => round(abs((float) ($eligible->where('mttr', '<', 0)->avg('mttr') ?? 0)), 1),
                 'avgMtbf' => $avgMtbf,
                 'mttrDataCount' => $eligible->whereNotNull('mttr')->count(),
                 'potential' => (float) $groupRows->sum('potential_fund_loss'),

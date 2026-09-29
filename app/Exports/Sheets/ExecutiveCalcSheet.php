@@ -1,12 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
 use App\Enums\IncidentStatus;
-
 use App\Enums\Severity;
-use App\Filament\Statistics\IncidentStatsFooterData;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -46,9 +45,9 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
     public function charts(): array
     {
         // Calc sheet rows 2..13 (row 1 = headings)
-        $months = new DataSeriesValues('String', "Calc!\$A\$2:\$A\$13", null, 12);
+        $months = new DataSeriesValues('String', 'Calc!$A$2:$A$13', null, 12);
 
-        $incData = new DataSeriesValues('Number', "Calc!\$B\$2:\$B\$13", null, 12);
+        $incData = new DataSeriesValues('Number', 'Calc!$B$2:$B$13', null, 12);
         $incChart = new Chart(
             'chart_incidents_month',
             new Title('Incidents per Month'),
@@ -60,8 +59,8 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
         $incChart->setTopLeftPosition('B12');
         $incChart->setBottomRightPosition('H27');
 
-        $sevLabels = new DataSeriesValues('String', "Calc!\$C\$2:\$C\$10", null, 9);
-        $sevData = new DataSeriesValues('Number', "Calc!\$D\$2:\$D\$10", null, 9);
+        $sevLabels = new DataSeriesValues('String', 'Calc!$C$2:$C$10', null, 9);
+        $sevData = new DataSeriesValues('Number', 'Calc!$D$2:$D$10', null, 9);
         $sevChart = new Chart(
             'chart_severity_mix',
             new Title('Severity Mix'),
@@ -73,7 +72,7 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
         $sevChart->setTopLeftPosition('J12');
         $sevChart->setBottomRightPosition('P27');
 
-        $mttrData = new DataSeriesValues('Number', "Calc!\$E\$2:\$E\$13", null, 12);
+        $mttrData = new DataSeriesValues('Number', 'Calc!$E$2:$E$13', null, 12);
         $mttrChart = new Chart(
             'chart_mttr_trend',
             new Title('Avg MTTR (minutes) per Month'),
@@ -85,8 +84,8 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
         $mttrChart->setTopLeftPosition('B30');
         $mttrChart->setBottomRightPosition('H45');
 
-        $potData = new DataSeriesValues('Number', "Calc!\$F\$2:\$F\$13", null, 12);
-        $recData = new DataSeriesValues('Number', "Calc!\$G\$2:\$G\$13", null, 12);
+        $potData = new DataSeriesValues('Number', 'Calc!$F$2:$F$13', null, 12);
+        $recData = new DataSeriesValues('Number', 'Calc!$G$2:$G$13', null, 12);
         $fundChart = new Chart(
             'chart_funds',
             new Title('Potential vs Recovered Funds'),
@@ -160,8 +159,10 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
             $sev[] = [$case->value, $rows->where('severity', $case->value)->count()];
         }
 
-        $avgMttrMins = round($eligible->where('mttr', '>=', 0)->avg('mttr') ?? 0, 1);
-        $avgMttrDays = round(abs($eligible->where('mttr', '<', 0)->avg('mttr') ?? 0), 1);
+        // BUG-021: cast aggregates for round()/abs() under strict_types — uniform
+        // pattern even though Collection::avg() returns float (MySQL rule).
+        $avgMttrMins = round((float) ($eligible->where('mttr', '>=', 0)->avg('mttr') ?? 0), 1);
+        $avgMttrDays = round(abs((float) ($eligible->where('mttr', '<', 0)->avg('mttr') ?? 0)), 1);
         $avgMtbf = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build($this->query)['avgMtbf'];
         $potential = (float) $rows->sum('potential_fund_loss');
         $recovered = (float) $rows->sum('recovered_fund');

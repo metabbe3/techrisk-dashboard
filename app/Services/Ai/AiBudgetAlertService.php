@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ai;
 
 use App\Models\AiUsageLog;
@@ -29,7 +30,9 @@ class AiBudgetAlertService
         }
         $threshold = config('ai.usage_dashboard.budget_alert_threshold', 0.8);
 
-        $todayTokens = AiUsageLog::whereDate('requested_at', today())
+        // BUG-021: SUM over BIGINT returns a decimal-string on MySQL — cast for
+        // number_format() under strict_types.
+        $todayTokens = (int) AiUsageLog::whereDate('requested_at', today())
             ->where('success', true)
             ->sum('total_tokens');
 

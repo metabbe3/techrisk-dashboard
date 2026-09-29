@@ -31,7 +31,9 @@ class AiUsageStatsOverview extends BaseWidget
         $promptTokens = (int) (clone $last30Days)->where('success', true)->sum('prompt_tokens');
         $completionTokens = (int) (clone $last30Days)->where('success', true)->sum('completion_tokens');
 
-        $avgResponseTime = (clone $last30Days)->whereNotNull('response_time_ms')->avg('response_time_ms');
+        // BUG-021: AVG over a decimal column is a string on MySQL — cast once
+        // for the round()/comparisons below under strict_types.
+        $avgResponseTime = (float) ((clone $last30Days)->whereNotNull('response_time_ms')->avg('response_time_ms') ?? 0);
 
         $successCount = (clone $last30Days)->where('success', true)->count();
         $successRate = $totalRequests > 0 ? round(($successCount / $totalRequests) * 100, 1) : 0;

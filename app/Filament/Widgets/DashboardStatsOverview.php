@@ -1,11 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
-use App\Enums\IncidentStatus;
-
 use App\Enums\IncidentClassification;
+use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -100,12 +100,14 @@ class DashboardStatsOverview extends BaseWidget
             ->where('mttr', '>=', 0)
             ->average('mttr');
 
-        $mttrFundLoss = abs(Incident::query()
+        // BUG-021: DECIMAL aggregates are strings on MySQL — cast for abs()
+        // under strict_types (prod TypeError 2026-09-29 round 2).
+        $mttrFundLoss = abs((float) (Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->tap($incidentDateFilter)
             ->where('mttr', '<', 0)
-            ->average('mttr') ?? 0);
+            ->average('mttr') ?? 0));
 
         $mtbfNonFundLossQuery = Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)

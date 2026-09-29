@@ -1177,6 +1177,8 @@ MySQL returns DECIMAL columns and their aggregates (`SUM`/`AVG` over decimal) as
 ### Prevention Checklist
 - [x] Regression test feeding the prod-log string values through a stubbed Builder (`IncidentStatsFooterStringAggregateTest`) — mock-based because SQLite aggregates return floats; RED-verified against the exact TypeError pre-fix
 - [x] Rule: any `sum()/avg()/average()` over a decimal column feeding `number_format/round/abs` in a strict file gets a cast at the producer
+- [x] **Round 2 (same day):** prod still 500ed on the dashboard — `abs('-10.4444')` at `DashboardStatsOverview:103`, plus 8 more sites round 1 missed (`AiUsageStatsOverview` avg, `AiTrendInsights` avg/sum, `AnalyzeTrendsController` avg/sum, `ChatContextService` avg + raw-SQL `AVG()` consumer, `AiBudgetAlertService` token sum). Why round 1 missed them: it trusted f8160eb's *partial* fix of `DashboardStatsOverview` instead of grepping, and fixed token sums while missing the sibling avg. Fixed with producer casts; `GroupedIncidentsExport`/`ExecutiveCalcSheet` Collection-avg sites cast too for pattern uniformity.
+- [x] Structural guard: `tests/Unit/StrictTypesNumericAggregateLintTest.php` — tokenizes every strict-typed `app/` file and fails on any statement combining `round/abs/number_format/floor/ceil` with `->avg/->average/->sum` and no `(float)/(int)` cast. Known blind spots (documented in the test): producer/consumer split across statements, and one cast in a multi-entry array literal masking siblings — producer-side casting covers both.
 
 ---
 
