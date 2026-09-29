@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Widgets;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\IncidentClassification;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
@@ -25,7 +28,7 @@ class OpenIncidents extends BaseWidget
     {
         $query = IncidentResource::getEloquentQuery()
             ->where('classification', IncidentClassification::Incident->value)
-            ->whereIn('incident_status', ['Open', 'In progress', 'Finalization']);
+            ->whereIn('incident_status', [IncidentStatus::Open->value, IncidentStatus::InProgress->value, IncidentStatus::Finalization->value]);
 
         if ($this->start_date && $this->end_date) {
             $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

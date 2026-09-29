@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Exports\Sheets;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\Severity;
 use App\Filament\Statistics\IncidentStatsFooterData;
@@ -165,7 +168,7 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
 
         $kpi = [
             'totalCases' => $rows->count(),
-            'open' => $rows->where('incident_status', '!=', 'Completed')->count(),
+            'open' => $rows->where('incident_status', '!=', IncidentStatus::Completed->value)->count(),
             'avgMttrMins' => $avgMttrMins,
             'avgMttrDays' => $avgMttrDays,
             'avgMtbf' => $avgMtbf,

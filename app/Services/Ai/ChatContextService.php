@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Services\Ai;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\Severity;
 use App\Models\Category;
@@ -514,7 +517,7 @@ class ChatContextService
 
             $openIncidents = Incident::aiCounts()
                 ->whereYear('incident_date', $year)
-                ->whereNotIn('incident_status', ['Completed'])
+                ->whereNotIn('incident_status', [IncidentStatus::Completed->value])
                 ->count();
 
             $totalFundLoss = Incident::aiCounts()
@@ -625,7 +628,7 @@ class ChatContextService
     {
         $cacheKey = empty($columns)
             ? 'chat_recent_incidents_v2'
-            : 'chat_recent_incidents_'.md5(implode(',', $columns));
+            : 'chat_recent_incidents_'.md5(implode(',', $columns)); // audit-ok: cache key digest, not a secret
 
         return Cache::remember($cacheKey, 300, function () use ($columns) {
             $incidents = Incident::aiCounts()
@@ -1570,7 +1573,8 @@ class ChatContextService
                 $knownTerms->push($name);
             }
         } catch (\Throwable $e) {
-            // Categories table may not exist yet
+            // Categories table may not exist yet — debug-logged, never silent
+            Log::debug('[ChatContext] Category terms unavailable', ['error' => $e->getMessage()]);
         }
 
         $labelNames = Cache::remember('chat_label_names', 300, fn () => Label::pluck('name')->toArray());
@@ -1641,7 +1645,7 @@ class ChatContextService
      */
     public function searchIncidentsByTopic(string $topic): array
     {
-        return Cache::remember('chat_topic_'.md5($topic), 300, function () use ($topic) {
+        return Cache::remember('chat_topic_'.md5($topic), 300, function () use ($topic) { // audit-ok: cache key digest, not a secret
             // Fuzzy-match category names that contain the topic
             $fuzzyCategoryNames = [];
             try {
@@ -1649,7 +1653,8 @@ class ChatContextService
                     ->pluck('name')
                     ->toArray();
             } catch (\Throwable $e) {
-                // Categories table may not exist
+                // Categories table may not exist — debug-logged, never silent
+                Log::debug('[ChatContext] Fuzzy category match failed', ['error' => $e->getMessage()]);
             }
 
             // Fuzzy-match label names
@@ -1685,7 +1690,7 @@ class ChatContextService
             $total = (clone $topicQuery)->toBase()->count();
             $incidents = $topicQuery
                 ->with(['pic', 'labels'])
-                ->orderByRaw('CASE WHEN title LIKE ? THEN 0 ELSE 1 END', ["%{$topic}%"])
+                ->orderByRaw('CASE WHEN title LIKE ? THEN 0 ELSE 1 END', ["%{$topic}%"]) // audit-ok: parameter binding, no interpolation
                 ->orderByDesc('incident_date')
                 ->limit(self::SEARCH_RESULT_CAP)
                 ->get();
@@ -1808,7 +1813,7 @@ class ChatContextService
             try {
                 $fuzzyCategoryNames = Category::where('name', 'LIKE', "%{$topic}%")->pluck('name')->toArray();
             } catch (\Throwable $e) {
-                //
+                Log::debug('[ChatContext] Fuzzy category match failed (filter)', ['error' => $e->getMessage()]);
             }
             $fuzzyLabelNames = Label::where('name', 'LIKE', "%{$topic}%")->pluck('name')->toArray();
 
@@ -2029,7 +2034,7 @@ class ChatContextService
 
         $openP1P2 = Incident::aiCounts()
             ->whereIn('severity', ['P1', 'P2'])
-            ->whereNotIn('incident_status', ['Completed'])
+            ->whereNotIn('incident_status', [IncidentStatus::Completed->value])
             ->with(['pic', 'labels'])
             ->latest('incident_date')
             ->get();
@@ -2084,7 +2089,7 @@ class ChatContextService
 
         $monthly = Incident::aiCounts()
             ->whereYear('incident_date', $year)
-            ->selectRaw("MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss, AVG(CASE WHEN severity IN ({$eligible}) AND mttr >= 0 THEN mttr END) as avg_mttr")
+            ->selectRaw("MONTH(incident_date) as m, COUNT(*) as cnt, SUM(fund_loss) as loss, AVG(CASE WHEN severity IN ({$eligible}) AND mttr >= 0 THEN mttr END) as avg_mttr") // audit-ok: $eligible derived from Severity::METRIC_ELIGIBLE enum, not user input
             ->groupByRaw('MONTH(incident_date)')
             ->orderBy('m')
             ->get();
@@ -2110,7 +2115,7 @@ class ChatContextService
     {
         $openP1P2 = Incident::aiCounts()
             ->whereIn('severity', ['P1', 'P2'])
-            ->whereNotIn('incident_status', ['Completed'])
+            ->whereNotIn('incident_status', [IncidentStatus::Completed->value])
             ->with(['pic', 'actionImprovements'])
             ->latest('incident_date')
             ->get();

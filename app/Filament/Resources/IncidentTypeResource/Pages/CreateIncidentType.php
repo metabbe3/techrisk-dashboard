@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Resources\IncidentTypeResource\Pages;
 
 use App\Filament\Resources\IncidentTypeResource;

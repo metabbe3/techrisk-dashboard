@@ -1,6 +1,11 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Exports\Sheets;
+
+use App\Enums\IncidentType;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\IncidentClassification;
 use App\Enums\Severity;
@@ -103,11 +108,11 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
             }
 
             match ($this->title) {
-                'On Going' => $query->where('incident_status', '!=', 'Completed'),
-                'Completed Cases' => $query->where('incident_status', 'Completed'),
+                'On Going' => $query->where('incident_status', '!=', IncidentStatus::Completed->value),
+                'Completed Cases' => $query->where('incident_status', IncidentStatus::Completed->value),
                 'Recovered Cases' => $query->where('recovered_fund', '>', 0),
                 'P4 Incidents' => $query->where('severity', 'P4'),
-                'Non-Tech Incidents' => $query->where('incident_type', 'Non-tech'),
+                'Non-Tech Incidents' => $query->where('incident_type', IncidentType::NonTech->value),
                 'Fund Loss' => $query->where('fund_status', 'Confirmed loss'),
                 'Potential Recovery' => $query->where('fund_status', 'Potential recovery'),
                 'Fully Recovered' => $query->where('fund_status', 'Fully recovered'),

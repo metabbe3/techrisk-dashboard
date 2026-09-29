@@ -275,7 +275,7 @@
         </div>
 
         <div class="body">
-            {!! $report_html !!}
+            {!! \App\Support\HtmlSanitizer::clean($report_html ?? '') !!}
         </div>
 
         <div class="footer">

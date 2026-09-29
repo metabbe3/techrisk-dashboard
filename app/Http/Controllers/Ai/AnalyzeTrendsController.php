@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Http\Controllers\Ai;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\Severity;
 use App\Http\Controllers\Controller;
@@ -110,7 +113,7 @@ class AnalyzeTrendsController extends Controller
             $avgMtbf = round(\Carbon\Carbon::parse($mtbfAgg->min_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($mtbfAgg->max_date)->startOfDay()) / ($mtbfAgg->cnt - 1), 2);
         }
 
-        $fundLoss = (clone $baseQuery)->where('incident_status', 'Completed')->sum('fund_loss');
+        $fundLoss = (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
 
         $result = $this->aiService->analyzeTrends(
             monthlyData: $monthlyData,

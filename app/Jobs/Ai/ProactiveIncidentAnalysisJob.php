@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Jobs\Ai;
 
 use App\Models\Incident;
@@ -104,10 +105,10 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
             $parts[] = 'Responsible Team: '.implode(', ', $incident->responsible_team);
         }
         if ($incident->fund_loss > 0) {
-            $parts[] = 'Fund Loss: Rp '.number_format($incident->fund_loss);
+            $parts[] = 'Fund Loss: Rp '.number_format((float) $incident->fund_loss);
         }
         if ($incident->potential_fund_loss > 0) {
-            $parts[] = 'Potential Fund Loss: Rp '.number_format($incident->potential_fund_loss);
+            $parts[] = 'Potential Fund Loss: Rp '.number_format((float) $incident->potential_fund_loss);
         }
         if ($incident->pic) {
             $parts[] = "PIC: {$incident->pic->name}";

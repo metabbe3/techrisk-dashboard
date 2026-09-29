@@ -263,7 +263,7 @@
                             @endif
                         </div>
                         <div class="msg-body">
-                            {!! $msg->parsed_html ?? '' !!}
+                            {!! \App\Support\HtmlSanitizer::clean($msg->parsed_html ?? '') !!}
                         </div>
                         <div class="msg-meta">
                             @if($msg->model)

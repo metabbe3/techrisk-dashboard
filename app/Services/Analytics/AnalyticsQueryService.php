@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Services\Analytics;
 
 use App\Enums\IncidentClassification;
@@ -161,7 +162,7 @@ class AnalyticsQueryService
 
         if ($this->isDerivedMetric($metric)) {
             $rows = $query
-                ->selectRaw("{$dimSql} as dim, MIN(incident_date) as min_date, MAX(incident_date) as max_date, COUNT(*) as cnt")
+                ->selectRaw("{$dimSql} as dim, MIN(incident_date) as min_date, MAX(incident_date) as max_date, COUNT(*) as cnt") // audit-ok: $dimSql is a driver-whitelist SQL literal (see ternary above), not user input
                 ->groupByRaw($dimSql)
                 ->orderBy('dim')
                 ->get();
@@ -182,7 +183,7 @@ class AnalyticsQueryService
             $values = array_map(fn ($l) => $data[$l] ?? 0, $labels);
         } else {
             $agg = $this->getAggregateExpression($metric);
-            $rows = $query->selectRaw("{$dimSql} as dim, {$agg} as value")
+            $rows = $query->selectRaw("{$dimSql} as dim, {$agg} as value") // audit-ok: $dimSql driver-whitelist literal + $agg from match() whitelist, no user input
                 ->groupByRaw($dimSql)
                 ->orderBy('dim')
                 ->pluck('value', 'dim')

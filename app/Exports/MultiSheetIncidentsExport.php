@@ -1,6 +1,11 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Exports;
+
+use App\Enums\IncidentType;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\IncidentClassification;
 use App\Exports\Sheets\IssuesMetricSheetExport;
@@ -37,7 +42,7 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $sheets[] = new SingleIncidentSheetExport($incidentsQuery->clone(), 'All Cases', $this->headings, $this->columnNames);
 
         // 2. Completed Cases (Incidents only)
-        $completedQuery = $incidentsQuery->clone()->where('incident_status', 'Completed');
+        $completedQuery = $incidentsQuery->clone()->where('incident_status', IncidentStatus::Completed->value);
         $sheets[] = new SingleIncidentSheetExport($completedQuery, 'Completed Cases', $this->headings, $this->columnNames);
 
         // 3. Recovered Cases (Incidents only)
@@ -49,7 +54,7 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $sheets[] = new SingleIncidentSheetExport($p4Query, 'P4 Incidents', $this->headings, $this->columnNames);
 
         // 5. Non-Tech Incidents (Incidents only)
-        $nonTechQuery = $incidentsQuery->clone()->where('incident_type', 'Non-tech');
+        $nonTechQuery = $incidentsQuery->clone()->where('incident_type', IncidentType::NonTech->value);
         $sheets[] = new SingleIncidentSheetExport($nonTechQuery, 'Non-Tech Incidents', $this->headings, $this->columnNames);
 
         // 6. Fund Loss (Incidents only)
@@ -57,7 +62,7 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $sheets[] = new SingleIncidentSheetExport($fundLossQuery, 'Fund Loss', $this->headings, $this->columnNames);
 
         // 7. On Going (Incidents only) - Non-completed incidents
-        $onGoingQuery = $incidentsQuery->clone()->where('incident_status', '!=', 'Completed');
+        $onGoingQuery = $incidentsQuery->clone()->where('incident_status', '!=', IncidentStatus::Completed->value);
         $sheets[] = new SingleIncidentSheetExport($onGoingQuery, 'On Going', $this->headings, $this->columnNames);
 
         // 8. Potential Recovery (Incidents only)

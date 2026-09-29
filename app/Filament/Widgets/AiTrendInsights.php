@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Widgets;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\IncidentClassification;
 use App\Enums\Severity;
@@ -192,7 +195,7 @@ class AiTrendInsights extends Widget
             );
         }
 
-        $fundLoss = (clone $baseQuery)->where('incident_status', 'Completed')->sum('fund_loss');
+        $fundLoss = (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
 
         $result = app(AiTextService::class)->analyzeTrends(
             monthlyData: $monthlyData,

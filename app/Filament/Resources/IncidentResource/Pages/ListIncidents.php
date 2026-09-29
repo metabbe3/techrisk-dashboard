@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Resources\IncidentResource\Pages;
 
 use App\Enums\FundStatus;
@@ -60,10 +61,18 @@ class ListIncidents extends ListRecords
                     $query = ExportActionSchema::applyFilters($this->getFilteredTableQuery()->clone(), $data);
 
                     if (($data['preset'] ?? 'executive') === 'executive') {
-                        return Excel::download(
-                            new \App\Exports\ExecutiveIncidentsExport($query),
-                            'executive-report-'.now()->format('Y-m-d').'.xlsx'
-                        );
+                        // BUG-013: store → inject chart caches → download, so the
+                        // native charts render in Numbers/QuickLook/Sheets too.
+                        $export = new \App\Exports\ExecutiveIncidentsExport($query);
+                        $fname = 'executive-report-'.now()->format('Y-m-d').'.xlsx';
+                        $tmp = storage_path('app/private/temp/'.$fname);
+                        @mkdir(dirname($tmp), 0777, true);
+                        Excel::store($export, 'temp/'.$fname, 'local');
+                        \App\Exports\Concerns\ChartCacheInjector::inject($tmp);
+
+                        return response()->download($tmp, $fname, [
+                            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                        ])->deleteFileAfterSend(true);
                     }
 
                     if ($data['preset'] === 'group_by') {
@@ -150,6 +159,15 @@ class ListIncidents extends ListRecords
             ->when(request()->filled('ids'), function (Builder $query): void {
                 $query->whereIn('id', array_filter(explode(',', (string) request()->input('ids'))));
             });
+    }
+
+    public function isTableLoadingDeferred(): bool
+    {
+        // PERF: the incidents table renders a hover-preview component per row
+        // (~45KB HTML/row, 78 Alpine instances at 25 rows). Deferring the load
+        // keeps the first paint light and keeps action modals (export) from
+        // shipping the whole table with every mountAction response.
+        return true;
     }
 
     public function getTabs(): array

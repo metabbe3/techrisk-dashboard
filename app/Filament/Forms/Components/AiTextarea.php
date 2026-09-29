@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Forms\Components;
 
 use App\Services\Ai\AiTextService;

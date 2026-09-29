@@ -67,7 +67,9 @@ class DispatchDueAgentsTest extends TestCase
     public function test_same_minute_guard_prevents_double_dispatch(): void
     {
         Queue::fake();
-        $this->makeAgent(['last_run_at' => now()->subSeconds(30)]);
+        // Inside the current minute (deterministic — subSeconds(30) crosses the minute
+        // boundary whenever the test runs in the first 30s of a minute).
+        $this->makeAgent(['last_run_at' => now()->startOfMinute()->addSeconds(10)]);
 
         $this->artisan('ai:dispatch-due-agents')->assertSuccessful();
 

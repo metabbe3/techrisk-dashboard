@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Statistics;
 
 use App\Enums\Severity;
@@ -60,8 +61,40 @@ class IncidentStatsFooterData
     {
         $model = App::make(\App\Models\Incident::class);
 
-        return $model::query()
+        $query = $model::query()
             ->where('classification', '!=', \App\Enums\IncidentClassification::Issue->value)
             ->applyUserYearAccess(auth()->user());
+
+        // BUG-018: the table's QuickPeriodFilter defaults to "This Year", but the
+        // footer used to count every year the user can access (admins saw all
+        // years - "Total Cases" did not match the table it sits under).
+        // Mirror the active quick_period filter so footer == table.
+        $period = $this->activeQuickPeriod();
+
+        return match ($period) {
+            'week' => $query->whereBetween('incident_date', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]),
+            'month' => $query->whereBetween('incident_date', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()]),
+            'all' => $query,
+            default => $query->whereBetween('incident_date', [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()]),
+        };
+    }
+
+    /**
+     * Read the active quick_period table filter (defaults to 'year',
+     * same as QuickPeriodFilter::make()->default('year')).
+     */
+    private function activeQuickPeriod(): string
+    {
+        $tableFilters = request()->input('tableFilters', []);
+
+        if (is_array($tableFilters)) {
+            $value = $tableFilters['quick_period']['value'] ?? null;
+
+            if (is_string($value) && $value !== '') {
+                return $value;
+            }
+        }
+
+        return 'year';
     }
 }

@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Services\Ai;
 
 use App\Models\AiUsageLog;
@@ -49,7 +50,8 @@ class AiUsageLogger
             try {
                 app(AiBudgetAlertService::class)->checkDailyBudget();
             } catch (\Throwable $e) {
-                // Budget alert is non-critical, never bubble up
+                // Budget alert is non-critical, never bubble up — debug-logged, not silent
+                Log::debug('[AiUsageLogger] Budget alert check failed', ['error' => $e->getMessage()]);
             }
         }
     }

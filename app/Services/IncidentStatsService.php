@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\IncidentStatus;
+
 use App\Enums\IncidentClassification;
 use App\Models\Incident;
 use App\Services\Markdown\MarkdownFormatter;
@@ -23,7 +25,7 @@ class IncidentStatsService
 
         $open = Incident::aiCounts()
             ->whereBetween('incident_date', [$from, $to])
-            ->whereNotIn('incident_status', ['Completed'])
+            ->whereNotIn('incident_status', [IncidentStatus::Completed->value])
             ->count();
 
         $fundLoss = Incident::where('classification', IncidentClassification::Incident->value)

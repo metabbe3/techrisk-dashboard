@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Widgets;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\IncidentClassification;
 use App\Enums\Severity;
@@ -49,7 +52,7 @@ class IncidentStatsOverview extends BaseWidget
             $descriptionPeriod = 'in the selected period';
         }
 
-        $fundLossTotal = $query->clone()->where('incident_status', 'Completed')->sum('fund_loss');
+        $fundLossTotal = $query->clone()->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
         $recoveredTotal = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('recovered_fund', '>', 0)->sum('recovered_fund');
         $mttrNonFundLoss = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->average('mttr');
         $mttrFundLoss = abs($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->average('mttr') ?? 0);

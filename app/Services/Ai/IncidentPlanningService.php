@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Services\Ai;
 
 use App\Enums\IncidentStatus;
@@ -87,7 +88,7 @@ class IncidentPlanningService
             $lines[] = '**Combined Potential Exposure:** '.MarkdownFormatter::formatMoney((float) $totalPotential);
         }
 
-        $openCount = $incidents->whereNotIn('incident_status', ['Completed'])->count();
+        $openCount = $incidents->whereNotIn('incident_status', [IncidentStatus::Completed->value])->count();
         if ($openCount > 0) {
             $lines[] = "**Open/In Progress:** {$openCount} of {$incidents->count()} incidents";
         }

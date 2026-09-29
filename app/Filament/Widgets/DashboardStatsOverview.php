@@ -1,6 +1,9 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Filament\Widgets;
+
+use App\Enums\IncidentStatus;
 
 use App\Enums\IncidentClassification;
 use App\Enums\Severity;
@@ -67,7 +70,7 @@ class DashboardStatsOverview extends BaseWidget
         $fundLossTotal = Incident::query()
             ->tap($incidentDateFilter)
             ->where('classification', IncidentClassification::Incident->value)
-            ->where('incident_status', 'Completed')
+            ->where('incident_status', IncidentStatus::Completed->value)
             ->excludedFromCounts()
             ->sum('fund_loss');
 
@@ -149,13 +152,13 @@ class DashboardStatsOverview extends BaseWidget
                 ->chart([4, 6, 3, 7, 5, 4, 6, 5])
                 ->color('success'),
 
-            Stat::make('Fund Loss', 'IDR '.number_format($fundLossTotal, 0, ',', '.'))
+            Stat::make('Fund Loss', 'IDR '.number_format((float) $fundLossTotal, 0, ',', '.'))
                 ->description('Total fund loss '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-down')
                 ->chart([3, 5, 8, 4, 6, 2, 7, 3])
                 ->color('danger'),
 
-            Stat::make('Recovered', 'IDR '.number_format($recoveredTotal, 0, ',', '.'))
+            Stat::make('Recovered', 'IDR '.number_format((float) $recoveredTotal, 0, ',', '.'))
                 ->description('Total recovered '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
                 ->chart([2, 4, 6, 5, 3, 7, 4, 6])
@@ -167,25 +170,25 @@ class DashboardStatsOverview extends BaseWidget
                 ->chart([10, 8, 6, 12, 5, 9, 7, $days])
                 ->color('warning'),
 
-            Stat::make('Avg MTTR (Non Fund Loss)', number_format($mttrNonFundLoss, 2).' mins')
+            Stat::make('Avg MTTR (Non Fund Loss)', number_format((float) $mttrNonFundLoss, 2).' mins')
                 ->description('Avg recovery time (non-fund loss)')
                 ->descriptionIcon('heroicon-m-wrench-screwdriver')
                 ->chart([5, 3, 7, 4, 6, 2, 8, 3])
                 ->color('info'),
 
-            Stat::make('Avg MTTR (Fund Loss)', number_format($mttrFundLoss, 2).' days')
+            Stat::make('Avg MTTR (Fund Loss)', number_format((float) $mttrFundLoss, 2).' days')
                 ->description('Avg recovery time (fund loss)')
                 ->descriptionIcon('heroicon-m-clock')
                 ->chart([2, 4, 3, 5, 2, 6, 3, 4])
                 ->color('danger'),
 
-            Stat::make('MTBF (Non Fund Loss)', number_format($mtbfNonFundLoss, 2).' days')
+            Stat::make('MTBF (Non Fund Loss)', number_format((float) $mtbfNonFundLoss, 2).' days')
                 ->description('Avg time between failures (non-fund loss)')
                 ->descriptionIcon('heroicon-m-shield-check')
                 ->chart([8, 6, 9, 7, 5, 10, 8, 6])
                 ->color('violet'),
 
-            Stat::make('MTBF (Fund Loss)', number_format($mtbfFundLoss, 2).' days')
+            Stat::make('MTBF (Fund Loss)', number_format((float) $mtbfFundLoss, 2).' days')
                 ->description('Avg time between failures (fund loss)')
                 ->descriptionIcon('heroicon-m-shield-check')
                 ->chart([3, 5, 4, 6, 3, 7, 5, 4])

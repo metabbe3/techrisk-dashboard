@@ -288,7 +288,7 @@ class ApiAuditLogResource extends Resource
             $yearExpr = DB::connection()->getDriverName() === 'sqlite'
                 ? "strftime('%Y', request_timestamp)"
                 : 'YEAR(request_timestamp)';
-            $years = ApiAuditLog::selectRaw("DISTINCT {$yearExpr} as year")
+            $years = ApiAuditLog::selectRaw("DISTINCT {$yearExpr} as year") // audit-ok: $yearExpr is a compile-time whitelist ternary literal, never user input
                 ->orderBy('year', 'desc')
                 ->pluck('year', 'year')
                 ->toArray();

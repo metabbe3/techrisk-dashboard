@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Mail\Transports;
 
 use App\Models\Setting;

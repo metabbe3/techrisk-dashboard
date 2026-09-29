@@ -323,13 +323,13 @@
 
         <div class="body">
             <h1>1. Executive Summary</h1>
-            {!! $sections['executive_summary_html'] ?? '<p>Not available.</p>' !!}
+            {!! \App\Support\HtmlSanitizer::clean($sections['executive_summary_html'] ?? '<p>Not available.</p>') !!}
 
             <h1>2. Incident Timeline Analysis</h1>
-            {!! $sections['timeline_analysis_html'] ?? '<p>Not available.</p>' !!}
+            {!! \App\Support\HtmlSanitizer::clean($sections['timeline_analysis_html'] ?? '<p>Not available.</p>') !!}
 
             <h1>3. Root Cause Deep Dive</h1>
-            {!! $sections['root_cause_deep_dive_html'] ?? '<p>Not available.</p>' !!}
+            {!! \App\Support\HtmlSanitizer::clean($sections['root_cause_deep_dive_html'] ?? '<p>Not available.</p>') !!}
 
             <h1>4. Impact Assessment</h1>
             @if(!empty($sections['impact_assessment']))

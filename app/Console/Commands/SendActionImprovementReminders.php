@@ -1,5 +1,6 @@
 <?php
 
+declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Models\ActionImprovement;
@@ -90,7 +91,7 @@ class SendActionImprovementReminders extends Command
 
     private function sendDueSoonNotification(ActionImprovement $action): void
     {
-        $daysRemaining = now()->diffInDays($action->due_date, false);
+        $daysRemaining = (int) now()->diffInDays($action->due_date, false);
         $notified = [];
 
         foreach ($action->pic_email as $picEmail) {
@@ -111,7 +112,7 @@ class SendActionImprovementReminders extends Command
 
     private function sendOverdueNotification(ActionImprovement $action): void
     {
-        $daysOverdue = now()->diffInDays($action->due_date, false) * -1;
+        $daysOverdue = (int) (now()->diffInDays($action->due_date, false) * -1);
         $notified = [];
 
         foreach ($action->pic_email as $picEmail) {
@@ -132,7 +133,7 @@ class SendActionImprovementReminders extends Command
 
     private function sendEscalatedNotification(ActionImprovement $action): void
     {
-        $daysOverdue = now()->diffInDays($action->due_date, false) * -1;
+        $daysOverdue = (int) (now()->diffInDays($action->due_date, false) * -1);
 
         // Still notify PIC with standard overdue
         $this->sendOverdueNotification($action);
