@@ -58,7 +58,8 @@ class IncidentStatsFooterData
 
     /**
      * Default query mirrors ListIncidents table scope when no filtered
-     * query is supplied: incidents (non-Issue) with user year access.
+     * query is supplied: incidents (non-Issue) with user year access,
+     * scoped by the SAME date filters the table applies.
      */
     private function baseQuery(): Builder
     {
@@ -71,31 +72,30 @@ class IncidentStatsFooterData
         // BUG-018: the table's QuickPeriodFilter defaults to "This Year", but the
         // footer used to count every year the user can access (admins saw all
         // years - "Total Cases" did not match the table it sits under).
-        // Mirror the active quick_period filter so footer == table.
-        $period = $this->activeQuickPeriod();
+        // Mirror BOTH date filters — quick_period AND the From/Until
+        // custom_date_range — stacked exactly like the table's filter chain,
+        // so footer == table for every date-filter combination.
+        $tableFilters = request()->input('tableFilters', []);
+        $tableFilters = is_array($tableFilters) ? $tableFilters : [];
 
-        return match ($period) {
-            'week' => $query->whereBetween('incident_date', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]),
-            'month' => $query->whereBetween('incident_date', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()]),
-            'all' => $query,
-            default => $query->whereBetween('incident_date', [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()]),
-        };
+        $query = \App\Filament\Filters\QuickPeriodFilter::applyPeriod($query, $this->activeQuickPeriod($tableFilters));
+        $range = $tableFilters['custom_date_range'] ?? null;
+
+        return \App\Filament\Filters\QuickPeriodFilter::applyDateRange($query, is_array($range) ? $range : null);
     }
 
     /**
      * Read the active quick_period table filter (defaults to 'year',
      * same as QuickPeriodFilter::make()->default('year')).
+     *
+     * @param  array<string, mixed>  $tableFilters
      */
-    private function activeQuickPeriod(): string
+    private function activeQuickPeriod(array $tableFilters): string
     {
-        $tableFilters = request()->input('tableFilters', []);
+        $value = $tableFilters['quick_period']['value'] ?? null;
 
-        if (is_array($tableFilters)) {
-            $value = $tableFilters['quick_period']['value'] ?? null;
-
-            if (is_string($value) && $value !== '') {
-                return $value;
-            }
+        if (is_string($value) && $value !== '') {
+            return $value;
         }
 
         return 'year';

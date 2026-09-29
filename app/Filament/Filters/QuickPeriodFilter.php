@@ -22,21 +22,7 @@ class QuickPeriodFilter
                 'all' => 'All Time',
             ])
             ->default('year')
-            ->query(function (Builder $query, array $data) {
-                $value = $data['value'] ?? null;
-
-                if ($value === null) {
-                    return $query;
-                }
-
-                return match ($value) {
-                    'week' => $query->whereBetween('incident_date', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]),
-                    'month' => $query->whereBetween('incident_date', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()]),
-                    'year' => $query->whereBetween('incident_date', [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()]),
-                    'all' => $query,
-                    default => $query,
-                };
-            });
+            ->query(fn (Builder $query, array $data) => self::applyPeriod($query, $data['value'] ?? null));
     }
 
     public static function dateRange(): Filter
@@ -46,16 +32,41 @@ class QuickPeriodFilter
                 \Filament\Forms\Components\DatePicker::make('from')->label('From Date'),
                 \Filament\Forms\Components\DatePicker::make('until')->label('Until Date'),
             ])
-            ->query(function (Builder $query, array $data) {
-                return $query
-                    ->when(
-                        $data['from'] ?? null,
-                        fn (Builder $query, $date) => $query->whereDate('incident_date', '>=', $date)
-                    )
-                    ->when(
-                        $data['until'] ?? null,
-                        fn (Builder $query, $date) => $query->whereDate('incident_date', '<=', $date)
-                    );
-            });
+            ->query(fn (Builder $query, array $data) => self::applyDateRange($query, $data));
+    }
+
+    /**
+     * Shared appliers — the table filters and the stats footer MUST scope
+     * identically (footer == table by construction, BUG-018). Change the
+     * scoping here, never in one consumer.
+     *
+     * @param  Builder<\App\Models\Incident>  $query
+     */
+    public static function applyPeriod(Builder $query, ?string $value): Builder
+    {
+        return match ($value) {
+            'week' => $query->whereBetween('incident_date', [Carbon::now()->startOfWeek(), Carbon::now()->endOfWeek()]),
+            'month' => $query->whereBetween('incident_date', [Carbon::now()->startOfMonth(), Carbon::now()->endOfMonth()]),
+            'year' => $query->whereBetween('incident_date', [Carbon::now()->startOfYear(), Carbon::now()->endOfYear()]),
+            'all', null => $query,
+            default => $query,
+        };
+    }
+
+    /**
+     * @param  Builder<\App\Models\Incident>  $query
+     * @param  array{from?: ?string, until?: ?string}  $data
+     */
+    public static function applyDateRange(Builder $query, ?array $data): Builder
+    {
+        return $query
+            ->when(
+                $data['from'] ?? null,
+                fn (Builder $query, $date) => $query->whereDate('incident_date', '>=', $date)
+            )
+            ->when(
+                $data['until'] ?? null,
+                fn (Builder $query, $date) => $query->whereDate('incident_date', '<=', $date)
+            );
     }
 }

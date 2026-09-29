@@ -956,6 +956,8 @@ The footer's default query applied `applyUserYearAccess()`, which is a **no-op f
 ### Prevention
 A summary that sits under a filtered table must read the table's filter state, not assume an access-control scope equals a display filter. Parity check: footer numbers must equal the export of the same filtered set (38 = 38 verified).
 
+**2026-09-29 follow-up:** the parity fix initially mirrored `quick_period` only — the From/Until `custom_date_range` filter was still ignored (summary ≠ table for custom ranges, the same drift one filter at a time). Closed by scoping the footer through the shared appliers (`QuickPeriodFilter::applyPeriod()`/`applyDateRange()`, stacked exactly like the table's chain); parity now asserted per stat key in `IncidentStatsFooterFilterParityTest`.
+
 ## [BUG-013] - Usage-log blind spots, unprotected label path, plan-mode research announced but never run
 
 **Date:** 2026-09-14
