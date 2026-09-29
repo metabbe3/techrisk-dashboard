@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Statistics;
 
 use App\Enums\Severity;
@@ -42,14 +43,16 @@ class IncidentStatsFooterData
             }
         }
 
+        // BUG-021: MySQL returns DECIMAL aggregates as strings (mysqlnd has no
+        // native decimal type) — cast before round/abs or strict_types fatals.
         return [
             'totalCases' => $totalCases,
-            'avgMttrMins' => round($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
-            'avgMttrDays' => round(abs($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->avg('mttr') ?? 0), 2),
+            'avgMttrMins' => round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
+            'avgMttrDays' => round(abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->avg('mttr') ?? 0)), 2),
             'avgMtbf' => $avgMtbf,
-            'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
-            'totalFundLoss' => $query->sum('fund_loss'),
-            'totalRecoveredFund' => $query->sum('recovered_fund'),
+            'totalPotentialFundLoss' => (float) $query->sum('potential_fund_loss'),
+            'totalFundLoss' => (float) $query->sum('fund_loss'),
+            'totalRecoveredFund' => (float) $query->sum('recovered_fund'),
         ];
     }
 

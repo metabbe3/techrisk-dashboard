@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Models\AiUsageLog;
@@ -25,9 +26,10 @@ class AiUsageStatsOverview extends BaseWidget
         $totalRequests = $last30Days->count();
         $todayRequests = $today->count();
 
-        $totalTokens = (clone $last30Days)->where('success', true)->sum('total_tokens');
-        $promptTokens = (clone $last30Days)->where('success', true)->sum('prompt_tokens');
-        $completionTokens = (clone $last30Days)->where('success', true)->sum('completion_tokens');
+        // BUG-021: SUM over BIGINT returns a decimal-string on MySQL — cast for number_format().
+        $totalTokens = (int) (clone $last30Days)->where('success', true)->sum('total_tokens');
+        $promptTokens = (int) (clone $last30Days)->where('success', true)->sum('prompt_tokens');
+        $completionTokens = (int) (clone $last30Days)->where('success', true)->sum('completion_tokens');
 
         $avgResponseTime = (clone $last30Days)->whereNotNull('response_time_ms')->avg('response_time_ms');
 

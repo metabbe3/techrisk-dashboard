@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources\IncidentResource\Pages;
 
 use App\Enums\FundStatus;
@@ -12,11 +13,8 @@ use App\Exports\MultiSheetIncidentsExport;
 use App\Filament\Actions\ExportActionSchema;
 use App\Filament\Resources\IncidentResource;
 use Filament\Actions;
-use Filament\Forms\Components\CheckboxList;
-use Filament\Forms\Components\Select;
 use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
-use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Facades\Excel;
 
@@ -102,13 +100,15 @@ class ListIncidents extends ListRecords
 
                     $avgMtbf = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build($query)['avgMtbf'];
 
+                    // BUG-021: DECIMAL aggregates are strings on MySQL — cast for
+                    // number_format() inside the strict-typed export classes.
                     $stats = [
                         'totalCases' => $totalCases,
-                        'avgMttr' => round($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2),
+                        'avgMttr' => round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
                         'avgMtbf' => $avgMtbf,
-                        'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
-                        'totalFundLoss' => $query->sum('fund_loss'),
-                        'totalRecoveredFund' => $query->sum('recovered_fund'),
+                        'totalPotentialFundLoss' => (float) $query->sum('potential_fund_loss'),
+                        'totalFundLoss' => (float) $query->sum('fund_loss'),
+                        'totalRecoveredFund' => (float) $query->sum('recovered_fund'),
                     ];
 
                     $incidents = $query->lazy()->collect();
@@ -198,7 +198,6 @@ class ListIncidents extends ListRecords
                 ->modifyQueryUsing(fn (Builder $query) => $query->where('severity', Severity::NonIncident->value)),
         ];
     }
-
 
     public function applyAiSearch(string $query, ?string $model = null): void
     {

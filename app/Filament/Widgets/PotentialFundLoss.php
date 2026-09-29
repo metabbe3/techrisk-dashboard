@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Enums\IncidentClassification;
@@ -47,7 +48,9 @@ class PotentialFundLoss extends BaseWidget
         $openCases = $query->sum('potential_fund_loss');
 
         return [
-            Stat::make('Potential Fund Loss', 'IDR '.number_format($openCases, 2, ',', '.'))
+            // BUG-021: sum() over a DECIMAL column returns a string on MySQL —
+            // cast for number_format under strict_types (prod TypeError 2026-09-29).
+            Stat::make('Potential Fund Loss', 'IDR '.number_format((float) $openCases, 2, ',', '.'))
                 ->description('Open cases potential loss '.$descriptionPeriod)
                 ->descriptionIcon('heroicon-m-exclamation-circle')
                 ->chart([3, 5, 4, 7, 2, 6, 4, 5])

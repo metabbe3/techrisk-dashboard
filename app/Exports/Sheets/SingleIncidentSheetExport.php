@@ -1,13 +1,12 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
-use App\Enums\IncidentType;
-
-use App\Enums\IncidentStatus;
-
 use App\Enums\IncidentClassification;
+use App\Enums\IncidentStatus;
+use App\Enums\IncidentType;
 use App\Enums\Severity;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -146,7 +145,8 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 $totalCases = $query->count();
 
                 // MTTR average (exclude fund loss incidents with negative values)
-                $avgMttr = round($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0, 2);
+                // BUG-021: avg() is a decimal-string on MySQL — cast for round() under strict_types.
+                $avgMttr = round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2);
 
                 // Calculate MTBF correctly: Total Time Period / Number of Incidents
                 $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
@@ -168,9 +168,9 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                     'totalCases' => $totalCases,
                     'avgMttr' => $avgMttr,
                     'avgMtbf' => $avgMtbf,
-                    'totalPotentialFundLoss' => $query->sum('potential_fund_loss'),
-                    'totalFundLoss' => $query->sum('fund_loss'),
-                    'totalRecoveredFund' => $query->sum('recovered_fund'),
+                    'totalPotentialFundLoss' => (float) $query->sum('potential_fund_loss'),
+                    'totalFundLoss' => (float) $query->sum('fund_loss'),
+                    'totalRecoveredFund' => (float) $query->sum('recovered_fund'),
                 ];
 
                 $lastDataRow = $sheet->getHighestRow();

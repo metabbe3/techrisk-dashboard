@@ -1,11 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
-use App\Enums\IncidentStatus;
-
 use App\Enums\IncidentClassification;
+use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -52,10 +52,12 @@ class IncidentStatsOverview extends BaseWidget
             $descriptionPeriod = 'in the selected period';
         }
 
-        $fundLossTotal = $query->clone()->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
-        $recoveredTotal = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('recovered_fund', '>', 0)->sum('recovered_fund');
-        $mttrNonFundLoss = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->average('mttr');
-        $mttrFundLoss = abs($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->average('mttr') ?? 0);
+        // BUG-021: DECIMAL aggregates come back as strings on MySQL — cast for
+        // number_format()/abs() under strict_types.
+        $fundLossTotal = (float) $query->clone()->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
+        $recoveredTotal = (float) $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('recovered_fund', '>', 0)->sum('recovered_fund');
+        $mttrNonFundLoss = (float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->average('mttr') ?? 0);
+        $mttrFundLoss = abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->average('mttr') ?? 0));
 
         $mtbfNonFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('fund_status', 'Non fundLoss');
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();

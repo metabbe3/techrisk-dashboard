@@ -1158,16 +1158,38 @@ Console on https://techrisk.paas.dana.id: `WebSocket connection to 'wss://localh
 
 ---
 
+### [BUG-021] - strict_types + MySQL DECIMAL aggregates: string into number_format/round killed dashboard & incidents pages in prod
+
+**Date:** 2026-09-29
+**Discovered By:** User (prod 500 on /admin/incidents)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Prod threw `TypeError: number_format(): Argument #1 ($num) must be of type int|float, string given` (`PotentialFundLoss.php:50`, value `'16072236.00'`) plus the same class at the incidents table footer (`round(avg())`). f8160eb's strict_types sweep fixed this fallout in 2 files (`DashboardStatsOverview`, `ProactiveIncidentAnalysisJob`) but missed 6 more — the repo's recurring incomplete-sweep class (BUG-001/005 pattern).
+
+### Root Cause
+MySQL returns DECIMAL columns and their aggregates (`SUM`/`AVG` over decimal) as **strings** — mysqlnd has no native decimal type. Under `declare(strict_types=1)` a numeric string flowing into `number_format()`/`round()`/`abs()` throws TypeError (in weak mode it silently coerced for years). Arithmetic operators (`*`, `/`, `+`) still coerce — only *function calls with typed numeric params* throw, which defines the sweep boundary. Why tests never caught it: the suite runs SQLite, whose aggregates return floats.
+
+### Fix
+`(float)`/`(int)` casts at every strict-file call site fed by an aggregate: `PotentialFundLoss`, `IncidentStatsOverview`, `AiUsageStatsOverview` (tokens), `IncidentStatsFooterData` (also makes its returned stats contract numeric), `ListIncidents` export stats, `SingleIncidentSheetExport`. Kanban/`ExecutiveCalcSheet`/`IncidentTableExport` were already casting (reference pattern).
+
+### Prevention Checklist
+- [x] Regression test feeding the prod-log string values through a stubbed Builder (`IncidentStatsFooterStringAggregateTest`) — mock-based because SQLite aggregates return floats; RED-verified against the exact TypeError pre-fix
+- [x] Rule: any `sum()/avg()/average()` over a decimal column feeding `number_format/round/abs` in a strict file gets a cast at the producer
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 20 |
+| Total Bugs | 21 |
 | Critical | 0 |
-| High | 12 |
+| High | 13 |
 | Medium | 6 |
 | Low | 0 |
-| Resolved | 20 |
+| Resolved | 21 |
 | Open | 0 |
 
 ### Bug Trends by Component
