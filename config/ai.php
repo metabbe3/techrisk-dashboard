@@ -252,6 +252,10 @@ return [
             'system' => "You are an expert AI agent designer specializing in incident analysis teams. Given an agent's role, domain, and description, suggest actionable skill capabilities.\n\nEach skill should be:\n- A short phrase (2-4 words) describing a SPECIFIC analytical capability\n- Actionable — something the agent can DO, not just a domain label\n- Distinct — no overlapping/duplicate skills\n- Relevant to incident analysis in a technical risk management context\n\nGood examples: \"Root Cause Chain Analysis\", \"Financial Impact Quantification\", \"Timeline Event Correlation\", \"MTTR Benchmarking\", \"Compliance Gap Detection\", \"Vulnerability Assessment\", \"Anomaly Pattern Recognition\", \"Stakeholder Impact Mapping\"\n\nBad examples: \"General knowledge\", \"Smart analysis\", \"Problem solving\", \"Good communication\"\n\nReturn ONLY valid JSON:\n{\"skills\": [\"Skill 1\", \"Skill 2\", \"Skill 3\", \"Skill 4\", \"Skill 5\", \"Skill 6\"]}\n\nSuggest 5-8 skills. No markdown, no explanation, only the JSON.",
             'label' => 'Suggest Skills',
         ],
+        'agent_draft' => [
+            'system' => "You draft configuration for scheduled analyst agents on a Technical Risk Management dashboard. Given a natural-language description of what the user wants, produce a complete agent draft.\n\nField rules:\n- name: short label, max 6 words\n- description: one sentence (max 200 chars) saying what the agent produces\n- instructions: the agent's full system prompt for a single generation. Start with \"You are…\", be concrete, state exactly what output to produce and its format and length. Plain text, no markdown fences.\n- include_context: true when the agent should reason over live dashboard statistics (incident counts, MTTR, fund loss) — the default for summaries and analysis; false only for self-contained text tasks\n- expected_output: plain-text description of the exact output format (length, sections, ordering); null unless the user's wording specifies a format\n- require_json: true ONLY when the user explicitly wants JSON output; otherwise false\n- schedule_type: \"manual\" | \"daily\" | \"hourly\" | \"weekly\" | \"custom\". Prefer the preset that matches the wording; use \"custom\" ONLY when the user explicitly names a cron pattern; use \"manual\" when they mention no schedule\n- run_time: \"HH:MM\" 24-hour clock, e.g. \"08:30\". Only meaningful for daily/weekly; default \"09:00\"\n- run_weekday: integer 1-7 where 1 = Monday and 7 = Sunday. Only meaningful for weekly; default 1\n- runs_after: exact id of an existing agent this one runs after (it is queued automatically when that agent completes successfully); null unless the user's wording clearly says this agent runs after / follows / builds on another agent\n- reports_to: exact id of the agent this one reports to in the agent organization; null unless the user's wording clearly names a supervisor/parent agent\n- include_memory: true when the agent should read and write the shared agent memory (lessons, outcomes) — default true when runs_after or reports_to is set, otherwise false\n\nIf the user mentions an email address or \"email me\", still draft the agent and reflect the delivery expectation in the instructions.\n\nThe user message ends with a list of existing agents and their ids. Never invent ids: pick from that list only, and use null when nothing matches.\n\nReturn ONLY valid JSON, no markdown, no explanation:\n{\"name\": \"...\", \"description\": \"...\", \"instructions\": \"...\", \"include_context\": true, \"expected_output\": null, \"require_json\": false, \"schedule_type\": \"daily\", \"run_time\": \"08:30\", \"run_weekday\": 1, \"runs_after\": null, \"reports_to\": null, \"include_memory\": false}",
+            'label' => 'Draft Agent',
+        ],
         'skill_routing' => [
             'system' => "You are a skill relevance scorer for an incident analysis team. Given an incident context and a list of available skills for a specific agent role, rank the skills by relevance to THIS specific incident.\n\nRules:\n- Consider: the incident type, severity, affected systems, root cause indicators, and financial impact.\n- A skill is relevant if its framework, methodology, or domain knowledge would directly help this agent produce a better analysis for THIS incident.\n- Return ONLY the skill IDs ranked from most relevant to least relevant.\n- Return between 3 and max_skills IDs.\n- If fewer than 3 skills exist, return all of them.\n- Return ONLY valid JSON. No markdown, no explanation.\n\nResponse format:\n{\"selected_skill_ids\": [\"skill-id-1\", \"skill-id-2\", \"skill-id-3\"]}",
             'label' => 'Skill Routing',
@@ -323,6 +327,15 @@ return [
         'log_input_estimation' => env('AI_TOKEN_METRICS_LOG_ESTIMATION', true),
     ],
 
+    'agents' => [
+        'run_retention_days' => (int) env('AI_AGENT_RUN_RETENTION_DAYS', 90),
+        'memory_inject_limit' => (int) env('AI_AGENT_MEMORY_INJECT_LIMIT', 25),
+        'upstream_inject_limit' => (int) env('AI_AGENT_UPSTREAM_INJECT_LIMIT', 4000),
+        'file_inject_limit' => (int) env('AI_AGENT_FILE_INJECT_LIMIT', 8000),
+        'document_inject_count' => (int) env('AI_AGENT_DOCUMENT_INJECT_COUNT', 5),
+        'document_inject_limit' => (int) env('AI_AGENT_DOCUMENT_INJECT_LIMIT', 6000),
+    ],
+
     'max_tokens' => [
         'label_suggest' => (int) env('AI_MAX_TOKENS_LABELS', 512),
         'nl_search' => (int) env('AI_MAX_TOKENS_NL_SEARCH', 2048),
@@ -332,6 +345,7 @@ return [
         'similarity' => (int) env('AI_MAX_TOKENS_SIMILARITY', 2048),
         'json_default' => (int) env('AI_MAX_TOKENS_JSON', 4096),
         'text_enhancement' => (int) env('AI_MAX_TOKENS_ENHANCE', 1000),
+        'agent' => (int) env('AI_MAX_TOKENS_AGENT', 4096),
         'document_summary' => (int) env('AI_MAX_TOKENS_DOC_SUMMARY', 8000),
     ],
 

@@ -163,6 +163,91 @@ class AiTextService
         return filled($this->getBaseUrl()) && filled($this->getApiKey());
     }
 
+    /**
+     * One-shot generation with an arbitrary system prompt — the entry point for
+     * user-defined AI Agents. Same resilience contract as enhance(): breaker gate
+     * before the call, outcome recorded after, usage logged here (never by the
+     * caller). No per-user rate limit: runs come from the queue with no user.
+     */
+    public function generate(
+        string $systemPrompt,
+        string $userMessage,
+        ?string $model = null,
+        ?int $maxTokens = null,
+        ?array $metadata = null,
+    ): AiTextResult {
+        $resolvedModel = $model
+            ?? AiSetting::get('default_model', config('ai.default_model'));
+
+        if (! $this->circuitBreaker->isAvailable($resolvedModel)) {
+            $result = AiTextResult::failure('AI service is temporarily unavailable. Please try again in a minute.', $resolvedModel);
+            $this->usageLogger->logFromResult('agent', $resolvedModel, $result, strlen($systemPrompt.$userMessage), $metadata);
+
+            return $result;
+        }
+
+        $inputLength = strlen($systemPrompt.$userMessage);
+        $startTime = microtime(true);
+        $result = null;
+
+        try {
+            $response = Http::withHeaders($this->buildHeaders())
+                ->timeout($this->getTimeout())
+                ->connectTimeout($this->connectTimeout())
+                ->post($this->buildUrl(), [
+                    'model' => $resolvedModel,
+                    'messages' => [
+                        ['role' => 'system', 'content' => $systemPrompt],
+                        ['role' => 'user', 'content' => $userMessage],
+                    ],
+                    'max_tokens' => $maxTokens ?? config('ai.max_tokens.agent', 4096),
+                ]);
+
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            $responseData = $response->json();
+            $usage = $this->normalizeUsage($responseData['usage'] ?? null);
+            $apiRequestId = $responseData['id'] ?? null;
+
+            if ($error = AiResponseHandler::checkErrors($response, $resolvedModel, $startTime)) {
+                $result = $error;
+            } else {
+                $text = $this->parseResponseFromData($responseData);
+
+                if (blank($text)) {
+                    $result = AiTextResult::failure('AI returned an empty response.', $resolvedModel, $responseTimeMs);
+                } else {
+                    $result = AiTextResult::success(
+                        text: $this->cleanResponse($text),
+                        model: $resolvedModel,
+                        promptTokens: $usage['prompt_tokens'] ?? null,
+                        completionTokens: $usage['completion_tokens'] ?? null,
+                        totalTokens: $usage['total_tokens'] ?? null,
+                        responseTimeMs: $responseTimeMs,
+                        apiRequestId: $apiRequestId,
+                    );
+                }
+            }
+        } catch (ConnectionException $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            Log::warning('AI service connection failed', ['error' => $e->getMessage()]);
+            $result = AiTextResult::failure('Cannot connect to AI service. Please check your network and try again.', $resolvedModel, $responseTimeMs);
+        } catch (\Throwable $e) {
+            $responseTimeMs = (microtime(true) - $startTime) * 1000;
+            Log::warning('AI service unexpected error', ['error' => $e->getMessage()]);
+            $result = AiTextResult::failure('An unexpected error occurred. Please try again.', $resolvedModel, $responseTimeMs);
+        }
+
+        $this->usageLogger->logFromResult('agent', $resolvedModel, $result, $inputLength, $metadata);
+
+        if ($result->success) {
+            $this->circuitBreaker->recordSuccess($resolvedModel);
+        } else {
+            $this->circuitBreaker->recordFailure($resolvedModel);
+        }
+
+        return $result;
+    }
+
     public function getAvailableModels(): array
     {
         return AiSetting::get('models', config('ai.models', []));

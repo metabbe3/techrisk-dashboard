@@ -25,7 +25,7 @@ class AiSettings extends Page implements HasForms
 
     protected static ?string $navigationLabel = 'AI Settings';
 
-    protected static ?string $navigationGroup = 'System';
+    protected static ?string $navigationGroup = 'AI';
 
     protected static ?int $navigationSort = 100;
 

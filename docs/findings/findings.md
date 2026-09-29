@@ -57,6 +57,23 @@
 
 ## Findings
 
+### AI Agent Flow Audit — 2026-09-21 (PROJ-005)
+
+Audit of the agent runtime (`RunAiAgentJob`, `DispatchDueAiAgentsCommand`, chaining, memory) against agent-orchestration best practice (trigger.dev durable-agent patterns; structured-output literature — explicit format instructions, validate, feed validation errors back for one repair retry). **AG-1..3 fixed same day**; AG-4+ recorded as roadmap.
+
+| ID | Finding | Sev | Status |
+|----|---------|-----|--------|
+| AG-1 | **Chain handoff gap** — dependent agents never saw the upstream run's output; only ≤3 shared-memory bullets (≤300 chars each) crossed the boundary | H | **Fixed 2026-09-21** — `## Upstream result from "{agent}"` block injected from `triggeredBy` output (`upstream_inject_limit`, default 4000 chars; pruned upstream → block skipped) |
+| AG-2 | **No retry** — `$tries=1`; one transient gateway blip failed the run and silently killed the whole chain | H | **Fixed** — one in-`handle()` retry (3s backoff) around the generation call only; side effects (memory/email/chain) still exactly once |
+| AG-3 | **No output contract** — no way to declare expected output; nothing validated it | M | **Fixed** — `expected_output` (injected as `## Expected output`) + `require_json` (JSON-validated; one repair retry feeding the parse error back; twice-invalid → Failed with `Output failed JSON validation after retry.` so the chain correctly dies). Both draftable via "Draft with AI" |
+| AG-4 | Missed schedules skip silently — cron due-check has no catch-up after downtime/outage | M | Open |
+| AG-5 | Memory has no dedup or aging — repeated lessons accumulate; injection bounded at 25×300 chars but the table grows unbounded | L | Open |
+| AG-6 | No quick thumbs up/down on a run — feedback requires typing (Feedback memory exists since 2026-09-21) | L | Open |
+| AG-7 | Chain-dispatch failure only logged (`Log::warning`) — no surfaced signal in the UI | L | Open |
+| AG-8 | No chain-depth cap — cycles impossible via UI but deep chains dispatch unbounded hops | L | Open (upgrade path: cap `triggered_by` hops) |
+
+**Lesson (AG-2):** retry placement matters when a job has side effects — retrying the whole job would re-send email/duplicate memory; the retry loop wraps only the idempotent generation call. `AiTextResult` is readonly — failed-validation conversion goes through `AiTextResult::failure()`, never property mutation.
+
 ### Best-Practice Audit — 2026-06-29
 
 Three-angle audit (unified API response, DRY, OOP/architecture). Each finding has a stable ID — pick any ID below and its section has enough `file:line` evidence to implement without re-auditing the codebase. Fix phases and rationale are in the approved plan: `~/.claude/plans/synchronous-conjuring-pillow.md`.

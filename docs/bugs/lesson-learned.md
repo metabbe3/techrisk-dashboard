@@ -1006,6 +1006,52 @@ adding one.
 
 ---
 
+### [BUG-014] - PHPUnit inside the Docker container silently used live MySQL: RefreshDatabase wiped the database (env override never applied)
+
+**Date:** 2026-09-21
+**Discovered By:** PM session (workflows + file-reading task)
+**Severity:** Critical
+**Status:** Resolved
+
+### Description
+Every `docker compose exec app php vendor/bin/phpunit` run reported `Configuration: /var/www/html/phpunit.xml` yet used the **live MySQL `laravel` DB** and `SESSION_DRIVER=file`. RefreshDatabase's `migrate:fresh` dropped every live table; all users, incidents, agents, and demo data were wiped. The same suite on the host was correctly isolated (sqlite `:memory:`, array sessions). Symptom band in the container: every session-bound POST test 419'd, API tests 404'd — ~91 failures vs the real ~25.
+
+### Root Cause
+PHPUnit's `<env>` directive only writes `putenv()`/`$_ENV` — **never `$_SERVER`** — and `force="true"` does not change that. The container exports `DB_CONNECTION`, `DB_DATABASE`, `SESSION_DRIVER`, … as real env vars (present in all three of getenv/`$_ENV`/`$_SERVER`), and phpdotenv's default adapter order reads **`$_SERVER` first**. So the container's real values won over phpunit's `<env>` overrides regardless of force; host runs had no real vars to lose to.
+
+### Fix
+phpunit.xml now carries `<server … force="true">` twins for every `<env … force="true">` entry (DB, session, cache, queue, mail, telemetry). Verified inside the container with a config probe (`session=array db=sqlite app=testing`) and by the suite count returning to the known failure band.
+
+### Prevention Checklist
+- [x] phpunit.xml: every `<env>` that must win in-container has a `<server>` twin with `force="true"`
+- [x] Memory note rewritten: container runs are safe now; old "isolation appears functional" conclusion was host-only and wrong for the container
+- [x] Recovery documented: `db:seed --force` (admin@/password) + manual re-creation of demo user/data; original live rows were NOT recoverable
+
+---
+
+### [BUG-015] - Auditable trait without the Auditable contract: workflow pages 500 under fpm, pass in tests
+
+**Date:** 2026-09-21
+**Discovered By:** User (live 500 on /admin/ai-workflows)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+`GET /admin/ai-workflows` threw `AuditableObserver::retrieved(): Argument #1 ($model) must be of type OwenIt\Auditing\Contracts\Auditable, App\Models\AiWorkflow given`. `AiWorkflow`, `AiWorkflowStep`, and `AiAgentFile` used the `Auditable` **trait** without `implements Auditable`. The observer attaches for any trait-user (no contract check upstream) and type-hints the contract, so the first `retrieved` event under fpm exploded.
+
+### Root Cause
+Trait/contract pairing rule: the trait brings behavior, the interface is what the observer's type-hints require — one without the other compiles fine and only fails at runtime on the web. Why every test passed: `bootAuditable()` attaches the observer only when `isAuditingEnabled()` — console processes (phpunit) additionally require `audit.console`, hardcoded `false` in `config/audit.php:197`. So the observer never attaches in tests and the broken pairing was invisible until a real web request.
+
+### Fix
+3 models got the `AiAgent` pattern (`Contracts\Auditable` import + `implements Auditable` + FQCN trait use). Regression test attaches `AuditableObserver` explicitly (`AiWorkflow::observe(...)`) before hitting the index route over HTTP — RED-verified to reproduce the exact production TypeError, because the config knob alone is unreliable (model boot happens once per phpunit process, possibly before the test runs).
+
+### Prevention Checklist
+- [x] New audited model = trait AND `implements Auditable` (copy `AiAgent.php`)
+- [x] Regression test attaches the observer explicitly instead of trusting config/boot order
+- [ ] (optional future) static check: scan `app/Models` for `Auditable` trait without the contract
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |

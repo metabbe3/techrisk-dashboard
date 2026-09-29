@@ -25,9 +25,9 @@ class WarRoomAgentConfigResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Retrospective Agents';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 92;
 
-    protected static ?string $navigationGroup = 'Settings';
+    protected static ?string $navigationGroup = 'AI';
 
     public static function canAccess(): bool
     {
