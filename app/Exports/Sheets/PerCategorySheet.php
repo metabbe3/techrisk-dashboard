@@ -1,9 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
-use App\Enums\Severity;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -26,18 +26,23 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithHeadings, WithM
 
     protected string $groupValue;
 
-    public function __construct(Builder $baseQuery, string $column, bool $isJsonArray, string $groupValue)
+    protected ?string $sheetTitle;
+
+    public function __construct(Builder $baseQuery, string $column, bool $isJsonArray, string $groupValue, ?string $sheetTitle = null)
     {
         $this->baseQuery = $baseQuery;
         $this->column = $column;
         $this->isJsonArray = $isJsonArray;
         $this->groupValue = $groupValue;
+        $this->sheetTitle = $sheetTitle;
     }
 
     public function title(): string
     {
         // Excel sheet titles: max 31 chars, no []:*?/\
-        return substr(str_replace(['[', ']', ':', '*', '?', '/', '\\'], '-', $this->groupValue), 0, 31);
+        $title = $this->sheetTitle ?? $this->groupValue;
+
+        return substr(str_replace(['[', ']', ':', '*', '?', '/', '\\'], '-', $title), 0, 31);
     }
 
     public function query()

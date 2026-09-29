@@ -1184,16 +1184,71 @@ MySQL returns DECIMAL columns and their aggregates (`SUM`/`AVG` over decimal) as
 
 ---
 
+### [BUG-022] - Export audit: Group-By severity/PIC/type 500 + executive chart defects
+
+**Date:** 2026-09-29
+**Discovered By:** User (500 on Group-By severity export) + owner-directed full export audit
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Four defects across the export presets, found by exercising every preset's sheet
+construction live (all 4 presets × all 6 Group-By dimensions):
+
+1. **Group-By × severity / pic / incident_type = HTTP 500.** The row-filter
+   closure in `GroupedIncidentsExport::sheets()` was `use ($isJson, $value)`
+   but read `$column` — an undefined variable. Tinker prints a WARNING; the web
+   handler converts it to `ErrorException` → 500. Even where tolerated, every
+   comparison evaluated false → zero group sheets (only Summary). JSON
+   dimensions returned before that line, which is why business-category
+   exports kept working.
+2. **PIC grouping resolved ids by name** (`array_search(label, names)`) — two
+   PICs with the same name collapsed onto one id: both sheets held the first
+   user's rows, the second user's incidents vanished. (PhpSpreadsheet
+   auto-dedupes the duplicate *titles*, so the symptom was silent wrong data.)
+3. **Executive Calc severity pie counted zero for every severity** — and the
+   "Open" KPI counted completed cases too. `EnumCast::get` returns backed-enum
+   instances, and PHP 8 enum-vs-string comparison is always false, so
+   `Collection::where('severity', 'P1')` matched nothing while
+   `where('incident_status', '!=', 'Completed')` matched everything.
+4. **Severity scope wrong (owner rule confirmed):** the pie iterated all 10
+   `Severity` cases with a 9-slot chart range. Correct scope is
+   `METRIC_ELIGIBLE` (P1–P4, X1–X4) for BOTH the executive pie and Group-By
+   severity sheets — G / Non Incident excluded (2026-09-17 counts rule).
+   Charts also anchored at row 12, floating over the month table that ends at
+   row 13 — moved to B16/J16/B34/J34.
+
+### Root Cause
+The Group-By rewrite added `$column` two lines below the closure's `use`
+without re-importing it — the exact BUG-005 drift class wearing a new coat:
+the invariant (closure captures every variable it reads) is invisible to
+static tooling and to tinker (warning ≠ fatal there). The enum-blind
+Collection filters are the Collection twin of BUG-003's map() crash: EnumCast
+changes the attribute type, and every consumer must go through `?->value`.
+
+### Prevention Checklist
+- [x] Every non-JSON Group-By dimension covered by tests (severity / pic /
+      incident_type; pic case uses two same-name users)
+- [x] Enum-field Collection comparisons go through `?->value ?? raw` — never
+      `where('enum_col', 'string')` (enum == string is always false in PHP 8)
+- [x] Chart ranges derive from the data block they describe (8 eligible
+      severities → C2:C9), chart anchors asserted ≥ 2 rows below the data
+- [x] Artifact-level verification: all 4 presets × 6 dimensions generated,
+      reopened with PhpSpreadsheet — group sheets non-empty, 4 charts with
+      populated value caches (BUG-013 invariant held: 61 cache points)
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 21 |
+| Total Bugs | 22 |
 | Critical | 0 |
-| High | 13 |
+| High | 14 |
 | Medium | 6 |
 | Low | 0 |
-| Resolved | 21 |
+| Resolved | 22 |
 | Open | 0 |
 
 ### Bug Trends by Component

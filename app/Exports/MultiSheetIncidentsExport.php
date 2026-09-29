@@ -1,13 +1,14 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports;
 
-use App\Enums\IncidentType;
-
-use App\Enums\IncidentStatus;
-
+use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
+use App\Enums\IncidentStatus;
+use App\Enums\IncidentType;
+use App\Enums\Severity;
 use App\Exports\Sheets\IssuesMetricSheetExport;
 use App\Exports\Sheets\SingleIncidentSheetExport;
 use App\Models\Incident;
@@ -50,7 +51,7 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $sheets[] = new SingleIncidentSheetExport($recoveredQuery, 'Recovered Cases', $this->headings, $this->columnNames);
 
         // 4. P4 Incidents (Incidents only)
-        $p4Query = $incidentsQuery->clone()->where('severity', 'P4');
+        $p4Query = $incidentsQuery->clone()->where('severity', Severity::P4->value);
         $sheets[] = new SingleIncidentSheetExport($p4Query, 'P4 Incidents', $this->headings, $this->columnNames);
 
         // 5. Non-Tech Incidents (Incidents only)
@@ -58,7 +59,7 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $sheets[] = new SingleIncidentSheetExport($nonTechQuery, 'Non-Tech Incidents', $this->headings, $this->columnNames);
 
         // 6. Fund Loss (Incidents only)
-        $fundLossQuery = $incidentsQuery->clone()->where('fund_status', 'Confirmed loss');
+        $fundLossQuery = $incidentsQuery->clone()->where('fund_status', FundStatus::ConfirmedLoss->value);
         $sheets[] = new SingleIncidentSheetExport($fundLossQuery, 'Fund Loss', $this->headings, $this->columnNames);
 
         // 7. On Going (Incidents only) - Non-completed incidents
@@ -66,23 +67,23 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         $sheets[] = new SingleIncidentSheetExport($onGoingQuery, 'On Going', $this->headings, $this->columnNames);
 
         // 8. Potential Recovery (Incidents only)
-        $potentialRecoveryQuery = $incidentsQuery->clone()->where('fund_status', 'Potential recovery');
+        $potentialRecoveryQuery = $incidentsQuery->clone()->where('fund_status', FundStatus::PotentialRecovery->value);
         $sheets[] = new SingleIncidentSheetExport($potentialRecoveryQuery, 'Potential Recovery', $this->headings, $this->columnNames);
 
         // 9. Fully Recovered (Incidents only)
-        $fullyRecoveredQuery = $incidentsQuery->clone()->where('fund_status', 'Fully recovered');
+        $fullyRecoveredQuery = $incidentsQuery->clone()->where('fund_status', FundStatus::FullyRecovered->value);
         $sheets[] = new SingleIncidentSheetExport($fullyRecoveredQuery, 'Fully Recovered', $this->headings, $this->columnNames);
 
         // 10. Non Tech Loss (Incidents only)
-        $nonTechLossQuery = $incidentsQuery->clone()->where('fund_status', 'Non Tech Loss');
+        $nonTechLossQuery = $incidentsQuery->clone()->where('fund_status', FundStatus::NonTechLoss->value);
         $sheets[] = new SingleIncidentSheetExport($nonTechLossQuery, 'Non Tech Loss', $this->headings, $this->columnNames);
 
         // 11. Non Fund Loss (Incidents only)
-        $nonFundLossQuery = $incidentsQuery->clone()->where('fund_status', 'Non fundLoss');
+        $nonFundLossQuery = $incidentsQuery->clone()->where('fund_status', FundStatus::NonFundLoss->value);
         $sheets[] = new SingleIncidentSheetExport($nonFundLossQuery, 'Non Fund Loss', $this->headings, $this->columnNames);
 
         // 12. Non Incident (Incidents only)
-        $nonIncidentQuery = $incidentsQuery->clone()->where('severity', 'Non Incident');
+        $nonIncidentQuery = $incidentsQuery->clone()->where('severity', Severity::NonIncident->value);
         $sheets[] = new SingleIncidentSheetExport($nonIncidentQuery, 'Non Incident', $this->headings, $this->columnNames);
 
         // Issues tabs - Use fresh query for Issues only (separate from Incidents) - sorted by date

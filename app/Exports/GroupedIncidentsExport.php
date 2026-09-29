@@ -54,6 +54,11 @@ class GroupedIncidentsExport implements WithMultipleSheets
         } elseif ($this->dimension === 'pic') {
             $values = $rows->filter(fn ($i) => $i->pic_id)->pluck('pic_id')->unique()->sort();
             $names = \App\Models\User::whereIn('id', $values)->pluck('name', 'id');
+        } elseif ($this->dimension === 'severity') {
+            // Owner rule (2026-09-29): severity grouping is metric-eligible only
+            // (P1–P4, X1–X4) — G and Non Incident never get sheets. The empty-group
+            // guard below skips severities with no rows, so order stays enum order.
+            $values = collect(Severity::METRIC_ELIGIBLE);
         } else {
             $values = $rows->pluck($this->dimension)->map(fn ($v) => $v instanceof \BackedEnum ? $v->value : $v)->filter()->unique()->sort()->values();
         }
@@ -63,7 +68,10 @@ class GroupedIncidentsExport implements WithMultipleSheets
         // Summary sheet first: per-group counts + MTTR/MTBF (the numbers owner cares about)
         $groupStats = [];
         foreach ($values as $value) {
-            $groupRows = $rows->filter(function ($i) use ($isJson, $value): bool {
+            // BUG-022: $column MUST be imported — reading it undefined threw a
+            // warning per row (ErrorException = HTTP 500 on the web path) and
+            // emptied every non-JSON group (severity / pic / incident_type).
+            $groupRows = $rows->filter(function ($i) use ($isJson, $value, $column): bool {
                 if ($isJson) {
                     return in_array($value, (array) $i->{$this->dimension});
                 }
@@ -85,6 +93,7 @@ class GroupedIncidentsExport implements WithMultipleSheets
             }
             $groupStats[] = [
                 'label' => $this->dimension === 'pic' ? ($names[$value] ?? "PIC {$value}") : (string) $value,
+                'value' => $value,
                 'count' => $groupRows->count(),
                 // BUG-021: cast aggregates for round()/abs() under strict_types — uniform
                 // pattern even though Collection::avg() returns float (MySQL rule).
@@ -101,15 +110,15 @@ class GroupedIncidentsExport implements WithMultipleSheets
         $sheets[] = new GroupSummarySheet($groupStats, $config['label']);
 
         foreach ($groupStats as $gs) {
-            $groupValue = $this->dimension === 'pic'
-                ? $gs['label']
-                : $gs['label'];
-            // For PIC sheets the filter must use the id; pass raw value through closure
+            // Filter by the RAW group value (pic = user id, severity = enum
+            // value); the label only names the sheet. Resolving pic by label
+            // (array_search over names) collapsed same-name PICs onto one id.
             $sheets[] = new PerCategorySheet(
                 $this->query,
                 $this->dimension === 'pic' ? 'pic_id' : ($config['column'] ?? $this->dimension),
                 $isJson,
-                $this->dimension === 'pic' ? array_search($gs['label'], $names->all(), true) : $gs['label']
+                (string) $gs['value'],
+                $gs['label']
             );
         }
 

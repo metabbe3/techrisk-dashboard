@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Exports\Sheets;
 
+use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
@@ -110,14 +111,14 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 'On Going' => $query->where('incident_status', '!=', IncidentStatus::Completed->value),
                 'Completed Cases' => $query->where('incident_status', IncidentStatus::Completed->value),
                 'Recovered Cases' => $query->where('recovered_fund', '>', 0),
-                'P4 Incidents' => $query->where('severity', 'P4'),
+                'P4 Incidents' => $query->where('severity', Severity::P4->value),
                 'Non-Tech Incidents' => $query->where('incident_type', IncidentType::NonTech->value),
-                'Fund Loss' => $query->where('fund_status', 'Confirmed loss'),
-                'Potential Recovery' => $query->where('fund_status', 'Potential recovery'),
-                'Fully Recovered' => $query->where('fund_status', 'Fully recovered'),
-                'Non Tech Loss' => $query->where('fund_status', 'Non Tech Loss'),
-                'Non Fund Loss' => $query->where('fund_status', 'Non fundLoss'),
-                'Non Incident' => $query->where('severity', 'Non Incident'),
+                'Fund Loss' => $query->where('fund_status', FundStatus::ConfirmedLoss->value),
+                'Potential Recovery' => $query->where('fund_status', FundStatus::PotentialRecovery->value),
+                'Fully Recovered' => $query->where('fund_status', FundStatus::FullyRecovered->value),
+                'Non Tech Loss' => $query->where('fund_status', FundStatus::NonTechLoss->value),
+                'Non Fund Loss' => $query->where('fund_status', FundStatus::NonFundLoss->value),
+                'Non Incident' => $query->where('severity', Severity::NonIncident->value),
                 default => null,
             };
 

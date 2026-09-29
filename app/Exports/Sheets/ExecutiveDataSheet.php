@@ -1,9 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
-use App\Enums\Severity;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -88,8 +88,3 @@ class ExecutiveDataSheet implements FromQuery, ShouldAutoSize, WithEvents, WithH
         ];
     }
 }
-
-/**
- * Executive Summary sheet: KPI cards + 4 native Excel charts fed by a hidden
- * calc block written at the bottom of this same sheet.
- */

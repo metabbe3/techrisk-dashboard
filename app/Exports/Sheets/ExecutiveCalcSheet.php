@@ -56,11 +56,11 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
                 new DataSeries(DataSeries::TYPE_BARCHART, null, range(0, 0), [], [$months], [$incData]),
             ])
         );
-        $incChart->setTopLeftPosition('B12');
-        $incChart->setBottomRightPosition('H27');
+        $incChart->setTopLeftPosition('B16');
+        $incChart->setBottomRightPosition('H31');
 
-        $sevLabels = new DataSeriesValues('String', 'Calc!$C$2:$C$10', null, 9);
-        $sevData = new DataSeriesValues('Number', 'Calc!$D$2:$D$10', null, 9);
+        $sevLabels = new DataSeriesValues('String', 'Calc!$C$2:$C$9', null, 8);
+        $sevData = new DataSeriesValues('Number', 'Calc!$D$2:$D$9', null, 8);
         $sevChart = new Chart(
             'chart_severity_mix',
             new Title('Severity Mix'),
@@ -69,8 +69,8 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
                 new DataSeries(DataSeries::TYPE_PIECHART, null, range(0, 0), [], [$sevLabels], [$sevData]),
             ])
         );
-        $sevChart->setTopLeftPosition('J12');
-        $sevChart->setBottomRightPosition('P27');
+        $sevChart->setTopLeftPosition('J16');
+        $sevChart->setBottomRightPosition('P31');
 
         $mttrData = new DataSeriesValues('Number', 'Calc!$E$2:$E$13', null, 12);
         $mttrChart = new Chart(
@@ -81,8 +81,8 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
                 new DataSeries(DataSeries::TYPE_LINECHART, null, range(0, 0), [], [$months], [$mttrData]),
             ])
         );
-        $mttrChart->setTopLeftPosition('B30');
-        $mttrChart->setBottomRightPosition('H45');
+        $mttrChart->setTopLeftPosition('B34');
+        $mttrChart->setBottomRightPosition('H49');
 
         $potData = new DataSeriesValues('Number', 'Calc!$F$2:$F$13', null, 12);
         $recData = new DataSeriesValues('Number', 'Calc!$G$2:$G$13', null, 12);
@@ -94,8 +94,8 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
                 new DataSeries(DataSeries::TYPE_BARCHART, null, range(0, 1), [], [$months], [$potData, $recData]),
             ])
         );
-        $fundChart->setTopLeftPosition('J30');
-        $fundChart->setBottomRightPosition('P45');
+        $fundChart->setTopLeftPosition('J34');
+        $fundChart->setBottomRightPosition('P49');
 
         return [$incChart, $sevChart, $mttrChart, $fundChart];
     }
@@ -123,7 +123,12 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
     private function compute(): array
     {
         $rows = $this->query->get();
-        $eligible = $rows->filter(fn ($i) => in_array($i->severity?->value ?? $i->severity, Severity::METRIC_ELIGIBLE));
+        // EnumCast returns BackedEnum instances — Collection where() against the
+        // string value never matches (enum == string is always false in PHP 8),
+        // so every enum-field comparison goes through its ->value first.
+        $sevOf = fn ($i) => $i->severity?->value ?? $i->severity;
+        $statusOf = fn ($i) => $i->incident_status?->value ?? $i->incident_status;
+        $eligible = $rows->filter(fn ($i) => in_array($sevOf($i), Severity::METRIC_ELIGIBLE));
 
         $base = now()->startOfMonth()->subMonths(11);
         $months = [];
@@ -147,16 +152,18 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
             $counts[$idx]++;
             $pot[$idx] += (float) $i->potential_fund_loss;
             $rec[$idx] += (float) $i->recovered_fund;
-            if (in_array($i->severity?->value ?? $i->severity, Severity::METRIC_ELIGIBLE) && $i->mttr !== null && $i->mttr >= 0) {
+            if (in_array($sevOf($i), Severity::METRIC_ELIGIBLE) && $i->mttr !== null && $i->mttr >= 0) {
                 $mttrSum[$idx] += $i->mttr;
                 $mttrN[$idx]++;
             }
         }
         $mttrAvg = array_map(fn ($sv, $n) => $n > 0 ? round($sv / $n, 1) : 0, $mttrSum, $mttrN);
 
+        // Owner rule (2026-09-29): severity breakdown is metric-eligible only —
+        // G and Non Incident are excluded from the pie (and its 8-row range).
         $sev = [];
-        foreach (Severity::cases() as $case) {
-            $sev[] = [$case->value, $rows->where('severity', $case->value)->count()];
+        foreach (Severity::METRIC_ELIGIBLE as $sevValue) {
+            $sev[] = [$sevValue, $rows->filter(fn ($i) => $sevOf($i) === $sevValue)->count()];
         }
 
         // BUG-021: cast aggregates for round()/abs() under strict_types — uniform
@@ -169,7 +176,7 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
 
         $kpi = [
             'totalCases' => $rows->count(),
-            'open' => $rows->where('incident_status', '!=', IncidentStatus::Completed->value)->count(),
+            'open' => $rows->filter(fn ($i) => $statusOf($i) !== IncidentStatus::Completed->value)->count(),
             'avgMttrMins' => $avgMttrMins,
             'avgMttrDays' => $avgMttrDays,
             'avgMtbf' => $avgMtbf,

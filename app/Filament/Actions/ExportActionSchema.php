@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Actions;
 
 use App\Enums\FundStatus;
@@ -65,8 +66,8 @@ class ExportActionSchema
                 ->live()
                 ->descriptions([
                     'executive' => 'Summary sheet with KPIs and native Excel charts, plus a clean data sheet.',
-                    'all_tabs' => '16 sheets mirroring the table tabs, incl. Issues metrics.',
-                    'group_by' => 'Pick a dimension: business category, root cause, division, PIC, severity. Each value gets its own sheet (multi-category incidents appear in each). Summary sheet has per-group MTTR/MTBF.',
+                    'all_tabs' => '15 sheets mirroring the table tabs, incl. Issues metrics.',
+                    'group_by' => 'Pick a dimension: business category, root cause, division, PIC, severity, incident type. Each value gets its own sheet (multi-category incidents appear in each). Summary sheet has per-group MTTR/MTBF.',
                     'custom' => 'Full control: choose columns, XLSX or CSV.',
                 ]),
 

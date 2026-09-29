@@ -83,7 +83,7 @@ The incident Export button offers 4 presets via `App\Filament\Actions\ExportActi
 
 1. **Executive Report** (`Exports\ExecutiveIncidentsExport` + `Sheets\ExecutiveDataSheet|ExecutiveCalcSheet|ExecutiveSummarySheet`) — KPI cards + 4 native Excel charts (monthly incidents, severity mix, MTTR trend, potential-vs-recovered). Charts live on the Calc sheet with their source data. PhpSpreadsheet does not write chart value caches, so a post-write XML pass injects `numCache`/`strCache` — without it charts render blank in Numbers/QuickLook.
 2. **Group By** (`Exports\GroupedIncidentsExport` + `Sheets\GroupSummarySheet|PerCategorySheet`) — one sheet per value of a chosen dimension (business_category / root_cause / responsible_team / pic / severity / incident_type). Front Summary sheet carries per-group Cases, Avg MTTR (min + days), **Avg MTBF (days)**, fund totals. Multi-category incidents appear in every matching sheet (by design).
-3. **All Tabs** (`MultiSheetIncidentsExport`) — 16 sheets mirroring the table tabs.
+3. **All Tabs** (`MultiSheetIncidentsExport`) — 15 sheets mirroring the table tabs.
 4. **Custom** — pick columns (`ExportActionSchema::columnOptions()`) + XLSX/CSV.
 
 Optional export filters (severity / status / type / fund status / PIC / business category / root cause, all multi-select) apply **on top of** the table's current filters via `ExportActionSchema::applyFilters()`.
@@ -112,7 +112,7 @@ Before editing any file below, check the "consumed by" column — a rule change 
 
 **Surfaces that must stay in sync for MTTR/MTBF/fund numbers:** `Filament/Widgets/DashboardStatsOverview`, `Widgets/MttrMtbfTrendChart`, `Widgets/AiTrendInsights`, `Widgets/PotentialFundLoss`, `IncidentResource/Pages/ListIncidents` (footer + export), `Pages/Reporting`, `Console/Commands/SendReport`, `Http/Controllers/Ai/AnalyzeTrendsController`, `Services/Ai/ChatContextService`, `Services/WarRoom/WarRoomToolExecutor`, `Exports/Sheets/*`, `Services/Analytics/AnalyticsQueryService`.
 
-**Business rules (confirmed):** MTTR positive = minutes, negative = days (fund-status driven). Fund Loss card = classification `Incident` + status `Completed` + `excludedFromCounts`. "Open cases" = `incident_status != Completed`. Base MTBF = calendar year window. Incident COUNTS exclude severity `G` and `Non Incident` everywhere (2026-09-17 product rule — dashboard cards, AI quick stats, WarRoom tools, trends all use `aiCounts()`/`countEligible()`; operator-filtered table footers and Reporting/SendReport queries are row-counts of their own filtered sets and keep counting what they list).
+**Business rules (confirmed):** MTTR positive = minutes, negative = days (fund-status driven). Fund Loss card = classification `Incident` + status `Completed` + `excludedFromCounts`. "Open cases" = `incident_status != Completed`. Base MTBF = calendar year window. Incident COUNTS exclude severity `G` and `Non Incident` everywhere (2026-09-17 product rule — dashboard cards, AI quick stats, WarRoom tools, trends all use `aiCounts()`/`countEligible()`; operator-filtered table footers and Reporting/SendReport queries are row-counts of their own filtered sets and keep counting what they list). Severity BREAKDOWNS (Group-By severity sheets, executive Severity Mix chart) are likewise P1–P4 + X1–X4 only (owner rule 2026-09-29, BUG-022) — and enum-cast attributes compared on Collections must go through `?->value` (enum == string is always false in PHP 8).
 
 **Cache keys that gate freshness:** `dashboard_cache_version` (bump refreshes dashboard widget cache), `analytics_v2_*` (15 min), `chat_quick_stats_v2` (5 min, cleared by `ChatContextService::clearDataCache()`).
 
@@ -167,7 +167,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
-- **Baseline:** 606 tests / 1,989 assertions green (2026-09-29). A change that drops this count or its assertions is a regression, not a refactor.
+- **Baseline:** 614 tests / 2,037 assertions green (2026-09-29). A change that drops this count or its assertions is a regression, not a refactor.
 
 ---
 
