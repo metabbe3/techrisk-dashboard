@@ -1,4 +1,6 @@
-FROM debian:bullseye-slim
+# bullseye's LTS ended 2026-08-31: deb.debian.org drains its pool and
+# `apt-get install` 404s on the pinned .deb versions — bookworm is supported.
+FROM debian:bookworm-slim
 
 # Install cron and mysql-client
 RUN apt-get update && apt-get install -y cron default-mysql-client gzip
