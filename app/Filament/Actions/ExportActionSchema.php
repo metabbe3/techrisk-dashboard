@@ -8,10 +8,12 @@ use App\Enums\FundStatus;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
+use App\Exports\Concerns\QuarterRange;
 use App\Models\Incident;
 use App\Models\User;
 use Filament\Forms\Components;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 
 /**
  * Form schema + query filtering for the incident Export action.
@@ -112,6 +114,11 @@ class ExportActionSchema
                         ->options(array_combine($rootCauseOptions, $rootCauseOptions))
                         ->multiple()
                         ->placeholder('All root causes'),
+                    Components\Select::make('f_quarter')
+                        ->label('Quarter')
+                        ->options(self::quarterOptions())
+                        ->multiple()
+                        ->placeholder('All quarters'),
                 ]),
 
             Components\Select::make('group_dim')
@@ -145,6 +152,27 @@ class ExportActionSchema
         ];
     }
 
+    /** "YYYY-Qn" => "Qn YYYY" for every quarter of every year with incidents (sqlite-safe — no YEAR() SQL). */
+    private static function quarterOptions(): array
+    {
+        $min = Incident::min('incident_date');
+        $max = Incident::max('incident_date');
+
+        if ($min === null || $max === null) {
+            return [];
+        }
+
+        $options = [];
+        foreach (range(Carbon::parse($min)->year, Carbon::parse($max)->year) as $year) {
+            foreach (range(1, 4) as $qtr) {
+                $key = "{$year}-Q{$qtr}";
+                $options[$key] = QuarterRange::label($key);
+            }
+        }
+
+        return $options;
+    }
+
     /**
      * Apply the optional export filters on top of the table's current filters.
      */
@@ -170,6 +198,13 @@ class ExportActionSchema
                 $q->where(function (Builder $q2) use ($data): void {
                     foreach ($data['f_root_cause'] as $cat) {
                         $q2->orWhereJsonContains('root_cause_category', $cat);
+                    }
+                });
+            })
+            ->when(! empty($data['f_quarter'] ?? []), function (Builder $q) use ($data): void {
+                $q->where(function (Builder $q2) use ($data): void {
+                    foreach ($data['f_quarter'] as $quarter) {
+                        $q2->orWhereBetween('incident_date', QuarterRange::dates($quarter));
                     }
                 });
             });

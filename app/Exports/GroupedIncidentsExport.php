@@ -120,9 +120,7 @@ class GroupedIncidentsExport implements WithMultipleSheets
             if ($this->dimension === 'pic') {
                 $label = $names[$value] ?? "PIC {$value}";
             } elseif ($this->dimension === 'quarter') {
-                // "2026-Q1" -> "Q1 2026"
-                [$y, $q] = explode('-Q', $label);
-                $label = "Q{$q} {$y}";
+                $label = \App\Exports\Concerns\QuarterRange::label($label);
             }
             $groupStats[] = [
                 'label' => $label,
