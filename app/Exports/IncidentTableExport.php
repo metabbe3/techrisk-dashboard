@@ -85,6 +85,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         if (! isset(self::$mtbfCache[$key])) {
             $incidents = \App\Models\Incident::whereYear('incident_date', $year)
                 ->where('classification', '!=', IncidentClassification::Issue->value)
+                ->whereIn('severity', \App\Enums\Severity::METRIC_ELIGIBLE)
                 ->orderBy('incident_date')->orderBy('id')
                 ->get(['id', 'incident_date']);
 
