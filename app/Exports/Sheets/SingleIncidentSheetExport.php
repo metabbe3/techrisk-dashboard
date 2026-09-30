@@ -66,7 +66,7 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
             $isArray = in_array($columnName, ['business_category', 'root_cause_category', 'responsible_team']);
 
             if ($columnName === 'mtbf') {
-                $row[] = $this->computeMtbfForIncident($incident);
+                $row[] = $this->computeMtbfForIncident($incident) ?? '-';
             } elseif ($columnName === 'mttr') {
                 $row[] = $incident->mttr_formatted;
             } elseif ($columnName === 'recovery_rate') {
@@ -95,7 +95,14 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
         return $row;
     }
 
-    private function computeMtbfForIncident($incident): int
+    /**
+     * Gap sequence over the sheet's row set. First of the year has no
+     * predecessor → null (renders '-'), so the column's average equals
+     * span/(n-1) — the dashboard widgets' Avg MTBF. The old Jan-1
+     * dayOfYear anchor made the column mean ≠ every span-based number
+     * next to it (owner report 2026-09-30).
+     */
+    private function computeMtbfForIncident($incident): ?int
     {
         $year = $incident->incident_date->year;
         $key = "export_{$this->title}_{$year}";
@@ -130,13 +137,13 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
             self::$mtbfCache[$key] = [];
             foreach ($incidents as $i => $inc) {
                 self::$mtbfCache[$key][$inc->id] = $i === 0
-                    ? $inc->incident_date->dayOfYear
+                    ? null
                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                         ->diffInDays($inc->incident_date->startOfDay());
             }
         }
 
-        return self::$mtbfCache[$key][$incident->id] ?? 0;
+        return self::$mtbfCache[$key][$incident->id] ?? null;
     }
 
     public function registerEvents(): array
@@ -153,21 +160,14 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 // BUG-021: avg() is a decimal-string on MySQL — cast for round() under strict_types.
                 $avgMttr = round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2);
 
-                // Calculate MTBF correctly: Total Time Period / Number of Incidents
-                $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
-                $mtbfCount = $mtbfQuery->count();
-                $avgMtbf = 0;
-                if ($mtbfCount > 0) {
-                    $minDate = $mtbfQuery->min('incident_date');
-                    $maxDate = $mtbfQuery->max('incident_date');
-
-                    if ($minDate && $maxDate) {
-                        $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
-                        $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
-                        $totalDays = $minDate->diffInDays($maxDate);
-                        $avgMtbf = $mtbfCount > 1 ? round($totalDays / ($mtbfCount - 1), 3) : 0;
-                    }
-                }
+                // Avg MTBF = mean of the MTBF column AS DISPLAYED (first-of-year
+                // rows render '-' and drop out) — the bottom must equal the
+                // column above it; for a single-year set that is exactly the
+                // widgets' span/(n-1).
+                $mtbfValues = $query->clone()->get()
+                    ->map(fn ($i) => $this->computeMtbfForIncident($i))
+                    ->filter(fn ($v) => $v !== null);
+                $avgMtbf = $mtbfValues->isEmpty() ? 0 : round((float) $mtbfValues->avg(), 3);
 
                 $this->stats = [
                     'totalCases' => $totalCases,

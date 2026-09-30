@@ -251,6 +251,7 @@ Rework the incident Export button from a single all-tabs dump into a 4-preset wo
 - [x] Quarter multi-select filter (f_quarter) for every preset + QuarterRange concern — backend — Done (2026-09-30)
 - [x] Rupiah as native Excel format on every fund cell (IdrFormat concern, all 4 presets) — backend — Done (2026-09-30)
 - [x] Executive report widget-aligned (computeKpi single source) + per-quarter Q1–Q4 KPI tabs with severity row (P1–P4 + combined X1–X4) — backend — Done (2026-09-30)
+- [x] MTBF reconciliation in All-Tabs/Custom exports: first-of-year cell `-` (no Jan-1 anchor), bottom Avg MTBF = mean of displayed column (equals widgets' span/(n−1)) — backend — Done (2026-09-30)
 - [x] Optional export filters — backend — Done
 - [x] Form validation hardening (4 gaps found live) — backend — Done
 - [x] PSR-4 refactor: one class per file — backend — Done

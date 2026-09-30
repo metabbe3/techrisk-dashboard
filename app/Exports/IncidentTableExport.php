@@ -53,7 +53,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
             if ($columnName === 'mttr') {
                 $row[] = $incident->mttr_formatted;
             } elseif ($columnName === 'mtbf') {
-                $row[] = $this->computeMtbf($incident);
+                $row[] = $this->computeMtbf($incident) ?? '-';
             } elseif ($columnName === 'recovery_rate') {
                 if ((float) $incident->potential_fund_loss > 0) {
                     $rate = ((float) $incident->recovered_fund / (float) $incident->potential_fund_loss) * 100;
@@ -82,7 +82,13 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
 
     private static array $mtbfCache = [];
 
-    private function computeMtbf($incident): int
+    /**
+     * Gap sequence, METRIC_ELIGIBLE only. First of the year has no
+     * predecessor → null (renders '-') so the column's average equals
+     * span/(n-1), matching the bottom summary and the widgets (the old
+     * Jan-1 dayOfYear anchor broke that equality — owner report 2026-09-30).
+     */
+    private function computeMtbf($incident): ?int
     {
         $year = $incident->incident_date->year;
         $key = "export_all_{$year}";
@@ -97,13 +103,13 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
             self::$mtbfCache[$key] = [];
             foreach ($incidents as $i => $inc) {
                 self::$mtbfCache[$key][$inc->id] = $i === 0
-                    ? $inc->incident_date->dayOfYear
+                    ? null
                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                         ->diffInDays($inc->incident_date->startOfDay());
             }
         }
 
-        return self::$mtbfCache[$key][$incident->id] ?? 0;
+        return self::$mtbfCache[$key][$incident->id] ?? null;
     }
 
     public function registerEvents(): array
@@ -158,10 +164,18 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
                 $sheet->getStyle($summaryHeaderRange)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER); // Center align summary headers
 
                 $summaryDataRow = $summaryStartRow + 2;
+                // Avg MTBF = mean of the MTBF column AS DISPLAYED (first-of-year
+                // rows render '-' and drop out) — computed here, not taken from
+                // the footer-sourced stats, so the bottom always equals the
+                // column above it (single-year sets: exactly span/(n-1)).
+                $mtbfValues = $this->incidents
+                    ->map(fn ($i) => $this->computeMtbf($i))
+                    ->filter(fn ($v) => $v !== null);
+                $avgMtbf = $mtbfValues->isEmpty() ? 0 : round((float) $mtbfValues->avg(), 3);
                 $summaryData = [
                     $this->stats['totalCases'],
                     $this->stats['avgMttr'],
-                    $this->stats['avgMtbf'],
+                    $avgMtbf,
                     $this->stats['totalPotentialFundLoss'],
                     $this->stats['totalFundLoss'],
                     $this->stats['totalRecoveredFund'],
