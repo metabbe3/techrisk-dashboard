@@ -248,6 +248,9 @@ Rework the incident Export button from a single all-tabs dump into a 4-preset wo
 - [x] Group By: + Quarter dimension (Q1–Q4 by incident_date, "2026-Q1" value / "Q1 2026" label, year-aware) — backend — Done (2026-09-30)
 - [x] Exports: MTTR plain minutes everywhere + G / Non Incident rows excluded from all presets (Non Incident tab sheet removed, All Tabs now 14 sheets) — backend — Done (2026-09-30)
 - [x] Group-By export: Summary widget-aligned (Cases/Actual/Potential follow dashboard card rules) + "Excluded - <FundStatus>" tabs for the difference rows — backend — Done (2026-09-30)
+- [x] Quarter multi-select filter (f_quarter) for every preset + QuarterRange concern — backend — Done (2026-09-30)
+- [x] Rupiah as native Excel format on every fund cell (IdrFormat concern, all 4 presets) — backend — Done (2026-09-30)
+- [x] Executive report widget-aligned (computeKpi single source) + per-quarter Q1–Q4 KPI tabs with severity row (P1–P4 + combined X1–X4) — backend — Done (2026-09-30)
 - [x] Optional export filters — backend — Done
 - [x] Form validation hardening (4 gaps found live) — backend — Done
 - [x] PSR-4 refactor: one class per file — backend — Done

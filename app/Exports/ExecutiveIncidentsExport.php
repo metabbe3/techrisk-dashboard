@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace App\Exports;
 
+use App\Exports\Concerns\QuarterRange;
 use App\Exports\Sheets\ExecutiveCalcSheet;
 use App\Exports\Sheets\ExecutiveDataSheet;
+use App\Exports\Sheets\ExecutiveQuarterSheet;
 use App\Exports\Sheets\ExecutiveSummarySheet;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
@@ -36,8 +38,21 @@ class ExecutiveIncidentsExport implements WithMultipleSheets
         $calcSheet = new ExecutiveCalcSheet($this->query);
         $summarySheet = new ExecutiveSummarySheet($this->query, $calcSheet);
 
+        // Per-quarter KPI tabs (owner addendum 2026-09-30): "YYYY-Qn" string
+        // sort = chronological; derived from actual rows, so an empty quarter
+        // never gets a tab.
+        $quarters = $this->query->get('incident_date')
+            ->filter(fn ($i) => $i->incident_date !== null)
+            ->map(fn ($i) => $i->incident_date->year.'-Q'.$i->incident_date->quarter)
+            ->unique()->sort()->values();
+        $quarterSheets = [];
+        foreach ($quarters as $quarter) {
+            $quarterSheets[QuarterRange::label($quarter)] = new ExecutiveQuarterSheet($this->query, $quarter);
+        }
+
         return [
             'Executive Summary' => $summarySheet,
+            ...$quarterSheets,
             'Data' => $dataSheet,
             'Calc' => $calcSheet,
         ];

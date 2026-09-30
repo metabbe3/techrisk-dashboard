@@ -13,8 +13,8 @@ use App\Models\Incident;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Maatwebsite\Excel\Facades\Excel;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Cell\DataType;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 use Tests\TestCase;
 
 /**
@@ -90,9 +90,19 @@ class ExportCurrencyFormatTest extends TestCase
 
     public function test_executive_workbook_fund_cells_are_idr_numbers(): void
     {
+        // Two rows: the Potential card counts open cases only and the Actual
+        // card Completed only (widget rule 2026-09-30), so no single row can
+        // feed both — one open row carries the potential, one completed row
+        // the actual loss. Recovered takes either.
         Incident::factory()->createQuietly([
             'classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-15 10:00',
-            'potential_fund_loss' => 1234567, 'fund_loss' => 100000, 'recovered_fund' => 50000,
+            'incident_status' => 'Open',
+            'potential_fund_loss' => 1234567, 'recovered_fund' => 50000,
+        ]);
+        Incident::factory()->createQuietly([
+            'classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-16 10:00',
+            'incident_status' => 'Completed',
+            'fund_loss' => 100000,
         ]);
 
         $book = $this->store(new ExecutiveIncidentsExport(Incident::query()), 't-exec.xlsx');
@@ -104,12 +114,12 @@ class ExportCurrencyFormatTest extends TestCase
         $this->assertIdrCell($summary, 'F5', 50000.0);
         $this->assertIdrCell($summary, 'G5', 100000.0);
 
-        // Data sheet H/I/J
+        // Data sheet H/I/J — row 2 = the open row, row 3 = the completed row.
         $data = $book->getSheetByName('Data');
         $this->assertNotNull($data);
         $this->assertIdrCell($data, 'H2', 1234567.0);
-        $this->assertIdrCell($data, 'I2', 100000.0);
         $this->assertIdrCell($data, 'J2', 50000.0);
+        $this->assertIdrCell($data, 'I3', 100000.0);
 
         // Calc sheet F/G = monthly Potential / Recovered (format only — value bucket depends on month)
         $calc = $book->getSheetByName('Calc');

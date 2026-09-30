@@ -44,7 +44,54 @@ class ExecutiveCalcSheetTest extends TestCase
 
         // "Open" = non-completed among the exported set — not every row.
         $this->assertSame(1, $calc->agg['kpi']['open']);
-        $this->assertSame(4, $calc->agg['kpi']['totalCases']);
+        // Widget rule (2026-09-30): totalCases counts metric-eligible rows
+        // only — the G / Non Incident rows no longer inflate it.
+        $this->assertSame(2, $calc->agg['kpi']['totalCases']);
+    }
+
+    public function test_kpi_and_monthly_fund_buckets_follow_dashboard_widget_rules(): void
+    {
+        // Owner rule (2026-09-30): executive KPI cards mirror the dashboard
+        // widgets — same rules as GroupedIncidentsExport's summary. All rows
+        // share one month so the monthly bucket sums are deterministic.
+        $inWindow = now()->subDays(10)->format('Y-m-d H:i');
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => $inWindow, 'fund_status' => 'Non fundLoss', 'incident_status' => 'Completed', 'fund_loss' => 100]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => $inWindow, 'fund_status' => 'Potential recovery', 'incident_status' => 'Completed', 'fund_loss' => 50, 'potential_fund_loss' => 300]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => $inWindow, 'fund_status' => 'Fully recovered', 'incident_status' => 'Completed', 'fund_loss' => 30, 'recovered_fund' => 80]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => $inWindow, 'fund_status' => 'Non Tech Loss', 'incident_status' => 'In progress']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => $inWindow, 'fund_status' => 'Non fundLoss', 'incident_status' => 'In progress', 'potential_fund_loss' => 200]);
+
+        $kpi = (new ExecutiveCalcSheet(Incident::query()))->agg['kpi'];
+
+        // Only the 2 non-excluded rows count (aiCounts rule), not all 5.
+        $this->assertSame(2, $kpi['totalCases']);
+        $this->assertSame(1, $kpi['open']);
+
+        // Fund Loss card: widget rows + Completed only → 100, not 100+50+30.
+        $this->assertSame(100.0, $kpi['actual']);
+        // Potential Fund Loss card: open widget rows only → 200, not 500.
+        $this->assertSame(200.0, $kpi['potential']);
+        // Recovered card: eligible rows with NO fund-status exclusion → 80.
+        $this->assertSame(80.0, $kpi['recovered']);
+        $this->assertSame(40.0, $kpi['recoveryRate']);
+    }
+
+    public function test_monthly_counts_and_fund_buckets_exclude_excluded_fund_statuses(): void
+    {
+        $inWindow = now()->subDays(10)->format('Y-m-d H:i');
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => $inWindow, 'fund_status' => 'Non fundLoss', 'incident_status' => 'Completed', 'fund_loss' => 100]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => $inWindow, 'fund_status' => 'Potential recovery', 'incident_status' => 'Completed', 'fund_loss' => 50, 'potential_fund_loss' => 300]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => $inWindow, 'fund_status' => 'Fully recovered', 'incident_status' => 'Completed', 'recovered_fund' => 80]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => $inWindow, 'fund_status' => 'Non Tech Loss', 'incident_status' => 'In progress']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => $inWindow, 'fund_status' => 'Non fundLoss', 'incident_status' => 'In progress', 'potential_fund_loss' => 200]);
+
+        $agg = (new ExecutiveCalcSheet(Incident::query()))->agg;
+
+        // Monthly buckets take only widget rows: 2 rows, potential 200 (not
+        // 500), recovered 0 (the recovered=80 row is Fully recovered).
+        $this->assertSame(2, array_sum($agg['counts']));
+        $this->assertSame(200.0, array_sum($agg['pot']));
+        $this->assertSame(0.0, array_sum($agg['rec']));
     }
 
     public function test_charts_cover_eligible_severity_and_do_not_overlap_data(): void

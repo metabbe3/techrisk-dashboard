@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Exports\Sheets;
 
+use App\Enums\FundStatus;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Exports\Concerns\IdrFormat;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithCharts;
@@ -135,8 +137,8 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
         // string value never matches (enum == string is always false in PHP 8),
         // so every enum-field comparison goes through its ->value first.
         $sevOf = fn ($i) => $i->severity?->value ?? $i->severity;
-        $statusOf = fn ($i) => $i->incident_status?->value ?? $i->incident_status;
-        $eligible = $rows->filter(fn ($i) => in_array($sevOf($i), Severity::METRIC_ELIGIBLE));
+        $isWidgetRow = fn ($i) => in_array($sevOf($i), Severity::METRIC_ELIGIBLE)
+            && ! in_array($i->fund_status?->value ?? $i->fund_status, FundStatus::EXCLUDED_FROM_COUNTS);
 
         $base = now()->startOfMonth()->subMonths(11);
         $months = [];
@@ -157,9 +159,11 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
             if ($idx < 0 || $idx > 11) {
                 continue;
             }
-            $counts[$idx]++;
-            $pot[$idx] += (float) $i->potential_fund_loss;
-            $rec[$idx] += (float) $i->recovered_fund;
+            if ($isWidgetRow($i)) {
+                $counts[$idx]++;
+                $pot[$idx] += (float) $i->potential_fund_loss;
+                $rec[$idx] += (float) $i->recovered_fund;
+            }
             if (in_array($sevOf($i), Severity::METRIC_ELIGIBLE) && $i->mttr !== null && $i->mttr >= 0) {
                 $mttrSum[$idx] += $i->mttr;
                 $mttrN[$idx]++;
@@ -174,26 +178,51 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
             $sev[] = [$sevValue, $rows->filter(fn ($i) => $sevOf($i) === $sevValue)->count()];
         }
 
+        $avgMtbf = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build($this->query)['avgMtbf'];
+        $kpi = self::computeKpi($rows, $avgMtbf);
+
+        return compact('months', 'counts', 'mttrAvg', 'pot', 'rec', 'sev', 'kpi') + ['mttr' => $mttrAvg];
+    }
+
+    /**
+     * KPI cards, aligned to the dashboard widgets (owner rule 2026-09-30) —
+     * same rules as GroupedIncidentsExport's summary: counts/fund sums keep
+     * only metric-eligible rows whose fund_status is not excluded; Potential
+     * = open cases only, Actual = Completed only, Recovered = eligible with
+     * no fund-status exclusion. avgMttr/avgMtbf stay severity-only.
+     *
+     * @param  Collection<int, \App\Models\Incident>  $rows
+     */
+    public static function computeKpi(Collection $rows, float $avgMtbf): array
+    {
+        $sevOf = fn ($i) => $i->severity?->value ?? $i->severity;
+        $statusOf = fn ($i) => $i->incident_status?->value ?? $i->incident_status;
+        $eligible = $rows->filter(fn ($i) => in_array($sevOf($i), Severity::METRIC_ELIGIBLE));
+        $widgetRows = $eligible->filter(fn ($i) => ! in_array(
+            $i->fund_status?->value ?? $i->fund_status,
+            FundStatus::EXCLUDED_FROM_COUNTS
+        ));
+        $completed = IncidentStatus::Completed->value;
+
         // BUG-021: cast aggregates for round()/abs() under strict_types — uniform
         // pattern even though Collection::avg() returns float (MySQL rule).
         $avgMttrMins = round((float) ($eligible->where('mttr', '>=', 0)->avg('mttr') ?? 0), 1);
         $avgMttrDays = round(abs((float) ($eligible->where('mttr', '<', 0)->avg('mttr') ?? 0)), 1);
-        $avgMtbf = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build($this->query)['avgMtbf'];
-        $potential = (float) $rows->sum('potential_fund_loss');
-        $recovered = (float) $rows->sum('recovered_fund');
+        // Potential Fund Loss card: open cases only. Fund Loss card: Completed
+        // only. Recovered card: no fund-status exclusion.
+        $potential = (float) $widgetRows->reject(fn ($i) => $statusOf($i) === $completed)->sum('potential_fund_loss');
+        $recovered = (float) $eligible->sum('recovered_fund');
 
-        $kpi = [
-            'totalCases' => $rows->count(),
-            'open' => $rows->filter(fn ($i) => $statusOf($i) !== IncidentStatus::Completed->value)->count(),
+        return [
+            'totalCases' => $widgetRows->count(),
+            'open' => $widgetRows->reject(fn ($i) => $statusOf($i) === $completed)->count(),
             'avgMttrMins' => $avgMttrMins,
             'avgMttrDays' => $avgMttrDays,
             'avgMtbf' => $avgMtbf,
             'potential' => $potential,
             'recovered' => $recovered,
-            'actual' => (float) $rows->sum('fund_loss'),
+            'actual' => (float) $widgetRows->filter(fn ($i) => $statusOf($i) === $completed)->sum('fund_loss'),
             'recoveryRate' => $potential > 0 ? round(($recovered / $potential) * 100, 1) : 0,
         ];
-
-        return compact('months', 'counts', 'mttrAvg', 'pot', 'rec', 'sev', 'kpi') + ['mttr' => $mttrAvg];
     }
 }
