@@ -98,6 +98,17 @@ class GroupedIncidentsExport implements WithMultipleSheets
                 continue;
             }
             $eligible = $groupRows->filter(fn ($i) => in_array($i->severity?->value ?? $i->severity, Severity::METRIC_ELIGIBLE));
+            // Widget alignment (owner rule 2026-09-30): Summary numbers follow
+            // the dashboard cards — counts/loss sums exclude the same fund
+            // statuses FundStatus::EXCLUDED_FROM_COUNTS excludes, and Actual /
+            // Potential apply the Fund Loss / Potential Fund Loss card status
+            // rules. The excluded rows get their own tabs below, nothing is lost.
+            $widgetRows = $eligible->filter(fn ($i) => ! in_array(
+                $i->fund_status?->value ?? $i->fund_status,
+                \App\Enums\FundStatus::EXCLUDED_FROM_COUNTS
+            ));
+            $statusOf = fn ($i) => $i->incident_status?->value ?? $i->incident_status; // enum-cast (BUG-022 lesson)
+            $completed = \App\Enums\IncidentStatus::Completed->value;
             // avg MTBF per group: (max-min date among eligible) / (count-1)
             $eligibleDates = $eligible->pluck('incident_date')->filter()->sort()->values();
             $avgMtbf = 0;
@@ -116,16 +127,18 @@ class GroupedIncidentsExport implements WithMultipleSheets
             $groupStats[] = [
                 'label' => $label,
                 'value' => $value,
-                'count' => $groupRows->count(),
+                'count' => $widgetRows->count(),
                 // BUG-021: cast aggregates for round()/abs() under strict_types — uniform
                 // pattern even though Collection::avg() returns float (MySQL rule).
                 'avgMttrMins' => round((float) ($eligible->where('mttr', '>=', 0)->avg('mttr') ?? 0), 1),
                 'avgMttrDays' => round(abs((float) ($eligible->where('mttr', '<', 0)->avg('mttr') ?? 0)), 1),
                 'avgMtbf' => $avgMtbf,
                 'mttrDataCount' => $eligible->whereNotNull('mttr')->count(),
-                'potential' => (float) $groupRows->sum('potential_fund_loss'),
-                'actual' => (float) $groupRows->sum('fund_loss'),
-                'recovered' => (float) $groupRows->sum('recovered_fund'),
+                // Potential Fund Loss card: open cases only. Fund Loss card:
+                // Completed only. Recovered card: no fund-status exclusion.
+                'potential' => (float) $widgetRows->reject(fn ($i) => $statusOf($i) === $completed)->sum('potential_fund_loss'),
+                'actual' => (float) $widgetRows->filter(fn ($i) => $statusOf($i) === $completed)->sum('fund_loss'),
+                'recovered' => (float) $eligible->sum('recovered_fund'),
             ];
         }
 
@@ -142,6 +155,21 @@ class GroupedIncidentsExport implements WithMultipleSheets
                 (string) $gs['value'],
                 $gs['label']
             );
+        }
+
+        // Rows the Summary excludes by widget rule get their own tabs, so the
+        // aligned numbers never hide data (owner rule 2026-09-30).
+        foreach (\App\Enums\FundStatus::EXCLUDED_FROM_COUNTS as $fundStatus) {
+            $hasRows = $rows->contains(fn ($i) => ($i->fund_status?->value ?? $i->fund_status) === $fundStatus);
+            if ($hasRows) {
+                $sheets[] = new PerCategorySheet(
+                    $this->query,
+                    'fund_status',
+                    false,
+                    $fundStatus,
+                    'Excluded - '.\App\Enums\FundStatus::from($fundStatus)->label()
+                );
+            }
         }
 
         return $sheets;

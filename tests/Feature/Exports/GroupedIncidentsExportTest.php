@@ -26,9 +26,9 @@ class GroupedIncidentsExportTest extends TestCase
 
     public function test_severity_dimension_groups_metric_eligible_only(): void
     {
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'fund_loss' => 100]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'fund_loss' => 200]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'X1', 'fund_loss' => 300]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_status' => 'Completed', 'fund_loss' => 100]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_status' => 'Completed', 'fund_loss' => 200]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'X1', 'incident_status' => 'Completed', 'fund_loss' => 300]);
         Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'G', 'fund_loss' => 999]);
         Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'Non Incident', 'fund_loss' => 888]);
 
@@ -131,8 +131,8 @@ class GroupedIncidentsExportTest extends TestCase
     {
         // incident_date is NOT NULL at the schema level, so a dateless row
         // cannot exist — no null-date exclusion case to pin here.
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-01 10:00', 'fund_loss' => 100]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-02-10 10:00', 'fund_loss' => 50]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-01 10:00', 'incident_status' => 'Completed', 'fund_loss' => 100]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-02-10 10:00', 'incident_status' => 'Completed', 'fund_loss' => 50]);
 
         $sheets = (new GroupedIncidentsExport(Incident::query(), 'quarter'))->sheets();
 
@@ -144,5 +144,40 @@ class GroupedIncidentsExportTest extends TestCase
         $this->assertSame(2, $row['count']);
         $this->assertSame(150.0, $row['actual']);
         $this->assertSame(2, $sheets[1]->query()->count());
+    }
+
+    public function test_summary_is_widget_aligned_and_excluded_rows_get_tabs(): void
+    {
+        // Owner rule (2026-09-30): Summary Cases/Actual/Potential follow the
+        // dashboard widget rules; rows with excluded fund statuses move to
+        // their own "Excluded - ..." tabs instead of being silently dropped.
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-01 10:00', 'fund_status' => 'Non fundLoss', 'incident_status' => 'Completed', 'fund_loss' => 100]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-02-02 10:00', 'fund_status' => 'Non fundLoss', 'incident_status' => 'In progress', 'potential_fund_loss' => 200]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-03 10:00', 'fund_status' => 'Potential recovery', 'incident_status' => 'Completed', 'fund_loss' => 50]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-02-04 10:00', 'fund_status' => 'Fully recovered', 'incident_status' => 'Completed', 'fund_loss' => 30, 'recovered_fund' => 80]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-05 10:00', 'fund_status' => 'Non Tech Loss', 'incident_status' => 'In progress']);
+
+        $sheets = (new GroupedIncidentsExport(Incident::query(), 'quarter'))->sheets();
+
+        $titles = array_map(fn ($s) => $s->title(), $sheets);
+        // Group sheet lists every eligible row; the 3 excluded fund statuses
+        // each get their own tab.
+        $this->assertSame(
+            ['Summary', 'Q1 2026', 'Excluded - Potential Recovery', 'Excluded - Fully Recovered', 'Excluded - Non Tech Loss'],
+            $titles
+        );
+
+        // Summary row = widget rules, not raw sums.
+        $row = $sheets[0]->collection()->firstWhere('label', 'Q1 2026');
+        $this->assertSame(2, $row['count']);            // excludes the 3 excluded-status rows (aiCounts rule)
+        $this->assertSame(100.0, $row['actual']);      // Completed + fund-status-excluded (Fund Loss card), not 100+50+30
+        $this->assertSame(200.0, $row['potential']);   // open cases only (Potential Fund Loss card)
+        $this->assertSame(80.0, $row['recovered']);    // Recovered card has no fund-status exclusion
+
+        // Excluded tabs hold exactly their own rows; group sheet holds all 5.
+        $this->assertSame(5, $sheets[1]->query()->count());
+        $this->assertSame(1, $sheets[2]->query()->count());
+        $this->assertSame(1, $sheets[3]->query()->count());
+        $this->assertSame(1, $sheets[4]->query()->count());
     }
 }
