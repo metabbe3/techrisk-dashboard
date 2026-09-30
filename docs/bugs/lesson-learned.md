@@ -1241,16 +1241,74 @@ changes the attribute type, and every consumer must go through `?->value`.
 
 ---
 
+### [BUG-023] - Export workbook audit: stale static MTBF sequence + unreconciled Issues-MTBF sheet + partial prod deploy masquerading as formula bugs
+
+**Date:** 2026-09-30
+**Discovered By:** Owner (downloaded `incidents-all-tabs-2026-09-30 (1).xlsx`, manual column averages ≠ bottom summaries)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Cell-by-cell forensics on the owner's actual downloaded workbook (every tab,
+MTBF + MTTR, manual average vs bottom summary) found three distinct problems
+stacked on top of each other, only one of which was a formula bug:
+
+1. **Prod ran a mid-development code snapshot.** The file's MTBF column
+   rendered the NEW `-` convention while every bottom still used the OLD
+   span/(n−1) formula (All Cases bottom 3.708 = 267/72 while its own column
+   meant 4.525). No committed commit produces that mix — the deployed worker
+   had half the fix loaded. `clear cache.sh` cannot fix this: it clears
+   Laravel caches, not deployed code, OPcache, or FPM worker memory. Fix =
+   redeploy + restart PHP-FPM/app containers.
+2. **Static `$mtbfCache` froze the year's sequence in long-lived FPM
+   workers.** All Cases showed 14 MID-YEAR dashes (only first-of-year should
+   dash), growing 13→14 across two downloads an hour apart: incidents
+   created after the worker's first export fell out of the cached sequence —
+   cell rendered `-` and the row vanished from column AND bottom. All three
+   export sheet classes (`SingleIncidentSheetExport`,
+   `IncidentTableExport`, `IssuesMetricSheetExport`) had it.
+3. **`IssuesMetricSheetExport` never received the 2026-09-30 MTBF
+   reconciliation** the other sheets got: first-of-year still anchored
+   `dayOfYear`, missing ids fell back to `0`, bottom used span/(count−1).
+
+Minor: a tab whose MTTR rows are all day-based (negative, e.g. Fund Loss)
+wrote `0.00` as Avg MTTR — no data, now renders `-`.
+
+### Root Cause
+`private static array $mtbfCache` was a per-request micro-optimization
+written as `static`, which in PHP-FPM means "lives as long as the worker
+process". Same-key cache + data created after first fill = silently wrong
+output with no error anywhere. The Issues sheet miss is BUG-005's drift class
+again: a rule change reached the sheets named in the report, not every sheet
+with the same shape. And the mixed old/new rendering shows a deploy
+half-applied — two bugs that only reconcile as "stale runtime".
+
+### Prevention Checklist
+- [x] Sequence/derivation caches in export classes are per-instance
+      (`private array`), never `static` — regression test exports twice with
+      a row created in between and asserts the new row sequences
+- [x] Bottom-summary rule is uniform across ALL sheets incl. Issues-MTBF:
+      Avg MTBF = mean of the displayed column; first-of-year renders `-`
+- [x] When a downloaded artifact contradicts the committed code, diff the
+      artifact against `git log` versions FIRST — a mix of old and new
+      rendering means stale runtime, not a formula bug; redeploy + restart
+      FPM before chasing ghosts
+- [x] Widget audit on owner request: `DashboardStatsOverview` MTBF tiles and
+      `MttrMtbfTrendChart` use span/(count−1) over the eligible scope —
+      canonical, untouched
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 22 |
+| Total Bugs | 23 |
 | Critical | 0 |
-| High | 14 |
+| High | 15 |
 | Medium | 6 |
 | Low | 0 |
-| Resolved | 22 |
+| Resolved | 23 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -1267,4 +1325,4 @@ changes the attribute type, and every consumer must go through `?->value`.
 
 ---
 
-*Last Updated: 2026-09-29*
+*Last Updated: 2026-09-30*

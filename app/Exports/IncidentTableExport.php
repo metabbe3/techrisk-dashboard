@@ -80,7 +80,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         return $row;
     }
 
-    private static array $mtbfCache = [];
+    private array $mtbfCache = []; // instance, NOT static — static froze the sequence across requests in long-lived FPM workers (prod bug 2026-09-30)
 
     /**
      * Gap sequence, METRIC_ELIGIBLE only. First of the year has no
@@ -93,23 +93,23 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         $year = $incident->incident_date->year;
         $key = "export_all_{$year}";
 
-        if (! isset(self::$mtbfCache[$key])) {
+        if (! isset($this->mtbfCache[$key])) {
             $incidents = \App\Models\Incident::whereYear('incident_date', $year)
                 ->where('classification', '!=', IncidentClassification::Issue->value)
                 ->whereIn('severity', \App\Enums\Severity::METRIC_ELIGIBLE)
                 ->orderBy('incident_date')->orderBy('id')
                 ->get(['id', 'incident_date']);
 
-            self::$mtbfCache[$key] = [];
+            $this->mtbfCache[$key] = [];
             foreach ($incidents as $i => $inc) {
-                self::$mtbfCache[$key][$inc->id] = $i === 0
+                $this->mtbfCache[$key][$inc->id] = $i === 0
                     ? null
                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                         ->diffInDays($inc->incident_date->startOfDay());
             }
         }
 
-        return self::$mtbfCache[$key][$incident->id] ?? null;
+        return $this->mtbfCache[$key][$incident->id] ?? null;
     }
 
     public function registerEvents(): array

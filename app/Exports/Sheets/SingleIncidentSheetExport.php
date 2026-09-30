@@ -33,7 +33,8 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
 
     private $columnNames;
 
-    private static array $mtbfCache = [];
+    /** Per-instance (NOT static): a static cache survived the request in long-lived FPM workers and froze the year's sequence — incidents created later dashed out mid-year (prod bug 2026-09-30). */
+    private array $mtbfCache = [];
 
     public function __construct($query, string $title, array $headings, array $columnNames)
     {
@@ -107,7 +108,7 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
         $year = $incident->incident_date->year;
         $key = "export_{$this->title}_{$year}";
 
-        if (! isset(self::$mtbfCache[$key])) {
+        if (! isset($this->mtbfCache[$key])) {
             $query = \App\Models\Incident::whereYear('incident_date', $year)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->orderBy('incident_date')->orderBy('id');
@@ -134,16 +135,16 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
             };
 
             $incidents = $query->get(['id', 'incident_date']);
-            self::$mtbfCache[$key] = [];
+            $this->mtbfCache[$key] = [];
             foreach ($incidents as $i => $inc) {
-                self::$mtbfCache[$key][$inc->id] = $i === 0
+                $this->mtbfCache[$key][$inc->id] = $i === 0
                     ? null
                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                         ->diffInDays($inc->incident_date->startOfDay());
             }
         }
 
-        return self::$mtbfCache[$key][$incident->id] ?? null;
+        return $this->mtbfCache[$key][$incident->id] ?? null;
     }
 
     public function registerEvents(): array
@@ -156,9 +157,11 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 $query = $this->query->clone();
                 $totalCases = $query->count();
 
-                // MTTR average (exclude fund loss incidents with negative values)
-                // BUG-021: avg() is a decimal-string on MySQL — cast for round() under strict_types.
-                $avgMttr = round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2);
+                // MTTR average (exclude fund loss incidents with negative values).
+                // No positive (minutes) MTTR at all → no data, render '-' like the column's nulls.
+                // BUG-021: avg() is a decimal-string on MySQL — cast before rounding, under strict_types.
+                $avgMttrRaw = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
+                $avgMttr = $avgMttrRaw === null ? '-' : round((float) $avgMttrRaw, 2);
 
                 // Avg MTBF = mean of the MTBF column AS DISPLAYED (first-of-year
                 // rows render '-' and drop out) — the bottom must equal the

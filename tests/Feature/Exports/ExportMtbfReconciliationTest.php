@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Exports;
 
 use App\Exports\IncidentTableExport;
+use App\Exports\Sheets\IssuesMetricSheetExport;
 use App\Exports\Sheets\SingleIncidentSheetExport;
 use App\Models\Incident;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,8 +26,13 @@ use Tests\TestCase;
  * MEAN OF THE DISPLAYED COLUMN — which for a single-year set telescopes
  * to exactly span/(n-1), the dashboard widgets' number.
  *
- * Years/titles are unique per test: both export classes key their MTBF
- * sequence in a static cache that outlives RefreshDatabase.
+ * Follow-up (same day, from the owner's downloaded workbook): the sequence
+ * caches were `static`, so a long-lived FPM worker kept sequences from the
+ * FIRST export it served — incidents created later dashed out mid-year and
+ * vanished from column and bottom alike (14 mid-year dashes on the live
+ * All Cases tab). Caches are now per-instance; each export re-sequences.
+ * The Issues-MTBF sheet got the same reconciliation as the other tabs, and
+ * a tab with only day-based MTTR rows shows '-' as Avg MTTR, not 0.
  */
 class ExportMtbfReconciliationTest extends TestCase
 {
@@ -102,5 +108,64 @@ class ExportMtbfReconciliationTest extends TestCase
         $this->assertSame('-', $sheet->getCell('B2')->getValue());
         $summaryDataRow = $sheet->getHighestDataRow();
         $this->assertSame(0.0, (float) $sheet->getCell("C{$summaryDataRow}")->getValue());
+    }
+
+    public function test_issues_mtbf_sheet_bottom_equals_column_average(): void
+    {
+        // Year 2029, classification Issue — the Issues-MTBF tab's own sequence.
+        Incident::factory()->createQuietly(['classification' => 'Issue', 'severity' => 'P1', 'incident_date' => '2029-01-10 10:00']);
+        Incident::factory()->createQuietly(['classification' => 'Issue', 'severity' => 'P2', 'incident_date' => '2029-01-30 10:00']);
+        Incident::factory()->createQuietly(['classification' => 'Issue', 'severity' => 'P3', 'incident_date' => '2029-02-24 10:00']);
+
+        $query = Incident::query()->where('classification', 'Issue')->orderBy('incident_date');
+        $sheet = $this->store(new IssuesMetricSheetExport($query, 'Issues - MTBF', 'mtbf'), 't-mtbf-issues.xlsx');
+
+        // Column C: first-of-year '-' (no predecessor — was a Jan-1 dayOfYear
+        // anchor), then the real gaps 20 / 25.
+        $this->assertSame('-', $sheet->getCell('C2')->getValue());
+        $this->assertSame(20, $sheet->getCell('C3')->getValue());
+        $this->assertSame(25, $sheet->getCell('C4')->getValue());
+
+        // Bottom "Average MTBF" value (label col A, value col B, last row) =
+        // mean of the displayed numeric cells: (20 + 25) / 2 = 22.5.
+        $this->assertSame(22.5, (float) $sheet->getCell('B'.$sheet->getHighestDataRow())->getValue());
+    }
+
+    public function test_mtbf_sequence_is_not_stale_across_instances(): void
+    {
+        // Prod bug 2026-09-30: a static sequence cache in long-lived FPM
+        // workers froze at the first export — incidents created later got no
+        // MTBF cell ('-') and dropped out of the bottom. A fresh export
+        // instance must re-sequence the year.
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2030-01-10 10:00']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2030-01-30 10:00']);
+
+        $makeSheet = fn () => new SingleIncidentSheetExport(
+            Incident::query()->orderBy('incident_date'),
+            'All Cases',
+            ['Title', 'MTBF (days)'],
+            ['title', 'mtbf']
+        );
+        $this->store($makeSheet(), 't-mtbf-stale1.xlsx');
+
+        // Incident created AFTER the first export, same year.
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P3', 'incident_date' => '2030-02-24 10:00']);
+
+        $sheet = $this->store($makeSheet(), 't-mtbf-stale2.xlsx');
+        $this->assertSame(25, $sheet->getCell('B4')->getValue());
+    }
+
+    public function test_all_day_based_mttr_tab_shows_dash_average(): void
+    {
+        // Fund-loss style rows: mttr stored negative (days). No positive
+        // (minutes) MTTR exists → Avg MTTR is no data, not 0.
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2031-01-10 10:00', 'mttr' => -5]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2031-01-30 10:00', 'mttr' => -10]);
+
+        $query = Incident::query()->orderBy('incident_date');
+        $sheet = $this->store(new SingleIncidentSheetExport($query, 'Fund Loss', ['Title', 'MTTR (mins)'], ['title', 'mttr']), 't-mttr-days.xlsx');
+
+        $summaryDataRow = $sheet->getHighestDataRow();
+        $this->assertSame('-', (string) $sheet->getCell("B{$summaryDataRow}")->getValue());
     }
 }

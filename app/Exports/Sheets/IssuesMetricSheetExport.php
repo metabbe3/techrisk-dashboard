@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
 use App\Enums\IncidentClassification;
@@ -23,7 +24,7 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
 
     private $metricType;
 
-    private static array $mtbfCache = [];
+    private array $mtbfCache = []; // instance, NOT static — static froze the sequence across requests in long-lived FPM workers (prod bug 2026-09-30)
 
     public function __construct($query, string $title, string $metricType)
     {
@@ -54,7 +55,7 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
         if ($this->metricType === 'mttr') {
             $metricValue = $incident->mttr_formatted;
         } else {
-            $metricValue = $this->computeIssueMtbf($incident);
+            $metricValue = $this->computeIssueMtbf($incident) ?? '-';
         }
 
         return [
@@ -64,28 +65,34 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
         ];
     }
 
-    private function computeIssueMtbf($incident): int
+    /**
+     * Gap sequence over the year's eligible Issues, same convention as the
+     * other sheets (2026-09-30 reconciliation): first of the year has no
+     * predecessor → null (renders '-'), so the column's average equals
+     * span/(n-1) and the bottom is the mean of the displayed column.
+     */
+    private function computeIssueMtbf($incident): ?int
     {
         $year = $incident->incident_date->year;
         $key = "export_issues_{$year}";
 
-        if (! isset(self::$mtbfCache[$key])) {
+        if (! isset($this->mtbfCache[$key])) {
             $incidents = \App\Models\Incident::whereYear('incident_date', $year)
                 ->where('classification', IncidentClassification::Issue->value)
                 ->whereIn('severity', \App\Enums\Severity::METRIC_ELIGIBLE)
                 ->orderBy('incident_date')->orderBy('id')
                 ->get(['id', 'incident_date']);
 
-            self::$mtbfCache[$key] = [];
+            $this->mtbfCache[$key] = [];
             foreach ($incidents as $i => $inc) {
-                self::$mtbfCache[$key][$inc->id] = $i === 0
-                    ? $inc->incident_date->dayOfYear
+                $this->mtbfCache[$key][$inc->id] = $i === 0
+                    ? null
                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                         ->diffInDays($inc->incident_date->startOfDay());
             }
         }
 
-        return self::$mtbfCache[$key][$incident->id] ?? 0;
+        return $this->mtbfCache[$key][$incident->id] ?? null;
     }
 
     public function registerEvents(): array
@@ -125,20 +132,14 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
                     $metricLabel = 'Average MTTR (excl. fund loss)';
                     $metricValue = $regularMttr !== null ? round((float) $regularMttr, 2) : '-';
                 } else {
-                    $query = $this->query->clone();
+                    // Avg MTBF = mean of the column AS DISPLAYED (first-of-year
+                    // '-' drops out) — the bottom must equal the column above
+                    // it; for a single-year set that is exactly span/(n-1).
                     $metricLabel = 'Average MTBF';
-                    $metricValue = 0;
-                    if ($totalCases > 0) {
-                        $minDate = $query->min('incident_date');
-                        $maxDate = $query->max('incident_date');
-
-                        if ($minDate && $maxDate) {
-                            $minDate = \Carbon\Carbon::parse($minDate)->startOfDay();
-                            $maxDate = \Carbon\Carbon::parse($maxDate)->startOfDay();
-                            $totalDays = $minDate->diffInDays($maxDate);
-                            $metricValue = $totalCases > 1 ? round($totalDays / ($totalCases - 1), 3) : 0;
-                        }
-                    }
+                    $mtbfValues = $this->query->clone()->get()
+                        ->map(fn ($i) => $this->computeIssueMtbf($i))
+                        ->filter(fn ($v) => $v !== null);
+                    $metricValue = $mtbfValues->isEmpty() ? '-' : round((float) $mtbfValues->avg(), 3);
                 }
 
                 $sheet->setCellValue("A{$summaryStartRow}", 'Total Cases');
