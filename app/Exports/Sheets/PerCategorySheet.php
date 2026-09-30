@@ -77,7 +77,7 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithHeadings, WithM
             $incident->incident_date?->format('d M Y'),
             $incident->severity instanceof \BackedEnum ? $incident->severity->value : $incident->severity,
             $incident->incident_status instanceof \BackedEnum ? $incident->incident_status->value : $incident->incident_status,
-            $incident->mttr_formatted ?? ($incident->mttr !== null ? $incident->mttr : '-'),
+            $incident->mttr_formatted,
             $incident->mtbf,
             $incident->pic?->name ?? '-',
             (float) $incident->potential_fund_loss,

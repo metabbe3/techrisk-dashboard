@@ -98,6 +98,7 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
 
         if (! isset(self::$mtbfCache[$key])) {
             $query = \App\Models\Incident::whereYear('incident_date', $year)
+                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->orderBy('incident_date')->orderBy('id');
 
             // Issues tab uses Issue classification; all others exclude Issues
@@ -118,7 +119,6 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 'Fully Recovered' => $query->where('fund_status', FundStatus::FullyRecovered->value),
                 'Non Tech Loss' => $query->where('fund_status', FundStatus::NonTechLoss->value),
                 'Non Fund Loss' => $query->where('fund_status', FundStatus::NonFundLoss->value),
-                'Non Incident' => $query->where('severity', Severity::NonIncident->value),
                 default => null,
             };
 

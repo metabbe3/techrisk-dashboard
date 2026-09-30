@@ -246,6 +246,7 @@ Rework the incident Export button from a single all-tabs dump into a 4-preset wo
 - [x] Executive report with charts + cache injection — backend — Done
 - [x] Group By export (6 dimensions) — backend — Done
 - [x] Group By: + Quarter dimension (Q1–Q4 by incident_date, "2026-Q1" value / "Q1 2026" label, year-aware) — backend — Done (2026-09-30)
+- [x] Exports: MTTR plain minutes everywhere + G / Non Incident rows excluded from all presets (Non Incident tab sheet removed, All Tabs now 14 sheets) — backend — Done (2026-09-30)
 - [x] Optional export filters — backend — Done
 - [x] Form validation hardening (4 gaps found live) — backend — Done
 - [x] PSR-4 refactor: one class per file — backend — Done

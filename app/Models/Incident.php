@@ -233,7 +233,7 @@ class Incident extends Model implements Auditable
     /**
      * Get formatted MTTR with appropriate unit.
      * - Fund loss incidents: negative value stored as days, display as "X days"
-     * - Regular incidents: positive value stored as minutes, display as "X mins" or "Xh Xm"
+     * - Regular incidents: positive value stored as minutes, display as plain minutes ("180")
      */
     public function getMttrFormattedAttribute(): string
     {
@@ -251,28 +251,14 @@ class Incident extends Model implements Auditable
             return $days.' day'.($days > 1 ? 's' : '');
         }
 
-        // Regular incident - stored as minutes
+        // Regular incident - stored as minutes, rendered as the plain number
         $minutes = (float) $this->mttr;
 
         if ($minutes > 52560000) { // More than 100 years in minutes
             return 'N/A';
         }
 
-        if ($minutes < 60) {
-            return $minutes.' min'.($minutes > 1 ? 's' : '');
-        }
-
-        $hours = floor($minutes / 60);
-        $mins = $minutes % 60;
-
-        if ($hours >= 24) {
-            $days = floor($hours / 24);
-            $hours = $hours % 24;
-
-            return "{$days}d {$hours}h {$mins}m";
-        }
-
-        return "{$hours}h {$mins}m";
+        return (string) $minutes;
     }
 
     /**

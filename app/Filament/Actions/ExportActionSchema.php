@@ -43,7 +43,8 @@ class ExportActionSchema
 
     public static function form(): array
     {
-        $severityOptions = collect(Severity::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
+        // METRIC_ELIGIBLE only — G / Non Incident would silently empty every export.
+        $severityOptions = array_combine(Severity::METRIC_ELIGIBLE, Severity::METRIC_ELIGIBLE);
         $statusOptions = collect(IncidentStatus::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
         $typeOptions = collect(IncidentType::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
         $fundOptions = collect(FundStatus::cases())->mapWithKeys(fn ($s) => [$s->value => $s->value])->all();
@@ -66,7 +67,7 @@ class ExportActionSchema
                 ->live()
                 ->descriptions([
                     'executive' => 'Summary sheet with KPIs and native Excel charts, plus a clean data sheet.',
-                    'all_tabs' => '15 sheets mirroring the table tabs, incl. Issues metrics.',
+                    'all_tabs' => '14 sheets mirroring the table tabs, incl. Issues metrics.',
                     'group_by' => 'Pick a dimension: business category, root cause, division, PIC, severity, incident type. Each value gets its own sheet (multi-category incidents appear in each). Summary sheet has per-group MTTR/MTBF.',
                     'custom' => 'Full control: choose columns, XLSX or CSV.',
                 ]),
@@ -149,7 +150,10 @@ class ExportActionSchema
      */
     public static function applyFilters(Builder $query, array $data): Builder
     {
+        // Owner rule (2026-09-30): exports are P1–P4 / X1–X4 only — G and
+        // Non Incident never reach any preset, whatever the user picks.
         return $query
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->when(! empty($data['f_severity'] ?? []), fn (Builder $q) => $q->whereIn('severity', $data['f_severity']))
             ->when(! empty($data['f_status'] ?? []), fn (Builder $q) => $q->whereIn('incident_status', $data['f_status']))
             ->when(! empty($data['f_incident_type'] ?? []), fn (Builder $q) => $q->whereIn('incident_type', $data['f_incident_type']))

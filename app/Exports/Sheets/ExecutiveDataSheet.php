@@ -48,7 +48,7 @@ class ExecutiveDataSheet implements FromQuery, ShouldAutoSize, WithEvents, WithH
             $incident->incident_date?->format('d M Y'),
             $incident->severity instanceof \BackedEnum ? $incident->severity->value : $incident->severity,
             $incident->incident_status instanceof \BackedEnum ? $incident->incident_status->value : $incident->incident_status,
-            $incident->mttr_formatted ?? ($incident->mttr !== null ? $incident->mttr : '-'),
+            $incident->mttr_formatted,
             $incident->mtbf,
             (float) $incident->potential_fund_loss,
             (float) $incident->fund_loss,
