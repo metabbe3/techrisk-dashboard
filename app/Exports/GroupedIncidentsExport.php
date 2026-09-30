@@ -26,6 +26,7 @@ class GroupedIncidentsExport implements WithMultipleSheets
         'pic' => ['label' => 'PIC', 'json' => false, 'column' => 'pic_id', 'nameFrom' => 'pic.name'],
         'severity' => ['label' => 'Severity', 'json' => false],
         'incident_type' => ['label' => 'Incident Type', 'json' => false],
+        'quarter' => ['label' => 'Quarter', 'json' => false],
     ];
 
     protected Builder $query;
@@ -59,6 +60,13 @@ class GroupedIncidentsExport implements WithMultipleSheets
             // (P1–P4, X1–X4) — G and Non Incident never get sheets. The empty-group
             // guard below skips severities with no rows, so order stays enum order.
             $values = collect(Severity::METRIC_ELIGIBLE);
+        } elseif ($this->dimension === 'quarter') {
+            // "YYYY-Qn" strings: string sort = chronological, and the same
+            // quarter in two years stays two distinct groups.
+            $values = $rows
+                ->filter(fn ($i) => $i->incident_date !== null)
+                ->map(fn ($i) => $i->incident_date->year.'-Q'.$i->incident_date->quarter)
+                ->unique()->sort()->values();
         } else {
             $values = $rows->pluck($this->dimension)->map(fn ($v) => $v instanceof \BackedEnum ? $v->value : $v)->filter()->unique()->sort()->values();
         }
@@ -72,6 +80,12 @@ class GroupedIncidentsExport implements WithMultipleSheets
             // warning per row (ErrorException = HTTP 500 on the web path) and
             // emptied every non-JSON group (severity / pic / incident_type).
             $groupRows = $rows->filter(function ($i) use ($isJson, $value, $column): bool {
+                if ($this->dimension === 'quarter') {
+                    // No backing column — deriving from the datetime cast.
+                    $d = $i->incident_date;
+
+                    return $d !== null && "{$d->year}-Q{$d->quarter}" === $value;
+                }
                 if ($isJson) {
                     return in_array($value, (array) $i->{$this->dimension});
                 }
@@ -91,8 +105,16 @@ class GroupedIncidentsExport implements WithMultipleSheets
                 $spanDays = $eligibleDates->first()->startOfDay()->diffInDays($eligibleDates->last()->startOfDay());
                 $avgMtbf = round($spanDays / ($eligibleDates->count() - 1), 1);
             }
+            $label = (string) $value;
+            if ($this->dimension === 'pic') {
+                $label = $names[$value] ?? "PIC {$value}";
+            } elseif ($this->dimension === 'quarter') {
+                // "2026-Q1" -> "Q1 2026"
+                [$y, $q] = explode('-Q', $label);
+                $label = "Q{$q} {$y}";
+            }
             $groupStats[] = [
-                'label' => $this->dimension === 'pic' ? ($names[$value] ?? "PIC {$value}") : (string) $value,
+                'label' => $label,
                 'value' => $value,
                 'count' => $groupRows->count(),
                 // BUG-021: cast aggregates for round()/abs() under strict_types — uniform

@@ -122,6 +122,7 @@ class ExportActionSchema
                     'pic' => 'PIC (person)',
                     'severity' => 'Severity (P1..P4, X1..X4)',
                     'incident_type' => 'Incident Type (Tech / Non-tech / Company Loss)',
+                    'quarter' => 'Quarter (Q1..Q4, by incident date)',
                 ])
                 ->default('business_category')
                 ->visible(fn ($get) => $get('preset') === 'group_by'),

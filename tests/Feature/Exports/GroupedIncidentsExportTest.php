@@ -98,4 +98,51 @@ class GroupedIncidentsExportTest extends TestCase
         sort($expected);
         $this->assertSame($expected, $seenIds);
     }
+
+    public function test_quarter_dimension_creates_sheet_per_quarter_across_years(): void
+    {
+        // Explicit dates: the factory defaults incident_date to a random
+        // dateTimeThisYear() which would make quarters non-deterministic.
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2025-01-15 10:00']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-01-20 09:00']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P3', 'incident_date' => '2026-04-10 08:00']);
+        // Exact quarter boundaries: last hour of Q1, first hour of Q2.
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-03-31 23:30']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-04-01 00:30']);
+
+        $sheets = (new GroupedIncidentsExport(Incident::query(), 'quarter'))->sheets();
+
+        $titles = array_map(fn ($sheet) => $sheet->title(), $sheets);
+        // String sort on "YYYY-Qn" is chronological; the same quarter in two
+        // years stays two sheets ("Q1 2025" vs "Q1 2026").
+        $this->assertSame(['Summary', 'Q1 2025', 'Q1 2026', 'Q2 2026'], $titles);
+
+        $counts = [];
+        foreach ($sheets as $sheet) {
+            if ($sheet instanceof PerCategorySheet) {
+                $counts[$sheet->title()] = $sheet->query()->count();
+            }
+        }
+        // Boundary rows land in their own quarter (whereBetween is inclusive).
+        $this->assertSame(['Q1 2025' => 1, 'Q1 2026' => 2, 'Q2 2026' => 2], $counts);
+    }
+
+    public function test_quarter_summary_stats(): void
+    {
+        // incident_date is NOT NULL at the schema level, so a dateless row
+        // cannot exist — no null-date exclusion case to pin here.
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-01 10:00', 'fund_loss' => 100]);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-02-10 10:00', 'fund_loss' => 50]);
+
+        $sheets = (new GroupedIncidentsExport(Incident::query(), 'quarter'))->sheets();
+
+        $this->assertSame(['Summary', 'Q1 2026'], array_map(fn ($s) => $s->title(), $sheets));
+
+        $summary = $sheets[0]->collection();
+        $this->assertSame(1, $summary->count());
+        $row = $summary->firstWhere('label', 'Q1 2026');
+        $this->assertSame(2, $row['count']);
+        $this->assertSame(150.0, $row['actual']);
+        $this->assertSame(2, $sheets[1]->query()->count());
+    }
 }

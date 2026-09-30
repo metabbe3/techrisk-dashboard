@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Exports\Sheets;
 
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
@@ -48,6 +49,15 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithHeadings, WithM
     public function query()
     {
         $q = $this->baseQuery->clone()->orderBy('incident_date', 'asc');
+
+        if ($this->column === 'quarter') {
+            // Sentinel column: quarter has no backing DB column (Laravel has
+            // no whereQuarter) — filter by date range instead.
+            [$year, $qtr] = explode('-Q', $this->groupValue);
+            $start = Carbon::create((int) $year, (int) $qtr * 3 - 2, 1)->startOfDay();
+
+            return $q->whereBetween('incident_date', [$start, $start->copy()->endOfQuarter()]);
+        }
 
         return $this->isJsonArray
             ? $q->whereJsonContains($this->column, $this->groupValue)
