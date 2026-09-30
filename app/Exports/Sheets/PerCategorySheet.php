@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Exports\Sheets;
 
+use App\Exports\Concerns\IdrFormat;
+use App\Exports\Concerns\QuarterRange;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Carbon;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithMapping;
 use Maatwebsite\Excel\Concerns\WithTitle;
@@ -16,7 +18,7 @@ use Maatwebsite\Excel\Concerns\WithTitle;
  * One sheet per group value (division / business category / root cause / PIC).
  * Incidents with multiple values appear in each matching sheet (owner-approved).
  */
-class PerCategorySheet implements FromQuery, ShouldAutoSize, WithHeadings, WithMapping, WithTitle
+class PerCategorySheet implements FromQuery, ShouldAutoSize, WithColumnFormatting, WithHeadings, WithMapping, WithTitle
 {
     protected Builder $baseQuery;
 
@@ -53,10 +55,9 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithHeadings, WithM
         if ($this->column === 'quarter') {
             // Sentinel column: quarter has no backing DB column (Laravel has
             // no whereQuarter) — filter by date range instead.
-            [$year, $qtr] = explode('-Q', $this->groupValue);
-            $start = Carbon::create((int) $year, (int) $qtr * 3 - 2, 1)->startOfDay();
+            [$start, $end] = QuarterRange::dates($this->groupValue);
 
-            return $q->whereBetween('incident_date', [$start, $start->copy()->endOfQuarter()]);
+            return $q->whereBetween('incident_date', [$start, $end]);
         }
 
         return $this->isJsonArray
@@ -84,5 +85,11 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithHeadings, WithM
             (float) $incident->fund_loss,
             (float) $incident->recovered_fund,
         ];
+    }
+
+    public function columnFormats(): array
+    {
+        // I=Potential Loss, J=Actual Loss, K=Recovered (values are float-cast in map())
+        return ['I' => IdrFormat::FORMAT, 'J' => IdrFormat::FORMAT, 'K' => IdrFormat::FORMAT];
     }
 }

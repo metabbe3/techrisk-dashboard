@@ -6,10 +6,12 @@ namespace App\Exports\Sheets;
 
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
+use App\Exports\Concerns\IdrFormat;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithCharts;
+use Maatwebsite\Excel\Concerns\WithColumnFormatting;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use PhpOffice\PhpSpreadsheet\Chart\Chart;
@@ -19,7 +21,7 @@ use PhpOffice\PhpSpreadsheet\Chart\Legend;
 use PhpOffice\PhpSpreadsheet\Chart\PlotArea;
 use PhpOffice\PhpSpreadsheet\Chart\Title;
 
-class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, WithHeadings, WithTitle
+class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, WithColumnFormatting, WithHeadings, WithTitle
 {
     protected Builder $query;
 
@@ -40,6 +42,12 @@ class ExecutiveCalcSheet implements FromCollection, ShouldAutoSize, WithCharts, 
     public function headings(): array
     {
         return ['Month', 'Incidents', 'Severity', 'SevCount', 'AvgMTTR', 'Potential', 'Recovered'];
+    }
+
+    public function columnFormats(): array
+    {
+        // F=Potential, G=Recovered (monthly fund columns)
+        return ['F' => IdrFormat::FORMAT, 'G' => IdrFormat::FORMAT];
     }
 
     public function charts(): array

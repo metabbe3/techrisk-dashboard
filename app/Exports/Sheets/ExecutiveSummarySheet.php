@@ -1,9 +1,10 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
-use App\Exports\Sheets\ExecutiveCalcSheet;
+use App\Exports\Concerns\IdrFormat;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -50,9 +51,11 @@ class ExecutiveSummarySheet implements ShouldAutoSize, WithEvents, WithTitle
                     ['Open', $kpi['open']],
                     ['Avg MTTR', $kpi['avgMttrMins'] > 0 ? "{$kpi['avgMttrMins']} min" : "{$kpi['avgMttrDays']} days"],
                     ['Avg MTBF', "{$kpi['avgMtbf']} days"],
-                    ['Potential Loss', 'Rp '.number_format($kpi['potential'], 0, ',', '.')],
-                    ['Recovered', 'Rp '.number_format($kpi['recovered'], 0, ',', '.')],
-                    ['Actual Loss', 'Rp '.number_format($kpi['actual'], 0, ',', '.')],
+                    // Raw floats + native Rp format (E5:G5 below), not pre-formatted
+                    // strings — keeps the cards summable numbers.
+                    ['Potential Loss', (float) $kpi['potential']],
+                    ['Recovered', (float) $kpi['recovered']],
+                    ['Actual Loss', (float) $kpi['actual']],
                     ['Recovery Rate', $kpi['recoveryRate'].'%'],
                 ];
                 $col = 'A';
@@ -70,6 +73,9 @@ class ExecutiveSummarySheet implements ShouldAutoSize, WithEvents, WithTitle
                     $sheet->getStyle("{$col}4:{$col}6")->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
                     $col++;
                 }
+
+                // E5=Potential Loss, F5=Recovered, G5=Actual Loss
+                $sheet->getStyle('E5:G5')->getNumberFormat()->setFormatCode(IdrFormat::FORMAT);
             },
         ];
     }

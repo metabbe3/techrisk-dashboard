@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Exports\Sheets;
 
+use App\Exports\Concerns\IdrFormat;
 use Illuminate\Database\Eloquent\Builder;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -83,7 +84,7 @@ class ExecutiveDataSheet implements FromQuery, ShouldAutoSize, WithEvents, WithH
 
                 // currency columns H:J
                 $sheet->getStyle("H2:J{$last}")->getNumberFormat()
-                    ->setFormatCode('"Rp "#,##0');
+                    ->setFormatCode(IdrFormat::FORMAT);
             },
         ];
     }

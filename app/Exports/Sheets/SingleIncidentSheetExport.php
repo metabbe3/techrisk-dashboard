@@ -9,6 +9,7 @@ use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
+use App\Exports\Concerns\IdrFormat;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithEvents;
@@ -80,6 +81,9 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
             } elseif ($isArray) {
                 $value = $incident->{$columnName};
                 $row[] = is_array($value) ? implode(', ', $value) : ($value ?? '');
+            } elseif (IdrFormat::isFundColumn($columnName)) {
+                // Raw float + native Rp format (applied in AfterSheet), so fund cells stay summable
+                $row[] = (float) $incident->{$columnName};
             } else {
                 $value = $incident->{$columnName};
                 // ponytail: enum-cast attrs (severity/status/classification) return BackedEnum instances
@@ -192,6 +196,13 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
 
                 $sheet->getStyle($fullDataRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);
 
+                // Fund columns stay raw floats; Rupiah is the native number format.
+                // ($lastDataRow is the pre-summary table end — summary block not yet written.)
+                foreach (IdrFormat::letters($this->columnNames) as $letter) {
+                    $sheet->getStyle("{$letter}2:{$letter}{$lastDataRow}")
+                        ->getNumberFormat()->setFormatCode(IdrFormat::FORMAT);
+                }
+
                 $summaryStartRow = $lastDataRow + 2;
                 $sheet->setCellValue("A{$summaryStartRow}", 'Summary For This Sheet');
                 $sheet->getStyle("A{$summaryStartRow}")->getFont()->setBold(true);
@@ -208,13 +219,13 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
                 $summaryDataRow = $summaryStartRow + 2;
                 $summaryData = [
                     $this->stats['totalCases'], $this->stats['avgMttr'], $this->stats['avgMtbf'],
-                    'Rp '.number_format($this->stats['totalPotentialFundLoss'], 0, ',', '.'),
-                    'Rp '.number_format($this->stats['totalFundLoss'], 0, ',', '.'),
-                    'Rp '.number_format($this->stats['totalRecoveredFund'], 0, ',', '.'),
+                    $this->stats['totalPotentialFundLoss'], $this->stats['totalFundLoss'], $this->stats['totalRecoveredFund'],
                 ];
                 $sheet->fromArray($summaryData, null, "A{$summaryDataRow}");
                 $summaryDataRange = "A{$summaryDataRow}:F{$summaryDataRow}";
                 $sheet->getStyle($summaryDataRange)->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+                // D/E/F = the three fund totals — raw floats with the Rp number format
+                $sheet->getStyle("D{$summaryDataRow}:F{$summaryDataRow}")->getNumberFormat()->setFormatCode(IdrFormat::FORMAT);
 
                 $summaryRange = "A{$summaryHeaderRow}:F{$summaryDataRow}";
                 $sheet->getStyle($summaryRange)->getBorders()->getAllBorders()->setBorderStyle(Border::BORDER_THIN);

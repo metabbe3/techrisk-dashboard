@@ -1,18 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
-use Maatwebsite\Excel\Concerns\FromCollection;
-use Maatwebsite\Excel\Concerns\ShouldAutoSize;
-use Maatwebsite\Excel\Concerns\WithHeadings;
-use Maatwebsite\Excel\Concerns\WithMapping;
-use Maatwebsite\Excel\Concerns\WithTitle;
+use App\Exports\Concerns\IdrFormat;
 
 /**
  * Front summary: one row per group with counts and MTTR/MTBF aggregates.
  */
-class GroupSummarySheet implements \Maatwebsite\Excel\Concerns\FromCollection, \Maatwebsite\Excel\Concerns\ShouldAutoSize, \Maatwebsite\Excel\Concerns\WithHeadings, \Maatwebsite\Excel\Concerns\WithMapping, \Maatwebsite\Excel\Concerns\WithTitle
+class GroupSummarySheet implements \Maatwebsite\Excel\Concerns\FromCollection, \Maatwebsite\Excel\Concerns\ShouldAutoSize, \Maatwebsite\Excel\Concerns\WithColumnFormatting, \Maatwebsite\Excel\Concerns\WithHeadings, \Maatwebsite\Excel\Concerns\WithMapping, \Maatwebsite\Excel\Concerns\WithTitle
 {
     protected array $groupStats;
 
@@ -52,5 +49,11 @@ class GroupSummarySheet implements \Maatwebsite\Excel\Concerns\FromCollection, \
             $row['actual'],
             $row['recovered'],
         ];
+    }
+
+    public function columnFormats(): array
+    {
+        // G=Potential Loss, H=Actual Loss, I=Recovered
+        return ['G' => IdrFormat::FORMAT, 'H' => IdrFormat::FORMAT, 'I' => IdrFormat::FORMAT];
     }
 }
