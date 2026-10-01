@@ -174,14 +174,21 @@ class ExportActionSchema
     }
 
     /**
+     * Owner rule (2026-09-30): exports are P1–P4 / X1–X4 only — G and
+     * Non Incident never reach any preset, whatever the user picks.
+     * Single source for every export path, form or no form.
+     */
+    public static function baseExportScope(Builder $query): Builder
+    {
+        return $query->whereIn('severity', Severity::METRIC_ELIGIBLE);
+    }
+
+    /**
      * Apply the optional export filters on top of the table's current filters.
      */
     public static function applyFilters(Builder $query, array $data): Builder
     {
-        // Owner rule (2026-09-30): exports are P1–P4 / X1–X4 only — G and
-        // Non Incident never reach any preset, whatever the user picks.
-        return $query
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+        return self::baseExportScope($query)
             ->when(! empty($data['f_severity'] ?? []), fn (Builder $q) => $q->whereIn('severity', $data['f_severity']))
             ->when(! empty($data['f_status'] ?? []), fn (Builder $q) => $q->whereIn('incident_status', $data['f_status']))
             ->when(! empty($data['f_incident_type'] ?? []), fn (Builder $q) => $q->whereIn('incident_type', $data['f_incident_type']))

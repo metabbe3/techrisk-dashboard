@@ -289,6 +289,26 @@ Owner rule 2026-10-01: an Incident/Issue tagged Label `Outlier` drops out of eve
 
 ---
 
+### [PROJ-007] Export Markdown ZIP — AI-consumption corpus
+
+**Status:** Done (code complete, awaiting prod deploy)
+**Priority:** P1
+**Start Date:** 2026-10-01
+
+#### Description
+Owner request 2026-10-01: every incident in the current table view becomes a folder holding its full markdown report plus every attached investigation document converted to markdown; all zipped for feeding AI tools. Markdown-only zip, Incidents only (no Issues), P1–P4/X1–X4 via `ExportActionSchema::baseExportScope()` (extracted as the single source; `applyFilters()` now calls it). Unconvertible/failed documents are skipped with an in-band note in the incident's md — the corpus is honest about gaps. Builds on PROJ-003's exporter + PROJ-004's converter (cached-first, per the `ai_summarize` precedent). Completes PROJ-003's vision.
+
+#### Tasks
+- [x] `baseExportScope()` extraction + regression guard — 2026-10-01
+- [x] `IncidentMarkdownZipService` (index.md, sanitized/deduped names, cached-first conversion, skip-and-note appendix) — 2026-10-01
+- [x] `export_markdown_zip` header action on ListIncidents — 2026-10-01
+- [x] Docs (CLAUDE.md export architecture item 5) — 2026-10-01
+- [ ] Owner live check after deploy: Incidents → Export Markdown ZIP → zip with one folder per incident + index.md
+
+---
+
+---
+
 ## Completed Projects
 
 ### [PROJ-005] Export Redesign — Executive Report, Group By, Form Validation

@@ -118,6 +118,31 @@ class ListIncidents extends ListRecords
                         'incidents-'.now()->format('Y-m-d').'.'.$format
                     );
                 }),
+            Actions\Action::make('export_markdown_zip')
+                ->label('Export Markdown ZIP')
+                ->icon('heroicon-o-archive-box-arrow-down')
+                ->color('success')
+                ->tooltip('Every incident in view as markdown + converted documents, zipped for AI tools')
+                ->requiresConfirmation()
+                ->modalDescription('One folder per incident: full markdown report plus every convertible investigation document. Incidents only (no Issues), P1–P4/X1–X4.')
+                ->action(function () {
+                    $path = app(\App\Services\Markdown\IncidentMarkdownZipService::class)
+                        ->build(ExportActionSchema::baseExportScope($this->getFilteredTableQuery()->clone()));
+
+                    if ($path === null) {
+                        \Filament\Notifications\Notification::make()
+                            ->warning()
+                            ->title('Nothing to export')
+                            ->body('No incidents match the current view.')
+                            ->send();
+
+                        return;
+                    }
+
+                    return response()->download($path, basename($path), [
+                        'Content-Type' => 'application/zip',
+                    ])->deleteFileAfterSend(true);
+                }),
             Actions\Action::make('recalculate_metrics')
                 ->label('Recalculate')
                 ->icon('heroicon-o-arrow-path')
