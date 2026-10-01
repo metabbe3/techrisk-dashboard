@@ -170,6 +170,35 @@ class IncidentMarkdownCorpusTest extends TestCase
         $this->assertTrue($this->service()->isStale());
     }
 
+    public function test_is_stale_after_document_update(): void
+    {
+        $incident = $this->makeIncident(['no' => '2040_IN_010']);
+        $this->cachedDoc($incident, 'timeline.docx', "# Timeline\n");
+
+        $this->travel(2)->seconds();
+        $this->service()->refresh();
+        $this->assertFalse($this->service()->isStale());
+
+        // A document row newer than the build (edit or conversion write)
+        // must mark the corpus stale — its incident row never moved.
+        $this->travel(2)->seconds();
+        \Illuminate\Support\Facades\DB::table('investigation_documents')
+            ->where('incident_id', $incident->id)
+            ->update(['description' => 'edited', 'updated_at' => now()]);
+
+        $this->assertTrue($this->service()->isStale());
+    }
+
+    public function test_zero_incident_refresh_yields_empty_catalog(): void
+    {
+        $manifest = $this->service()->refresh();
+
+        $this->assertSame(0, $manifest['incidents']);
+        $this->assertFalse($this->service()->isStale());
+        $this->assertSame('', $this->service()->catalog());
+        Storage::disk('local')->assertExists('markdown/corpus/index.md');
+    }
+
     public function test_command_skips_when_fresh_and_rebuilds_with_force(): void
     {
         $this->makeIncident(['no' => '2040_IN_008']);

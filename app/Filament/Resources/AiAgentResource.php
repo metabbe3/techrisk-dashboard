@@ -264,7 +264,7 @@ class AiAgentResource extends Resource
                             ->helperText('Inject the extracted text of the most recent incident investigation documents into every run.'),
                         Forms\Components\Toggle::make('include_corpus')
                             ->label('Include incident catalog (long-term incident memory)')
-                            ->helperText('Inject one line per incident on record into every run, so the agent knows the full incident history.'),
+                            ->helperText('Inject one line per incident (newest first, capped) into every run, so the agent knows the incident history.'),
                     ]),
 
                 Forms\Components\Section::make('Output contract')

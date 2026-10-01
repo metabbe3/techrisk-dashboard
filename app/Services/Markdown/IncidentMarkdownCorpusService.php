@@ -42,9 +42,10 @@ class IncidentMarkdownCorpusService
     }
 
     /**
-     * Wipe + rewrite the whole corpus and store the manifest. Index.md is
-     * written LAST: it is the only runtime-read artifact (agent catalog),
-     * so injection keeps serving the old catalog until the new one lands.
+     * Wipe + rewrite the whole corpus and store the manifest. The folder
+     * wipe never touches index.md (it is a file at the corpus root), and
+     * the final put() overwrites it in place — so injection keeps serving
+     * the OLD catalog until the new one lands, never a half-built one.
      *
      * @return array{built_at: string, incidents: int, version: int}
      */
@@ -60,7 +61,6 @@ class IncidentMarkdownCorpusService
         foreach ($disk->directories('markdown/corpus') as $dir) {
             $disk->deleteDirectory($dir);
         }
-        $disk->delete('markdown/corpus/index.md');
 
         $usedFolders = [];
         foreach ($incidents as $incident) {

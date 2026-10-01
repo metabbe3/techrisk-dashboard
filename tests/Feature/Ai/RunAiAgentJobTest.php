@@ -629,4 +629,40 @@ class RunAiAgentJobTest extends TestCase
         $this->assertStringContainsString('## Incident catalog', $body);
         $this->assertStringNotContainsString('(P1', $body);
     }
+
+    public function test_include_corpus_truncation_keeps_newest_incidents(): void
+    {
+        Storage::fake('local');
+        // Two incidents; limit sits between their line lengths, so only one
+        // line fits. The NEWEST (latest incident_date) must be the one kept.
+        \App\Models\Incident::factory()->create([
+            'no' => '2040_IN_032',
+            'title' => 'Oldest incident line',
+            'classification' => 'Incident',
+            'severity' => 'P1',
+            'incident_date' => '2040-01-01 10:00:00',
+            'stop_bleeding_at' => '2040-01-01 12:00:00',
+        ]);
+        \App\Models\Incident::factory()->create([
+            'no' => '2040_IN_033',
+            'title' => 'Newest incident line',
+            'classification' => 'Incident',
+            'severity' => 'P1',
+            'incident_date' => '2040-02-01 10:00:00',
+            'stop_bleeding_at' => '2040-02-01 12:00:00',
+        ]);
+        app(\App\Services\Markdown\IncidentMarkdownCorpusService::class)->refresh();
+        config(['ai.agents.corpus_inject_limit' => 45]);
+
+        Http::fake(['*/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => 'ok']]],
+        ])]);
+
+        $agent = $this->makeAgent(['include_corpus' => true]);
+        (new RunAiAgentJob($agent->id, $this->makeRun($agent)->id))->handle(app(AiTextService::class), app(ChatContextService::class), app(AiAgentMemoryService::class));
+
+        $body = (string) collect(Http::recorded())->first()[0]->body();
+        $this->assertStringContainsString('Newest incident line', $body);
+        $this->assertStringNotContainsString('Oldest incident line', $body);
+    }
 }

@@ -98,13 +98,16 @@ class RunAiAgentJob implements ShouldQueue
                 }
             }
 
-            // Long-term incident memory: the corpus catalog (one line per
-            // incident). Absent until the hourly builder's first run.
+            // Long-term incident memory: the corpus catalog. Newest first —
+            // when the cap bites, truncation eats the OLDEST history, never
+            // the incidents an analyst most needs. Absent until the hourly
+            // builder's first run.
             if ($agent->include_corpus) {
                 $catalog = app(\App\Services\Markdown\IncidentMarkdownCorpusService::class)->catalog();
                 if ($catalog !== null && $catalog !== '') {
-                    $userMessage .= "\n\n## Incident catalog (every incident on record, one line each)\n"
-                        .Str::limit($catalog, (int) config('ai.agents.corpus_inject_limit', 6000));
+                    $newestFirst = collect(explode("\n", $catalog))->filter()->reverse()->implode("\n");
+                    $userMessage .= "\n\n## Incident catalog (newest first, one line each)\n"
+                        .Str::limit($newestFirst, (int) config('ai.agents.corpus_inject_limit', 6000));
                 }
             }
 
