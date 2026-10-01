@@ -59,7 +59,10 @@ class ListAiAgentMemories extends ListRecords
                 ->visible(fn () => $corpus()->catalog() !== null)
                 ->modalHeading('Incident catalog (index.md)')
                 ->modalContent(fn () => new HtmlString(
-                    '<pre style="white-space:pre-wrap;font-size:12px;max-height:500px;overflow-y:auto;background:#f8fafc;padding:16px;border-radius:8px;">'
+                    // No hardcoded surface color — a light-only background makes
+                    // the text invisible in Filament dark mode; the panel theme
+                    // supplies the <pre>'s background and text color.
+                    '<pre style="white-space:pre-wrap;font-size:12px;max-height:500px;overflow-y:auto;padding:16px;border-radius:8px;">'
                     .e($corpus()->catalog() ?? '')
                     .'</pre>'
                 ))

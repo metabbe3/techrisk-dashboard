@@ -310,4 +310,18 @@ class IncidentMarkdownCorpusTest extends TestCase
 
         $this->assertSame(Cache::get('incident_corpus_manifest'), $this->service()->manifest());
     }
+
+    public function test_view_incident_catalog_modal_has_no_hardcoded_light_background(): void
+    {
+        // Dark mode: a hardcoded near-white surface with no text color makes
+        // the catalog unreadable — the panel theme must supply the surface.
+        $this->makeIncident(['no' => '2040_IN_016', 'title' => 'Dark mode check']);
+        $this->travel(2)->seconds();
+        $this->service()->refresh();
+
+        $html = $this->memoryPage()->mountAction('view_incident_catalog')->html();
+
+        $this->assertStringContainsString('<pre', $html);
+        $this->assertStringNotContainsString('#f8fafc', $html);
+    }
 }
