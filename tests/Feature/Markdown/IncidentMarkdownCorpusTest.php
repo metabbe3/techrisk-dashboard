@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Markdown;
 
 use App\Filament\Resources\AiAgentMemoryResource\Pages\ListAiAgentMemories;
+use App\Filament\Widgets\IncidentMemoryStatusWidget;
 use App\Models\Incident;
 use App\Models\InvestigationDocument;
 use App\Models\User;
@@ -63,6 +64,15 @@ class IncidentMarkdownCorpusTest extends TestCase
     private function service(): IncidentMarkdownCorpusService
     {
         return app(IncidentMarkdownCorpusService::class);
+    }
+
+    private function memoryPage(): \Livewire\Features\SupportTesting\Testable
+    {
+        Permission::firstOrCreate(['name' => 'manage api tokens']);
+        $user = User::factory()->create();
+        $user->givePermissionTo('manage api tokens');
+
+        return Livewire::actingAs($user)->test(ListAiAgentMemories::class);
     }
 
     public function test_refresh_writes_index_folders_and_manifest(): void
@@ -233,5 +243,71 @@ class IncidentMarkdownCorpusTest extends TestCase
 
         Storage::disk('local')->assertExists('markdown/corpus/index.md');
         $this->assertStringContainsString('Ledger mismatch', Storage::disk('local')->get('markdown/corpus/index.md'));
+    }
+
+    public function test_memory_panel_shows_never_built_and_hides_catalog_action(): void
+    {
+        // Filament widgets are lazy-isolated children: the page test can
+        // assert ATTACHMENT (the widget's snapshot rides in the page HTML),
+        // but panel CONTENT needs a direct widget test.
+        $this->memoryPage()
+            ->assertSee('incident-memory-status-widget')
+            ->assertActionHidden('view_incident_catalog');
+
+        Livewire::test(IncidentMemoryStatusWidget::class)->assertSee('Never built');
+    }
+
+    public function test_memory_panel_shows_count_and_fresh_after_build(): void
+    {
+        $this->makeIncident(['no' => '2040_IN_011', 'title' => 'Panel check']);
+        $this->travel(2)->seconds(); // incident updated_at < built_at -> fresh
+        $this->service()->refresh();
+
+        $this->memoryPage()->assertActionVisible('view_incident_catalog');
+
+        Livewire::test(IncidentMemoryStatusWidget::class)
+            ->assertSee('1 incidents')
+            ->assertSee('Fresh');
+    }
+
+    public function test_memory_panel_shows_stale_after_version_bump(): void
+    {
+        $this->makeIncident(['no' => '2040_IN_012']);
+        $this->travel(2)->seconds();
+        $this->service()->refresh();
+        $this->travel(2)->seconds();
+        Cache::increment('dashboard_cache_version');
+
+        Livewire::test(IncidentMemoryStatusWidget::class)->assertSee('Stale');
+    }
+
+    public function test_view_incident_catalog_modal_lists_incidents(): void
+    {
+        $this->makeIncident(['no' => '2040_IN_013', 'title' => 'Modal content']);
+        $this->travel(2)->seconds();
+        $this->service()->refresh();
+
+        $this->memoryPage()
+            ->mountAction('view_incident_catalog')
+            ->assertSee('2040_IN_013');
+    }
+
+    public function test_rebuild_button_dispatches_memory_rebuilt_event(): void
+    {
+        $this->makeIncident(['no' => '2040_IN_014']);
+
+        $this->memoryPage()
+            ->callAction('rebuild_incident_corpus')
+            ->assertDispatched('incident-memory-rebuilt');
+    }
+
+    public function test_manifest_accessor_null_before_build_and_matches_cache_after(): void
+    {
+        $this->assertNull($this->service()->manifest());
+
+        $this->makeIncident(['no' => '2040_IN_015']);
+        $this->service()->refresh();
+
+        $this->assertSame(Cache::get('incident_corpus_manifest'), $this->service()->manifest());
     }
 }

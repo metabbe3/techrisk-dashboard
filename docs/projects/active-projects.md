@@ -322,7 +322,8 @@ Owner request 2026-10-01: one button holding "memory of all incidents" every Age
 - [x] `include_corpus` migration + model + config + RunAiAgentJob catalog block — 2026-10-01
 - [x] Agent form toggle + Corpus icon column + Agent Memory rebuild button — 2026-10-01
 - [x] Docs (CLAUDE.md dependency map + cache keys) — 2026-10-01
-- [ ] Owner live check after deploy: Agent Memory → Rebuild Incident Memory → notification with count; agent with toggle → output references catalog incidents
+- [x] Visibility fix (owner live-check feedback 2026-10-01: rebuild succeeded — 115 incidents — but nothing persisted on the page): `manifest()` accessor, `IncidentMemoryStatusWidget` (count · built · Fresh/Stale, live-updates via `incident-memory-rebuilt` dispatch from the rebuild action — Filament widgets are lazy-isolated children), `view_incident_catalog` read-only modal (index.md content) — 2026-10-01
+- [ ] Owner live check after deploy: Agent Memory page shows status panel (115 incidents · Fresh) + View catalog lists incidents; rebuild press updates the panel without reload; agent with toggle → output references catalog incidents
 
 ---
 

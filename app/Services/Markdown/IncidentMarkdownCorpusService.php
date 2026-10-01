@@ -105,6 +105,19 @@ class IncidentMarkdownCorpusService
     }
 
     /**
+     * The persisted build manifest — single source for the Agent Memory
+     * status panel. Null when the corpus was never built.
+     *
+     * @return array{built_at: string, incidents: int, version: int}|null
+     */
+    public function manifest(): ?array
+    {
+        $manifest = Cache::get('incident_corpus_manifest');
+
+        return is_array($manifest) ? $manifest : null;
+    }
+
+    /**
      * False only while nothing that feeds the corpus changed: same scoped
      * count (deletes), same metrics version (labels/status edits via
      * dashboard_cache_version), no incident or document row newer than the
@@ -112,9 +125,9 @@ class IncidentMarkdownCorpusService
      */
     public function isStale(): bool
     {
-        $manifest = Cache::get('incident_corpus_manifest');
+        $manifest = $this->manifest();
 
-        if (! is_array($manifest) || empty($manifest['built_at'])) {
+        if ($manifest === null || empty($manifest['built_at'])) {
             return true;
         }
 
