@@ -49,6 +49,24 @@ class IncidentLabelPivotRecalcTest extends TestCase
         $this->assertSame(6, Cache::get('dashboard_cache_version'), 'Attach must bump the dashboard cache version');
     }
 
+    public function test_attaching_outlier_label_clears_chat_context_caches(): void
+    {
+        // The job persists via saveQuietly() — no observer fires on the pivot
+        // path, so the chat caches must be cleared by the job itself or the
+        // AI quotes the pre-tag Avg MTTR for up to 5 minutes (BUG-024 class).
+        $incident = $this->makeIncident([
+            'incident_date' => '2032-06-15 10:00',
+            'stop_bleeding_at' => '2032-06-15 12:00',
+        ]);
+        Cache::put('chat_quick_stats_v2', 'stale', now()->addMinutes(5));
+        Cache::put('chat_label_names', 'stale', now()->addMinutes(5));
+
+        $incident->labels()->attach(Label::firstOrCreate(['name' => Label::OUTLIER]));
+
+        $this->assertNull(Cache::get('chat_quick_stats_v2'), 'Attach must clear the chat quick-stats cache');
+        $this->assertNull(Cache::get('chat_label_names'), 'Attach must clear the chat label-names cache');
+    }
+
     public function test_detaching_outlier_label_restores_metrics(): void
     {
         $this->makeIncident(['incident_date' => '2032-07-10 10:00']);

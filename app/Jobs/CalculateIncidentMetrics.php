@@ -182,5 +182,9 @@ class CalculateIncidentMetrics implements ShouldQueue
         Cache::forget('incidents.stats');
         Cache::forget('labels');
         Cache::increment('dashboard_cache_version');
+        // The observer can't see pivot-only writes (labels) — this job is the
+        // one flush every metrics path shares, so the chat caches clear here
+        // too or the AI quotes pre-recalc numbers for up to 5 min (BUG-024).
+        app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
     }
 }
