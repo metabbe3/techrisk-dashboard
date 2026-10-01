@@ -9,6 +9,7 @@ use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Resources\IncidentResource;
 use App\Notifications\IncidentNotDoneReminder;
+use App\Services\Ai\PostMortemService;
 use App\Services\Ai\SimilarIncidentService;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Filament\Actions;
@@ -116,6 +117,42 @@ class ViewIncident extends ViewRecord
                         ->body(count($result->matches).' match(es) found — the list below is updated.')
                         ->send();
                 }),
+            Actions\Action::make('generate_retro')
+                ->label($this->getRecord()?->retro_markdown ? 'Regenerate Retro' : 'Generate Retro')
+                ->icon('heroicon-o-document-duplicate')
+                ->color('gray')
+                ->requiresConfirmation()
+                ->modalHeading('Generate retrospective')
+                ->modalDescription('AI drafts a blameless retrospective from this incident and stores it on the record. Regenerating overwrites the stored retro.')
+                ->modalSubmitActionLabel('Generate')
+                ->visible(fn (): bool => auth()->user()->can('manage incidents'))
+                ->action(function () {
+                    $incident = $this->getRecord();
+                    $service = app(PostMortemService::class);
+                    $markdown = $service->generateAsMarkdown($incident);
+
+                    if ($markdown === null) {
+                        Notification::make()
+                            ->danger()
+                            ->title('Retro generation failed')
+                            ->body('The AI returned no usable content — nothing was stored.')
+                            ->send();
+
+                        return;
+                    }
+
+                    $incident->update([
+                        'retro_markdown' => $markdown,
+                        'retro_generated_at' => now(),
+                        'retro_model' => $service->resolvedModel(),
+                    ]);
+
+                    Notification::make()
+                        ->success()
+                        ->title('Retrospective generated')
+                        ->body('The Retrospective section below is updated.')
+                        ->send();
+                }),
             Actions\Action::make('generate_post_mortem')
                 ->label('Post-Mortem PDF')
                 ->icon('heroicon-o-document-text')
@@ -192,6 +229,24 @@ class ViewIncident extends ViewRecord
 
                 ViewEntry::make('similar_incidents')
                     ->view('filament.resources.incident-resource.pages.similar-incidents')
+                    ->columnSpanFull(),
+
+                Section::make('Retrospective')
+                    ->icon('heroicon-o-document-duplicate')
+                    ->iconColor('gray')
+                    ->schema([
+                        TextEntry::make('retro_markdown')
+                            ->markdown()
+                            ->hiddenLabel(),
+                        TextEntry::make('retro_generated_at')
+                            ->label('Generated')
+                            ->dateTime('Y-m-d H:i')
+                            ->color('gray')
+                            ->visible(fn ($record) => filled($record->retro_generated_at))
+                            ->formatStateUsing(fn ($state, $record) => $state?->format('Y-m-d H:i').' · '.$record->retro_model),
+                    ])
+                    ->visible(fn ($record) => filled($record->retro_markdown))
+                    ->collapsible()
                     ->columnSpanFull(),
 
                 Section::make('Incident Timeline & Chronology')

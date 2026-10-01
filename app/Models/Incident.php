@@ -104,6 +104,9 @@ class Incident extends Model implements Auditable
         'mtbf_all',
         'recurrence_data',
         'last_reminded_at',
+        'retro_markdown',
+        'retro_generated_at',
+        'retro_model',
     ];
 
     protected $casts = [
@@ -137,6 +140,7 @@ class Incident extends Model implements Auditable
         'mtbf_fund_loss' => 'decimal:2',
         'mtbf_non_fund_loss' => 'decimal:2',
         'mtbf_potential_recovery' => 'decimal:2',
+        'retro_generated_at' => 'datetime',
         'mtbf_fully_recovered' => 'decimal:2',
         'mtbf_non_tech_loss' => 'decimal:2',
         'mtbf_non_incident' => 'decimal:2',

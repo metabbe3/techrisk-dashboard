@@ -16,7 +16,7 @@ class PostMortemService
 
     public function generate(Incident $incident): array
     {
-        $resolvedModel = AiSetting::get('default_model', config('ai.default_model'));
+        $resolvedModel = $this->resolvedModel();
         $prompt = config('ai.prompts.post_mortem');
 
         if (! $prompt) {
@@ -46,6 +46,57 @@ class PostMortemService
         $result = $this->aiService->callAiForJson('post_mortem', $resolvedModel, $prompt['system'], $userMessage, $defaultResult);
 
         return $this->sanitizeResult($result, $defaultResult);
+    }
+
+    /**
+     * The model generate()/generateAsMarkdown ran with — stored as
+     * incidents.retro_model so readers know which AI produced a retro.
+     */
+    public function resolvedModel(): string
+    {
+        return AiSetting::get('default_model', config('ai.default_model'));
+    }
+
+    /**
+     * D2: render the generate() array as markdown for the retro column.
+     * Null when the AI produced no substance (blank executive summary) —
+     * the caller surfaces the failure instead of storing an empty shell.
+     */
+    public function generateAsMarkdown(Incident $incident): ?string
+    {
+        $result = $this->generate($incident);
+
+        if (blank($result['executive_summary'])) {
+            return null;
+        }
+
+        $md = "# Retrospective — {$incident->no}\n\n";
+        $md .= "## Executive Summary\n\n{$result['executive_summary']}\n\n";
+        $md .= "## Timeline Analysis\n\n{$result['timeline_analysis']}\n\n";
+        $md .= "## Root Cause Deep Dive\n\n{$result['root_cause_deep_dive']}\n\n";
+
+        $md .= "## Impact Assessment\n\n";
+        foreach (['users_affected' => 'Users', 'systems_affected' => 'Systems', 'financial_impact' => 'Financial', 'reputation_impact' => 'Reputation'] as $key => $label) {
+            if (filled($result['impact_assessment'][$key] ?? '')) {
+                $md .= "- **{$label}**: {$result['impact_assessment'][$key]}\n";
+            }
+        }
+
+        $md .= "\n## Lessons Learned\n\n";
+        foreach ($result['lessons_learned'] as $lesson) {
+            $md .= "- {$lesson}\n";
+        }
+
+        $md .= "\n## Recommendations\n\n";
+        foreach ($result['recommendations'] as $recommendation) {
+            $md .= "- {$recommendation}\n";
+        }
+
+        if (filled($result['severity_assessment'])) {
+            $md .= "\n## Severity Assessment\n\n{$result['severity_assessment']}\n";
+        }
+
+        return trim($md)."\n";
     }
 
     public function generateFromDataOnly(Incident $incident): array
