@@ -29,13 +29,14 @@ class ViewIncidentSimilarIncidentsTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function viewer(): User
+    private function viewer(bool $canManage = false): User
     {
         Role::firstOrCreate(['name' => 'admin']);
         Permission::firstOrCreate(['name' => 'view incidents']);
+        Permission::firstOrCreate(['name' => 'manage incidents']);
         $user = User::factory()->create();
         $user->assignRole('admin'); // skips applyUserYearAccess record scoping
-        $user->givePermissionTo('view incidents');
+        $user->givePermissionTo($canManage ? ['view incidents', 'manage incidents'] : ['view incidents']);
 
         return $user;
     }
@@ -114,10 +115,26 @@ class ViewIncidentSimilarIncidentsTest extends TestCase
             );
         });
 
-        Livewire::actingAs($this->viewer())
+        Livewire::actingAs($this->viewer(canManage: true))
             ->test(ViewIncident::class, ['record' => (string) $source->id])
             ->callAction('detect_similar_incidents')
             ->assertNotified();
+    }
+
+    public function test_detect_similar_action_hidden_for_view_only_users(): void
+    {
+        $source = $this->makeIncident();
+
+        $this->mock(SimilarIncidentService::class, function ($mock) {
+            $mock->shouldReceive('isAvailable')->andReturn(true);
+        });
+
+        // Review finding: the same pipeline over HTTP is gated by
+        // can:manage incidents — a view-only user must not run it (paid
+        // multi-call pipeline + persist() prunes/rewrites rows).
+        Livewire::actingAs($this->viewer())
+            ->test(ViewIncident::class, ['record' => (string) $source->id])
+            ->assertActionHidden('detect_similar_incidents');
     }
 
     public function test_detect_similar_action_hidden_when_ai_unavailable(): void

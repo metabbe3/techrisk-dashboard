@@ -93,7 +93,7 @@ class ViewIncident extends ViewRecord
                 ->modalHeading('Detect similar incidents')
                 ->modalDescription('AI runs the full pipeline (think → find → verify → double-check). This may take up to a minute.')
                 ->modalSubmitActionLabel('Detect')
-                ->visible(fn (): bool => app(SimilarIncidentService::class)->isAvailable())
+                ->visible(fn (): bool => auth()->user()->can('manage incidents') && app(SimilarIncidentService::class)->isAvailable())
                 ->action(function () {
                     $incident = $this->getRecord();
                     $service = app(SimilarIncidentService::class);
