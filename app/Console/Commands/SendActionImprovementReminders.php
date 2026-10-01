@@ -31,7 +31,7 @@ class SendActionImprovementReminders extends Command
         $today = Carbon::now()->startOfDay();
 
         // 1. Due in exactly 7 days
-        $dueSoonActions = ActionImprovement::with('incident.pic')
+        $dueSoonActions = ActionImprovement::with('incident.pics')
             ->where('reminder', true)
             ->where('status', 'pending')
             ->whereDate('due_date', '=', $today->copy()->addDays(7)->toDateString())
@@ -44,7 +44,7 @@ class SendActionImprovementReminders extends Command
         }
 
         // 2. Overdue (but less than 7 days — normal overdue to PIC)
-        $overdueActions = ActionImprovement::with('incident.pic')
+        $overdueActions = ActionImprovement::with('incident.pics')
             ->where('reminder', true)
             ->where('status', 'pending')
             ->where('due_date', '<', $today->toDateString())
@@ -58,7 +58,7 @@ class SendActionImprovementReminders extends Command
         }
 
         // 3. Overdue 7+ days — escalate to admins/team leads
-        $escalatedActions = ActionImprovement::with('incident.pic')
+        $escalatedActions = ActionImprovement::with('incident.pics')
             ->where('reminder', true)
             ->where('status', 'pending')
             ->where('due_date', '<', $today->copy()->subDays(7)->toDateString())

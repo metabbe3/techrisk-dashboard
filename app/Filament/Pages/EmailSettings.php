@@ -192,6 +192,19 @@ class EmailSettings extends Page implements HasForms
             return;
         }
 
+        // Suppressed / keyless leaves the app on the log mailer, where
+        // Mail::raw "succeeds" by writing to laravel.log — a false green.
+        if (config('mail.default') !== 'netcore') {
+            Notification::make()
+                ->danger()
+                ->title('Test email not sent')
+                ->body($this->netcoreStatus())
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
         try {
             Mail::raw('This is a test email from the TechRisk Dashboard. If you received it, Netcore delivery works.', function ($message) use ($to): void {
                 $message->to($to)->subject('TechRisk Dashboard — test email');

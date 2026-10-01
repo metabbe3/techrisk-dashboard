@@ -58,4 +58,33 @@ class UserFacingCrashersTest extends TestCase
         );
         $this->assertSame('Completed', $incident->fresh()->incident_status->value);
     }
+
+    public function test_reporting_generate_with_pic_column_renders_pic_names(): void
+    {
+        // Multi-PIC cutover: the old 'pic.name'/'pic.email' options eager-loaded
+        // the deleted pic() relation and 500'd. The PIC column is 'pic' —
+        // joined names, no relation eager-load.
+        config(['broadcasting.default' => 'log']); // admin present → notifications broadcast
+        \Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin']);
+        \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'view incidents']);
+        $user = \App\Models\User::factory()->create();
+        $user->assignRole('admin');
+        $user->givePermissionTo('view incidents');
+
+        $pic = \App\Models\User::factory()->create(['name' => 'Andi Pratama']);
+        $incident = Incident::factory()->create([
+            'severity' => 'P1',
+            'classification' => 'Incident',
+            'fund_status' => 'Non fundLoss',
+            'incident_date' => '2026-03-05 10:00:00',
+        ]);
+        $incident->pics()->attach($pic->id);
+
+        \Livewire\Livewire::actingAs($user)
+            ->test(\App\Filament\Pages\Reporting::class)
+            ->set('data.columns', ['pic'])
+            ->call('generateReport')
+            ->assertSuccessful()
+            ->assertSee('Andi Pratama');
+    }
 }

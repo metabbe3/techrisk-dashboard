@@ -86,8 +86,7 @@ class Reporting extends Page implements HasForms
                 'mtbf' => 'MTBF',
             ],
             'PIC (User)' => [
-                'pic.name' => 'Name',
-                'pic.email' => 'Email',
+                'pic' => 'PIC Names',
             ],
             'Incident Type' => [
                 'incidentType.name' => 'Name',

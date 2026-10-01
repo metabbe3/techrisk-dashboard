@@ -22,6 +22,11 @@ class NotificationScheduledCommandTest extends TestCase
     {
         parent::setUp();
 
+        // Pivot attach notifies admins inline; without this the reverb
+        // broadcast failure masked the command-level RelationNotFoundException
+        // that reminders:send-action-improvements threw on any due action.
+        config(['broadcasting.default' => 'log']);
+
         Role::firstOrCreate(['name' => 'admin']);
         Role::firstOrCreate(['name' => 'user']);
 

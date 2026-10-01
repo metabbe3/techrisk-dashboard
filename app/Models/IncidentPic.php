@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Jobs\RefreshIncidentSearch;
 use App\Notifications\AssignedAsPicNotification;
 use App\Notifications\PicAssignedNotification;
-use App\Services\Ai\RagService;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
 /**
@@ -40,37 +40,14 @@ class IncidentPic extends Pivot
                 self::notifyAdminsOfAssignment($incident, $user, $actor);
             }
 
-            $pivot->refreshSearchAndCaches();
+            RefreshIncidentSearch::dispatch($pivot->incident_id);
         });
 
         static::deleted(function (self $pivot): void {
             // No notification on PIC removal (product rule) — but search/AI
             // caches still depend on the PIC list.
-            $pivot->refreshSearchAndCaches();
+            RefreshIncidentSearch::dispatch($pivot->incident_id);
         });
-    }
-
-    /**
-     * Pivot writes fire no Incident observer — re-index the incident for AI
-     * search and drop the chat/dashboard caches here, exactly like the
-     * IncidentLabel pivot does for Outlier.
-     */
-    private function refreshSearchAndCaches(): void
-    {
-        $incident = Incident::find($this->incident_id);
-
-        if ($incident) {
-            try {
-                app(RagService::class)->indexIncident($incident);
-            } catch (\Throwable) {
-                // RAG indexing must never break an assignment save.
-            }
-        }
-
-        try {
-            app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
-        } catch (\Throwable) {
-        }
     }
 
     /**

@@ -132,6 +132,7 @@ Before editing any file below, check the "consumed by" column — a rule change 
 2. Adding a field that feeds a dashboard/AI number → it must join the observer's recalculation trigger list, or caches serve stale numbers until TTL.
 3. Changing a counting/metric rule → walk the whole surface list above; fix the shared scope, not one call site.
 4. A filter is only real if the query actually selects the column it checks (comparing a never-selected column = comparing null).
+5. After removing a relation/column, grep for its bare name as a **string** too — `'pic'`, `'pic.name'`, `with('incident.pic')`, column-key maps in forms/exports. Arrow-syntax greps (`->pic`) miss eager-load strings and array keys: PROJ-010's final review caught two shipped-green runtime breaks (a daily reminder command + the Reporting page) that were exactly this.
 
 ### Incident Form Validation Rules (2026-09-29 hardening)
 
@@ -177,7 +178,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
-- **Baseline:** 615 tests / 2,055 assertions green (2026-09-29). A change that drops this count or its assertions is a regression, not a refactor.
+- **Baseline:** 755 tests / 2,515 assertions green (2026-10-01, plus 12 environmental reverb-broadcast errors that only reproduce outside the test env). A change that drops this count or its assertions is a regression, not a refactor.
 
 ---
 

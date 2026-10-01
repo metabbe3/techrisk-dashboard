@@ -346,7 +346,7 @@ class ViewIncident extends ViewRecord
                             TextEntry::make('incident_source')
                                 ->label('Source')
                                 ->badge(),
-                            TextEntry::make('pic.name')
+                            TextEntry::make('pic_names')
                                 ->label('PIC'),
                             TextEntry::make('reported_by'),
                             TextEntry::make('checker'),

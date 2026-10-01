@@ -149,4 +149,29 @@ class ViewIncidentSimilarIncidentsTest extends TestCase
             ->test(ViewIncident::class, ['record' => (string) $source->id])
             ->assertActionHidden('detect_similar_incidents');
     }
+
+    public function test_source_assignment_section_shows_all_pic_names(): void
+    {
+        // Final-review fix: TextEntry::make('pic.name') silently rendered
+        // blank after the multi-PIC cutover (relation gone, data_get null).
+        config(['broadcasting.default' => 'log']); // attach notifies admins → broadcast
+        $source = $this->makeIncident();
+        $pic1 = \App\Models\User::factory()->create(['name' => 'Rina Wijaya']);
+        $pic2 = \App\Models\User::factory()->create(['name' => 'Budi Hartono']);
+        $source->pics()->attach([$pic1->id, $pic2->id]);
+
+        $html = Livewire::actingAs($this->viewer())
+            ->test(ViewIncident::class, ['record' => (string) $source->id])
+            ->html();
+
+        // Scope to the infolist section — the page hero also shows PIC
+        // names, which would mask a blank entry here.
+        $start = strpos($html, 'Source &amp; Assignment') ?: strpos($html, 'Source & Assignment');
+        $end = strpos($html, 'Categories &amp; Metrics') ?: strpos($html, 'Categories & Metrics');
+        $this->assertNotFalse($start, 'Source & Assignment section must render');
+        $section = substr($html, $start, $end !== false ? $end - $start : null);
+
+        $this->assertStringContainsString('Rina Wijaya', $section);
+        $this->assertStringContainsString('Budi Hartono', $section);
+    }
 }

@@ -23,7 +23,7 @@ class GroupedIncidentsExport implements WithMultipleSheets
         'business_category' => ['label' => 'Business Category', 'json' => true],
         'root_cause_category' => ['label' => 'Root Cause Category', 'json' => true],
         'responsible_team' => ['label' => 'Division / Responsible Team', 'json' => true],
-        'pic' => ['label' => 'PIC', 'json' => false, 'column' => 'pic', 'nameFrom' => 'pic.name'],
+        'pic' => ['label' => 'PIC', 'json' => false, 'column' => 'pic'],
         'severity' => ['label' => 'Severity', 'json' => false],
         'incident_type' => ['label' => 'Incident Type', 'json' => false],
         'quarter' => ['label' => 'Quarter', 'json' => false],

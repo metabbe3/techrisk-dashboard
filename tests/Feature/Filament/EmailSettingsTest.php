@@ -150,4 +150,17 @@ class EmailSettingsTest extends TestCase
         $this->assertStringContainsString('domain blocked', $html);
         $this->assertStringNotContainsString('other-uuid-2', $html);
     }
+
+    public function test_send_test_email_refuses_when_netcore_not_activated(): void
+    {
+        // Netcore suppressed/no key leaves mail.default on the log mailer —
+        // a "success" there writes to laravel.log and lies to the admin.
+        config(['mail.default' => 'log']);
+
+        Livewire::actingAs($this->manager())
+            ->test(EmailSettings::class)
+            ->set('data.test_to', 'owner@dana.id')
+            ->call('sendTestEmail')
+            ->assertNotified('Test email not sent');
+    }
 }
