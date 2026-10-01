@@ -9,6 +9,8 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Support\MailSettings;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
@@ -98,5 +100,54 @@ class EmailSettingsTest extends TestCase
             ->call('save');
 
         $this->assertNull(Setting::get('netcore_api_key'));
+    }
+
+    public function test_send_test_email_delivers_via_netcore(): void
+    {
+        config(['mail.default' => 'netcore', 'mail.mailers.netcore.api_key' => 'key-123']);
+        Http::fake(['*' => Http::response(['status' => 'success'])]);
+
+        Livewire::actingAs($this->manager())
+            ->test(EmailSettings::class)
+            ->set('data.test_to', 'owner@dana.id')
+            ->call('sendTestEmail')
+            ->assertNotified('Test email sent');
+
+        Http::assertSent(fn ($request) => str_contains($request->url(), '/v5/mail/send')
+            && $request->hasHeader('api_key', 'key-123'));
+    }
+
+    public function test_send_test_email_surfaces_the_exact_provider_error(): void
+    {
+        config(['mail.default' => 'netcore', 'mail.mailers.netcore.api_key' => 'key-123']);
+        Http::fake(['*' => Http::response(['message' => 'Sender domain not approved'], 500)]);
+
+        Livewire::actingAs($this->manager())
+            ->test(EmailSettings::class)
+            ->set('data.test_to', 'owner@dana.id')
+            ->call('sendTestEmail');
+
+        // Mounting the Notifications component consumes flash data — mount
+        // once and read both title and body from the same collection.
+        $component = new \Filament\Notifications\Livewire\Notifications;
+        $component->mount();
+        $failed = collect($component->notifications)->first(fn ($n) => $n->getTitle() === 'Test email failed');
+        $this->assertNotNull($failed, 'failure notification must appear');
+        $this->assertStringContainsString('Sender domain not approved', (string) $failed->getBody(), 'exact provider error must reach the admin');
+    }
+
+    public function test_recent_failures_panel_lists_only_netcore_failed_jobs(): void
+    {
+        $now = now()->format('Y-m-d H:i:s');
+        DB::table('failed_jobs')->insert([
+            ['uuid' => 'netcore-uuid-1', 'connection' => 'redis', 'queue' => 'default', 'payload' => '{}', 'exception' => 'Netcore request failed: HTTP 500 — {"message":"domain blocked"}', 'failed_at' => $now],
+            ['uuid' => 'other-uuid-2', 'connection' => 'redis', 'queue' => 'default', 'payload' => '{}', 'exception' => 'SomeOtherWorker exploded', 'failed_at' => $now],
+        ]);
+
+        $html = Livewire::actingAs($this->manager())->test(EmailSettings::class)->html();
+
+        $this->assertStringContainsString('netcore-uuid-1', $html);
+        $this->assertStringContainsString('domain blocked', $html);
+        $this->assertStringNotContainsString('other-uuid-2', $html);
     }
 }

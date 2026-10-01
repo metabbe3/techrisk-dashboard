@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use App\Models\Setting;
@@ -16,6 +17,9 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 
 /**
  * Email / Netcore settings. Hosts the global email kill-switch plus the
@@ -117,6 +121,28 @@ class EmailSettings extends Page implements HasForms
                             ->maxLength(100),
                     ])->columns(2),
 
+                Section::make('Send Test Email')
+                    ->description('Verify delivery end-to-end — the failure notification carries the exact provider error.')
+                    ->schema([
+                        TextInput::make('test_to')
+                            ->label('Send test email to')
+                            ->email()
+                            ->suffixAction(
+                                \Filament\Forms\Components\Actions\Action::make('sendTestEmail')
+                                    ->icon('heroicon-m-paper-airplane')
+                                    ->label('Send')
+                                    ->action(fn (EmailSettings $livewire) => $livewire->sendTestEmail())
+                            )
+                            ->columnSpan(1),
+                    ])->columns(2),
+
+                Section::make('Recent Email Failures')
+                    ->description('Last 5 queue jobs that exhausted retries with a Netcore error.')
+                    ->schema([
+                        Placeholder::make('recent_failures')
+                            ->content(fn (): string => self::renderRecentFailures()),
+                    ]),
+
                 Section::make('Incident Reminders')
                     ->description('Remind the PIC (and escalate to admins) when an incident is still open.')
                     ->schema([
@@ -149,6 +175,67 @@ class EmailSettings extends Page implements HasForms
                     ]),
             ])
             ->statePath('data');
+    }
+
+    /**
+     * Send a one-off test email through the active mailer. Failures surface
+     * the exact provider response (owner request 2026-10-01: "if error can
+     * you show the error logs?").
+     */
+    public function sendTestEmail(): void
+    {
+        $to = trim((string) ($this->data['test_to'] ?? ''));
+
+        if ($to === '') {
+            Notification::make()->danger()->title('Enter a recipient email address first.')->send();
+
+            return;
+        }
+
+        try {
+            Mail::raw('This is a test email from the TechRisk Dashboard. If you received it, Netcore delivery works.', function ($message) use ($to): void {
+                $message->to($to)->subject('TechRisk Dashboard — test email');
+            });
+        } catch (\Throwable $e) {
+            Notification::make()
+                ->danger()
+                ->title('Test email failed')
+                ->body(Str::limit($e->getMessage(), 500))
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
+        Notification::make()
+            ->success()
+            ->title('Test email sent')
+            ->body("Delivered to {$to} — check the inbox (and spam folder).")
+            ->send();
+    }
+
+    private static function renderRecentFailures(): string
+    {
+        try {
+            $rows = DB::table('failed_jobs')
+                ->where('exception', 'like', '%Netcore%')
+                ->orderByDesc('failed_at')
+                ->limit(5)
+                ->get();
+        } catch (\Throwable) {
+            return 'No failed jobs table.';
+        }
+
+        if ($rows->isEmpty()) {
+            return 'No recent Netcore failures. 🎉';
+        }
+
+        return $rows->map(fn ($row): string => sprintf(
+            '%s — %s — %s',
+            $row->failed_at,
+            $row->uuid,
+            Str::limit(trim((string) $row->exception), 300),
+        ))->implode("\n");
     }
 
     public function save(): void
