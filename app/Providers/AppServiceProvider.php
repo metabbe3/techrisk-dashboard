@@ -68,6 +68,9 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
+        // Runtime mail activation + From override from dashboard settings.
+        \App\Support\MailSettings::apply();
+
         // Serialize all dates in the app timezone (Asia/Jakarta, GMT+7) with the
         // offset, instead of Carbon's default UTC "…Z". This makes API JSON
         // datetime output match the Filament dashboard (which formats in app tz).
