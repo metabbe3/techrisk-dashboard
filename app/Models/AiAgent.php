@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\AiAgentFrequency;
@@ -30,6 +31,7 @@ class AiAgent extends Model implements Auditable
         'include_context',
         'include_memory',
         'include_documents',
+        'include_corpus',
         'depends_on_agent_id',
         'reports_to_agent_id',
         'frequency',
@@ -44,6 +46,7 @@ class AiAgent extends Model implements Auditable
         'include_context' => 'boolean',
         'include_memory' => 'boolean',
         'include_documents' => 'boolean',
+        'include_corpus' => 'boolean',
         'require_json' => 'boolean',
         'enabled' => 'boolean',
         'last_run_at' => 'datetime',

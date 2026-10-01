@@ -296,7 +296,7 @@ Owner rule 2026-10-01: an Incident/Issue tagged Label `Outlier` drops out of eve
 **Start Date:** 2026-10-01
 
 #### Description
-Owner request 2026-10-01: every incident in the current table view becomes a folder holding its full markdown report plus every attached investigation document converted to markdown; all zipped for feeding AI tools. Markdown-only zip, Incidents only (no Issues), P1–P4/X1–X4 via `ExportActionSchema::baseExportScope()` (extracted as the single source; `applyFilters()` now calls it). Unconvertible/failed documents are skipped with an in-band note in the incident's md — the corpus is honest about gaps. Builds on PROJ-003's exporter + PROJ-004's converter (cached-first, per the `ai_summarize` precedent). Completes PROJ-003's vision.
+Owner request 2026-10-01: every incident in the current table view becomes a folder holding its full markdown report plus every attached investigation document converted to markdown; all zipped for feeding AI tools. Markdown-only zip, Incidents only (no Issues), P1–P4/X1–X4 via `ExportActionSchema::baseExportScope()` (extracted as the single source; `applyFilters()` now calls it). Unconvertible/failed documents are skipped with an in-band note in the incident's md — the corpus is honest about gaps. Builds on PROJ-003's exporter + PROJ-004's converter (cached-first, per the `ai_summarize` precedent). Completes PROJ-003's vision. Content assembly now lives in `IncidentMarkdownCorpusService` (PROJ-008); the zip service is a thin orchestrator over it.
 
 #### Tasks
 - [x] `baseExportScope()` extraction + regression guard — 2026-10-01
@@ -304,6 +304,25 @@ Owner request 2026-10-01: every incident in the current table view becomes a fol
 - [x] `export_markdown_zip` header action on ListIncidents — 2026-10-01
 - [x] Docs (CLAUDE.md export architecture item 5) — 2026-10-01
 - [ ] Owner live check after deploy: Incidents → Export Markdown ZIP → zip with one folder per incident + index.md
+
+---
+
+### [PROJ-008] Incident Memory — persistent corpus for all Agents/AI
+
+**Status:** Done (code complete, awaiting prod deploy)
+**Priority:** P1
+**Start Date:** 2026-10-01
+
+#### Description
+Owner request 2026-10-01: one button holding "memory of all incidents" every Agent/AI can read, auto-updating with data changes. Implemented as a persistent corpus at `storage/app/markdown/corpus/` (`index.md` catalog + one sanitized folder per incident: full report + converted documents) built by `IncidentMarkdownCorpusService` — content assembly moved there from the zip service (byte-identical output; zip tests guard the refactor). Scope: Incidents + `baseExportScope()` (P1–P4/X1–X4; fund-status-excluded rows stay — knowledge base, not metrics). Rebuild = "Rebuild Incident Memory" button on the Agent Memory page + hourly `incidents:refresh-corpus` (stale-check: scoped count / `dashboard_cache_version` / incident+doc `updated_at`, second-precision, `>=`). AI consumption v1: `include_corpus` agent toggle injects the catalog (`## Incident catalog`, capped `ai.agents.corpus_inject_limit` 6000) into every run; `catalog()` is the long-term-memory API chat/WarRoom can adopt later. Rendered deterministically — zero AI calls, zero tokens to build; models only matter when an agent reads it.
+
+#### Tasks
+- [x] `IncidentMarkdownCorpusService` (refresh/catalog/isStale/index/folderFor/incidentFiles) + zip refactor — 2026-10-01
+- [x] `incidents:refresh-corpus {--force}` command + hourlyAt(17) schedule — 2026-10-01
+- [x] `include_corpus` migration + model + config + RunAiAgentJob catalog block — 2026-10-01
+- [x] Agent form toggle + Corpus icon column + Agent Memory rebuild button — 2026-10-01
+- [x] Docs (CLAUDE.md dependency map + cache keys) — 2026-10-01
+- [ ] Owner live check after deploy: Agent Memory → Rebuild Incident Memory → notification with count; agent with toggle → output references catalog incidents
 
 ---
 

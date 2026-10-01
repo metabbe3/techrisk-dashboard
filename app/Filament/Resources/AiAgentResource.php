@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Enums\AiAgentFrequency;
@@ -261,6 +262,9 @@ class AiAgentResource extends Resource
                         Forms\Components\Toggle::make('include_documents')
                             ->label('Include investigation documents')
                             ->helperText('Inject the extracted text of the most recent incident investigation documents into every run.'),
+                        Forms\Components\Toggle::make('include_corpus')
+                            ->label('Include incident catalog (long-term incident memory)')
+                            ->helperText('Inject one line per incident on record into every run, so the agent knows the full incident history.'),
                     ]),
 
                 Forms\Components\Section::make('Output contract')
@@ -391,6 +395,11 @@ class AiAgentResource extends Resource
                     ->label('Memory')
                     ->boolean()
                     ->tooltip('Reads and writes the shared agent memory')
+                    ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\IconColumn::make('include_corpus')
+                    ->label('Corpus')
+                    ->boolean()
+                    ->tooltip('Sees the full incident catalog (long-term incident memory)')
                     ->toggleable(isToggledHiddenByDefault: true),
                 Tables\Columns\TextColumn::make('reportsTo.name')
                     ->label('Reports to')

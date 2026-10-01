@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class RunAiAgentJobTest extends TestCase
@@ -554,5 +555,78 @@ class RunAiAgentJobTest extends TestCase
             && str_contains((string) $request->body(), '### report.pdf')
             && str_contains((string) $request->body(), 'extracted investigation content'));
         $this->assertSame(1, collect(Http::recorded())->filter(fn ($pair) => str_contains((string) $pair[0]->body(), '## Investigation documents'))->count());
+    }
+
+    public function test_include_corpus_appends_catalog_and_omits_when_off(): void
+    {
+        Storage::fake('local');
+        \App\Models\Incident::factory()->create([
+            'no' => '2040_IN_030',
+            'title' => 'Fraud payout spike',
+            'classification' => 'Incident',
+            'severity' => 'P1',
+            'incident_date' => '2040-01-15 10:00:00',
+            'stop_bleeding_at' => '2040-01-15 12:00:00',
+        ]);
+        app(\App\Services\Markdown\IncidentMarkdownCorpusService::class)->refresh();
+
+        Http::fake(['*/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => 'ok']]],
+        ])]);
+
+        $withCorpus = $this->makeAgent(['include_corpus' => true]);
+        $without = $this->makeAgent(['name' => 'No Corpus']);
+
+        (new RunAiAgentJob($withCorpus->id, $this->makeRun($withCorpus)->id))->handle(app(AiTextService::class), app(ChatContextService::class), app(AiAgentMemoryService::class));
+        (new RunAiAgentJob($without->id, $this->makeRun($without)->id))->handle(app(AiTextService::class), app(ChatContextService::class), app(AiAgentMemoryService::class));
+
+        Http::assertSent(fn ($request) => str_contains((string) $request->body(), '## Incident catalog')
+            && str_contains((string) $request->body(), '2040_IN_030')
+            && str_contains((string) $request->body(), 'Fraud payout spike'));
+        $this->assertSame(1, collect(Http::recorded())->filter(fn ($pair) => str_contains((string) $pair[0]->body(), '## Incident catalog'))->count());
+    }
+
+    public function test_include_corpus_skips_block_when_corpus_never_built(): void
+    {
+        // No refresh() — corpus has never been built. The run must still
+        // complete; the block is simply absent.
+        Http::fake(['*/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => 'ok']]],
+        ])]);
+
+        $agent = $this->makeAgent(['include_corpus' => true]);
+        $run = $this->makeRun($agent);
+
+        (new RunAiAgentJob($agent->id, $run->id))->handle(app(AiTextService::class), app(ChatContextService::class), app(AiAgentMemoryService::class));
+
+        $this->assertSame(0, collect(Http::recorded())->filter(fn ($pair) => str_contains((string) $pair[0]->body(), '## Incident catalog'))->count());
+        $this->assertSame(AiAgentRunStatus::Completed, $run->refresh()->status);
+    }
+
+    public function test_include_corpus_respects_inject_limit(): void
+    {
+        Storage::fake('local');
+        \App\Models\Incident::factory()->create([
+            'no' => '2040_IN_031',
+            'title' => 'Exploding payment gateway fraud incident',
+            'classification' => 'Incident',
+            'severity' => 'P1',
+            'incident_date' => '2040-01-16 10:00:00',
+            'stop_bleeding_at' => '2040-01-16 12:00:00',
+        ]);
+        app(\App\Services\Markdown\IncidentMarkdownCorpusService::class)->refresh();
+        config(['ai.agents.corpus_inject_limit' => 40]);
+
+        Http::fake(['*/chat/completions' => Http::response([
+            'choices' => [['message' => ['content' => 'ok']]],
+        ])]);
+
+        $agent = $this->makeAgent(['include_corpus' => true]);
+        (new RunAiAgentJob($agent->id, $this->makeRun($agent)->id))->handle(app(AiTextService::class), app(ChatContextService::class), app(AiAgentMemoryService::class));
+
+        // Catalog cut at 40 chars: the severity marker past the title is gone.
+        $body = (string) collect(Http::recorded())->first()[0]->body();
+        $this->assertStringContainsString('## Incident catalog', $body);
+        $this->assertStringNotContainsString('(P1', $body);
     }
 }

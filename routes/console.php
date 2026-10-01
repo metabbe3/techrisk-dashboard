@@ -32,6 +32,11 @@ Schedule::command('ai:dispatch-due-agents')->everyMinute()->withoutOverlapping()
 // See \App\Models\AiAgentRun::prunable().
 Schedule::command('model:prune', ['--model' => \App\Models\AiAgentRun::class])->dailyAt('02:45')->description('Prune AI agent runs older than retention');
 
+// Incident memory (long-term corpus at markdown/corpus) — rebuild when stale
+// (edits, deletes, label/version bumps, doc conversions). Cheap: markdown
+// conversions are cached-first; skips outright when the manifest is fresh.
+Schedule::command('incidents:refresh-corpus')->hourlyAt(17)->withoutOverlapping()->description('Rebuild the incident memory corpus when stale');
+
 // ---------------------------------------------------------------------------
 // Reminders, maintenance & scheduled reports.
 // Ported from the legacy App\Console\Kernel::schedule(), which this app's

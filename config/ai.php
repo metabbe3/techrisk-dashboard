@@ -334,6 +334,7 @@ return [
         'file_inject_limit' => (int) env('AI_AGENT_FILE_INJECT_LIMIT', 8000),
         'document_inject_count' => (int) env('AI_AGENT_DOCUMENT_INJECT_COUNT', 5),
         'document_inject_limit' => (int) env('AI_AGENT_DOCUMENT_INJECT_LIMIT', 6000),
+        'corpus_inject_limit' => (int) env('AI_AGENT_CORPUS_INJECT_LIMIT', 6000),
     ],
 
     'max_tokens' => [

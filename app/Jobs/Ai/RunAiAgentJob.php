@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Jobs\Ai;
 
 use App\Enums\AiAgentRunStatus;
@@ -94,6 +95,16 @@ class RunAiAgentJob implements ShouldQueue
                 $docs = $this->buildInvestigationDocsBlock((int) config('ai.agents.document_inject_count', 5), (int) config('ai.agents.document_inject_limit', 6000));
                 if ($docs !== '') {
                     $userMessage .= "\n\n".$docs;
+                }
+            }
+
+            // Long-term incident memory: the corpus catalog (one line per
+            // incident). Absent until the hourly builder's first run.
+            if ($agent->include_corpus) {
+                $catalog = app(\App\Services\Markdown\IncidentMarkdownCorpusService::class)->catalog();
+                if ($catalog !== null && $catalog !== '') {
+                    $userMessage .= "\n\n## Incident catalog (every incident on record, one line each)\n"
+                        .Str::limit($catalog, (int) config('ai.agents.corpus_inject_limit', 6000));
                 }
             }
 
