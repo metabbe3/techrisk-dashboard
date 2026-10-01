@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace App\Services\Ai;
 
 use App\Models\Incident;
+use App\Models\IncidentSimilarIncident;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
 use App\Services\Ai\Concerns\JsonExtractor;
 use App\Services\Ai\Concerns\StripsThinkingTags;
@@ -66,6 +67,52 @@ class SimilarIncidentService
 
         // Phase 3: VERIFY — REASONING-MODEL validates each candidate
         return $this->verifyPhase($sourceIncident, $thinkResult, $candidates);
+    }
+
+    /**
+     * Persist detected similar incidents for a source incident — the single
+     * home of the re-verify semantics, shared by the on-demand button, the
+     * view-page action, and the auto-detection job.
+     *
+     * Each re-detection prunes stale auto-generated rows the latest run no
+     * longer flags, while admin-dismissed rows (dismissed_by set) are
+     * preserved as history. Re-detected pairs are (re)activated — so a
+     * dismissed pair re-surfaces when detection still considers it similar.
+     *
+     * @param  array<int, array<string, mixed>>  $similar  pipeline matches or legacy results
+     */
+    public function persist(Incident $sourceIncident, array $similar): void
+    {
+        $incidentId = $sourceIncident->id;
+        $detectedIds = collect($similar)->pluck('id')->filter()->unique()->values()->all();
+
+        IncidentSimilarIncident::where('incident_id', $incidentId)
+            ->whereNull('dismissed_by') // never prune admin-dismissed rows
+            ->when(
+                $detectedIds,
+                fn ($q) => $q->whereNotIn('similar_incident_id', $detectedIds),
+                fn ($q) => $q->whereNotNull('id'), // empty detection -> clear all auto rows
+            )
+            ->delete();
+
+        foreach ($similar as $match) {
+            $id = $match['id'] ?? null;
+            if (! $id) {
+                continue;
+            }
+
+            IncidentSimilarIncident::updateOrCreate(
+                ['incident_id' => $incidentId, 'similar_incident_id' => $id],
+                [
+                    'similarity' => $match['similarity'] ?? null,
+                    'match_type' => $match['match_type'] ?? null,
+                    'reasoning' => $match['reason'] ?? $match['reasoning'] ?? null,
+                    'dimensions' => $match['dimensions'] ?? null,
+                    'dismissed_at' => null, // re-verify re-surfaces dismissed pairs
+                    'dismissed_by' => null,
+                ]
+            );
+        }
     }
 
     /**

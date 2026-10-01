@@ -6,7 +6,6 @@ namespace App\Http\Controllers\Ai;
 use App\Enums\IncidentClassification;
 use App\Http\Controllers\Controller;
 use App\Models\Incident;
-use App\Models\IncidentSimilarIncident;
 use App\Models\RagDocument;
 use App\Services\Ai\AiTextService;
 use App\Services\Ai\RagService;
@@ -115,7 +114,7 @@ class DetectSimilarController extends Controller
         ]);
 
         $similar = $result->toApiResponse();
-        $this->persistSimilar($incident->id, $similar);
+        $this->similarIncidentService->persist($incident, $similar);
 
         return $this->successResponse([
             'success' => true,
@@ -154,8 +153,10 @@ class DetectSimilarController extends Controller
 
         $excludeId = $validated['exclude_id'] ?? null;
         if ($excludeId) {
-            $this->persistSimilar((int) $excludeId, $result['similar'] ?? []);
             $source = Incident::find($excludeId);
+            if ($source) {
+                $this->similarIncidentService->persist($source, $result['similar'] ?? []);
+            }
 
             return $this->successResponse([
                 'success' => true,
@@ -167,47 +168,6 @@ class DetectSimilarController extends Controller
             'success' => true,
             'similar' => $result['similar'],
         ]);
-    }
-
-    /**
-     * Persist detected similar incidents for a source incident.
-     *
-     * Re-verify semantics: each re-detection prunes stale auto-generated rows
-     * the latest run no longer flags, while admin-dismissed rows (dismissed_by
-     * set) are preserved as history. Re-detected pairs are (re)activated — so
-     * a dismissed pair re-surfaces when Find Similar still considers it similar.
-     */
-    private function persistSimilar(int $incidentId, array $similar): void
-    {
-        $detectedIds = collect($similar)->pluck('id')->filter()->unique()->values()->all();
-
-        IncidentSimilarIncident::where('incident_id', $incidentId)
-            ->whereNull('dismissed_by') // never prune admin-dismissed rows
-            ->when(
-                $detectedIds,
-                fn ($q) => $q->whereNotIn('similar_incident_id', $detectedIds),
-                fn ($q) => $q->whereNotNull('id'), // empty detection -> clear all auto rows
-            )
-            ->delete();
-
-        foreach ($similar as $match) {
-            $id = $match['id'] ?? null;
-            if (! $id) {
-                continue;
-            }
-
-            IncidentSimilarIncident::updateOrCreate(
-                ['incident_id' => $incidentId, 'similar_incident_id' => $id],
-                [
-                    'similarity' => $match['similarity'] ?? null,
-                    'match_type' => $match['match_type'] ?? null,
-                    'reasoning' => $match['reason'] ?? null,
-                    'dimensions' => $match['dimensions'] ?? null,
-                    'dismissed_at' => null, // re-verify re-surfaces dismissed pairs
-                    'dismissed_by' => null,
-                ]
-            );
-        }
     }
 
     private function ensureIndexed(array $validated): void

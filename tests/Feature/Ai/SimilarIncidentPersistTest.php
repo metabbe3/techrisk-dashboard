@@ -179,6 +179,37 @@ class SimilarIncidentPersistTest extends TestCase
         $this->assertStringContainsString('match_type', $html, 'card must render a match-type badge');
     }
 
+    public function test_persist_via_service_creates_prunes_and_preserves_dismissed(): void
+    {
+        // B1: the re-verify semantics live on the service (single home) so the
+        // auto-detection job and the on-demand button share them exactly.
+        $source = $this->makeIncident();
+        $detected = $this->makeIncident(['title' => 'Still similar']);
+        $dismissed = $this->makeIncident(['title' => 'Admin-dismissed']);
+        $stale = $this->makeIncident(['title' => 'Stale auto row']);
+
+        IncidentSimilarIncident::create([
+            'incident_id' => $source->id,
+            'similar_incident_id' => $dismissed->id,
+            'similarity' => 0.5,
+            'dismissed_at' => now(),
+            'dismissed_by' => $this->user->id,
+        ]);
+        IncidentSimilarIncident::create([
+            'incident_id' => $source->id,
+            'similar_incident_id' => $stale->id,
+            'similarity' => 0.4,
+        ]);
+
+        app(\App\Services\Ai\SimilarIncidentService::class)->persist($source, [
+            ['id' => $detected->id, 'similarity' => 0.8, 'match_type' => 'deep', 'reason' => 'same root cause', 'dimensions' => []],
+        ]);
+
+        $this->assertTrue(IncidentSimilarIncident::where('incident_id', $source->id)->where('similar_incident_id', $detected->id)->exists(), 'detected match must be created');
+        $this->assertTrue(IncidentSimilarIncident::where('incident_id', $source->id)->where('similar_incident_id', $dismissed->id)->whereNotNull('dismissed_at')->exists(), 'admin-dismissed history must survive');
+        $this->assertFalse(IncidentSimilarIncident::where('incident_id', $source->id)->where('similar_incident_id', $stale->id)->exists(), 'stale auto row must be pruned');
+    }
+
     public function test_index_returns_active_matches_with_row_id(): void
     {
         $source = $this->makeIncident();

@@ -6,6 +6,7 @@ namespace App\Observers;
 use App\Enums\Severity;
 use App\Events\IncidentCreatedEvent;
 use App\Events\IncidentEscalatedEvent;
+use App\Jobs\Ai\DetectSimilarIncidentsJob;
 use App\Jobs\CalculateIncidentMetrics;
 use App\Jobs\DetectRecurrenceJob;
 use App\Models\Incident;
@@ -33,6 +34,10 @@ class IncidentObserver
 
         // Dispatch recurrence detection (delayed to allow categories/labels to be saved)
         DetectRecurrenceJob::dispatch($incident)->delay(now()->addSeconds(30));
+
+        // Auto-detect similar incidents with scores (owner 2026-10-01) — delayed
+        // so the save + relations settle; runs the same pipeline as the button.
+        DetectSimilarIncidentsJob::dispatch($incident)->delay(now()->addMinutes(2));
 
         // Notify PIC if assigned during creation
         if ($incident->pic_id && $incident->pic) {
