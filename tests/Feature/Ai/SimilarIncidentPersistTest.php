@@ -96,6 +96,89 @@ class SimilarIncidentPersistTest extends TestCase
         return json_encode(['verified' => $matches]);
     }
 
+    /**
+     * Gateway routing for the fallback tests: the pipeline's THINK phase
+     * fails (500) while the legacy single-call prompt succeeds and returns
+     * one match — so any persisted row proves the legacy path ran.
+     */
+    private function fakeThinkFailsLegacySucceeds(Incident $candidate): void
+    {
+        Http::fake(function (Request $request) use ($candidate) {
+            $system = $request->data()['messages'][0]['content'] ?? '';
+
+            if (str_contains($system, 'deep incident analysis engine')) {
+                return Http::response([], 500);
+            }
+
+            if (str_contains($system, 'incident similarity analyst')) {
+                return Http::response($this->gatewayBody(json_encode([
+                    'similar' => [
+                        ['incident_no' => $candidate->no, 'similarity' => 0.75, 'reason' => 'legacy match'],
+                    ],
+                ])), 200);
+            }
+
+            return Http::response($this->gatewayBody('{}'), 200);
+        });
+
+        $this->mock(RagService::class, function ($mock) {
+            $mock->shouldReceive('search')->andReturn(collect());
+            $mock->shouldReceive('indexIncident');
+        });
+    }
+
+    public function test_pipeline_failure_returns_error_instead_of_silent_legacy_fallback(): void
+    {
+        // RC4: the loose legacy prompt (counts category overlap as a match)
+        // used to run silently whenever the pipeline hiccuped — the owner saw
+        // its irrelevant matches with no indication. Default: surface the error.
+        config(['ai.similarity.legacy_fallback' => false]);
+
+        $source = $this->makeIncident();
+        $candidate = $this->makeIncident(['title' => 'Legacy would match this']);
+        $this->fakeThinkFailsLegacySucceeds($candidate);
+
+        $res = $this->actingAs($this->user)->postJson('/admin/ai/detect-similar', [
+            'exclude_id' => $source->id,
+            'summary' => 'Payment gateway DB pool exhaustion',
+        ]);
+
+        $res->assertOk();
+        $this->assertFalse($res->json('data.success'), 'pipeline failure must not report success');
+        $this->assertNotEmpty($res->json('data.error'), 'the pipeline error must reach the client');
+        $this->assertSame(0, IncidentSimilarIncident::where('incident_id', $source->id)->count(), 'loose legacy matches must not be persisted');
+    }
+
+    public function test_legacy_fallback_still_available_when_explicitly_enabled(): void
+    {
+        config(['ai.similarity.legacy_fallback' => true]);
+
+        $source = $this->makeIncident();
+        $candidate = $this->makeIncident(['title' => 'Legacy would match this']);
+        $this->fakeThinkFailsLegacySucceeds($candidate);
+
+        $res = $this->actingAs($this->user)->postJson('/admin/ai/detect-similar', [
+            'exclude_id' => $source->id,
+            'summary' => 'Payment gateway DB pool exhaustion',
+        ]);
+
+        $res->assertOk();
+        $this->assertTrue($res->json('data.success'));
+        $this->assertSame(1, IncidentSimilarIncident::where('incident_id', $source->id)
+            ->where('similar_incident_id', $candidate->id)->count(), 'enabled fallback must persist its match');
+    }
+
+    public function test_similar_card_displays_match_type_badge(): void
+    {
+        // RC5: 'deep' (same root cause) vs 'thematic' (related, different cause)
+        // is stored but was never shown — thematic junk at 65% read as authoritative.
+        config(['ai.api_key' => 'test-key', 'ai.base_url' => 'https://gateway.test']);
+
+        $html = view('filament.forms.components.ai-similar-incidents')->render();
+
+        $this->assertStringContainsString('match_type', $html, 'card must render a match-type badge');
+    }
+
     public function test_index_returns_active_matches_with_row_id(): void
     {
         $source = $this->makeIncident();

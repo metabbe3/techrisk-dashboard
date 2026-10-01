@@ -84,6 +84,19 @@ class DetectSimilarController extends Controller
         $result = $this->similarIncidentService->analyze($incident);
 
         if (! $result->success) {
+            // The legacy prompt is far looser (category overlap counts as a
+            // match) — running it silently on every pipeline hiccup is where
+            // the owner's "irrelevant matches" came from. Fail loudly unless
+            // explicitly opted in.
+            if (! config('ai.similarity.legacy_fallback', false)) {
+                Log::warning('[DetectSimilar] Pipeline failed', ['error' => $result->error]);
+
+                return $this->errorResponseWithData($result->error, 200, [
+                    'success' => false,
+                    'error' => $result->error,
+                ]);
+            }
+
             Log::warning('[DetectSimilar] Pipeline failed, falling back to legacy', [
                 'error' => $result->error,
             ]);

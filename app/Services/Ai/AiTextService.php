@@ -702,8 +702,12 @@ class AiTextService
             $labels = collect($inc['labels'] ?? [])->pluck('name')->implode(', ');
             $userMessage .= '   Labels: '.($labels ?: 'None')."\n";
 
-            $userMessage .= '   Severity: '.($inc['severity'] ?? 'N/A');
-            $userMessage .= ' | Type: '.($inc['incident_type'] ?? 'N/A');
+            // EnumCast attributes stay enum objects through toArray() —
+            // stringify before concatenating or this 500s (custom cast has
+            // no array serialization).
+            $stringify = fn ($v) => $v instanceof \BackedEnum ? $v->value : ($v ?? 'N/A');
+            $userMessage .= '   Severity: '.$stringify($inc['severity'] ?? null);
+            $userMessage .= ' | Type: '.$stringify($inc['incident_type'] ?? null);
             $userMessage .= ' | Date: '.($inc['incident_date'] ?? 'N/A')."\n";
         }
 

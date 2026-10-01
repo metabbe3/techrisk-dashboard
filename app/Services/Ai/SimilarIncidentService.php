@@ -4,11 +4,9 @@ declare(strict_types=1);
 namespace App\Services\Ai;
 
 use App\Models\Incident;
-use App\Models\RagDocument;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
 use App\Services\Ai\Concerns\JsonExtractor;
 use App\Services\Ai\Concerns\StripsThinkingTags;
-use App\Services\IncidentFormatter;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Http;
@@ -188,6 +186,17 @@ class SimilarIncidentService
             $scores[$id] = ($rag * $ragWeight) + (min($boostSum, 1.0) * $structWeight);
         }
 
+        // Taxonomy twins (same team/category, zero textual evidence) must not
+        // crowd VERIFY when RAG produced real hits — structured-only retrieval
+        // is a fallback for when RAG finds nothing, not a parallel entrance.
+        if ($ragScores !== []) {
+            $scores = array_filter(
+                $scores,
+                fn ($id) => (float) ($ragScores[$id] ?? 0.0) > 0.0,
+                ARRAY_FILTER_USE_KEY
+            );
+        }
+
         arsort($scores);
         $topIds = array_slice(array_keys($scores), 0, $maxCandidates);
 
@@ -265,6 +274,7 @@ class SimilarIncidentService
         $maxVerify = config('ai.similarity.max_verify_candidates', 20);
         $minSimilarity = config('ai.similarity.min_similarity', 0.4);
         $maxResults = config('ai.similarity.max_results', 10);
+        $contextChars = (int) config('ai.similarity.verify_context_chars', 2500);
 
         $systemPrompt = config('ai.prompts.similarity_verify.system');
 
@@ -282,23 +292,18 @@ class SimilarIncidentService
             'dropped_at_verify' => $candidates->count() - $topCandidates->count(),
         ]);
 
-        $contextMap = RagDocument::whereIn('incident_id', $topCandidates->pluck('id'))
-            ->pluck('context_content', 'incident_id');
-
         $userMessage = "## Source Incident Analysis\n";
         $userMessage .= json_encode($thinkResult, JSON_PRETTY_PRINT)."\n\n";
-        $userMessage .= "## Candidate Incidents (verify each, ranked by retrieval signal)\n\n";
+        $userMessage .= "## Candidate Incidents (verify each)\n\n";
 
         foreach ($topCandidates as $i => $candidate) {
-            $rank = $i + 1;
-            $score = number_format((float) ($candidate->retrieval_score ?? 0), 2);
-            $userMessage .= "{$rank}. [{$candidate->no}] {$candidate->title}";
-            $userMessage .= " · Rank #{$rank} · retrieval {$score} · ID: {$candidate->id}\n";
+            $userMessage .= ($i + 1).". [{$candidate->no}] {$candidate->title}";
+            $userMessage .= " · ID: {$candidate->id}\n";
 
-            // Prefer the prebuilt RAG compact context (richer than truncated fields);
-            // fall back to a fresh compact render when no RAG doc exists.
-            $context = $contextMap->get($candidate->id) ?? IncidentFormatter::formatCompact($candidate);
-            $userMessage .= Str::limit($context, 800)."\n\n";
+            // Fresh compact report — same content the incident memory corpus
+            // holds. RAG scores are normalized relatively (best-of-pile = 1.0
+            // even when junk), so they are never shown to the model.
+            $userMessage .= Str::limit(app(IncidentMarkdownExporter::class)->generateCompact($candidate), $contextChars)."\n\n";
         }
 
         $userMessage .= 'Verify each candidate against the source incident analysis. Return ONLY valid JSON.';
@@ -488,7 +493,10 @@ class SimilarIncidentService
             $userMessage .= ($i + 1).". [{$match['no']}] {$match['title']}";
             $userMessage .= " (prior similarity {$match['similarity']}, ID {$match['id']})\n";
             $userMessage .= 'Previous verifier said: "'.Str::limit($match['reasoning'] ?? '', 240)."\"\n";
-            $userMessage .= Str::limit($this->buildIncidentContext($candidate), 1200)."\n\n";
+            $userMessage .= Str::limit(
+                app(IncidentMarkdownExporter::class)->generateCompact($candidate),
+                (int) config('ai.similarity.verify_context_chars', 2500)
+            )."\n\n";
         }
 
         $userMessage .= 'For EACH numbered candidate decide TRUE similar incident or FALSE POSITIVE. ';

@@ -172,6 +172,7 @@
                                 <div style="display:flex;align-items:center;gap:6px;">
                                     <a :href="'/admin/incidents/' + inc.id" target="_blank" style="font-size:13px;font-weight:600;color:#0d9488;text-decoration:none;" x-text="inc.no"></a>
                                     <span x-show="inc.severity" style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;color:#fff;" :style="'background:' + severityColor(inc.severity)" x-text="inc.severity"></span>
+                                    <span x-show="inc.match_type" style="font-size:10px;font-weight:600;padding:1px 6px;border-radius:3px;color:#fff;" :style="'background:' + (inc.match_type === 'deep' ? '#dc2626' : '#6b7280')" :title="inc.match_type === 'deep' ? 'Same root cause mechanism' : 'Related theme, different cause'" x-text="(inc.match_type || '').charAt(0).toUpperCase() + (inc.match_type || '').slice(1)"></span>
                                     <span x-show="inc.incident_status" style="font-size:10px;color:var(--tr-muted-ink);" x-text="inc.incident_status"></span>
                                 </div>
                                 <div style="display:flex;align-items:center;gap:6px;">

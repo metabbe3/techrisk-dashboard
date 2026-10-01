@@ -409,6 +409,16 @@ return [
         'lookback_months' => (int) env('AI_SIMILARITY_LOOKBACK_MONTHS', 24),
         'queue' => env('AI_SIMILARITY_QUEUE', 'default'),
 
+        // Verifier context budget per candidate. The verifier's rejection
+        // rules ("no superficial category overlap") need root-cause/timeline
+        // substance, not a title + summary sliver.
+        'verify_context_chars' => (int) env('AI_SIMILARITY_VERIFY_CONTEXT_CHARS', 2500),
+
+        // Off by default (owner 2026-10-01 "not accurate"): the loose legacy
+        // single-call prompt (counts category overlap as a match) only runs
+        // when explicitly enabled; pipeline failures surface as errors.
+        'legacy_fallback' => (bool) env('AI_SIMILARITY_LEGACY_FALLBACK', false),
+
         // Hybrid retrieval fusion (FIND phase): RAG FULLTEXT is the primary ranked
         // retriever; structured dimensions add capped boosts. Candidates are then
         // ranked by the fused score so VERIFY always sees the strongest matches.

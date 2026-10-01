@@ -127,7 +127,73 @@ class SimilarIncidentServiceTest extends TestCase
         $this->assertNotFalse($posLow);
         $this->assertLessThan($posMid, $posHigh, 'highest-scoring candidate must rank before the mid one');
         $this->assertLessThan($posLow, $posMid, 'mid candidate must rank before the lowest one');
-        $this->assertStringContainsString('Rank #1', $body);
+    }
+
+    public function test_verify_candidate_context_carries_compact_report_substance(): void
+    {
+        // RC1: the verifier used to see ~800 chars (title + summary sliver) —
+        // its own "reject superficial category overlap" rules can't judge
+        // substance it never sees. Candidates now get the compact report
+        // (## Summary / ## Root Cause sections), capped by config.
+        $source = $this->makeIncident();
+        $candidate = $this->makeIncident([
+            'title' => 'Payment gateway DB pool exhaustion',
+            'summary' => str_repeat('Payment API returned 504 under load. ', 20),
+            'root_cause' => str_repeat('Connection pool exhausted at 200 sessions. ', 25)
+                .'UNIQUE_TAIL_MARKER_9F3A', // sits well past the old 800-char cap
+        ]);
+
+        $run = $this->runPipeline($source, collect([$this->ragHit($candidate->id, 0.9)]), [
+            'think' => '{}',
+            'verify' => '{"verified":[]}',
+        ]);
+
+        $body = $run->requests['verify'][0]->data()['messages'][1]['content'];
+        $this->assertStringContainsString('## Root Cause', $body, 'verifier must receive the root-cause section');
+        $this->assertStringContainsString('## Summary', $body, 'verifier must receive the summary section');
+        $this->assertStringContainsString(
+            'UNIQUE_TAIL_MARKER_9F3A',
+            $body,
+            'candidate context must not be truncated at the old 800-char sliver',
+        );
+    }
+
+    public function test_verify_message_does_not_reveal_retrieval_signal(): void
+    {
+        // RC2: RAG scores are normalized relatively (best-of-pile → 1.0 even
+        // when junk) — showing "Rank #N · retrieval X" anchors the verifier to
+        // an inflated signal. Ordering stays internal; the number is hidden.
+        $source = $this->makeIncident();
+        $candidate = $this->makeIncident(['title' => 'Payment gateway DB pool exhaustion']);
+
+        $run = $this->runPipeline($source, collect([$this->ragHit($candidate->id, 0.97)]), [
+            'think' => '{}',
+            'verify' => '{"verified":[]}',
+        ]);
+
+        $body = $run->requests['verify'][0]->data()['messages'][1]['content'];
+        $this->assertStringNotContainsString('retrieval', $body);
+        $this->assertStringNotContainsString('Rank #', $body);
+        $this->assertStringContainsString("ID: {$candidate->id}", $body, 'candidate id marker must survive');
+    }
+
+    public function test_structured_only_taxonomy_twin_is_dropped_when_rag_returned_hits(): void
+    {
+        // RC3: same incident_source + same team entered VERIFY with zero
+        // textual evidence. When RAG found real hits, structured-only twins
+        // must not reach the verifier.
+        $source = $this->makeIncident(['incident_source' => 'Internal']);
+        $twin = $this->makeIncident(['title' => 'Org twin, different problem', 'incident_source' => 'Internal']);
+        $textual = $this->makeIncident(['title' => 'Payment gateway DB pool exhaustion']);
+
+        $run = $this->runPipeline($source, collect([$this->ragHit($textual->id, 0.9)]), [
+            'think' => '{}',
+            'verify' => '{"verified":[]}',
+        ]);
+
+        $body = $run->requests['verify'][0]->data()['messages'][1]['content'];
+        $this->assertStringContainsString("ID: {$textual->id}", $body, 'RAG-backed candidate must reach verify');
+        $this->assertStringNotContainsString("ID: {$twin->id}", $body, 'structured-only twin must be dropped when RAG has results');
     }
 
     public function test_verify_rejects_matches_below_min_similarity_threshold(): void
