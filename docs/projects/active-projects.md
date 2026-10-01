@@ -327,6 +327,25 @@ Owner request 2026-10-01: one button holding "memory of all incidents" every Age
 
 ---
 
+### [PROJ-009] Similar Incidents (accurate + automatic) + Retro generation
+
+**Status:** Done (code complete, awaiting prod deploy)
+**Priority:** P1
+**Start Date:** 2026-10-01
+
+#### Description
+Owner request 2026-10-01: similar-incident detection "is not accurate" (irrelevant matches on the incident pages), must appear automatically with a score on every new incident, plus on-demand detection and AI retro drafting ("Restro") using the incident memory. Root causes found and fixed (all in `SimilarIncidentService`): RC1 verify saw only 800 chars/candidate → now the full `generateCompact()` report capped `ai.similarity.verify_context_chars` (2500); RC2 verify message anchored on junk RAG scores ("Rank #N · retrieval X") → removed; RC3 structured-only taxonomy twins entered verify with zero textual evidence → dropped when RAG has hits; RC4 any pipeline hiccup silently fell back to the loose legacy single-call prompt → now opt-in (`ai.similarity.legacy_fallback`, default false; legacy-path enum crash fixed too); RC5 `match_type` stored but never displayed → Deep/Thematic badge on edit card + view section. Auto-detection: `IncidentObserver::created` dispatches `DetectSimilarIncidentsJob` (2-min delay, isAvailable-gated) → `analyze()` + `persist()` (persist extracted from the controller as the single home of re-verify semantics: prune stale auto rows, keep admin-dismissed, re-activate re-detected). View page: "Similar Incidents" section after Root Cause Analysis (link/severity/status/similarity %/badge/reason, hint when empty) + Detect Similar header action. Retro: `generate_retro` action stores `retro_markdown`/`retro_generated_at`/`retro_model` (`PostMortemService::generateAsMarkdown()` over the untouched `generate()` array; null → error notification) + Retrospective section rendering markdown. **Prod note: the retro_* migration is an owner-only guardrail.**
+
+#### Tasks
+- [x] Part A accuracy fixes A1–A5 (compact verify context, anchor removal, taxonomy-twin filter, opt-in legacy fallback, match-type badge) — 2026-10-01
+- [x] Part B persist() extraction + auto-detect job off the observer — 2026-10-01
+- [x] Part C ViewIncident Similar Incidents section + Detect Similar action — 2026-10-01
+- [x] Part D retro columns + generateAsMarkdown + action + section — 2026-10-01
+- [x] Part E CLAUDE.md dependency map (SimilarIncidentService + PostMortemService rows) + this entry — 2026-10-01
+- [ ] Owner live check after deploy: known repeat incident → Detect Similar → reasons cite root-cause substance + Deep/Thematic badges; new incident → section auto-populates ~2 min later; Generate Retro → section + PDF
+
+---
+
 ---
 
 ## Completed Projects
