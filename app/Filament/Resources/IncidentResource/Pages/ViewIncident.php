@@ -9,6 +9,7 @@ use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Resources\IncidentResource;
 use App\Notifications\IncidentNotDoneReminder;
+use App\Services\Ai\SimilarIncidentService;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use Filament\Actions;
 use Filament\Infolists\Components\Grid;
@@ -83,6 +84,38 @@ class ViewIncident extends ViewRecord
                         ->body("Email queued for {$incident->pic->email}.")
                         ->send();
                 }),
+            Actions\Action::make('detect_similar_incidents')
+                ->label('Detect Similar')
+                ->icon('heroicon-o-magnifying-glass-circle')
+                ->color('primary')
+                ->requiresConfirmation()
+                ->modalHeading('Detect similar incidents')
+                ->modalDescription('AI runs the full pipeline (think → find → verify → double-check). This may take up to a minute.')
+                ->modalSubmitActionLabel('Detect')
+                ->visible(fn (): bool => app(SimilarIncidentService::class)->isAvailable())
+                ->action(function () {
+                    $incident = $this->getRecord();
+                    $service = app(SimilarIncidentService::class);
+                    $result = $service->analyze($incident);
+
+                    if (! $result->success) {
+                        Notification::make()
+                            ->danger()
+                            ->title('Detection failed')
+                            ->body($result->error)
+                            ->send();
+
+                        return;
+                    }
+
+                    $service->persist($incident, $result->matches);
+
+                    Notification::make()
+                        ->success()
+                        ->title('Similar incidents detected')
+                        ->body(count($result->matches).' match(es) found — the list below is updated.')
+                        ->send();
+                }),
             Actions\Action::make('generate_post_mortem')
                 ->label('Post-Mortem PDF')
                 ->icon('heroicon-o-document-text')
@@ -155,6 +188,10 @@ class ViewIncident extends ViewRecord
                             ->separator(','),
                     ])
                     ->collapsible()
+                    ->columnSpanFull(),
+
+                ViewEntry::make('similar_incidents')
+                    ->view('filament.resources.incident-resource.pages.similar-incidents')
                     ->columnSpanFull(),
 
                 Section::make('Incident Timeline & Chronology')
