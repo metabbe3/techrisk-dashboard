@@ -229,7 +229,8 @@ class WebRouteTest extends TestCase
         Storage::fake('public');
         $user = $this->createUserWithPermission('view incidents');
 
-        $incident = Incident::factory()->create(['pic_id' => $user->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($user->id);
         $document = $this->createEncryptedDocument('pic_report.pdf', $incident);
 
         $response = $this->actingAs($user)->get("/documents/{$document->id}/download");
@@ -249,7 +250,8 @@ class WebRouteTest extends TestCase
         $user = $this->createUserWithPermission('view incidents');
         $otherUser = User::factory()->create();
 
-        $incident = Incident::factory()->create(['pic_id' => $otherUser->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($otherUser->id);
         $document = InvestigationDocument::factory()->create([
             'incident_id' => $incident->id,
             'file_path' => 'documents/report.pdf',

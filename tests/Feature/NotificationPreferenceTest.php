@@ -41,7 +41,8 @@ class NotificationPreferenceTest extends TestCase
     {
         Notification::fake();
 
-        $incident = Incident::factory()->create(['pic_id' => $this->user->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->user->id);
 
         $this->user->notify(new \App\Notifications\AssignedAsPicNotification($incident));
 
@@ -61,7 +62,8 @@ class NotificationPreferenceTest extends TestCase
             'database_incident_assignment' => false,
         ]);
 
-        $incident = Incident::factory()->create(['pic_id' => $this->user->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->user->id);
 
         $this->user->notify(new \App\Notifications\AssignedAsPicNotification($incident));
 

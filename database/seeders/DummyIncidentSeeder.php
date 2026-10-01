@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Models\Label;
-use App\Models\StatusUpdate;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
@@ -213,7 +212,7 @@ class DummyIncidentSeeder extends Seeder
                     'title' => $template[0],
                     'detail' => $template[1],
                     'due_date' => Carbon::parse($incident->incident_date)->addWeeks(rand(2, 8))->format('Y-m-d'),
-                    'pic_email' => [$incident->pic?->email ?? 'admin@techrisk.com'],
+                    'pic_email' => ($incident->pics->pluck('email')->all() ?: ['admin@techrisk.com']),
                     'reminder' => true,
                     'reminder_frequency' => $j === 0 ? 'daily' : 'weekly',
                     'status' => $incident->incident_status === 'Completed' ? (rand(0, 1) ? 'done' : 'pending') : 'pending',
@@ -329,7 +328,6 @@ class DummyIncidentSeeder extends Seeder
             'entry_date_tech_risk' => $incidentDate->copy()->addHours(rand(0, 24)),
             'discovered_at' => $incidentDate,
             'stop_bleeding_at' => $stopBleedingAt,
-            'pic_id' => $pic->id,
             'reported_by' => $pic->name,
             'potential_fund_loss' => $potentialLoss,
             'fund_loss' => $fundLoss,
@@ -341,6 +339,7 @@ class DummyIncidentSeeder extends Seeder
             'root_cause_category' => $rootCauseCategory ? [$rootCauseCategory] : null,
             'responsible_team' => $responsibleTeam ? [$responsibleTeam] : null,
         ]);
+        $incident->pics()->sync([$pic->id]);
 
         // Attach matching label
         $label = Label::where('name', $labelKeyword)->first();

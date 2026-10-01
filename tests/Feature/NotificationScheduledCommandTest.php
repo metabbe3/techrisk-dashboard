@@ -37,13 +37,14 @@ class NotificationScheduledCommandTest extends TestCase
         return DB::table('notifications')
             ->where('notifiable_id', $user->id)
             ->where('notifiable_type', User::class)
-            ->where('data', 'like', '%"type":"' . $type . '"%')
+            ->where('data', 'like', '%"type":"'.$type.'"%')
             ->count();
     }
 
     public function test_reminder_command_sends_due_soon_notification(): void
     {
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         ActionImprovement::factory()->create([
             'incident_id' => $incident->id,
@@ -61,7 +62,8 @@ class NotificationScheduledCommandTest extends TestCase
 
     public function test_reminder_command_sends_overdue_notification(): void
     {
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         ActionImprovement::factory()->create([
             'incident_id' => $incident->id,
@@ -79,7 +81,8 @@ class NotificationScheduledCommandTest extends TestCase
 
     public function test_reminder_command_escalates_7_day_overdue_to_admin(): void
     {
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         ActionImprovement::factory()->create([
             'incident_id' => $incident->id,
@@ -101,7 +104,8 @@ class NotificationScheduledCommandTest extends TestCase
 
     public function test_reminder_command_skips_completed_items(): void
     {
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         ActionImprovement::factory()->create([
             'incident_id' => $incident->id,
@@ -119,7 +123,8 @@ class NotificationScheduledCommandTest extends TestCase
 
     public function test_weekly_digest_sends_to_admins_only(): void
     {
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         ActionImprovement::factory()->create([
             'incident_id' => $incident->id,

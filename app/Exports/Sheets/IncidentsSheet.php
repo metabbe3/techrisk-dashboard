@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Exports\Sheets;
 
 use Illuminate\Support\Arr;
@@ -25,7 +26,8 @@ class IncidentsSheet implements FromCollection, WithHeadings, WithTitle
         return $this->incidents->map(function ($incident) {
             $row = [];
             foreach (array_keys($this->headings) as $columnKey) {
-                $value = Arr::get($incident, $columnKey);
+                // Multi-PIC: the pic column is joined names, not a relation id.
+                $value = $columnKey === 'pic' ? $incident->pic_names : Arr::get($incident, $columnKey);
                 if (is_array($value)) {
                     $value = implode(', ', $value);
                 }

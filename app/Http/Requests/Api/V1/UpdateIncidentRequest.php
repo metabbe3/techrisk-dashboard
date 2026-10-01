@@ -31,7 +31,9 @@ class UpdateIncidentRequest extends ApiFormRequest
             'stop_bleeding_at' => ['nullable', 'date'],
             'incident_date' => ['date'],
             'entry_date_tech_risk' => ['date'],
-            'pic_id' => ['nullable', 'exists:users,id'],
+            'pic_id' => ['nullable', 'exists:users,id'], // legacy single-PIC, maps onto pic_ids
+            'pic_ids' => ['nullable', 'array'],
+            'pic_ids.*' => ['integer', 'exists:users,id'],
             'reported_by' => ['nullable', 'string'],
             'third_party_client' => ['nullable', 'string'],
             'potential_fund_loss' => ['nullable', 'numeric'],

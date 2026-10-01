@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Livewire;
 
 use App\Enums\FundStatus;
@@ -346,13 +347,13 @@ class IncidentKanbanBoard extends Component
 
         $query->select([
             'id', 'no', 'title', 'severity', 'incident_status',
-            'pic_id', 'incident_date', 'fund_status',
+            'incident_date', 'fund_status',
             'potential_fund_loss', 'recovered_fund', 'fund_loss',
             'summary', 'incident_type', 'incident_category',
             'business_category', 'root_cause_category', 'responsible_team',
             'classification',
         ])
-            ->with(['pic', 'latestStatusUpdate', 'labels', 'incidentType'])
+            ->with(['pics', 'latestStatusUpdate', 'labels', 'incidentType'])
             ->orderByRaw(Severity::fieldOrderExpression('severity'))
             ->orderBy('incident_date', 'desc')
             ->limit(200);
@@ -381,7 +382,7 @@ class IncidentKanbanBoard extends Component
         }
 
         if (! empty($this->picId)) {
-            $query->whereIn('pic_id', $this->picId);
+            $query->whereHas('pics', fn (Builder $q) => $q->whereIn('users.id', $this->picId));
         }
 
         if (strlen($this->searchQuery) >= 2) {
@@ -392,7 +393,7 @@ class IncidentKanbanBoard extends Component
         }
 
         if ($this->assignedToMe) {
-            $query->where('pic_id', auth()->id());
+            $query->whereHas('pics', fn (Builder $q) => $q->where('users.id', auth()->id()));
         }
 
         if ($this->p1Only) {
@@ -400,7 +401,7 @@ class IncidentKanbanBoard extends Component
         }
 
         if ($this->unassignedOnly) {
-            $query->whereNull('pic_id');
+            $query->whereDoesntHave('pics');
         }
 
         if ($this->fundLossOnly) {

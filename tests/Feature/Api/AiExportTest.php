@@ -241,8 +241,8 @@ class AiExportTest extends TestCase
             'reported_by' => 'john@example.com',
             'mttr' => 5,
             'mtbf' => 30,
-            'pic_id' => $pic->id,
         ]);
+        $incident->pics()->attach($pic->id);
         $incident->labels()->attach($label);
 
         $response = $this->authenticatedGetJson('/api/v1/ai/export');
@@ -290,7 +290,7 @@ class AiExportTest extends TestCase
 
     public function test_export_with_incident_without_pic_returns_null_pic(): void
     {
-        Incident::factory()->create(['pic_id' => null]);
+        Incident::factory()->create();
 
         $response = $this->authenticatedGetJson('/api/v1/ai/export');
 

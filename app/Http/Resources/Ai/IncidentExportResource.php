@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources\Ai;
 
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -41,7 +42,8 @@ class IncidentExportResource extends JsonResource
             'reported_by' => $this->reported_by,
             'mttr' => $this->mttr,
             'mtbf' => $this->mtbf,
-            'pic' => $this->pic?->only('name'),
+            'pic' => $this->pics->first()?->only('name'),
+            'pics' => $this->pics->map->only('name'),
             'labels' => $this->labels->pluck('name'),
             'created_at' => $this->created_at?->format('Y-m-d\TH:i:s'),
         ];

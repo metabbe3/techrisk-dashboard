@@ -41,57 +41,49 @@ class NotificationTriggerTest extends TestCase
         return DB::table('notifications')
             ->where('notifiable_id', $user->id)
             ->where('notifiable_type', User::class)
-            ->where('data', 'like', '%"type":"' . $type . '"%')
+            ->where('data', 'like', '%"type":"'.$type.'"%')
             ->count();
     }
 
     public function test_pic_gets_assigned_notification_on_incident_creation(): void
     {
-        Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         $this->assertEquals(1, $this->notificationsFor($this->pic, 'incident_assignment'));
     }
 
     public function test_admin_gets_critical_incident_notification_for_p1(): void
     {
-        Incident::factory()->create([
-            'pic_id' => $this->pic->id,
-            'severity' => 'P1',
-        ]);
+        tap(Incident::factory()->create(['severity' => 'P1']), fn ($i) => $i->pics()->attach($this->pic->id));
 
         $this->assertEquals(1, $this->notificationsFor($this->admin, 'critical_incident'));
     }
 
     public function test_admin_gets_critical_incident_notification_for_p2(): void
     {
-        Incident::factory()->create([
-            'pic_id' => $this->pic->id,
-            'severity' => 'P2',
-        ]);
+        tap(Incident::factory()->create(['severity' => 'P2']), fn ($i) => $i->pics()->attach($this->pic->id));
 
         $this->assertEquals(1, $this->notificationsFor($this->admin, 'critical_incident'));
     }
 
     public function test_admin_does_not_get_critical_notification_for_p3(): void
     {
-        Incident::factory()->create([
-            'pic_id' => $this->pic->id,
-            'severity' => 'P3',
-        ]);
+        tap(Incident::factory()->create(['severity' => 'P3']), fn ($i) => $i->pics()->attach($this->pic->id));
 
         $this->assertEquals(0, $this->notificationsFor($this->admin, 'critical_incident'));
     }
 
     public function test_admin_gets_pic_assigned_notification(): void
     {
-        Incident::factory()->create(['pic_id' => $this->pic->id]);
+        tap(Incident::factory()->create(), fn ($i) => $i->pics()->attach($this->pic->id));
 
         $this->assertEquals(1, $this->notificationsFor($this->admin, 'pic_assigned'));
     }
 
     public function test_pic_does_not_get_pic_assigned_notification_about_themselves(): void
     {
-        Incident::factory()->create(['pic_id' => $this->pic->id]);
+        tap(Incident::factory()->create(), fn ($i) => $i->pics()->attach($this->pic->id));
 
         $this->assertEquals(0, $this->notificationsFor($this->pic, 'pic_assigned'));
     }
@@ -100,10 +92,8 @@ class NotificationTriggerTest extends TestCase
     {
         $this->actingAs($this->admin);
 
-        $incident = Incident::factory()->create([
-            'pic_id' => $this->pic->id,
-            'incident_status' => 'Open',
-        ]);
+        $incident = Incident::factory()->create(['incident_status' => 'Open']);
+        $incident->pics()->attach($this->pic->id);
 
         $incident->update(['incident_status' => 'In Progress']);
 
@@ -114,10 +104,8 @@ class NotificationTriggerTest extends TestCase
     {
         $this->actingAs($this->pic);
 
-        $incident = Incident::factory()->create([
-            'pic_id' => $this->pic->id,
-            'incident_status' => 'Open',
-        ]);
+        $incident = Incident::factory()->create(['incident_status' => 'Open']);
+        $incident->pics()->attach($this->pic->id);
 
         $incident->update(['incident_status' => 'In Progress']);
 
@@ -131,20 +119,25 @@ class NotificationTriggerTest extends TestCase
 
         $this->actingAs($this->admin);
 
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
-        $incident->update(['pic_id' => $newPic->id]);
+        $incident->pics()->sync([$newPic->id]);
 
         $this->assertEquals(1, $this->notificationsFor($newPic, 'incident_assignment'));
-        // Actor-exclusion contract: actingAs(admin) is set BEFORE the factory
-        // create, so the admin is the current user on BOTH create and update
-        // paths — notifyAdminsOfPicAssignment() excludes them every time.
+        // Actor-exclusion contract: the admin is the current user on both the
+        // attach and sync paths — the pivot hook excludes them every time.
         $this->assertEquals(0, $this->notificationsFor($this->admin, 'pic_assigned'));
+
+        // Re-syncing an unchanged PIC list must not re-email anyone.
+        $incident->pics()->sync([$newPic->id]);
+        $this->assertEquals(1, $this->notificationsFor($newPic, 'incident_assignment'));
     }
 
     public function test_action_improvement_creation_notifies_pic_user(): void
     {
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         ActionImprovement::factory()->create([
             'incident_id' => $incident->id,
@@ -156,7 +149,8 @@ class NotificationTriggerTest extends TestCase
 
     public function test_action_improvement_skips_non_user_emails(): void
     {
-        $incident = Incident::factory()->create(['pic_id' => $this->pic->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
 
         ActionImprovement::factory()->create([
             'incident_id' => $incident->id,

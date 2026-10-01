@@ -107,7 +107,7 @@ class IssueResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType', 'labels']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels']))
             ->columns([
                 TextColumn::make('no')
                     ->label('ID')

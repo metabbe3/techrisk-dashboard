@@ -281,7 +281,7 @@ class ListIncidents extends ListRecords
             if (! empty($filters['pic_name'])) {
                 $picIds = \App\Models\User::where('name', 'like', '%'.$filters['pic_name'].'%')->pluck('id')->toArray();
                 if (! empty($picIds)) {
-                    $tableFilters['pic_id'] = ['values' => $picIds];
+                    $tableFilters['pic'] = ['values' => $picIds];
                 }
             }
 

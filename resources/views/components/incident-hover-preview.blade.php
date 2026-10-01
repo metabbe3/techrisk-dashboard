@@ -124,10 +124,10 @@
 
                     {{-- Meta Info --}}
                     <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
-                        @if($incident->pic)
+                        @if($incident->pics->isNotEmpty())
                             <span class="flex items-center gap-1">
                                 <x-filament::icon icon="heroicon-o-user" class="w-3.5 h-3.5" />
-                                {{ $incident->pic->name }}
+                                {{ $incident->pic_names }}
                             </span>
                         @endif
                         @if($incident->incident_date)

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 use App\Enums\Severity;
@@ -24,8 +25,8 @@ class NewCriticalIncident extends IncidentNotification
             '**Summary:** '.$this->incident->summary,
         ];
 
-        if ($this->incident->pic) {
-            $lines[] = '**PIC:** '.$this->incident->pic?->name ?? 'Unassigned';
+        if ($this->incident->pics->isNotEmpty()) {
+            $lines[] = '**PIC:** '.($this->incident->pic_names !== '' ? $this->incident->pic_names : 'Unassigned');
         }
 
         return $this->buildIncidentMailMessage(

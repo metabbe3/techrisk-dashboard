@@ -9,6 +9,7 @@ use App\Exports\Sheets\PerCategorySheet;
 use App\Models\Incident;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Notification;
 use Tests\TestCase;
 
 /**
@@ -79,8 +80,11 @@ class GroupedIncidentsExportTest extends TestCase
         // rows and user 2's incidents vanished from the export.
         $u1 = User::factory()->create(['name' => 'Andi']);
         $u2 = User::factory()->create(['name' => 'Andi']);
-        $i1 = Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'pic_id' => $u1->id, 'fund_loss' => 10]);
-        $i2 = Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'pic_id' => $u2->id, 'fund_loss' => 20]);
+        Notification::fake(); // pivot attach fires assignment notifications — setup noise here
+        $i1 = Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'fund_loss' => 10]);
+        $i1->pics()->attach($u1->id);
+        $i2 = Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'fund_loss' => 20]);
+        $i2->pics()->attach($u2->id);
 
         $sheets = (new GroupedIncidentsExport(Incident::query(), 'pic'))->sheets();
 

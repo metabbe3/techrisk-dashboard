@@ -60,7 +60,7 @@ exported_at: {{ now()->format('Y-m-d H:i:s') }}
 
 | Role | Name/Details |
 |------|--------------|
-| **Person In Charge** | @if($incident->pic){{ $incident->pic->name }} ({{ $incident->pic->email }})@else N/A @endif |
+| **Person In Charge** | @if($incident->pics->isNotEmpty()){{ $incident->pics->map(fn($u) => "{$u->name} ({$u->email})")->implode(', ') }}@else N/A @endif |
 | **Reported By** | {{ $incident->reported_by ?? 'N/A' }} |
 | **Third Party/Client** | {{ $incident->third_party_client ?? 'N/A' }} |
 | **Checker** | {{ $incident->checker ?? 'N/A' }} |

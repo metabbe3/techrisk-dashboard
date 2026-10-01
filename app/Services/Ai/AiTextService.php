@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ai;
 
 use App\Models\AiSetting;
@@ -811,8 +812,11 @@ class AiTextService
             $userMessage .= 'Responsible teams: '.$teams->map(fn ($c, $t) => "{$t}: {$c}")->implode(', ')."\n";
         }
 
-        // Top PICs
-        $pics = $allIncidents->filter(fn ($i) => $i->relationLoaded('pic') && $i->pic)->groupBy(fn ($i) => $i->pic->name)->map->count()->sortDesc()->take(10);
+        // Top PICs — multi-PIC: an incident counts once per assigned PIC
+        $pics = $allIncidents
+            ->filter(fn ($i) => $i->relationLoaded('pics'))
+            ->flatMap(fn ($i) => $i->pics->pluck('name'))
+            ->countBy()->sortDesc()->take(10);
         if ($pics->isNotEmpty()) {
             $userMessage .= 'Top PICs: '.$pics->map(fn ($c, $n) => "{$n}: {$c}")->implode(', ')."\n";
         }

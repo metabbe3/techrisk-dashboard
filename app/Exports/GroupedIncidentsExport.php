@@ -23,7 +23,7 @@ class GroupedIncidentsExport implements WithMultipleSheets
         'business_category' => ['label' => 'Business Category', 'json' => true],
         'root_cause_category' => ['label' => 'Root Cause Category', 'json' => true],
         'responsible_team' => ['label' => 'Division / Responsible Team', 'json' => true],
-        'pic' => ['label' => 'PIC', 'json' => false, 'column' => 'pic_id', 'nameFrom' => 'pic.name'],
+        'pic' => ['label' => 'PIC', 'json' => false, 'column' => 'pic', 'nameFrom' => 'pic.name'],
         'severity' => ['label' => 'Severity', 'json' => false],
         'incident_type' => ['label' => 'Incident Type', 'json' => false],
         'quarter' => ['label' => 'Quarter', 'json' => false],
@@ -47,13 +47,13 @@ class GroupedIncidentsExport implements WithMultipleSheets
         $isJson = $config['json'];
         $column = $config['column'] ?? $this->dimension;
 
-        $rows = $this->query->clone()->with('labels')->get();
+        $rows = $this->query->clone()->with(['labels', 'pics'])->get();
 
         // distinct group values
         if ($isJson) {
             $values = $rows->pluck($this->dimension)->filter()->flatMap(fn ($a) => (array) $a)->unique()->sort()->values();
         } elseif ($this->dimension === 'pic') {
-            $values = $rows->filter(fn ($i) => $i->pic_id)->pluck('pic_id')->unique()->sort();
+            $values = $rows->flatMap(fn ($i) => $i->pics->pluck('id'))->unique()->sort()->values();
             $names = \App\Models\User::whereIn('id', $values)->pluck('name', 'id');
         } elseif ($this->dimension === 'severity') {
             // Owner rule (2026-09-29): severity grouping is metric-eligible only
@@ -85,6 +85,9 @@ class GroupedIncidentsExport implements WithMultipleSheets
                     $d = $i->incident_date;
 
                     return $d !== null && "{$d->year}-Q{$d->quarter}" === $value;
+                }
+                if ($this->dimension === 'pic') {
+                    return $i->pics->pluck('id')->contains($value);
                 }
                 if ($isJson) {
                     return in_array($value, (array) $i->{$this->dimension});
@@ -151,7 +154,7 @@ class GroupedIncidentsExport implements WithMultipleSheets
             // (array_search over names) collapsed same-name PICs onto one id.
             $sheets[] = new PerCategorySheet(
                 $this->query,
-                $this->dimension === 'pic' ? 'pic_id' : ($config['column'] ?? $this->dimension),
+                $this->dimension === 'pic' ? 'pic' : ($config['column'] ?? $this->dimension),
                 $isJson,
                 (string) $gs['value'],
                 $gs['label']

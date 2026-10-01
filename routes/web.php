@@ -204,7 +204,7 @@ Route::get('/admin/ai/chat/incident-search', function (\Illuminate\Http\Request 
     $incidents = \App\Models\Incident::where('no', 'LIKE', "%{$q}%")
         ->orWhere('title', 'LIKE', "%{$q}%")
         ->orWhere('summary', 'LIKE', "%{$q}%")
-        ->with('pic')
+        ->with('pics')
         ->orderBy('incident_date', 'desc')
         ->limit(10)
         ->get()
@@ -215,7 +215,7 @@ Route::get('/admin/ai/chat/incident-search', function (\Illuminate\Http\Request 
             'severity' => $inc->severity,
             'status' => $inc->incident_status,
             'date' => $inc->incident_date?->format('Y-m-d'),
-            'pic' => $inc->pic?->name,
+            'pic' => $inc->pic_names !== '' ? $inc->pic_names : null,
             'classification' => $inc->classification,
         ]);
 

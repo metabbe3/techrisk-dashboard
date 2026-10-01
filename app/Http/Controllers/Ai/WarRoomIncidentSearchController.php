@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Ai;
 
 use App\Http\Controllers\Controller;
@@ -21,7 +22,7 @@ class WarRoomIncidentSearchController extends Controller
         $incidents = Incident::where('no', 'LIKE', "%{$q}%")
             ->orWhere('title', 'LIKE', "%{$q}%")
             ->orWhere('summary', 'LIKE', "%{$q}%")
-            ->with('pic')
+            ->with('pics')
             ->orderBy('incident_date', 'desc')
             ->limit(10)
             ->get()
@@ -32,7 +33,7 @@ class WarRoomIncidentSearchController extends Controller
                 'severity' => $inc->severity,
                 'status' => $inc->incident_status,
                 'date' => $inc->incident_date?->format('Y-m-d'),
-                'pic' => $inc->pic?->name,
+                'pic' => $inc->pic_names !== '' ? $inc->pic_names : null,
                 'classification' => $inc->classification,
             ]);
 

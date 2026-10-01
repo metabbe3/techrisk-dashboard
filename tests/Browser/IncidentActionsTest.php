@@ -23,7 +23,8 @@ class IncidentActionsTest extends DuskTestCase
             'password' => bcrypt('password'),
         ])->assignRole('admin');
 
-        Incident::factory()->create(['pic_id' => $user->id]);
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($user->id);
     }
 
     protected function loginAsAdmin(Browser $browser): Browser

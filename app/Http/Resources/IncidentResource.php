@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
@@ -38,7 +39,8 @@ class IncidentResource extends JsonResource
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'incident_type' => new IncidentTypeResource($this->whenLoaded('incidentType')),
-            'pic' => new UserResource($this->whenLoaded('pic')),
+            'pic' => $this->whenLoaded('pics', fn () => new UserResource($this->pics->first())),
+            'pic_ids' => $this->whenLoaded('pics', fn () => $this->pics->pluck('id')),
             'status_updates' => StatusUpdateResource::collection($this->whenLoaded('statusUpdates')),
             'investigation_documents' => InvestigationDocumentResource::collection($this->whenLoaded('investigationDocuments')),
             'labels' => LabelResource::collection($this->whenLoaded('labels')),

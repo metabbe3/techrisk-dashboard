@@ -25,7 +25,7 @@
     };
 
     $hasFinancials = $inc->potential_fund_loss > 0 || $inc->fund_loss > 0 || $inc->recovered_fund > 0;
-    $inc->loadMissing(['pic', 'labels', 'incidentType', 'latestStatusUpdate']);
+    $inc->loadMissing(['pics', 'labels', 'incidentType', 'latestStatusUpdate']);
 @endphp
 
 <div class="fi-page">
@@ -47,10 +47,10 @@
             </div>
             <h1 class="text-xl font-bold text-white leading-tight mb-3">{{ $inc->title }}</h1>
             <div class="flex flex-wrap items-center gap-x-5 gap-y-2 text-white/80 text-sm">
-                @if($inc->pic)
+                @if($inc->pics->isNotEmpty())
                     <span class="flex items-center gap-1.5">
                         <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
-                        {{ $inc->pic->name }}
+                        {{ $inc->pic_names }}
                     </span>
                 @endif
                 @if($inc->incident_date)
@@ -285,7 +285,7 @@
                 <dl class="space-y-3">
                     @foreach([
                         ['label' => 'Source', 'value' => $inc->incident_source],
-                        ['label' => 'PIC', 'value' => $inc->pic?->name],
+                        ['label' => 'PIC', 'value' => ($inc->pic_names !== '' ? $inc->pic_names : 'N/A')],
                         ['label' => 'Reported By', 'value' => $inc->reported_by],
                         ['label' => 'Checker', 'value' => $inc->checker],
                         ['label' => 'Maker', 'value' => $inc->maker],

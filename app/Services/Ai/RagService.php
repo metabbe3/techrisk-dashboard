@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ai;
 
 use App\Models\Incident;
@@ -13,7 +14,7 @@ class RagService
 {
     public function indexIncident(Incident $incident): RagDocument
     {
-        $incident->load(['pic', 'labels', 'actionImprovements']);
+        $incident->load(['pics', 'labels', 'actionImprovements']);
 
         $searchableContent = $this->buildSearchableContent($incident);
         $contextContent = $this->buildContextContent($incident);
@@ -35,7 +36,7 @@ class RagService
                 'fund_status' => $incident->fund_status,
                 'fund_loss' => $incident->fund_loss ?? 0,
                 'potential_fund_loss' => $incident->potential_fund_loss ?? 0,
-                'pic_id' => $incident->pic_id,
+                'pic_id' => $incident->pics->first()?->id, // rag_documents keeps a single pic column (PROJ-010)
                 'business_category' => $incident->business_category,
                 'root_cause_category' => $incident->root_cause_category,
                 'responsible_team' => $incident->responsible_team,

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Observers;
 
 use App\Enums\Severity;
@@ -11,11 +12,9 @@ use App\Jobs\CalculateIncidentMetrics;
 use App\Jobs\DetectRecurrenceJob;
 use App\Models\Incident;
 use App\Models\User;
-use App\Notifications\AssignedAsPicNotification;
 use App\Notifications\IncidentStatusChanged;
 use App\Notifications\IncidentUpdated;
 use App\Notifications\NewCriticalIncident;
-use App\Notifications\PicAssignedNotification;
 use Carbon\Carbon;
 
 class IncidentObserver
@@ -39,12 +38,8 @@ class IncidentObserver
         // so the save + relations settle; runs the same pipeline as the button.
         DetectSimilarIncidentsJob::dispatch($incident)->delay(now()->addMinutes(2));
 
-        // Notify PIC if assigned during creation
-        if ($incident->pic_id && $incident->pic) {
-            $incident->pic->notify(new AssignedAsPicNotification($incident));
-
-            $this->notifyAdminsOfPicAssignment($incident, $incident->pic);
-        }
+        // PIC assignment notifications live in the IncidentPic pivot hooks —
+        // a pivot sync fires no model event (multi-PIC, PROJ-010).
 
         // Notify admins and team leads for P1/P2 incidents
         if (in_array($incident->severity, [Severity::P1, Severity::P2])) {
@@ -62,11 +57,10 @@ class IncidentObserver
      */
     public function updated(Incident $incident): void
     {
-        // Relations loaded before the update are stale after save — the cached ->pic
-        // still points at the OLD user, so PIC-change notifications went to the
-        // previous assignee (caught by test_pic_change_sends_assignment_to_new_pic).
+        // Relations loaded before the update are stale after save — reload so
+        // PIC notifications reach the CURRENT assignees.
         $incident->unsetRelations();
-        $pic = $incident->pic;
+        $pics = $incident->pics->all();
         $currentUser = auth()->user();
 
         // Track changes for notification
@@ -107,14 +101,8 @@ class IncidentObserver
             }
         }
 
-        // Handle PIC assignment change
-        // NOTE: in updated() the model is already saved, so isDirty() is always false here —
-        // use wasChanged() or PIC-change notifications silently never fire (caught by test).
-        if ($incident->wasChanged('pic_id') && $incident->pic_id && $pic) {
-            $pic->notify(new AssignedAsPicNotification($incident));
-
-            $this->notifyAdminsOfPicAssignment($incident, $pic);
-        }
+        // PIC assignment changes are pivot syncs — handled (and notified) by
+        // the IncidentPic pivot hooks, not here.
 
         // Determine if metrics recalculation is needed
         $needsRecalculation = $incident->isDirty('incident_date') || $incident->isDirty('stop_bleeding_at');
@@ -145,22 +133,27 @@ class IncidentObserver
             DetectRecurrenceJob::dispatch($incident);
         }
 
-        // Handle status change notification
+        // Handle status change notification — all PICs get it, except the
+        // one doing the change.
         if ($incident->isDirty('incident_status')) {
             $oldStatus = $incident->getOriginal('incident_status')?->value;
             $newStatus = $incident->incident_status->value;
 
-            if ($pic && $oldStatus && $newStatus) {
-                if (! $currentUser || $currentUser->id !== $incident->pic_id) {
-                    $pic->notify(new IncidentStatusChanged($incident, $oldStatus, $newStatus));
+            if ($oldStatus && $newStatus) {
+                foreach ($pics as $pic) {
+                    if (! $currentUser || $currentUser->id !== $pic->id) {
+                        $pic->notify(new IncidentStatusChanged($incident, $oldStatus, $newStatus));
+                    }
                 }
             }
         }
 
         // Send general update notification if there are meaningful changes
-        if ($incident->wasChanged() && ! empty($changes) && $pic) {
-            if ($currentUser && $currentUser->id !== $incident->pic_id) {
-                $pic->notify(new IncidentUpdated($incident, $changes));
+        if ($incident->wasChanged() && ! empty($changes)) {
+            foreach ($pics as $pic) {
+                if (! $currentUser || $currentUser->id !== $pic->id) {
+                    $pic->notify(new IncidentUpdated($incident, $changes));
+                }
             }
         }
 
@@ -187,7 +180,9 @@ class IncidentObserver
     private function notifyCriticalIncident(Incident $incident): void
     {
         $currentUser = auth()->user();
-        $notified = [$incident->pic_id];
+
+        // PICs already know about their own incident — don't double-send.
+        $notified = $incident->pics->pluck('id')->all();
 
         if ($currentUser) {
             $notified[] = $currentUser->id;
@@ -201,28 +196,6 @@ class IncidentObserver
             if (! in_array($user->id, $notified)) {
                 $user->notify(new NewCriticalIncident($incident));
                 $notified[] = $user->id;
-            }
-        }
-    }
-
-    /**
-     * Notify admins when a team member is assigned as PIC.
-     */
-    private function notifyAdminsOfPicAssignment(Incident $incident, User $assignedPic): void
-    {
-        $currentUser = auth()->user();
-        $notified = [$assignedPic->id];
-
-        if ($currentUser) {
-            $notified[] = $currentUser->id;
-        }
-
-        $admins = User::whereHas('roles', fn ($q) => $q->where('name', 'admin'))->get();
-
-        foreach ($admins as $admin) {
-            if (! in_array($admin->id, $notified)) {
-                $admin->notify(new PicAssignedNotification($incident, $assignedPic));
-                $notified[] = $admin->id;
             }
         }
     }

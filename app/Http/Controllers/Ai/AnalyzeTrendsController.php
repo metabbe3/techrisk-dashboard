@@ -94,7 +94,7 @@ class AnalyzeTrendsController extends Controller
             ->toArray();
 
         $topPics = (clone $baseQuery)
-            ->join('users', 'incidents.pic_id', '=', 'users.id')
+            ->join('incident_pic', 'incidents.id', '=', 'incident_pic.incident_id')->join('users', 'incident_pic.user_id', '=', 'users.id')
             ->selectRaw('users.name, COUNT(*) as count')
             ->groupBy('users.name')
             ->orderByDesc('count')

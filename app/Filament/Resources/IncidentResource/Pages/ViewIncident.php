@@ -74,15 +74,18 @@ class ViewIncident extends ViewRecord
                 ->modalHeading('Email PIC')
                 ->modalDescription('Send a reminder email to this incident’s PIC via Netcore.')
                 ->modalSubmitActionLabel('Send Email')
-                ->visible(fn ($record) => $record->pic && $record->isNotDone() && auth()->user()->can('manage incidents'))
+                ->visible(fn ($record) => $record->pics->isNotEmpty() && $record->isNotDone() && auth()->user()->can('manage incidents'))
                 ->action(function () {
                     $incident = $this->getRecord();
-                    $incident->pic->notify(new IncidentNotDoneReminder($incident));
+
+                    foreach ($incident->pics as $pic) {
+                        $pic->notify(new IncidentNotDoneReminder($incident));
+                    }
 
                     Notification::make()
                         ->success()
                         ->title('Reminder queued')
-                        ->body("Email queued for {$incident->pic->email}.")
+                        ->body('Email queued for '.$incident->pics->pluck('email')->implode(', ').'.')
                         ->send();
                 }),
             Actions\Action::make('detect_similar_incidents')

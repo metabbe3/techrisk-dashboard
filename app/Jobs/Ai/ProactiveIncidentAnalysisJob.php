@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Jobs\Ai;
 
 use App\Models\Incident;
@@ -30,7 +31,7 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
 
     public function handle(AiTextService $textService): void
     {
-        $incident = Incident::with(['pic', 'labels', 'actionImprovements'])->find($this->incidentId);
+        $incident = Incident::with(['pics', 'labels', 'actionImprovements'])->find($this->incidentId);
 
         if (! $incident) {
             return;
@@ -110,8 +111,8 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
         if ($incident->potential_fund_loss > 0) {
             $parts[] = 'Potential Fund Loss: Rp '.number_format((float) $incident->potential_fund_loss);
         }
-        if ($incident->pic) {
-            $parts[] = "PIC: {$incident->pic->name}";
+        if ($incident->pics->isNotEmpty()) {
+            $parts[] = "PIC: {$incident->pic_names}";
         }
         $labels = $incident->labels->pluck('name')->implode(', ');
         if ($labels) {

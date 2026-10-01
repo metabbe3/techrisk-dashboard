@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Observers;
 
 use App\Models\StatusUpdate;
@@ -16,15 +17,14 @@ class StatusUpdateObserver
     {
         $incident = $statusUpdate->incident;
 
-        // Notify the PIC if they are not the one who created the status update
-        if ($incident && $incident->pic_id && $incident->pic) {
+        // Notify every PIC who is not the one who created the status update
+        if ($incident) {
             $currentUser = Auth::user();
 
-            // Only notify if:
-            // 1. There is a current user
-            // 2. The PIC is different from the current user
-            if (! $currentUser || $currentUser->id !== $incident->pic_id) {
-                $incident->pic->notify(new NewStatusUpdate($incident, $statusUpdate));
+            foreach ($incident->pics as $pic) {
+                if (! $currentUser || $currentUser->id !== $pic->id) {
+                    $pic->notify(new NewStatusUpdate($incident, $statusUpdate));
+                }
             }
         }
     }

@@ -18,18 +18,30 @@ class SendIncidentRemindersTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Multi-PIC: attaching a PIC fires the pivot assignment notification —
+     * that is setup noise here, so re-fake after attaching.
+     */
+    private function incidentWithPic(array $attributes, User $pic): Incident
+    {
+        $incident = Incident::factory()->createQuietly($attributes);
+        $incident->pics()->attach($pic->id);
+        Notification::fake();
+
+        return $incident;
+    }
+
     public function test_reminds_pic_for_not_done_incident_and_stamps_timestamp(): void
     {
         Notification::fake();
         $pic = User::factory()->create();
-        $incident = Incident::factory()->createQuietly([
-            'pic_id' => $pic->id,
+        $incident = $this->incidentWithPic([
             'incident_status' => IncidentStatus::Open->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
             'recovered_fund' => 0,
             'incident_date' => now()->subDays(30),
-        ]);
+        ], $pic);
 
         $this->artisan('reminders:send-incidents')->assertSuccessful();
 
@@ -37,19 +49,39 @@ class SendIncidentRemindersTest extends TestCase
         $this->assertNotNull($incident->fresh()->last_reminded_at);
     }
 
+    public function test_reminds_all_pics_for_not_done_incident(): void
+    {
+        Notification::fake();
+        $pic1 = User::factory()->create();
+        $pic2 = User::factory()->create();
+        $incident = Incident::factory()->createQuietly([
+            'incident_status' => IncidentStatus::Open->value,
+            'fund_status' => FundStatus::NonFundLoss->value,
+            'potential_fund_loss' => 0,
+            'recovered_fund' => 0,
+            'incident_date' => now()->subDays(30),
+        ]);
+        $incident->pics()->sync([$pic1->id, $pic2->id]);
+        Notification::fake();
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertSentTo($pic1, ChannelFilteredNotification::class, fn ($n) => $n->databaseType() === IncidentNotDoneReminder::class);
+        Notification::assertSentTo($pic2, ChannelFilteredNotification::class, fn ($n) => $n->databaseType() === IncidentNotDoneReminder::class);
+    }
+
     public function test_skips_recently_reminded_incidents(): void
     {
         Notification::fake();
         $pic = User::factory()->create();
-        Incident::factory()->createQuietly([
-            'pic_id' => $pic->id,
+        $this->incidentWithPic([
             'incident_status' => IncidentStatus::Open->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
             'recovered_fund' => 0,
             'incident_date' => now()->subDays(30),
             'last_reminded_at' => now()->subDay(),
-        ]);
+        ], $pic);
 
         $this->artisan('reminders:send-incidents')->assertSuccessful();
 
@@ -60,14 +92,13 @@ class SendIncidentRemindersTest extends TestCase
     {
         Notification::fake();
         $pic = User::factory()->create();
-        Incident::factory()->createQuietly([
-            'pic_id' => $pic->id,
+        $this->incidentWithPic([
             'incident_status' => IncidentStatus::Completed->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
             'recovered_fund' => 0,
             'incident_date' => now()->subDays(30),
-        ]);
+        ], $pic);
 
         $this->artisan('reminders:send-incidents')->assertSuccessful();
 
@@ -78,14 +109,13 @@ class SendIncidentRemindersTest extends TestCase
     {
         Notification::fake();
         $pic = User::factory()->create();
-        Incident::factory()->createQuietly([
-            'pic_id' => $pic->id,
+        $this->incidentWithPic([
             'incident_status' => IncidentStatus::Completed->value,
             'fund_status' => FundStatus::ConfirmedLoss->value,
             'potential_fund_loss' => 1000000,
             'recovered_fund' => 0,
             'incident_date' => now()->subDays(30),
-        ]);
+        ], $pic);
 
         $this->artisan('reminders:send-incidents')->assertSuccessful();
 
@@ -96,14 +126,13 @@ class SendIncidentRemindersTest extends TestCase
     {
         Notification::fake();
         $pic = User::factory()->create();
-        Incident::factory()->createQuietly([
-            'pic_id' => $pic->id,
+        $this->incidentWithPic([
             'incident_status' => IncidentStatus::Completed->value,
             'fund_status' => FundStatus::ConfirmedLoss->value,
             'potential_fund_loss' => 1000000,
             'recovered_fund' => 1000000,
             'incident_date' => now()->subDays(30),
-        ]);
+        ], $pic);
 
         $this->artisan('reminders:send-incidents')->assertSuccessful();
 
@@ -115,14 +144,13 @@ class SendIncidentRemindersTest extends TestCase
         Notification::fake();
         Setting::set('netcore_enabled', false);
         $pic = User::factory()->create();
-        Incident::factory()->createQuietly([
-            'pic_id' => $pic->id,
+        $this->incidentWithPic([
             'incident_status' => IncidentStatus::Open->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
             'recovered_fund' => 0,
             'incident_date' => now()->subDays(30),
-        ]);
+        ], $pic);
 
         $this->artisan('reminders:send-incidents')->assertSuccessful();
 

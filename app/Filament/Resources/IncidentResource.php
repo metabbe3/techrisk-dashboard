@@ -146,9 +146,10 @@ class IncidentResource extends Resource
                                         Select::make('incident_source')
                                             ->options(['Internal' => 'Internal', 'External' => 'External'])
                                             ->required(),
-                                        Select::make('pic_id')
+                                        Select::make('pics')
                                             ->label('Person In Charge')
-                                            ->relationship('pic', 'name')
+                                            ->relationship('pics', 'name')
+                                            ->multiple()
                                             ->searchable()
                                             ->preload(),
                                         TextInput::make('checker'),
@@ -276,7 +277,7 @@ class IncidentResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType', 'labels']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels']))
             ->defaultSort('incident_date', 'desc')
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases')),
@@ -344,7 +345,7 @@ class IncidentResource extends Resource
                 TextColumn::make('severity')->badge()->color(fn (?Severity $state): string => $state?->color() ?? 'gray')->sortable()->width('80px'),
                 TextColumn::make('incident_status')->badge()->color(fn (?IncidentStatus $state): string => $state?->color() ?? 'gray')->sortable()->width('100px'),
                 TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
-                TextColumn::make('pic.name')->label('PIC')->sortable()->toggleable()->width('100px'),
+                TextColumn::make('pics.name')->label('PIC')->badge()->toggleable()->width('100px'),
                 TextColumn::make('incident_date')->dateTime()->sortable()->width('100px'),
                 TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->width('110px')->summarize(Sum::make()->money('IDR')->label('Total Potential')),
                 TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->width('100px')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
@@ -387,7 +388,6 @@ class IncidentResource extends Resource
                         'status_date_asc' => 'Status → Date (Oldest First)',
                         'status_severity' => 'Status → Severity (P1 First)',
                         'severity_date' => 'Severity → Date (P1 First)',
-                        'pic_date' => 'PIC → Date',
                         'mttr_desc' => 'MTTR (Highest First)',
                         'loss_desc' => 'Fund Loss (Highest First)',
                     ])
@@ -405,7 +405,6 @@ class IncidentResource extends Resource
                             'status_date_asc' => 'Sort: Status → Date (Oldest)',
                             'status_severity' => 'Sort: Status → Severity',
                             'severity_date' => 'Sort: Severity → Date',
-                            'pic_date' => 'Sort: PIC → Date',
                             'mttr_desc' => 'Sort: MTTR',
                             'loss_desc' => 'Sort: Fund Loss',
                         ];
@@ -435,7 +434,6 @@ class IncidentResource extends Resource
                                 ->orderByRaw($severityOrder),
                             'severity_date' => $query->orderByRaw($severityOrder)
                                 ->orderBy('incident_date', 'desc'),
-                            'pic_date' => $query->orderBy('pic_id')->orderBy('incident_date', 'desc'),
                             'mttr_desc' => $query->orderBy('mttr', 'desc')->orderBy('incident_date', 'desc'),
                             'loss_desc' => $query->orderBy('fund_loss', 'desc')->orderBy('incident_date', 'desc'),
                             default => $query,
@@ -478,11 +476,14 @@ class IncidentResource extends Resource
                         return $query->whereHas('labels', fn (Builder $q) => $q->whereIn('name', $data['values']));
                     }),
 
-                SelectFilter::make('pic_id')
+                SelectFilter::make('pic')
                     ->label('PIC')
                     ->multiple()
                     ->searchable()
-                    ->options(fn () => \App\Models\User::orderBy('name')->pluck('name', 'id')->toArray()),
+                    ->options(fn () => \App\Models\User::orderBy('name')->pluck('name', 'id')->toArray())
+                    ->query(fn (Builder $query, array $data) => filled($data['values'] ?? null)
+                        ? $query->whereHas('pics', fn (Builder $q) => $q->whereIn('users.id', $data['values']))
+                        : $query),
 
                 SelectFilter::make('incident_source')
                     ->label('Source')

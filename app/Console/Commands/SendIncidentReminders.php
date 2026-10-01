@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Enums\FundStatus;
@@ -67,10 +68,12 @@ class SendIncidentReminders extends Command
         foreach ($incidents as $incident) {
             $notified = [];
 
-            if ($incident->pic && ! in_array($incident->pic->id, $notified)) {
-                $incident->pic->notify(new IncidentNotDoneReminder($incident));
-                $notified[] = $incident->pic->id;
-                $this->line("  → not-done reminder: {$incident->no} to PIC {$incident->pic->email}");
+            foreach ($incident->pics as $pic) {
+                if (! in_array($pic->id, $notified)) {
+                    $pic->notify(new IncidentNotDoneReminder($incident));
+                    $notified[] = $pic->id;
+                    $this->line("  → not-done reminder: {$incident->no} to PIC {$pic->email}");
+                }
             }
 
             // Escalate to admins when the incident is very old.
@@ -102,10 +105,12 @@ class SendIncidentReminders extends Command
         foreach ($incidents as $incident) {
             $notified = [];
 
-            if ($incident->pic && ! in_array($incident->pic->id, $notified)) {
-                $incident->pic->notify(new FundLossUnsettledReminder($incident));
-                $notified[] = $incident->pic->id;
-                $this->line("  → fund-loss reminder: {$incident->no} to PIC {$incident->pic->email}");
+            foreach ($incident->pics as $pic) {
+                if (! in_array($pic->id, $notified)) {
+                    $pic->notify(new FundLossUnsettledReminder($incident));
+                    $notified[] = $pic->id;
+                    $this->line("  → fund-loss reminder: {$incident->no} to PIC {$pic->email}");
+                }
             }
 
             foreach ($admins as $admin) {
@@ -124,7 +129,7 @@ class SendIncidentReminders extends Command
      */
     private function dueIncidents(int $interval)
     {
-        return Incident::with('pic')
+        return Incident::with('pics')
             ->where(function ($query) use ($interval) {
                 $query->whereNull('last_reminded_at')
                     ->orWhere('last_reminded_at', '<=', now()->subDays(max($interval, 1)));

@@ -73,7 +73,6 @@ class Incident extends Model implements Auditable
         'recovered_fund',
         'fund_loss',
         'loss_taken_by',
-        'pic_id',
         'reported_by',
         'third_party_client',
         'evidence',
@@ -232,7 +231,7 @@ class Incident extends Model implements Auditable
         return round(($this->recovered_fund / $this->potential_fund_loss) * 100, 1);
     }
 
-    public const FULL_RELATIONS = ['pic', 'incidentType', 'statusUpdates', 'investigationDocuments', 'labels', 'actionImprovements'];
+    public const FULL_RELATIONS = ['pics', 'incidentType', 'statusUpdates', 'investigationDocuments', 'labels', 'actionImprovements'];
 
     public const SIMILARITY_COLUMNS = [
         'id', 'no', 'title', 'summary', 'root_cause', 'timeline',
@@ -248,7 +247,7 @@ class Incident extends Model implements Auditable
         'improvements', 'classification',
         'fund_status', 'potential_fund_loss', 'recovered_fund',
         'fund_loss', 'loss_taken_by',
-        'incident_source', 'pic_id', 'reported_by',
+        'incident_source', 'reported_by',
         'third_party_client', 'investigation_pic_status',
         'incident_category', 'incident_type_id',
         'discovered_at', 'stop_bleeding_at', 'entry_date_tech_risk',
@@ -334,9 +333,20 @@ class Incident extends Model implements Auditable
         ]);
     }
 
-    public function pic(): BelongsTo
+    public function pics(): BelongsToMany
     {
-        return $this->belongsTo(User::class, 'pic_id');
+        return $this->belongsToMany(User::class, 'incident_pic')
+            ->using(IncidentPic::class)
+            ->withTimestamps();
+    }
+
+    /**
+     * All PIC names joined for display — the single render-source for blades,
+     * exports and AI text so no surface drifts (Edit-Safety rule 3).
+     */
+    public function getPicNamesAttribute(): string
+    {
+        return $this->pics->pluck('name')->implode(', ');
     }
 
     public function incidentType(): BelongsTo

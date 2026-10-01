@@ -267,7 +267,7 @@ class AnalyticsQueryService
     {
         if ($this->isDerivedMetric($metric)) {
             $rows = $query->clone()
-                ->join('users', 'incidents.pic_id', '=', 'users.id')
+                ->join('incident_pic', 'incidents.id', '=', 'incident_pic.incident_id')->join('users', 'incident_pic.user_id', '=', 'users.id')
                 ->selectRaw('users.name as dim, MIN(incident_date) as min_date, MAX(incident_date) as max_date, COUNT(*) as cnt')
                 ->groupBy('users.name')
                 ->orderByDesc('cnt')
@@ -289,7 +289,7 @@ class AnalyticsQueryService
             $values = array_values($data);
         } else {
             $agg = $this->getAggregateExpression($metric);
-            $rows = $query->join('users', 'incidents.pic_id', '=', 'users.id')
+            $rows = $query->join('incident_pic', 'incidents.id', '=', 'incident_pic.incident_id')->join('users', 'incident_pic.user_id', '=', 'users.id')
                 ->selectRaw("users.name as dim, {$agg} as value")
                 ->groupBy('users.name')
                 ->orderByDesc('value')

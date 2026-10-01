@@ -279,10 +279,11 @@
 
                                 {{-- PIC Avatar or Unassigned + Date + Fund Status --}}
                                 <div class="flex items-center gap-2 flex-wrap">
-                                    @if($incident->pic)
-                                        <span class="inline-flex items-center gap-1.5" title="{{ $incident->pic->name }}">
-                                            <span class="kanban-avatar" style="background: {{ \App\Livewire\IncidentKanbanBoard::avatarColor($incident->pic->name) }}">
-                                                {{ \App\Livewire\IncidentKanbanBoard::initials($incident->pic->name) }}
+                                    @php($firstPic = $incident->pics->first())
+                                    @if($firstPic)
+                                        <span class="inline-flex items-center gap-1.5" title="{{ $firstPic->name }}">
+                                            <span class="kanban-avatar" style="background: {{ \App\Livewire\IncidentKanbanBoard::avatarColor($firstPic->name) }}">
+                                                {{ \App\Livewire\IncidentKanbanBoard::initials($firstPic->name) }}
                                             </span>
                                         </span>
                                     @else
@@ -463,12 +464,13 @@
 
                             {{-- Meta row --}}
                             <div class="flex items-center gap-3 mt-3 text-xs text-gray-500 dark:text-gray-400">
-                                @if($incident->pic)
+                                @php($firstPic = $incident->pics->first())
+                                    @if($firstPic)
                                     <span class="inline-flex items-center gap-1.5">
-                                        <span class="kanban-avatar" style="background: {{ \App\Livewire\IncidentKanbanBoard::avatarColor($incident->pic->name) }}; width: 20px; height: 20px; font-size: 8px;">
-                                            {{ \App\Livewire\IncidentKanbanBoard::initials($incident->pic->name) }}
+                                        <span class="kanban-avatar" style="background: {{ \App\Livewire\IncidentKanbanBoard::avatarColor($firstPic->name) }}; width: 20px; height: 20px; font-size: 8px;">
+                                            {{ \App\Livewire\IncidentKanbanBoard::initials($firstPic->name) }}
                                         </span>
-                                        <span class="font-semibold text-gray-700 dark:text-gray-300">{{ $incident->pic->name }}</span>
+                                        <span class="font-semibold text-gray-700 dark:text-gray-300">{{ $firstPic->name }}</span>
                                     </span>
                                 @else
                                     <span class="inline-flex items-center gap-1 text-gray-400">

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -137,7 +138,8 @@ class IncidentController extends Controller
             }
 
             if ($request->filled('pic_id')) {
-                $query->where('pic_id', $request->validated('pic_id'));
+                // Legacy single-PIC filter — now "has this user among its PICs".
+                $query->whereHas('pics', fn ($q) => $q->where('users.id', (int) $request->validated('pic_id')));
             }
 
             if ($request->filled('search')) {
@@ -317,7 +319,16 @@ class IncidentController extends Controller
         try {
             $validatedData = $request->validated();
 
+            // pic_ids[] is the multi-PIC payload; legacy pic_id maps onto it.
+            // Relation sync happens after save (pivot hooks notify per user).
+            $picIds = $request->validated('pic_ids') ?? [];
+            if ($request->validated('pic_id')) {
+                $picIds[] = (int) $request->validated('pic_id');
+            }
+            unset($validatedData['pic_ids'], $validatedData['pic_id']);
+
             $incident = Incident::create($validatedData);
+            $incident->pics()->sync(array_unique($picIds));
 
             return $this->successResponse(
                 new IncidentApiResource($incident),
@@ -500,7 +511,19 @@ class IncidentController extends Controller
         try {
             $validatedData = $request->validated();
 
+            // pic_ids[] replaces the PIC list when present; legacy pic_id maps
+            // onto it. Omitted entirely = keep current PICs.
+            $picIds = $request->validated('pic_ids') ?? null;
+            if ($request->validated('pic_id')) {
+                $picIds = array_unique(array_merge((array) $picIds, [(int) $request->validated('pic_id')]));
+            }
+            unset($validatedData['pic_ids'], $validatedData['pic_id']);
+
             $incident->update($validatedData);
+
+            if ($picIds !== null) {
+                $incident->pics()->sync($picIds);
+            }
 
             return $this->successResponse(
                 new IncidentApiResource($incident),

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\WarRoom;
 
 use App\Models\Incident;
@@ -19,7 +20,7 @@ class AgentSuggestionService
             return [];
         }
 
-        $incidents = Incident::with(['labels', 'pic'])->whereIn('id', $incidentIds)->get();
+        $incidents = Incident::with(['labels', 'pics'])->whereIn('id', $incidentIds)->get();
 
         if ($incidents->isEmpty()) {
             return [];

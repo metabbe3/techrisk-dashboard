@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 use Illuminate\Notifications\Messages\MailMessage;
@@ -30,7 +31,7 @@ class IncidentNotDoneReminder extends IncidentNotification
                 'Incident' => "[{$this->incident->no}] {$this->incident->title}",
                 'Severity' => $this->incident->severity?->value ?? '-',
                 'Status' => $this->incident->incident_status?->value ?? '-',
-                'PIC' => $this->incident->pic?->name ?? 'Unassigned',
+                'PIC' => $this->incident->pic_names !== '' ? $this->incident->pic_names : 'Unassigned',
             ],
             notifiable: $notifiable,
         );

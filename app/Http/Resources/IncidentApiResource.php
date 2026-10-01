@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
@@ -58,7 +59,8 @@ class IncidentApiResource extends JsonResource
             'maker' => $this->maker,
             'recurrence_data' => $this->recurrence_data,
             'labels' => LabelResource::collection($this->whenLoaded('labels')),
-            'pic' => new UserResource($this->whenLoaded('pic')),
+            'pic' => $this->whenLoaded('pics', fn () => new UserResource($this->pics->first())),
+            'pic_ids' => $this->whenLoaded('pics', fn () => $this->pics->pluck('id')),
             'status_updates' => StatusUpdateResource::collection($this->whenLoaded('statusUpdates')),
             'action_improvements' => ActionImprovementResource::collection($this->whenLoaded('actionImprovements')),
             'investigation_documents' => InvestigationDocumentResource::collection($this->whenLoaded('investigationDocuments')),

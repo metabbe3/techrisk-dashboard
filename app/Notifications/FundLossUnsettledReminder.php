@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 use Illuminate\Notifications\Messages\MailMessage;
@@ -31,7 +32,7 @@ class FundLossUnsettledReminder extends IncidentNotification
                 'Potential Loss' => $rp($this->incident->potential_fund_loss),
                 'Recovered' => $rp($this->incident->recovered_fund),
                 'Outstanding' => $rp($this->incident->outstanding_fund_loss),
-                'PIC' => $this->incident->pic?->name ?? 'Unassigned',
+                'PIC' => $this->incident->pic_names !== '' ? $this->incident->pic_names : 'Unassigned',
             ],
             notifiable: $notifiable,
         );

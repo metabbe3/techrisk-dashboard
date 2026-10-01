@@ -66,10 +66,10 @@ class IncidentFormatter
         $md[] = '';
 
         // PIC
-        if ($incident->pic) {
+        if ($incident->pics->isNotEmpty()) {
             $md[] = '## Person In Charge';
             $md[] = '';
-            $md[] = "- **Name:** {$incident->pic->name}";
+            $md[] = '- **Names:** '.$incident->pics->pluck('name')->implode(', ');
             $md[] = '';
         }
 
@@ -168,7 +168,7 @@ class IncidentFormatter
     public static function formatInline(Incident $incident, array $options = []): string
     {
         $labels = $incident->labels->pluck('name')->implode(', ') ?: 'None';
-        $pic = $incident->pic?->name ?? 'Unassigned';
+        $pic = $incident->pic_names ?: 'Unassigned';
         $date = $incident->incident_date?->format('Y-m-d');
 
         $parts = [
@@ -289,8 +289,8 @@ class IncidentFormatter
         ])->implode(' | ');
         $lines[] = "- {$meta}";
 
-        if ($incident->pic) {
-            $lines[] = "- PIC: {$incident->pic->name}";
+        if ($incident->pics->isNotEmpty()) {
+            $lines[] = "- PIC: {$incident->pic_names}";
         }
 
         if ($incident->fund_loss > 0 || $incident->potential_fund_loss > 0) {
@@ -340,7 +340,7 @@ class IncidentFormatter
         $parts = [
             "# {$incident->no} - ".($incident->title ?? 'Untitled'),
             "Severity: {$incident->severity->value} | Status: {$incident->incident_status->value}",
-            "Date: {$incident->incident_date?->format('Y-m-d')} | PIC: ".($incident->pic?->name ?? 'Unassigned'),
+            "Date: {$incident->incident_date?->format('Y-m-d')} | PIC: ".($incident->pic_names ?: 'Unassigned'),
             "Classification: {$incident->classification->value} | Type: {$incident->incident_type}",
         ];
 

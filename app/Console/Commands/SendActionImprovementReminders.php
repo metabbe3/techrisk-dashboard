@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Models\ActionImprovement;
@@ -104,9 +105,12 @@ class SendActionImprovementReminders extends Command
         }
 
         $incident = $action->incident;
-        if ($incident && $incident->pic && ! in_array($incident->pic->id, $notified)) {
-            $incident->pic->notify(new ActionImprovementDueSoon($action, $daysRemaining));
-            $this->info("Sent due soon reminder for: {$action->title} to incident PIC {$incident->pic->email}");
+        foreach ($incident?->pics ?? [] as $pic) {
+            if (! in_array($pic->id, $notified)) {
+                $pic->notify(new ActionImprovementDueSoon($action, $daysRemaining));
+                $notified[] = $pic->id;
+                $this->info("Sent due soon reminder for: {$action->title} to incident PIC {$pic->email}");
+            }
         }
     }
 
@@ -125,9 +129,12 @@ class SendActionImprovementReminders extends Command
         }
 
         $incident = $action->incident;
-        if ($incident && $incident->pic && ! in_array($incident->pic->id, $notified)) {
-            $incident->pic->notify(new ActionImprovementOverdue($action, $daysOverdue));
-            $this->info("Sent overdue notification for: {$action->title} to incident PIC {$incident->pic->email}");
+        foreach ($incident?->pics ?? [] as $pic) {
+            if (! in_array($pic->id, $notified)) {
+                $pic->notify(new ActionImprovementOverdue($action, $daysOverdue));
+                $notified[] = $pic->id;
+                $this->info("Sent overdue notification for: {$action->title} to incident PIC {$pic->email}");
+            }
         }
     }
 
@@ -149,9 +156,8 @@ class SendActionImprovementReminders extends Command
             }
         }
 
-        $incident = $action->incident;
-        if ($incident && $incident->pic) {
-            $notified[] = $incident->pic->id;
+        foreach ($action->incident?->pics ?? [] as $pic) {
+            $notified[] = $pic->id;
         }
 
         foreach ($admins as $admin) {

@@ -35,7 +35,7 @@ class IncidentMarkdownExporter
         // Eager load all relationships to prevent N+1 queries
         $incident->load([
             'incidentType',
-            'pic',
+            'pics',
             'labels',
             'statusUpdates' => fn ($query) => $query->orderBy('created_at', 'desc'),
             'investigationDocuments',
@@ -55,7 +55,7 @@ class IncidentMarkdownExporter
     {
         $incident->load([
             'incidentType',
-            'pic',
+            'pics',
             'labels',
             'statusUpdates' => fn ($query) => $query->limit(5)->orderBy('created_at', 'desc'),
             'investigationDocuments',
@@ -67,7 +67,7 @@ class IncidentMarkdownExporter
         $lines[] = "**Title:** {$incident->title}";
         $lines[] = "**Classification:** {$incident->classification->value} | **Severity:** {$incident->severity->value} | **Status:** {$incident->incident_status->value}";
         $lines[] = '**Type:** '.($incident->incidentType?->name ?? 'N/A');
-        $lines[] = '**PIC:** '.($incident->pic ? "{$incident->pic->name} ({$incident->pic->email})" : 'N/A');
+        $lines[] = '**PIC:** '.($incident->pics->isNotEmpty() ? $incident->pics->map(fn ($u) => "{$u->name} ({$u->email})")->implode(', ') : 'N/A');
 
         if ($incident->incident_source) {
             $lines[] = "**Source:** {$incident->incident_source}";
@@ -214,7 +214,7 @@ class IncidentMarkdownExporter
     {
         $incident->load([
             'incidentType',
-            'pic',
+            'pics',
             'labels',
             'statusUpdates' => fn ($query) => $query->orderBy('created_at', 'desc')->limit(10),
             'investigationDocuments',
@@ -247,7 +247,7 @@ class IncidentMarkdownExporter
         // People
         if ($has('people')) {
             $people = [];
-            $people[] = 'PIC: '.($incident->pic ? "{$incident->pic->name} ({$incident->pic->email})" : 'N/A');
+            $people[] = 'PIC: '.($incident->pics->isNotEmpty() ? $incident->pics->map(fn ($u) => "{$u->name} ({$u->email})")->implode(', ') : 'N/A');
             if ($incident->reported_by) {
                 $people[] = "Reported By: {$incident->reported_by}";
             }
@@ -452,7 +452,7 @@ class IncidentMarkdownExporter
     {
         $incident->load([
             'incidentType',
-            'pic',
+            'pics',
             'labels',
             'actionImprovements',
         ]);
@@ -462,7 +462,7 @@ class IncidentMarkdownExporter
         $lines[] = "**Title:** {$incident->title}";
         $lines[] = "**Classification:** {$incident->classification->value} | **Severity:** {$incident->severity->value} | **Status:** {$incident->incident_status->value}";
         $lines[] = '**Type:** '.($incident->incidentType?->name ?? 'N/A');
-        $lines[] = '**PIC:** '.($incident->pic ? "{$incident->pic->name}" : 'N/A');
+        $lines[] = '**PIC:** '.($incident->pic_names !== '' ? $incident->pic_names : 'N/A');
 
         if ($incident->summary) {
             $lines[] = "\n## Summary\n".Str::limit($incident->summary, 300);

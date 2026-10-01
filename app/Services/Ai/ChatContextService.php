@@ -634,7 +634,7 @@ class ChatContextService
 
         return Cache::remember($cacheKey, 300, function () use ($columns) {
             $incidents = Incident::aiCounts()
-                ->with(['pic', 'labels', 'actionImprovements', 'investigationDocuments'])
+                ->with(['pics', 'labels', 'actionImprovements', 'investigationDocuments'])
                 ->latest('incident_date')
                 ->take(8)
                 ->get();
@@ -753,12 +753,13 @@ class ChatContextService
         if (preg_match('/\b(?:pic|person|team|who\s+(?:is|are|was|handled|resolved|is\s+the\s+pic))\b/i', $msg)) {
             if (! $gatingEnabled || $enrichmentBudget < $maxBlocks) {
                 $topPics = Cache::remember('chat_pic_context', 300, function () {
+                    // Multi-PIC: count once per assigned PIC (per-PIC charts rule).
                     return Incident::aiCounts()
                         ->whereYear('incident_date', now()->year)
-                        ->with('pic')
+                        ->with('pics')
                         ->get()
-                        ->groupBy(fn ($inc) => $inc->pic?->name ?? 'Unassigned')
-                        ->map->count()
+                        ->flatMap(fn ($inc) => $inc->pics->isNotEmpty() ? $inc->pics->pluck('name') : ['Unassigned'])
+                        ->countBy()
                         ->sortDesc()
                         ->take(10);
                 });
@@ -1691,7 +1692,7 @@ class ChatContextService
 
             $total = (clone $topicQuery)->toBase()->count();
             $incidents = $topicQuery
-                ->with(['pic', 'labels'])
+                ->with(['pics', 'labels'])
                 ->orderByRaw('CASE WHEN title LIKE ? THEN 0 ELSE 1 END', ["%{$topic}%"]) // audit-ok: parameter binding, no interpolation
                 ->orderByDesc('incident_date')
                 ->limit(self::SEARCH_RESULT_CAP)
@@ -1799,7 +1800,7 @@ class ChatContextService
         }
 
         if ($filters['pic_name']) {
-            $query->whereHas('pic', fn ($pq) => $pq->where('name', 'LIKE', "%{$filters['pic_name']}%"));
+            $query->whereHas('pics', fn ($pq) => $pq->where('name', 'LIKE', "%{$filters['pic_name']}%"));
         }
 
         if ($filters['has_root_cause'] === false) {
@@ -1841,7 +1842,7 @@ class ChatContextService
         }
 
         $total = (clone $query)->toBase()->count();
-        $incidents = $query->with(['pic', 'labels'])
+        $incidents = $query->with(['pics', 'labels'])
             ->orderByDesc('incident_date')
             ->limit(self::SEARCH_RESULT_CAP)
             ->get();
@@ -1951,7 +1952,7 @@ class ChatContextService
         if ($total <= 15) {
             $lines = $incidents->map(function ($inc) {
                 $labels = $inc->labels->pluck('name')->implode(', ') ?: 'None';
-                $pic = $inc->pic?->name ?? 'Unassigned';
+                $pic = $inc->pic_names ?: 'Unassigned';
                 $fundLoss = $inc->fund_loss > 0 ? ' | Fund Loss: '.MarkdownFormatter::formatMoney((float) $inc->fund_loss) : '';
                 $bizCat = $inc->business_category ? ' | BizCat: '.implode(', ', $inc->business_category) : '';
                 $team = $inc->responsible_team ? ' | Team: '.implode(', ', $inc->responsible_team) : '';
@@ -1967,7 +1968,7 @@ class ChatContextService
         // Compact: 16–50 matches
         if ($total <= 50) {
             $lines = $incidents->map(function ($inc) {
-                $pic = $inc->pic?->name ?? 'Unassigned';
+                $pic = $inc->pic_names ?: 'Unassigned';
                 $fundLoss = $inc->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $inc->fund_loss) : '';
                 $criteria = ! empty($inc->match_criteria) ? ' | via: '.implode('+', $inc->match_criteria) : '';
 
@@ -2037,7 +2038,7 @@ class ChatContextService
         $openP1P2 = Incident::aiCounts()
             ->whereIn('severity', ['P1', 'P2'])
             ->whereNotIn('incident_status', [IncidentStatus::Completed->value])
-            ->with(['pic', 'labels'])
+            ->with(['pics', 'labels'])
             ->latest('incident_date')
             ->get();
 
@@ -2048,7 +2049,7 @@ class ChatContextService
         $topIncidents = Incident::aiCounts()
             ->whereBetween('incident_date', [$thisMonth, now()])
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->with(['pic'])
+            ->with(['pics'])
             // Built from enum cases (BUG-007): the hand-typed P1-P4 list gave
             // X1-X4 rank 0, letting them crowd out P1s from the top-3.
             ->orderByRaw(Severity::fieldOrderExpression())
@@ -2064,11 +2065,11 @@ class ChatContextService
         ];
 
         if ($openP1P2->isNotEmpty()) {
-            $lines[] = "Urgent P1/P2 incidents:\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | {$i->incident_status->value} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
+            $lines[] = "Urgent P1/P2 incidents:\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | {$i->incident_status->value} | PIC: ".($i->pic_names ?: 'Unassigned'))->implode("\n");
         }
 
         if ($topIncidents->isNotEmpty()) {
-            $lines[] = "Top incidents this month:\n".$topIncidents->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
+            $lines[] = "Top incidents this month:\n".$topIncidents->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | PIC: ".($i->pic_names ?: 'Unassigned'))->implode("\n");
         }
 
         return implode("\n", $lines);
@@ -2118,14 +2119,14 @@ class ChatContextService
         $openP1P2 = Incident::aiCounts()
             ->whereIn('severity', ['P1', 'P2'])
             ->whereNotIn('incident_status', [IncidentStatus::Completed->value])
-            ->with(['pic', 'actionImprovements'])
+            ->with(['pics', 'actionImprovements'])
             ->latest('incident_date')
             ->get();
 
         $topFundLoss = Incident::aiCounts()
             ->where('fund_loss', '>', 0)
             ->whereYear('incident_date', now()->year)
-            ->with('pic')
+            ->with('pics')
             ->orderByDesc('fund_loss')
             ->take(5)
             ->get();
@@ -2138,13 +2139,13 @@ class ChatContextService
         $lines = ['## Current Risk Overview'];
 
         if ($openP1P2->isNotEmpty()) {
-            $lines[] = "### Open P1/P2 Incidents ({$openP1P2->count()})\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | {$i->incident_status->value} | PIC: ".($i->pic?->name ?? 'Unassigned').($i->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $i->fund_loss) : ''))->implode("\n");
+            $lines[] = "### Open P1/P2 Incidents ({$openP1P2->count()})\n".$openP1P2->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) {$i->title} | {$i->severity->value} | {$i->incident_status->value} | PIC: ".($i->pic_names ?: 'Unassigned').($i->fund_loss > 0 ? ' | Loss: '.MarkdownFormatter::formatMoney((float) $i->fund_loss) : ''))->implode("\n");
         } else {
             $lines[] = '### No open P1/P2 incidents. Well done!';
         }
 
         if ($topFundLoss->isNotEmpty()) {
-            $lines[] = "### Top Fund Losses This Year\n".$topFundLoss->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) ".MarkdownFormatter::formatMoney((float) $i->fund_loss)." | {$i->title} | PIC: ".($i->pic?->name ?? 'Unassigned'))->implode("\n");
+            $lines[] = "### Top Fund Losses This Year\n".$topFundLoss->map(fn ($i) => "- [{$i->no}](/admin/incidents/{$i->id}) ".MarkdownFormatter::formatMoney((float) $i->fund_loss)." | {$i->title} | PIC: ".($i->pic_names ?: 'Unassigned'))->implode("\n");
         }
 
         if ($overdueActions->isNotEmpty()) {

@@ -50,7 +50,10 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         foreach ($this->columnNames as $columnName) {
             $isBoolean = in_array($columnName, ['glitch_flag', 'risk_incident_form_cfm', 'goc_upload', 'teams_upload', 'doc_signed']);
             $isArray = in_array($columnName, ['business_category', 'root_cause_category', 'responsible_team']);
-            if ($columnName === 'mttr') {
+            if ($columnName === 'pic') {
+                // Multi-PIC: the column shows all names joined, not one id.
+                $row[] = $incident->pic_names;
+            } elseif ($columnName === 'mttr') {
                 $row[] = $incident->mttr_formatted;
             } elseif ($columnName === 'mtbf') {
                 // Outlier rows keep their place with a literal instead of a

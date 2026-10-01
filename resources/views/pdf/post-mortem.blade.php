@@ -303,8 +303,8 @@
             @if($incident->incident_status)
                 <span><strong>Status:</strong> {{ $incident->incident_status }}</span>
             @endif
-            @if($incident->pic)
-                <span><strong>PIC:</strong> {{ $incident->pic->name }}</span>
+            @if($incident->pics->isNotEmpty())
+                <span><strong>PIC:</strong> {{ $incident->pic_names }}</span>
             @endif
             <span><strong>Generated:</strong> {{ $generated_at }}</span>
         </div>

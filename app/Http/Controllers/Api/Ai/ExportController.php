@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api\Ai;
 
 use App\Http\Controllers\Controller;
@@ -95,7 +96,7 @@ class ExportController extends Controller
         $limit = $validated['limit'] ?? 100;
         $offset = $validated['offset'] ?? 0;
 
-        $query = Incident::with(['pic', 'labels']);
+        $query = Incident::with(['pics', 'labels']);
 
         // Apply date range filter
         if (isset($validated['start_date']) && isset($validated['end_date'])) {

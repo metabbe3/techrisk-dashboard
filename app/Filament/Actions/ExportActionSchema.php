@@ -193,7 +193,7 @@ class ExportActionSchema
             ->when(! empty($data['f_status'] ?? []), fn (Builder $q) => $q->whereIn('incident_status', $data['f_status']))
             ->when(! empty($data['f_incident_type'] ?? []), fn (Builder $q) => $q->whereIn('incident_type', $data['f_incident_type']))
             ->when(! empty($data['f_fund_status'] ?? []), fn (Builder $q) => $q->whereIn('fund_status', $data['f_fund_status']))
-            ->when(! empty($data['f_pic'] ?? []), fn (Builder $q) => $q->whereIn('pic_id', $data['f_pic']))
+            ->when(! empty($data['f_pic'] ?? []), fn (Builder $q) => $q->whereHas('pics', fn (Builder $pic) => $pic->whereIn('users.id', $data['f_pic'])))
             ->when(! empty($data['f_business_category'] ?? []), function (Builder $q) use ($data): void {
                 $q->where(function (Builder $q2) use ($data): void {
                     foreach ($data['f_business_category'] as $cat) {

@@ -1,11 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources\IncidentResource\Pages;
 
-use App\Enums\FundStatus;
-use App\Enums\IncidentStatus;
-use App\Enums\Severity;
 use App\Filament\Resources\IncidentResource;
 use Filament\Actions;
 use Filament\Forms\Form;
@@ -47,7 +45,7 @@ class EditIncident extends EditRecord
 
     protected function mutateFormDataBeforeFill(array $data): array
     {
-        $this->record->loadMissing(['pic', 'labels', 'incidentType', 'latestStatusUpdate']);
+        $this->record->loadMissing(['pics', 'labels', 'incidentType', 'latestStatusUpdate']);
 
         return $data;
     }

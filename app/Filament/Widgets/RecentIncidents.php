@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Enums\IncidentClassification;
@@ -26,7 +27,7 @@ class RecentIncidents extends BaseWidget
     {
         $query = IncidentResource::getEloquentQuery()
             ->where('classification', IncidentClassification::Incident->value)
-            ->with(['latestStatusUpdate', 'pic', 'incidentType']);
+            ->with(['latestStatusUpdate', 'pics', 'incidentType']);
 
         if ($this->start_date && $this->end_date) {
             $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

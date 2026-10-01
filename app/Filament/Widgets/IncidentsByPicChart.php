@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Filament\Concerns\HasChartColors;
@@ -34,7 +35,7 @@ class IncidentsByPicChart extends ChartWidget
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () {
             $query = Incident::query()
                 ->select('users.name as pic_name', DB::raw('count(incidents.id) as total'))
-                ->join('users', 'incidents.pic_id', '=', 'users.id')
+                ->join('incident_pic', 'incidents.id', '=', 'incident_pic.incident_id')->join('users', 'incident_pic.user_id', '=', 'users.id')
                 ->aiCounts()
                 ->groupBy('users.name');
 

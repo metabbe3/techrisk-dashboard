@@ -60,6 +60,12 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithColumnFormattin
             return $q->whereBetween('incident_date', [$start, $end]);
         }
 
+        if ($this->column === 'pic') {
+            // Sentinel column: PICs live on the incident_pic pivot — filter by
+            // relation, never by a column (Edit-Safety rule 4).
+            return $q->whereHas('pics', fn ($pic) => $pic->where('users.id', (int) $this->groupValue));
+        }
+
         return $this->isJsonArray
             ? $q->whereJsonContains($this->column, $this->groupValue)
             : $q->where($this->column, $this->groupValue);
@@ -82,7 +88,7 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithColumnFormattin
             // Outlier: literal (owner rule 2026-10-01). Non-outlier null
             // stored mtbf renders 0, not blank (owner rule, same day).
             $incident->isOutlier() ? 'Outlier' : ($incident->mtbf ?? 0),
-            $incident->pic?->name ?? '-',
+            $incident->pic_names !== '' ? $incident->pic_names : '-',
             (float) $incident->potential_fund_loss,
             (float) $incident->fund_loss,
             (float) $incident->recovered_fund,

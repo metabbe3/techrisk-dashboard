@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ai;
 
 use App\Models\Incident;
@@ -52,7 +53,7 @@ class HybridIncidentRetriever
             : collect();
 
         $incidents = Incident::whereIn('id', $results->pluck('incident_id'))
-            ->with(['labels:id,name', 'pic:id,name,email', 'actionImprovements:id,incident_id,title,status'])
+            ->with(['labels:id,name', 'pics:id,name,email', 'actionImprovements:id,incident_id,title,status'])
             ->select(Incident::EXTENDED_SIMILARITY_COLUMNS)
             ->get()
             ->keyBy('id');

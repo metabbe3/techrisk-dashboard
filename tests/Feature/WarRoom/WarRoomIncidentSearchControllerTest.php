@@ -6,6 +6,7 @@ use App\Models\Incident;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -136,11 +137,12 @@ class WarRoomIncidentSearchControllerTest extends TestCase
     public function test_search_returns_correct_structure(): void
     {
         Event::fake();
+        Notification::fake(); // pivot attach fires assignment notifications — setup noise here
         $pic = User::factory()->create();
-        Incident::factory()->create([
+        $incident = Incident::factory()->create([
             'title' => 'Searchable Incident',
-            'pic_id' => $pic->id,
         ]);
+        $incident->pics()->attach($pic->id);
 
         $response = $this->actingAs($this->user)
             ->getJson('/admin/war-room/incident-search?q=Searchable');

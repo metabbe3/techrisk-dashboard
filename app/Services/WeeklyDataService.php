@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Enums\IncidentClassification;
@@ -22,7 +23,7 @@ class WeeklyDataService
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->excludedFromCounts()
-            ->with(['pic', 'labels'])
+            ->with(['pics', 'labels'])
             ->orderBy('incident_date', 'desc')
             ->get();
 

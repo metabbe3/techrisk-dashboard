@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ai;
 
 use App\Models\Incident;
@@ -252,7 +253,7 @@ class SimilarIncidentService
         }
 
         $candidates = Incident::whereIn('id', $topIds)
-            ->with(['labels:id,name', 'pic:id,name,email', 'actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date'])])
+            ->with(['labels:id,name', 'pics:id,name,email', 'actionImprovements' => fn ($q) => $q->select(['id', 'incident_id', 'title', 'status', 'due_date'])])
             ->select(Incident::EXTENDED_SIMILARITY_COLUMNS)
             ->get();
 
@@ -521,7 +522,7 @@ class SimilarIncidentService
         // Expand the per-call budget with batch size so multi-verdict output isn't truncated.
         $maxTokens = max((int) config('ai.similarity.double_check_max_tokens', 1024), 220 * count($batch));
 
-        $candidates = Incident::with(['labels:id,name', 'pic:id,name,email', 'actionImprovements'])
+        $candidates = Incident::with(['labels:id,name', 'pics:id,name,email', 'actionImprovements'])
             ->select(Incident::EXTENDED_SIMILARITY_COLUMNS)
             ->whereIn('id', array_column($batch, 'id'))
             ->get()
@@ -704,28 +705,24 @@ class SimilarIncidentService
 
     private function searchByTeam(Incident $incident, int $lookbackMonths): array
     {
-        $conditions = [];
-        if ($incident->pic_id) {
-            $conditions[] = ['pic_id', '=', $incident->pic_id];
-        }
-        if ($incident->incident_source) {
-            $conditions[] = ['incident_source', '=', $incident->incident_source];
-        }
-        if ($incident->third_party_client) {
-            $conditions[] = ['third_party_client', '=', $incident->third_party_client];
-        }
+        // Multi-PIC (PROJ-010): sharing ANY PIC is a team signal now.
+        $picIds = $incident->pics->pluck('id')->all();
 
-        if (empty($conditions)) {
+        if (empty($picIds) && ! $incident->incident_source && ! $incident->third_party_client) {
             return [];
         }
 
-        // Group the ORs so the base filters (exclude self, lookback) still apply
-        // to every team/source match — otherwise the whole recent corpus matches.
         return Incident::where('id', '!=', $incident->id)
             ->where('incident_date', '>=', now()->subMonths($lookbackMonths))
-            ->where(function ($q) use ($conditions) {
-                foreach ($conditions as [$column, $op, $value]) {
-                    $q->orWhere($column, $op, $value);
+            ->where(function ($q) use ($picIds, $incident) {
+                if (! empty($picIds)) {
+                    $q->orWhereHas('pics', fn ($pic) => $pic->whereIn('users.id', $picIds));
+                }
+                if ($incident->incident_source) {
+                    $q->orWhere('incident_source', '=', $incident->incident_source);
+                }
+                if ($incident->third_party_client) {
+                    $q->orWhere('third_party_client', '=', $incident->third_party_client);
                 }
             })
             ->limit(self::MAX_CANDIDATES_PER_DIMENSION)
