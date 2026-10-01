@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use App\Enums\IncidentClassification;
@@ -274,7 +275,8 @@ class Reporting extends Page implements HasForms
             $metrics['avg_mttr'] = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
-            $mtbfQuery = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE);
+            $mtbfQuery = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)
+                ->withoutOutliers();
             $mtbfCount = $mtbfQuery->count();
             $avgMtbf = 0;
             if ($mtbfCount > 1) {

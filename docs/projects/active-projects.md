@@ -269,6 +269,26 @@ None
 
 ---
 
+### [PROJ-006] Outlier Label — exclude from MTBF/MTTR math, keep in counts
+
+**Status:** In Progress (code complete, awaiting prod deploy)
+**Priority:** P1
+**Start Date:** 2026-10-01
+
+#### Description
+Owner rule 2026-10-01: an Incident/Issue tagged Label `Outlier` drops out of every MTBF/MTTR average — calculator nulls its stored metrics, every metric query/span composes `Incident::withoutOutliers()`, predecessor gaps telescope over it — while staying in every count (Total Cases, status tabs, severity breakdowns, KPI counts, Group-By Cases) and every table/export row. Its own MTTR/MTBF cells render the literal `Outlier`. Tagging is a metrics trigger via the new `IncidentLabel` pivot (dispatches recalc + bumps `dashboard_cache_version`); `autoLabel()` never infers it from text. Bonus fixes shipped in the same commit (BUG-024): `app:send-report` fatalled on a private method, its metrics matched 0 rows (enum trap), Reporting page 500'd on enum echo, two unversioned 15-min caches (`mttr_mtbf_trend` → v5, `analytics` → v3).
+
+#### Tasks
+- [x] Model primitives (`Label::OUTLIER`, `withoutOutliers()`, `isOutlier()`) — 2026-10-01
+- [x] Calculator + job: outlier guards in all 4 methods, predecessor/find-next queries scoped — 2026-10-01
+- [x] Freshness: `IncidentLabel` pivot dispatch + autoLabel guard — 2026-10-01
+- [x] Query surfaces: footer, dashboard/incident widgets, trend chart, AI insights/controller, Reporting, SendReport, Analytics choke point — 2026-10-01
+- [x] Presentation: `mttr_formatted` accessor, sequence sheets ×3, stored sheets ×2 (null→0), live tables ×2, Issues-sheet row retention, markdown truthy fix — 2026-10-01
+- [x] Docs: CLAUDE.md dependency map + business rules, BUG-024 — 2026-10-01
+- [ ] Owner live check after deploy: tag an incident Outlier → cells show `Outlier`, averages shift, counts don't; detach restores
+
+---
+
 ## Completed Projects
 
 ### [PROJ-005] Export Redesign — Executive Report, Group By, Form Validation
@@ -281,4 +301,4 @@ None
 
 ---
 
-*Last Updated: 2026-09-29*
+*Last Updated: 2026-10-01*

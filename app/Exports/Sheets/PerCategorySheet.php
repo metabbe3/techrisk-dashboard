@@ -79,7 +79,9 @@ class PerCategorySheet implements FromQuery, ShouldAutoSize, WithColumnFormattin
             $incident->severity instanceof \BackedEnum ? $incident->severity->value : $incident->severity,
             $incident->incident_status instanceof \BackedEnum ? $incident->incident_status->value : $incident->incident_status,
             $incident->mttr_formatted,
-            $incident->mtbf,
+            // Outlier: literal (owner rule 2026-10-01). Non-outlier null
+            // stored mtbf renders 0, not blank (owner rule, same day).
+            $incident->isOutlier() ? 'Outlier' : ($incident->mtbf ?? 0),
             $incident->pic?->name ?? '-',
             (float) $incident->potential_fund_loss,
             (float) $incident->fund_loss,

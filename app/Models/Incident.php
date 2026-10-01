@@ -181,6 +181,27 @@ class Incident extends Model implements Auditable
     }
 
     /**
+     * Rows usable in MTBF/MTTR math: excludes incidents tagged with the
+     * "Outlier" label (owner rule 2026-10-01). Compose this into METRIC
+     * queries only — never into count/status/KPI tallies, which keep
+     * counting outlier rows by design.
+     */
+    public function scopeWithoutOutliers($query): void
+    {
+        $query->whereDoesntHave('labels', fn ($q) => $q->where('name', Label::OUTLIER));
+    }
+
+    /**
+     * True when this incident carries the "Outlier" label. Uses the loaded
+     * labels relation when eager-loaded (export/table queries with()
+     * 'labels'), lazy-loads otherwise.
+     */
+    public function isOutlier(): bool
+    {
+        return $this->labels->contains(fn ($label) => $label->name === Label::OUTLIER);
+    }
+
+    /**
      * Restrict to the viewing user's allowed years (UserAuditLogSetting).
      * Shared by Incident and Issue resources so year-based access control
      * cannot drift between the two classification views.
@@ -237,6 +258,12 @@ class Incident extends Model implements Auditable
      */
     public function getMttrFormattedAttribute(): string
     {
+        // Owner rule (2026-10-01): outlier rows show WHY they have no metrics
+        // — before the null branch, since their stored mttr is null.
+        if ($this->isOutlier()) {
+            return 'Outlier';
+        }
+
         if ($this->mttr === null) {
             return '-';
         }
@@ -330,7 +357,8 @@ class Incident extends Model implements Auditable
 
     public function labels(): BelongsToMany
     {
-        return $this->belongsToMany(Label::class, 'incident_label');
+        return $this->belongsToMany(Label::class, 'incident_label')
+            ->using(IncidentLabel::class);
     }
 
     public function actionImprovements(): HasMany

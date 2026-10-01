@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Metrics;
 
 use App\Enums\Severity;
@@ -47,6 +48,12 @@ class IncidentMetricsCalculator
      */
     public function computeMttr(Incident $incident): void
     {
+        if ($incident->isOutlier()) {
+            $incident->mttr = null;
+
+            return;
+        }
+
         if (! $incident->stop_bleeding_at) {
             $incident->mttr = null;
 
@@ -69,10 +76,17 @@ class IncidentMetricsCalculator
      */
     public function computeMtbf(Incident $incident): void
     {
+        if ($incident->isOutlier()) {
+            $incident->mtbf = null;
+
+            return;
+        }
+
         $year = $incident->incident_date->year;
         $previousIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -120,10 +134,20 @@ class IncidentMetricsCalculator
             'mtbf_non_incident' => ['severity' => 'Non Incident'],
         ];
 
+        if ($incident->isOutlier()) {
+            foreach (array_keys($categories) as $column) {
+                $incident->{$column} = null;
+            }
+            $incident->mtbf_recovered = null;
+
+            return;
+        }
+
         foreach ($categories as $column => $condition) {
             $previousIncident = Incident::whereYear('incident_date', $year)
                 ->where('classification', $incident->classification->value)
                 ->where($condition)
+                ->withoutOutliers()
                 ->where(function ($query) use ($incident) {
                     $query->where('incident_date', '<', $incident->incident_date)
                         ->orWhere(function ($query) use ($incident) {
@@ -149,6 +173,7 @@ class IncidentMetricsCalculator
         $previousRecovered = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification->value)
             ->where('recovered_fund', '>', 0)
+            ->withoutOutliers()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -176,10 +201,17 @@ class IncidentMetricsCalculator
      */
     public function computeMtbfAll(Incident $incident): void
     {
+        if ($incident->isOutlier()) {
+            $incident->mtbf_all = null;
+
+            return;
+        }
+
         $year = $incident->incident_date->year;
 
         $previousRecord = Incident::whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {

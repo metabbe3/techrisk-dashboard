@@ -65,6 +65,10 @@
                                     <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-700 dark:text-gray-300">
                                         @php
                                             $value = Arr::get($incident, $column);
+                                            // ponytail: raw echo can't stringify enums (severity fatals)
+                                            if ($value instanceof \BackedEnum) {
+                                                $value = $value->value;
+                                            }
                                             if (is_array($value)) {
                                                 echo implode(', ', $value);
                                             } else {

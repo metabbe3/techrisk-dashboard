@@ -47,7 +47,7 @@ class GroupedIncidentsExport implements WithMultipleSheets
         $isJson = $config['json'];
         $column = $config['column'] ?? $this->dimension;
 
-        $rows = $this->query->get();
+        $rows = $this->query->clone()->with('labels')->get();
 
         // distinct group values
         if ($isJson) {
@@ -109,8 +109,11 @@ class GroupedIncidentsExport implements WithMultipleSheets
             ));
             $statusOf = fn ($i) => $i->incident_status?->value ?? $i->incident_status; // enum-cast (BUG-022 lesson)
             $completed = \App\Enums\IncidentStatus::Completed->value;
-            // avg MTBF per group: (max-min date among eligible) / (count-1)
-            $eligibleDates = $eligible->pluck('incident_date')->filter()->sort()->values();
+            // avg MTBF per group: (max-min date among eligible) / (count-1).
+            // Outlier rows leave the span (owner rule 2026-10-01) but stay
+            // in every count above ($widgetRows/$eligible unchanged).
+            $eligibleDates = $eligible->reject(fn ($i) => $i->isOutlier())
+                ->pluck('incident_date')->filter()->sort()->values();
             $avgMtbf = 0;
             if ($eligibleDates->count() > 1) {
                 $spanDays = $eligibleDates->first()->startOfDay()->diffInDays($eligibleDates->last()->startOfDay());

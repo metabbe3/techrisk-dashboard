@@ -28,7 +28,8 @@ class IncidentStatsFooterData
 
         $totalCases = $query->count();
 
-        $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE);
+        $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers();
         $mtbfCount = $mtbfQuery->count();
         $avgMtbf = 0;
         if ($mtbfCount > 0) {

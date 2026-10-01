@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Enums\IncidentClassification;
@@ -29,10 +30,13 @@ class MttrMtbfTrendChart extends ChartWidget
         $monthExpr = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'sqlite'
             ? "CAST(strftime('%m', incident_date) AS INTEGER)"
             : 'MONTH(incident_date)';
-        $cacheKey = 'mttr_mtbf_trend_v4_'.md5(json_encode([
+        // v5: keyed on dashboard_cache_version — an Outlier re-tag bumps the
+        // version (metrics job) and must invalidate this 15-minute cache too.
+        $cacheKey = 'mttr_mtbf_trend_v5_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
+            'v' => (int) Cache::get('dashboard_cache_version', 0),
         ]));
 
         $data = Cache::remember($cacheKey, now()->addMinutes(15), function () use ($monthExpr) {
@@ -63,6 +67,7 @@ class MttrMtbfTrendChart extends ChartWidget
             // MTBF Non Fund Loss per month
             $mtbfNonFundRows = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+                ->withoutOutliers()
                 ->where('fund_status', 'Non fundLoss')
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw($monthExpr))
@@ -82,6 +87,7 @@ class MttrMtbfTrendChart extends ChartWidget
             // MTBF Fund Loss per month
             $mtbfFundRows = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+                ->withoutOutliers()
                 ->where('fund_status', 'Confirmed loss')
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw($monthExpr))

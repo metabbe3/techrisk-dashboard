@@ -55,7 +55,9 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
         if ($this->metricType === 'mttr') {
             $metricValue = $incident->mttr_formatted;
         } else {
-            $metricValue = $this->computeIssueMtbf($incident) ?? '-';
+            // Outlier rows keep their place with a literal (owner rule
+            // 2026-10-01); the gap sequence skips them.
+            $metricValue = $incident->isOutlier() ? 'Outlier' : ($this->computeIssueMtbf($incident) ?? '-');
         }
 
         return [
@@ -80,6 +82,7 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
             $incidents = \App\Models\Incident::whereYear('incident_date', $year)
                 ->where('classification', IncidentClassification::Issue->value)
                 ->whereIn('severity', \App\Enums\Severity::METRIC_ELIGIBLE)
+                ->withoutOutliers()
                 ->orderBy('incident_date')->orderBy('id')
                 ->get(['id', 'incident_date']);
 

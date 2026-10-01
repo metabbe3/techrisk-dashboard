@@ -86,7 +86,10 @@ class IncidentStatsFooterFilterParityTest extends TestCase
         Incident::factory()->createQuietly([
             'classification' => 'Incident',
             'severity' => 'P1',
-            'incident_date' => now()->startOfWeek()->addHours(3),
+            // today, not startOfWeek(): on the 1st–3rd of a month the week
+            // can start in the previous month and quick_period=month finds
+            // nothing (flaky every month-start)
+            'incident_date' => now()->startOfDay()->addHours(3),
             'fund_loss' => 100,
         ]);
         Incident::factory()->createQuietly([

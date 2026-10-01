@@ -1299,13 +1299,73 @@ half-applied — two bugs that only reconcile as "stale runtime".
 
 ---
 
+### [BUG-024] - Label tagging recalculated nothing: Outlier labels + two unversioned caches + three dormant prod bugs found by the Outlier feature tests
+
+**Date:** 2026-10-01
+**Discovered By:** Outlier feature work (TDD — every one of these surfaced as a RED-phase test error)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Implementing "tag a Label `Outlier` → exclude from MTBF/MTTR, keep in counts"
+exposed that **no label write ever recalculated anything**, and three more
+dormant bugs that the new tests tripped over on their way to RED:
+
+1. **Label attach/detach fired no recalc and no cache bump.** Filament saves
+   labels via pivot sync — no Incident model event, so the observer never saw
+   it and `dashboard_cache_version` stayed flat. Metrics only refreshed when
+   some *other* field was later edited. Fix: custom pivot `IncidentLabel`
+   (`->using()` on both relation sides — pivot events only fire through
+   relations declaring the class) dispatches `CalculateIncidentMetrics` for
+   Outlier tags.
+2. **Two 15-minute caches were not version-keyed**: `mttr_mtbf_trend_v4_*`
+   and `analytics_v2_*` ignored `dashboard_cache_version`, so even with the
+   pivot fix they would serve stale trend/chart data until TTL. Both now
+   carry the version in the key payload (→ `v5` / `v3`).
+3. **`app:send-report` fatals on main**: `SendReport.php` called the
+   **private** `Reporting::getColumns()` — every scheduled report died with
+   BadMethodCallException before writing the workbook. (→ public
+   `getColumnsFlattened()`, identical output.)
+4. **Scheduled-report metrics were silently 0/null in prod**: the command's
+   Collection `whereIn('severity', Severity::METRIC_ELIGIBLE)` matched 0 rows —
+   `METRIC_ELIGIBLE` holds strings, enum-cast attributes are enum instances
+   (the exact BUG-022 trap already documented). `avg_mttr` null, `avg_mtbf` 0.
+5. **Reporting page 500s once incidents render**: `reporting.blade.php`
+   `echo`'d a `BackedEnum` (`severity` is a default column) — PHP cannot
+   stringify enums. Nobody had rendered the incidents table with data since
+   the enum casts landed.
+
+### Root Causes
+- Metrics triggers were enumerated per write-path (observer fields) instead
+  of per data-dependency: the label↔metrics dependency existed in the data
+  model but not in the trigger list.
+- Cache keys built from inputs only, not from the freshness signal the rest
+  of the app already uses (`dashboard_cache_version`).
+- `private` method called cross-class compiled fine until runtime; the
+  scheduled command had no test that ever reached line 97.
+- The Collection-vs-SQL asymmetry (enum casts exist only after hydration)
+  keeps producing the same bug shape (BUG-022, now twice).
+
+### Prevention
+- [x] Pivot events are now part of the metrics trigger surface — documented
+      in the CLAUDE.md dependency map row for `IncidentLabel`
+- [x] Every timed cache that serves metric-derived data must embed
+      `dashboard_cache_version` in its key (rule added to CLAUDE.md)
+- [x] SendReport has a test that reads the generated workbook (OutlierMetricSurfacesTest)
+- [x] Reporting page has a Livewire test that renders the incidents table
+- [x] When a Collection filter compares a cast attribute, go through
+      `?->value` — grep for `->whereIn('severity'` on Collections before
+      trusting a metric
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 23 |
+| Total Bugs | 24 |
 | Critical | 0 |
-| High | 15 |
+| High | 16 |
 | Medium | 6 |
 | Low | 0 |
 | Resolved | 23 |
@@ -1325,4 +1385,4 @@ half-applied — two bugs that only reconcile as "stale runtime".
 
 ---
 
-*Last Updated: 2026-09-30*
+*Last Updated: 2026-10-01*

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Models\Incident;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 /**
@@ -13,6 +14,8 @@ use Tests\TestCase;
  */
 class IncidentMttrFormattedTest extends TestCase
 {
+    use RefreshDatabase;
+
     /**
      * @dataProvider mttrValues
      */
@@ -43,5 +46,13 @@ class IncidentMttrFormattedTest extends TestCase
     public function test_absurd_mttr_renders_na(): void
     {
         $this->assertSame('N/A', (new Incident(['mttr' => '60000000']))->mttr_formatted);
+    }
+
+    public function test_outlier_renders_outlier_even_with_a_stored_value(): void
+    {
+        $incident = Incident::factory()->createQuietly(['mttr' => '120', 'stop_bleeding_at' => null]);
+        $incident->labels()->attach(\App\Models\Label::firstOrCreate(['name' => \App\Models\Label::OUTLIER]));
+
+        $this->assertSame('Outlier', $incident->fresh()->mttr_formatted);
     }
 }

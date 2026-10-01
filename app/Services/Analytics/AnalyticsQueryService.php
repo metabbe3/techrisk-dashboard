@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Analytics;
 
 use App\Enums\IncidentClassification;
@@ -49,7 +50,10 @@ class AnalyticsQueryService
 
     public function build(string $metric, string $dimension, string $chartType, array $filters = [], ?array $comparison = null): array
     {
-        $cacheKey = 'analytics_v2_'.md5(json_encode(compact('metric', 'dimension', 'filters')));
+        // v3: keyed on dashboard_cache_version — an Outlier re-tag bumps the
+        // version (metrics job) and must invalidate these 15-minute charts.
+        $cacheKey = 'analytics_v3_'.md5(json_encode(compact('metric', 'dimension', 'filters')
+            + ['v' => (int) Cache::get('dashboard_cache_version', 0)]));
 
         $primary = Cache::remember($cacheKey, now()->addMinutes(15), fn () => $this->buildSingleDataset($metric, $dimension, $filters));
 
@@ -64,7 +68,8 @@ class AnalyticsQueryService
 
         if ($comparison && ($comparison['enabled'] ?? false)) {
             $compFilters = $this->deriveComparisonFilters($filters, $comparison);
-            $compCacheKey = 'analytics_v2_'.md5(json_encode(['metric' => $metric, 'dimension' => $dimension, 'filters' => $compFilters]));
+            $compCacheKey = 'analytics_v3_'.md5(json_encode(['metric' => $metric, 'dimension' => $dimension, 'filters' => $compFilters]
+                + ['v' => (int) Cache::get('dashboard_cache_version', 0)]));
             $secondary = Cache::remember($compCacheKey, now()->addMinutes(15), fn () => $this->buildSingleDataset($metric, $dimension, $compFilters));
 
             $secondaryAligned = $this->alignToLabels($secondary, $primary['labels']);
@@ -84,10 +89,14 @@ class AnalyticsQueryService
 
         // MTTR/MTBF only count metric-eligible severities (P1-P4, X1-X4) —
         // Non Incident / G rows carry mttr/mtbf values for per-row display
-        // but must never reach these averages. Single choke point for every
-        // dimension path below.
+        // but must never reach these averages. Outlier-tagged rows leave the
+        // averages too (owner rule 2026-10-01) — the query scope matters even
+        // though their stored metrics are null: the JSON-array path divides
+        // by row count, and the label dimension joins them in by name.
+        // Single choke point for every dimension path below.
         if (in_array($metric, ['avg_mttr', 'avg_mttr_days', 'avg_mtbf'], true)) {
-            $query->whereIn('severity', Severity::METRIC_ELIGIBLE);
+            $query->whereIn('severity', Severity::METRIC_ELIGIBLE)
+                ->withoutOutliers();
         }
 
         return match ($dimension) {

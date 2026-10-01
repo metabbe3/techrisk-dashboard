@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Models\Incident;
@@ -44,7 +45,7 @@ class RecalculateIncidentMetricsCommand extends Command
             $this->info("Filtering by year: {$year}");
         }
 
-        $incidents = $query->orderBy('incident_date')->get();
+        $incidents = $query->with('labels')->orderBy('incident_date')->get();
 
         if ($incidents->isEmpty()) {
             $this->warn('No incidents found.');

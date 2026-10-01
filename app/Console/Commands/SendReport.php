@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Enums\IncidentClassification;
@@ -70,17 +71,23 @@ class SendReport extends Command
             $query->whereIn('severity', $data['severities']);
         }
 
-        $incidents = $query->get();
+        $incidents = $query->with('labels')->get();
 
         $metrics = [];
         if (in_array('total_incidents', $template->metrics)) {
             $metrics['total_incidents'] = $incidents->count();
         }
+        // Collection severity attributes are enum instances — METRIC_ELIGIBLE
+        // holds strings, so whereIn() never matched (BUG-022 trap); and
+        // Outlier-tagged rows leave every MTBF/MTTR average (owner rule
+        // 2026-10-01) while staying in total_incidents.
+        $metricEligible = fn (Incident $i) => in_array($i->severity?->value, Severity::METRIC_ELIGIBLE, true)
+            && ! $i->isOutlier();
         if (in_array('avg_mttr', $template->metrics)) {
-            $metrics['avg_mttr'] = $incidents->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
+            $metrics['avg_mttr'] = $incidents->filter($metricEligible)->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $template->metrics)) {
-            $mtbfIncidents = $incidents->whereIn('severity', Severity::METRIC_ELIGIBLE);
+            $mtbfIncidents = $incidents->filter($metricEligible);
             $mtbfCount = $mtbfIncidents->count();
             $avgMtbf = 0;
 
@@ -94,7 +101,8 @@ class SendReport extends Command
             $metrics['avg_mtbf'] = $avgMtbf;
         }
 
-        $allColumns = array_merge(...array_values((new \App\Filament\Pages\Reporting)->getColumns()));
+        // ponytail: was ->getColumns() — private, fatalled the scheduled command
+        $allColumns = (new \App\Filament\Pages\Reporting)->getColumnsFlattened();
         $headings = array_intersect_key($allColumns, array_flip($template->columns));
 
         $export = new IncidentsExport($incidents, $metrics, $headings);

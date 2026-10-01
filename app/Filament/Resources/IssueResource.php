@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Enums\IncidentClassification;
@@ -106,7 +107,7 @@ class IssueResource extends Resource
     {
         return $table
             ->defaultSort('incident_date', 'desc')
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType', 'labels']))
             ->columns([
                 TextColumn::make('no')
                     ->label('ID')
@@ -133,7 +134,13 @@ class IssueResource extends Resource
                 TextColumn::make('mtbf_display')
                     ->label('MTBF (days)')
                     ->toggleable(isToggledHiddenByDefault: false)
-                    ->state(function (Incident $record): int {
+                    ->state(function (Incident $record): int|string {
+                        // Outlier rows show the literal, never a gap value
+                        // (owner rule 2026-10-01).
+                        if ($record->isOutlier()) {
+                            return 'Outlier';
+                        }
+
                         static $cache = [];
                         $year = $record->incident_date->year;
                         $key = "issues_{$year}";
@@ -141,6 +148,7 @@ class IssueResource extends Resource
                         if (! isset($cache[$key])) {
                             $incidents = Incident::whereYear('incident_date', $year)
                                 ->where('classification', IncidentClassification::Issue->value)
+                                ->withoutOutliers()
                                 ->orderBy('incident_date')->orderBy('id')
                                 ->get(['id', 'incident_date']);
 
@@ -155,7 +163,7 @@ class IssueResource extends Resource
 
                         return $cache[$key][$record->id] ?? 0;
                     })
-                    ->formatStateUsing(fn (int $state): string => number_format($state))
+                    ->formatStateUsing(fn (int|string $state): string => is_int($state) ? number_format($state) : $state)
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
                 TextColumn::make('incident_date')
                     ->label('Start Date')

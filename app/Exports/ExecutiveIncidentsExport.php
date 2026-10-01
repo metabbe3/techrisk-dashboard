@@ -29,7 +29,8 @@ class ExecutiveIncidentsExport implements WithMultipleSheets
 
     public function __construct(Builder $query)
     {
-        $this->query = $query->clone()->orderBy('incident_date', 'asc');
+        // labels eager-loaded: every sheet's isOutlier() cell rule needs it
+        $this->query = $query->clone()->with('labels')->orderBy('incident_date', 'asc');
     }
 
     public function sheets(): array

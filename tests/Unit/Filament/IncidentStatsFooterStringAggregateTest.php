@@ -52,7 +52,7 @@ class IncidentStatsFooterStringAggregateTest extends TestCase
         $query->method('where')->willReturnSelf();
         $query->method('__call')->willReturnCallback(function (string $method) use (&$averages, &$query): mixed {
             return match ($method) {
-                'whereIn' => $query,
+                'whereIn', 'withoutOutliers' => $query,
                 'count' => 2,
                 'min' => '2026-01-01',
                 'max' => '2026-09-01',

@@ -53,7 +53,9 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
             if ($columnName === 'mttr') {
                 $row[] = $incident->mttr_formatted;
             } elseif ($columnName === 'mtbf') {
-                $row[] = $this->computeMtbf($incident) ?? '-';
+                // Outlier rows keep their place with a literal instead of a
+                // gap value (owner rule 2026-10-01); sequence skips them.
+                $row[] = $incident->isOutlier() ? 'Outlier' : ($this->computeMtbf($incident) ?? '-');
             } elseif ($columnName === 'recovery_rate') {
                 if ((float) $incident->potential_fund_loss > 0) {
                     $rate = ((float) $incident->recovered_fund / (float) $incident->potential_fund_loss) * 100;
@@ -97,6 +99,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
             $incidents = \App\Models\Incident::whereYear('incident_date', $year)
                 ->where('classification', '!=', IncidentClassification::Issue->value)
                 ->whereIn('severity', \App\Enums\Severity::METRIC_ELIGIBLE)
+                ->withoutOutliers()
                 ->orderBy('incident_date')->orderBy('id')
                 ->get(['id', 'incident_date']);
 

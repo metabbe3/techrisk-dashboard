@@ -113,6 +113,7 @@ class DashboardStatsOverview extends BaseWidget
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
             ->where('fund_status', 'Non fundLoss');
 
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
@@ -129,6 +130,7 @@ class DashboardStatsOverview extends BaseWidget
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
             ->where('fund_status', 'Confirmed loss');
 
         $mtbfFundLossCount = $mtbfFundLossQuery->count();

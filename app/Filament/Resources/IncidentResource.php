@@ -276,7 +276,7 @@ class IncidentResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pic', 'incidentType', 'labels']))
             ->defaultSort('incident_date', 'desc')
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases')),
@@ -291,7 +291,13 @@ class IncidentResource extends Resource
                 TextColumn::make('mtbf_display')
                     ->label('MTBF (days)')
                     ->width('80px')
-                    ->state(function (Incident $record): int {
+                    ->state(function (Incident $record): int|string {
+                        // Outlier rows show the literal, never a gap value
+                        // (owner rule 2026-10-01).
+                        if ($record->isOutlier()) {
+                            return 'Outlier';
+                        }
+
                         $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
                         $year = $record->incident_date->year;
                         // Version in the key: a dashboard_cache_version bump (metrics
@@ -301,6 +307,7 @@ class IncidentResource extends Resource
                         $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($tab, $year) {
                             $query = Incident::whereYear('incident_date', $year)
                                 ->where('classification', '!=', IncidentClassification::Issue->value)
+                                ->withoutOutliers()
                                 ->orderBy('incident_date')->orderBy('id');
 
                             match ($tab) {
@@ -332,7 +339,7 @@ class IncidentResource extends Resource
 
                         return $mtbf[$record->id] ?? 0;
                     })
-                    ->formatStateUsing(fn (int $state): string => number_format($state))
+                    ->formatStateUsing(fn (int|string $state): string => is_int($state) ? number_format($state) : $state)
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
                 TextColumn::make('severity')->badge()->color(fn (?Severity $state): string => $state?->color() ?? 'gray')->sortable()->width('80px'),
                 TextColumn::make('incident_status')->badge()->color(fn (?IncidentStatus $state): string => $state?->color() ?? 'gray')->sortable()->width('100px'),

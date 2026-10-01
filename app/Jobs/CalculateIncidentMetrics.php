@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Jobs;
 
 use App\Enums\Severity;
@@ -76,9 +77,12 @@ class CalculateIncidentMetrics implements ShouldQueue
         $incident = $this->incident;
         $year = $incident->incident_date->year;
 
+        // Skip outlier rows: repairing an outlier is a no-op (its columns
+        // stay null) while the next non-outlier row would keep a stale gap.
         $nextIncident = Incident::whereYear('incident_date', $year)
             ->where('classification', $incident->classification->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -113,6 +117,7 @@ class CalculateIncidentMetrics implements ShouldQueue
         $nextInOldGroup = Incident::whereYear('incident_date', $year)
             ->where('classification', $oldClassification)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -150,6 +155,10 @@ class CalculateIncidentMetrics implements ShouldQueue
         // Optimization: Pre-compile regex patterns once instead of in the loop
         $patterns = [];
         foreach ($allLabels as $label) {
+            if ($label->name === Label::OUTLIER) {
+                continue; // hand-applied only — never inferred from text
+            }
+
             $patterns[$label->id] = "/\b".preg_quote(strtolower($label->name), '/')."\b/";
         }
 

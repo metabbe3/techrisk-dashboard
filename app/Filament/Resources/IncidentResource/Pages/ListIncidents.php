@@ -111,7 +111,7 @@ class ListIncidents extends ListRecords
                         'totalRecoveredFund' => (float) $query->sum('recovered_fund'),
                     ];
 
-                    $incidents = $query->lazy()->collect();
+                    $incidents = $query->clone()->with('labels')->lazy()->collect();
 
                     return Excel::download(
                         new IncidentTableExport($incidents, $stats, $headings, $selectedColumns),

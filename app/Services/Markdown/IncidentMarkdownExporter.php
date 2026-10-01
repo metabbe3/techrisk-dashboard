@@ -122,12 +122,12 @@ class IncidentMarkdownExporter
             }
         }
 
-        if ($incident->mttr || $incident->mtbf) {
+        if ($incident->mttr !== null || $incident->mtbf !== null) {
             $lines[] = "\n## Metrics";
-            if ($incident->mttr) {
+            if ($incident->mttr !== null) {
                 $lines[] = '- MTTR: '.MarkdownFormatter::formatDuration((float) $incident->mttr);
             }
-            if ($incident->mtbf) {
+            if ($incident->mtbf !== null) {
                 $lines[] = '- MTBF: '.number_format((float) $incident->mtbf, 2).' days';
             }
             foreach ([

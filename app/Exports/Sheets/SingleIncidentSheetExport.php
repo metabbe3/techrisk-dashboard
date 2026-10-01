@@ -67,7 +67,9 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
             $isArray = in_array($columnName, ['business_category', 'root_cause_category', 'responsible_team']);
 
             if ($columnName === 'mtbf') {
-                $row[] = $this->computeMtbfForIncident($incident) ?? '-';
+                // Outlier rows keep their place with a literal instead of a
+                // gap value (owner rule 2026-10-01); sequence skips them.
+                $row[] = $incident->isOutlier() ? 'Outlier' : ($this->computeMtbfForIncident($incident) ?? '-');
             } elseif ($columnName === 'mttr') {
                 $row[] = $incident->mttr_formatted;
             } elseif ($columnName === 'recovery_rate') {
@@ -111,6 +113,7 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
         if (! isset($this->mtbfCache[$key])) {
             $query = \App\Models\Incident::whereYear('incident_date', $year)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+                ->withoutOutliers()
                 ->orderBy('incident_date')->orderBy('id');
 
             // Issues tab uses Issue classification; all others exclude Issues
