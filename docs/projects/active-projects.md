@@ -327,6 +327,25 @@ Owner request 2026-10-01: one button holding "memory of all incidents" every Age
 
 ---
 
+### [PROJ-010] Multi-PIC incidents + working Netcore email
+
+**Status:** Done (code complete, awaiting prod deploy)
+**Priority:** P1
+**Start Date:** 2026-10-01
+
+#### Description
+Owner request 2026-10-01: enable Netcore email (was stuck on `MAIL_MAILER=log` — everything written to laravel.log, nothing sent); auto-email each PIC on assignment ("you have been assigned"), PIC becomes multiple people, From address (e.g. `noreply-techrisk@dana.id`) + Netcore settings editable from the app, API key visible, send errors surfaced. Delivered: T1 `MailSettings::apply()` runtime activation from Settings (no .env editing) called at boot + on save (with `queue:restart`); T2 EmailSettings rework (editable From, status panel, real API key in the field); T3 Send Test Email action (failure notification carries the exact exception) + Recent Email Failures panel (last 5 `failed_jobs` matching Netcore); T4 multi-PIC cutover — `incident_pic` pivot replaces the `pic_id` column in ONE migration (copy + drop, no dual-write), `IncidentPic` pivot hooks own assignment email to each newly attached PIC + RAG re-index + AI cache clear (pivot sync fires no model events), all consumers swept (Filament form/filter/column, reminder commands, exports, charts, AI services, API `pic_ids[]` with legacy `pic_id` mapped one release). **Prod notes: the T4 migration DROPS `pic_id` — owner-only guardrail (`php artisan migrate --force`); after deploy `docker compose restart app queue`; Netcore console must have noreply-techrisk@dana.id as an approved sender.**
+
+#### Tasks
+- [x] T1 runtime mail activation + From override — 2026-10-01
+- [x] T2 EmailSettings editable From + status panel + real key — 2026-10-01
+- [x] T3 send-test-email action + recent failures panel — 2026-10-01
+- [x] T4 multi-PIC pivot cutover + full consumer sweep — 2026-10-01
+- [x] T5 CLAUDE.md dependency map (IncidentPic + MailSettings rows) + this entry — 2026-10-01
+- [ ] Owner live check after deploy: Email Settings → toggle ON, key visible, From set, Send Test Email arrives from noreply-techrisk@dana.id; assign 2 PICs → both emailed; re-save unchanged PICs → no new email
+
+---
+
 ### [PROJ-009] Similar Incidents (accurate + automatic) + Retro generation
 
 **Status:** Done (code complete, awaiting prod deploy)
