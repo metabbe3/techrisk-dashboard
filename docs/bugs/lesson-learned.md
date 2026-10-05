@@ -1470,16 +1470,61 @@ text → status `failed`).
 
 ---
 
+### [BUG-027] - Profile save redirected every account to the Dashboard — guaranteed 403 for user-role accounts
+
+**Date:** 2026-10-05
+**Discovered By:** Prod report — "still error when change password, shows 403 Forbidden, must go back, no redirect to dashboard"
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Third layer of the password-change onion, exposed only after the first two
+were fixed (ingress 400 → session-hash drop → this). The save now succeeds,
+the redirect finally fires — and lands on `403 Forbidden` for accounts whose
+role lacks `manage incidents`.
+
+`Dashboard::canAccess()` requires `manage incidents` (deliberate, commit
+`5cf80ea`, which also taught `Login::getRedirectUrl()` to send such accounts
+to the incidents list instead). The profile page's `getRedirectUrl()` returned
+`Dashboard::getUrl()` unconditionally. A `user`-role account (seeder grants
+`access dashboard` + `view incidents`, not `manage incidents`) can lawfully
+open `/admin/profile`, saves fine, then gets redirected into a page that
+aborts 403 — Browser shows the error, user presses Back. The password change
+was coincidental: ANY successful profile save by such an account 403'd; the
+broken save had masked it since `5cf80ea`.
+
+### Root Cause
+Same drift class as BUG-005: one rule (post-login landing URL) implemented in
+one surface (Login) while the sibling surface (profile redirect) hardcoded
+the target. Two surfaces, two implementations, silent divergence.
+
+### Fix
+- `App\Support\PanelHome::urlFor($user)` — single source:
+  `manage incidents` → dashboard route, else incidents index.
+- `Login::getRedirectUrl()` and `CustomProfilePage::getRedirectUrl()` both
+  delegate to it.
+- Regression test drives the real `POST /livewire/update` as a `user`-role
+  account and asserts the redirect is the incidents index, not the Dashboard.
+
+### Prevention
+- [x] Shared rule in one class; both call sites delegate
+- [x] Test covers the non-privileged role through the real middleware stack
+- [x] When a redirect target has a `canAccess()` gate, the redirect decision
+      must consult the same gate — a page you can be redirected to must be a
+      page you can open
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 26 |
+| Total Bugs | 27 |
 | Critical | 0 |
-| High | 18 |
+| High | 19 |
 | Medium | 6 |
 | Low | 0 |
-| Resolved | 25 |
+| Resolved | 26 |
 | Open | 0 |
 
 ### Bug Trends by Component

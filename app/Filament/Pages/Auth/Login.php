@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages\Auth;
 
+use App\Support\PanelHome;
 use Filament\Pages\Auth\Login as BaseLogin;
-use Illuminate\Http\RedirectResponse;
 
 class Login extends BaseLogin
 {
@@ -16,10 +16,6 @@ class Login extends BaseLogin
 
     protected function getRedirectUrl(): string
     {
-        if (auth()->user()?->can('manage incidents')) {
-            return route('filament.admin.pages.dashboard');
-        }
-
-        return route('filament.admin.resources.incidents.index');
+        return PanelHome::urlFor(auth()->user());
     }
 }

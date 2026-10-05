@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Support\PanelHome;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Pages\Auth\EditProfile as BaseEditProfile;
-use Filament\Pages\Dashboard;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules\Password;
 
@@ -48,6 +48,9 @@ class CustomProfilePage extends BaseEditProfile
 
     protected function getRedirectUrl(): ?string
     {
-        return Dashboard::getUrl();
+        // Same rule as login: user-role accounts cannot open the Dashboard
+        // (canAccess requires `manage incidents`) — unconditional Dashboard
+        // here was a guaranteed 403 for them after saving.
+        return PanelHome::urlFor(auth()->user());
     }
 }

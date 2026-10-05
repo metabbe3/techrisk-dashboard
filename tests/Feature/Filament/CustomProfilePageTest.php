@@ -6,11 +6,13 @@ namespace Tests\Feature\Filament;
 
 use App\Filament\Pages\CustomProfilePage;
 use App\Models\User;
+use App\Support\PanelHome;
 use Filament\Pages\Dashboard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Livewire\Drawer\Utils;
 use Livewire\Livewire;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
@@ -55,7 +57,7 @@ class CustomProfilePageTest extends TestCase
 
         $response->assertOk();
         $this->assertSame(
-            Dashboard::getUrl(),
+            PanelHome::urlFor($user),
             $response->json('components.0.effects.redirect'),
         );
 
@@ -67,6 +69,44 @@ class CustomProfilePageTest extends TestCase
         // The dropped session refresh — the actual bug. AuthenticateSession
         // compares this value against the user's stored hash on every request.
         $this->assertSame($user->password, session('password_hash_web'));
+    }
+
+    public function test_password_change_redirects_non_manage_incidents_users_to_incidents_list(): void
+    {
+        // user-role accounts (the seeder's `user` role) can enter the panel
+        // and open /admin/profile, but the Dashboard page gate requires
+        // `manage incidents` — an unconditional Dashboard redirect is a
+        // guaranteed 403 for them. Login already sends them to the incidents
+        // list; the profile page must agree (PanelHome is the shared rule).
+        $user = User::factory()->create();
+        Role::firstOrCreate(['name' => 'user']);
+        $user->assignRole('user');
+
+        $this->assertFalse($user->can('manage incidents'));
+
+        $rendered = Livewire::actingAs($user)->test(CustomProfilePage::class);
+        $snapshot = Utils::extractAttributeDataFromHtml($rendered->html(), 'wire:snapshot');
+
+        $response = $this->actingAs($user)->withHeaders(['X-Livewire' => true])->post('/livewire/update', [
+            'components' => [
+                [
+                    'snapshot' => json_encode($snapshot),
+                    'updates' => [
+                        'data.name' => $user->name,
+                        'data.password' => 'NewPassword123!',
+                        'data.password_confirmation' => 'NewPassword123!',
+                    ],
+                    'calls' => [
+                        ['method' => 'save', 'params' => [], 'path' => ''],
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertOk();
+        $redirect = $response->json('components.0.effects.redirect');
+        $this->assertSame(route('filament.admin.resources.incidents.index'), $redirect);
+        $this->assertNotSame(Dashboard::getUrl(), $redirect);
     }
 
     public function test_password_change_keeps_user_logged_in(): void
