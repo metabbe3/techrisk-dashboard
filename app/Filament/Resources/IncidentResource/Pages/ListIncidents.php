@@ -73,6 +73,13 @@ class ListIncidents extends ListRecords
                         ])->deleteFileAfterSend(true);
                     }
 
+                    if ($data['preset'] === 'quarterly_report') {
+                        return Excel::download(
+                            new \App\Exports\QuarterlyReportExport($query),
+                            'quarterly-report-'.now()->format('Y-m-d').'.xlsx'
+                        );
+                    }
+
                     if ($data['preset'] === 'group_by') {
                         return Excel::download(
                             new \App\Exports\GroupedIncidentsExport($query, $data['group_dim'] ?? 'business_category'),

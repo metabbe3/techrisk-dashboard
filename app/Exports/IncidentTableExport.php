@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Exports;
 
-use App\Enums\IncidentClassification;
+use App\Exports\Concerns\ComputesMtbfSequence;
 use App\Exports\Concerns\IdrFormat;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -18,6 +18,8 @@ use PhpOffice\PhpSpreadsheet\Style\Fill; // Added
 
 class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithMapping
 {
+    use ComputesMtbfSequence;
+
     protected $incidents;
 
     protected $stats;
@@ -58,7 +60,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
             } elseif ($columnName === 'mtbf') {
                 // Outlier rows keep their place with a literal instead of a
                 // gap value (owner rule 2026-10-01); sequence skips them.
-                $row[] = $incident->isOutlier() ? 'Outlier' : ($this->computeMtbf($incident) ?? '-');
+                $row[] = $incident->isOutlier() ? 'Outlier' : ($this->mtbfSequenceValue($incident) ?? '-');
             } elseif ($columnName === 'recovery_rate') {
                 if ((float) $incident->potential_fund_loss > 0) {
                     $rate = ((float) $incident->recovered_fund / (float) $incident->potential_fund_loss) * 100;
@@ -83,39 +85,6 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
         }
 
         return $row;
-    }
-
-    private array $mtbfCache = []; // instance, NOT static — static froze the sequence across requests in long-lived FPM workers (prod bug 2026-09-30)
-
-    /**
-     * Gap sequence, METRIC_ELIGIBLE only. First of the year has no
-     * predecessor → null (renders '-') so the column's average equals
-     * span/(n-1), matching the bottom summary and the widgets (the old
-     * Jan-1 dayOfYear anchor broke that equality — owner report 2026-09-30).
-     */
-    private function computeMtbf($incident): ?int
-    {
-        $year = $incident->incident_date->year;
-        $key = "export_all_{$year}";
-
-        if (! isset($this->mtbfCache[$key])) {
-            $incidents = \App\Models\Incident::whereYear('incident_date', $year)
-                ->where('classification', '!=', IncidentClassification::Issue->value)
-                ->whereIn('severity', \App\Enums\Severity::METRIC_ELIGIBLE)
-                ->withoutOutliers()
-                ->orderBy('incident_date')->orderBy('id')
-                ->get(['id', 'incident_date']);
-
-            $this->mtbfCache[$key] = [];
-            foreach ($incidents as $i => $inc) {
-                $this->mtbfCache[$key][$inc->id] = $i === 0
-                    ? null
-                    : (int) $incidents[$i - 1]->incident_date->startOfDay()
-                        ->diffInDays($inc->incident_date->startOfDay());
-            }
-        }
-
-        return $this->mtbfCache[$key][$incident->id] ?? null;
     }
 
     public function registerEvents(): array
@@ -175,7 +144,7 @@ class IncidentTableExport implements FromCollection, ShouldAutoSize, WithEvents,
                 // the footer-sourced stats, so the bottom always equals the
                 // column above it (single-year sets: exactly span/(n-1)).
                 $mtbfValues = $this->incidents
-                    ->map(fn ($i) => $this->computeMtbf($i))
+                    ->map(fn ($i) => $this->mtbfSequenceValue($i))
                     ->filter(fn ($v) => $v !== null);
                 $avgMtbf = $mtbfValues->isEmpty() ? 0 : round((float) $mtbfValues->avg(), 3);
                 $summaryData = [

@@ -120,6 +120,15 @@ class ExportActionSchemaTest extends TestCase
         $this->assertSame([], $quarterField->getOptions());
     }
 
+    public function test_form_offers_quarterly_report_preset(): void
+    {
+        $presetField = $this->findFormField('preset');
+
+        $this->assertNotNull($presetField);
+        $this->assertArrayHasKey('quarterly_report', $presetField->getOptions());
+        $this->assertArrayHasKey('quarterly_report', $presetField->getDescriptions());
+    }
+
     /** form() nests fields inside Sections — flatten to find one by name. */
     private function findFormField(string $name): ?object
     {

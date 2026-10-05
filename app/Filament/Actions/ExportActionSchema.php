@@ -61,6 +61,7 @@ class ExportActionSchema
                 ->label('What do you want to export?')
                 ->options([
                     'executive' => '📊 Executive Report — KPI cards + 4 charts + data (recommended)',
+                    'quarterly_report' => '📅 Quarterly Report — severity matrix per category/quarter + 4 case tabs',
                     'group_by' => '🗂️ Group By — one sheet per category/division + MTTR/MTBF summary',
                     'all_tabs' => '📚 All Tabs — one sheet per tab (XLSX)',
                     'custom' => '⚙️ Custom — pick columns & format',
@@ -69,6 +70,7 @@ class ExportActionSchema
                 ->live()
                 ->descriptions([
                     'executive' => 'Summary sheet with KPIs and native Excel charts, plus a clean data sheet.',
+                    'quarterly_report' => 'Summary sheet with P1–P4/X1–X4 counts per business category, root cause and quarter, plus All Cases / Recovered / Fund Loss / Non Fund Loss tabs. Always the full filtered set — the name says quarterly, the scope is whatever the table filters yield.',
                     'all_tabs' => '14 sheets mirroring the table tabs, incl. Issues metrics.',
                     'group_by' => 'Pick a dimension: business category, root cause, division, PIC, severity, incident type. Each value gets its own sheet (multi-category incidents appear in each). Summary sheet has per-group MTTR/MTBF.',
                     'custom' => 'Full control: choose columns, XLSX or CSV.',
