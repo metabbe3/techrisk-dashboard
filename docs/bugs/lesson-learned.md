@@ -1359,16 +1359,61 @@ dormant bugs that the new tests tripped over on their way to RED:
 
 ---
 
+### [BUG-025] - Custom profile page dropped the session password-hash refresh: every password change force-logged the user out
+
+**Date:** 2026-10-05
+**Discovered By:** Prod report — password change on `/admin/profile` fails (in-app error modal, every attempt)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+`CustomProfilePage` overrode vendor `EditProfile::save()` to add a dashboard
+redirect — and in doing so dropped the tail of the vendor pipeline:
+
+1. **No `password_hash_web` session refresh** (vendor save lines 175-179).
+   The panel runs Filament's `AuthenticateSession` middleware, which compares
+   the session hash against the stored hash on every request — after any
+   password change it mismatched → force-logout. Every password change broke
+   the session, in every environment.
+2. No DB transaction/hooks, no password-field reset after save, and no
+   `Password::default()` complexity rule (vendor applies it; the custom form
+   had silently dropped it).
+
+### Root Causes
+- Overriding a vendor lifecycle method to change one behavior re-implements
+  the whole pipeline; vendor fixes (or in this case vendor side effects) are
+  silently lost. The vendor shipped a hook (`getRedirectUrl()`,
+  `mutateFormDataBeforeSave()`) for exactly this customization.
+- No test covered the profile password change, so the dropped side effect
+  shipped invisible.
+
+### Prevention
+- [x] `CustomProfilePage` now overrides only `getRedirectUrl()`; vendor
+      `save()` pipeline (transaction, session hash refresh, field reset)
+      runs untouched
+- [x] `CustomProfilePageTest` asserts the session hash refresh via a REAL
+      `POST /livewire/update` through the web middleware stack
+- [x] Gotcha documented: Livewire's test harness disables middleware
+      (`RequestBroker::temporarilyDisableExceptionHandlingAndMiddleware`),
+      so session-dependent behavior can never be asserted through
+      `Livewire::test()` — extract the snapshot from rendered HTML and POST
+      with the `X-Livewire` header to exercise the real path
+- [x] Rule of thumb: prefer the vendor hook over re-implementing a lifecycle
+      method; if a method must be copied, diff it against the parent on every
+      dependency upgrade
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 24 |
+| Total Bugs | 25 |
 | Critical | 0 |
-| High | 16 |
+| High | 17 |
 | Medium | 6 |
 | Low | 0 |
-| Resolved | 23 |
+| Resolved | 24 |
 | Open | 0 |
 
 ### Bug Trends by Component
@@ -1385,4 +1430,4 @@ dormant bugs that the new tests tripped over on their way to RED:
 
 ---
 
-*Last Updated: 2026-10-01*
+*Last Updated: 2026-10-05*

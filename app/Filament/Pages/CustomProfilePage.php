@@ -1,13 +1,16 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Form;
 use Filament\Pages\Auth\EditProfile as BaseEditProfile;
+use Filament\Pages\Dashboard;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rules\Password;
 
 class CustomProfilePage extends BaseEditProfile
 {
@@ -25,6 +28,7 @@ class CustomProfilePage extends BaseEditProfile
                     ->disabled(),
                 TextInput::make('password')
                     ->password()
+                    ->rule(Password::default())
                     ->dehydrateStateUsing(fn ($state) => Hash::make($state))
                     ->dehydrated(fn ($state) => filled($state))
                     ->confirmed(),
@@ -42,14 +46,8 @@ class CustomProfilePage extends BaseEditProfile
             ->keyBindings(['mod+s']);
     }
 
-    public function save(): void
+    protected function getRedirectUrl(): ?string
     {
-        $data = $this->form->getState();
-
-        $this->handleRecordUpdate($this->getUser(), $data);
-
-        $this->getSavedNotification()?->send();
-
-        $this->redirect(Dashboard::getUrl());
+        return Dashboard::getUrl();
     }
 }
