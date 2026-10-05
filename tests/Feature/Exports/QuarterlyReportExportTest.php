@@ -20,9 +20,9 @@ use Tests\TestCase;
 /**
  * Quarterly Report preset (owner decision 2026-10-05): tab membership =
  * All Tabs rules (classification Incident; Recovered = recovered_fund > 0;
- * Fund Loss = Confirmed loss; Non Fund Loss = Non fundLoss), Summary with
- * P1–P4/X1–X4 counts per business category / root cause / quarter, Avg MTBF
- * and widget-aligned fund totals, MTBF column = full-year gap sequence
+ * Fund Loss = Confirmed loss; Non Fund Loss = Non fundLoss) plus one tab
+ * per quarter holding only that quarter's incidents. No Summary sheet
+ * (owner 2026-10-05). MTBF column = full-year gap sequence
  * (IncidentTableExport semantics, NOT the per-tab All Tabs sequence).
  */
 class QuarterlyReportExportTest extends TestCase
@@ -33,10 +33,31 @@ class QuarterlyReportExportTest extends TestCase
     {
         $sheets = $this->export()->sheets();
 
+        // No Summary sheet (owner 2026-10-05); no rows seeded → no quarter tabs.
         $this->assertSame(
-            ['Summary', 'All Cases', 'Recovered Cases', 'Fund Loss', 'Non Fund Loss'],
+            ['All Cases', 'Recovered Cases', 'Fund Loss', 'Non Fund Loss'],
             array_map(fn ($sheet) => $sheet->title(), $sheets)
         );
+    }
+
+    public function test_quarter_tabs_scope_to_that_quarter_and_incidents_only(): void
+    {
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-01-10 10:00']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P2', 'incident_date' => '2026-03-20 10:00']);
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-04-15 10:00']);
+        // An Issue in Q3 must not spawn a Q3 tab — quarters are Incident-only.
+        Incident::factory()->createQuietly(['classification' => 'Issue', 'severity' => 'X1', 'incident_date' => '2026-07-10 10:00']);
+
+        $sheets = $this->export()->sheets();
+        $titles = array_map(fn ($sheet) => $sheet->title(), $sheets);
+
+        $this->assertContains('Q1 2026', $titles);
+        $this->assertContains('Q2 2026', $titles);
+        $this->assertNotContains('Q3 2026', $titles);
+
+        $q1 = $sheets[array_search('Q1 2026', $titles, true)];
+        $this->assertSame(2, $q1->query()->count());
+        $this->assertCount(12, $q1->map($q1->query()->first()));
     }
 
     public function test_tab_membership_follows_multi_sheet_rules(): void
@@ -55,8 +76,12 @@ class QuarterlyReportExportTest extends TestCase
             }
         }
 
-        // The Issue row never reaches a tab (classification = Incident).
-        $this->assertSame(['All Cases' => 4, 'Recovered Cases' => 1, 'Fund Loss' => 1, 'Non Fund Loss' => 1], $counts);
+        // The Issue row never reaches a tab (classification = Incident);
+        // quarter tabs carry only their quarter's incidents (Jan–Mar → Q1, Apr → Q2).
+        $this->assertSame([
+            'All Cases' => 4, 'Recovered Cases' => 1, 'Fund Loss' => 1, 'Non Fund Loss' => 1,
+            'Q1 2026' => 3, 'Q2 2026' => 1,
+        ], $counts);
     }
 
     public function test_tab_membership_stacks_with_export_filters(): void
@@ -73,56 +98,9 @@ class QuarterlyReportExportTest extends TestCase
             }
         }
 
-        // The Q2 row drops from every tab — filters stack on top of tab rules.
-        $this->assertSame(['All Cases' => 1, 'Recovered Cases' => 1, 'Fund Loss' => 0, 'Non Fund Loss' => 0], $counts);
-    }
-
-    public function test_summary_counts_per_block_and_all_row(): void
-    {
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-01-15 10:00',
-            'business_category' => ['Fraud', 'Operational'], 'root_cause_category' => ['Human Error']]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'X2', 'incident_date' => '2026-02-20 10:00',
-            'business_category' => ['Fraud'], 'root_cause_category' => ['Human Error']]);
-
-        $rows = $this->summaryRows();
-
-        $fraud = $rows->firstWhere('label', 'Fraud');
-        $this->assertSame(1, $fraud['counts']['P1']);
-        $this->assertSame(1, $fraud['counts']['X2']);
-        $this->assertSame(0, $fraud['counts']['P2']);
-        $this->assertSame(2, $fraud['total']);
-
-        // Multi-category rows count in EVERY matching line (Group-By precedent).
-        $operational = $rows->firstWhere('label', 'Operational');
-        $this->assertSame(1, $operational['counts']['P1']);
-        $this->assertSame(1, $operational['total']);
-
-        $humanError = $rows->firstWhere('label', 'Human Error');
-        $this->assertSame(2, $humanError['total']);
-
-        // Quarter lines carry the QuarterRange label, not the bare Qn.
-        $q1 = $rows->firstWhere('label', 'Q1 2026');
-        $this->assertNotNull($q1);
-        $this->assertSame(2, $q1['total']);
-
-        $this->assertSame(2, $rows->firstWhere('label', 'All')['total']);
-    }
-
-    public function test_summary_fund_totals_are_widget_aligned_via_compute_kpi(): void
-    {
-        // Potential = open, non-excluded fund status; Actual = Completed only;
-        // Recovered = eligible rows, no fund-status exclusion.
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-01-10 10:00', 'incident_status' => 'Open', 'fund_status' => 'Confirmed loss', 'potential_fund_loss' => 1000]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-01-20 10:00', 'incident_status' => 'Completed', 'fund_status' => 'Confirmed loss', 'fund_loss' => 500]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-01 10:00', 'incident_status' => 'Open', 'fund_status' => 'Fully recovered', 'potential_fund_loss' => 999]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-10 10:00', 'incident_status' => 'Completed', 'fund_status' => 'Non fundLoss', 'potential_fund_loss' => 100, 'recovered_fund' => 200]);
-        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-02-20 10:00', 'incident_status' => 'Open', 'fund_status' => 'Potential recovery', 'recovered_fund' => 300]);
-
-        $rows = $this->summaryRows();
-
-        $this->assertSame(1000.0, $rows->firstWhere('label', 'Potential Fund Loss')['value']);
-        $this->assertSame(500.0, $rows->firstWhere('label', 'Actual Fund Loss')['value']);
-        $this->assertSame(500.0, $rows->firstWhere('label', 'Recovered Fund')['value']);
+        // The Q2 row drops from every tab — filters stack on top of tab rules
+        // (only the Q1 incident remains, so no Q2 tab exists at all).
+        $this->assertSame(['All Cases' => 1, 'Recovered Cases' => 1, 'Fund Loss' => 0, 'Non Fund Loss' => 0, 'Q1 2026' => 1], $counts);
     }
 
     public function test_data_tab_mtbf_column_matches_incident_table_export_semantics(): void
@@ -168,7 +146,7 @@ class QuarterlyReportExportTest extends TestCase
         $spread = $this->render($this->export());
 
         $this->assertSame(
-            ['Summary', 'All Cases', 'Recovered Cases', 'Fund Loss', 'Non Fund Loss'],
+            ['All Cases', 'Recovered Cases', 'Fund Loss', 'Non Fund Loss', 'Q1 2026'],
             $spread->getSheetNames()
         );
 
@@ -183,37 +161,10 @@ class QuarterlyReportExportTest extends TestCase
         $this->assertEqualsWithDelta(146250.0, (float) $all->getCell('H2')->getValue(), 0.001);
         $this->assertSame(IdrFormat::FORMAT, $all->getStyle('H2')->getNumberFormat()->getFormatCode());
 
-        // Summary fund metric cells: same rule, applied per-cell in column B.
-        $summary = $spread->getSheetByName('Summary');
-        $actualRow = null;
-        foreach (range(1, $summary->getHighestRow()) as $r) {
-            if ($summary->getCell("A{$r}")->getValue() === 'Actual Fund Loss') {
-                $actualRow = $r;
-                break;
-            }
-        }
-        $this->assertNotNull($actualRow, 'Actual Fund Loss metric row exists');
-        $this->assertEqualsWithDelta(146250.0, (float) $summary->getCell("B{$actualRow}")->getValue(), 0.001);
-        $this->assertSame(IdrFormat::FORMAT, $summary->getStyle("B{$actualRow}")->getNumberFormat()->getFormatCode());
-    }
-
-    public function test_summary_avg_mtbf_uses_footer_data_rule(): void
-    {
-        // A=Jan 10, B=Jan 20 (Outlier), C=Jan 30 → span/(n-1) = 20/1 = 20;
-        // the outlier leaves the span but stays in the counts (owner rule 2026-10-01).
-        $make = fn (string $date) => Incident::factory()->createQuietly([
-            'classification' => 'Incident', 'severity' => 'P1', 'fund_status' => 'Non fundLoss',
-            'incident_date' => "{$date} 10:00",
-        ]);
-        $a = $make('2039-01-10');
-        $b = $make('2039-01-20');
-        $c = $make('2039-01-30');
-        $b->labels()->attach(Label::firstOrCreate(['name' => Label::OUTLIER]));
-
-        $rows = $this->summaryRows();
-
-        $this->assertSame(3, $rows->firstWhere('label', 'All')['total'], 'outlier stays in counts');
-        $this->assertEqualsWithDelta(20.0, (float) $rows->firstWhere('label', 'Avg MTBF (days)')['value'], 0.001);
+        // The quarter tab mirrors the case-tab layout with the same row.
+        $q1 = $spread->getSheetByName('Q1 2026');
+        $this->assertSame(DataType::TYPE_NUMERIC, $q1->getCell('H2')->getDataType());
+        $this->assertEqualsWithDelta(146250.0, (float) $q1->getCell('H2')->getValue(), 0.001);
     }
 
     private function export(): QuarterlyReportExport
@@ -227,11 +178,6 @@ class QuarterlyReportExportTest extends TestCase
             ExportActionSchema::applyFilters(Incident::query(), [])->where('classification', 'Incident')->with('labels')->orderBy('incident_date'),
             'All Cases'
         );
-    }
-
-    private function summaryRows(): \Illuminate\Support\Collection
-    {
-        return $this->export()->sheets()[0]->collection();
     }
 
     /**
