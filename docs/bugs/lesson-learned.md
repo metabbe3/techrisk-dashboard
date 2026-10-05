@@ -1402,6 +1402,25 @@ redirect — and in doing so dropped the tail of the vendor pipeline:
       method; if a method must be copied, diff it against the parent on every
       dependency upgrade
 
+**2026-10-05 follow-up — the literal prod "400" is diagnosed (evidence, not
+theory).** One stateless probe against prod reproduced it: an oversized
+`Cookie` header gets **nginx HTML `400 Request Header Or Cookie Too Large`**
+from the PaaS ingress — the exact body Livewire's failure modal renders (the
+user's "blue page show 400"). All app-side candidates were eliminated
+empirically: malformed-JSON and password-shaped Livewire bodies both reach
+Laravel and return our own 419 CSRF JSON; forged/conflicting `X-Forwarded-*`
+headers (TrustProxies `'*'`) return 200; the local nginx accepts the same
+oversized cookie. Prod's own cookies are ~1 KB (XSRF + session), so the
+header bloat is **sibling apps' cookies on the shared `.paas.dana.id` parent
+domain**, which ride on every request to this host. Livewire POSTs carry
+~1 KB more header than GETs (X-CSRF-TOKEN + X-Livewire), which is why pages
+kept loading while the password POST 400'd on every attempt. Remedies:
+immediate — clear `paas.dana.id` cookies in the browser; durable (owner,
+infra) — raise the ingress `large_client_header_buffers` for this host
+(e.g. `4 16k`). Independent of the session-hash bug above; both fixes are
+required (the ingress 400 would hit ANY Livewire POST from a bloated
+browser, and the dropped session refresh broke password changes everywhere).
+
 ---
 
 ### [BUG-026] - Replacing a document file kept serving the old markdown conversion forever (ZIP/corpus/AI stale)
