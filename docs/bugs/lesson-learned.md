@@ -1404,16 +1404,63 @@ redirect — and in doing so dropped the tail of the vendor pipeline:
 
 ---
 
+### [BUG-026] - Replacing a document file kept serving the old markdown conversion forever (ZIP/corpus/AI stale)
+
+**Date:** 2026-10-05
+**Discovered By:** User report — "export markdown zip: uploaded new PDFs but the zip doesn't contain the new files, is it cached?"
+**Severity:** High
+**Status:** Resolved
+
+### Description
+Replacing a document's file via the Supporting Documents EditAction swaps the
+encrypted file and encryption key but never invalidates the persisted
+conversion: `markdown_path`, `markdown_conversion_status` and
+`markdown_converted_at` survive, and no `ConvertDocumentToMarkdown` job is
+dispatched (the CreateAction dispatches one; the EditAction never did).
+Because every consumer — the markdown ZIP, the persistent corpus, AI
+summarize — is cached-first on the persisted conversion, the row serves the
+PREVIOUS file's markdown forever. Reproduced live: zip entry named
+`replace-v2.pdf.md` containing the v1 text. The same fix applied live
+(reset + dispatch) made the zip serve the v2 content.
+
+New uploads through CreateAction are NOT affected — verified end-to-end in
+the live stack (job converts, zip includes it). New files missing from the
+zip with a `## Document conversion notes ... skipped` appendix line instead
+are conversions that legitimately failed (e.g. image-only PDFs extract no
+text → status `failed`).
+
+### Root Causes
+- The replace path duplicated the create path's encrypt/store/key logic but
+  not its conversion lifecycle. Conversion state is per-row, but nothing
+  tied it to the file's identity — replacing the file silently orphaned it.
+- Cached-first consumers trust `markdown_conversion_status = completed` as
+  "content is current", with no invalidation on the one event that can make
+  it wrong (file replacement).
+
+### Prevention
+- [x] EditAction now resets `markdown_path`/`markdown_converted_at` to null
+      and `markdown_conversion_status` to `pending` when a new file is
+      uploaded, and dispatches `ConvertDocumentToMarkdown` (CreateAction
+      precedent)
+- [x] `InvestigationDocumentReplaceTest` drives the real relation-manager
+      EditAction: replace → reset + job dispatched; description-only edit →
+      conversion untouched
+- [x] Rule of thumb: any per-row derived/cached artifact must name the
+      events that invalidate it — a replace path that touches the source
+      must touch the cache too
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
 |--------|-------|
-| Total Bugs | 25 |
+| Total Bugs | 26 |
 | Critical | 0 |
-| High | 17 |
+| High | 18 |
 | Medium | 6 |
 | Low | 0 |
-| Resolved | 24 |
+| Resolved | 25 |
 | Open | 0 |
 
 ### Bug Trends by Component

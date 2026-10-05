@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources\IncidentResource\RelationManagers;
 
 use App\Models\Incident;
@@ -70,7 +71,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->falseIcon('heroicon-o-sparkles')
                     ->trueColor('primary')
                     ->falseColor('gray')
-                    ->tooltip(fn ($record) => $record->ai_summary ? 'Summarized by ' . $record->ai_summary_model : 'Not summarized'),
+                    ->tooltip(fn ($record) => $record->ai_summary ? 'Summarized by '.$record->ai_summary_model : 'Not summarized'),
                 Tables\Columns\TextColumn::make('created_at')->dateTime(),
             ])
             ->headerActions([
@@ -173,6 +174,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                             $document = InvestigationDocument::with('encryptionKey')->find($record->id);
                             if (! $document) {
                                 Notification::make()->title('Document not found')->danger()->send();
+
                                 return;
                             }
 
@@ -191,6 +193,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                         ->body($e->getMessage())
                                         ->danger()
                                         ->send();
+
                                     return;
                                 }
                             }
@@ -201,6 +204,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                     ->body('Could not extract text from this document. It may be image-based or unsupported.')
                                     ->warning()
                                     ->send();
+
                                 return;
                             }
 
@@ -219,7 +223,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
 
                                 Notification::make()
                                     ->title('AI Summary Complete')
-                                    ->body('Document summarized using ' . $result->model)
+                                    ->body('Document summarized using '.$result->model)
                                     ->success()
                                     ->send();
                             } else {
@@ -244,12 +248,12 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->label('View Summary')
                     ->color('info')
                     ->visible(fn ($record): bool => $record->ai_summary !== null)
-                    ->modalHeading(fn ($record) => 'AI Summary — ' . $record->original_filename)
-                    ->modalDescription(fn ($record) => 'Model: ' . $record->ai_summary_model . ' | Summarized: ' . ($record->ai_summary_at?->diffForHumans() ?? 'N/A'))
+                    ->modalHeading(fn ($record) => 'AI Summary — '.$record->original_filename)
+                    ->modalDescription(fn ($record) => 'Model: '.$record->ai_summary_model.' | Summarized: '.($record->ai_summary_at?->diffForHumans() ?? 'N/A'))
                     ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString(
                         '<div class="prose prose-sm max-w-none dark:prose-invert" style="max-height:500px;overflow-y:auto;">'
-                        . \Illuminate\Support\Str::markdown($record->ai_summary)
-                        . '</div>'
+                        .\Illuminate\Support\Str::markdown($record->ai_summary)
+                        .'</div>'
                     ))
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close'),
@@ -258,8 +262,8 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->label('View MD')
                     ->color('gray')
                     ->visible(fn ($record): bool => $record->markdown_path !== null)
-                    ->modalHeading(fn ($record) => 'Markdown — ' . $record->original_filename)
-                    ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString('<pre style="white-space:pre-wrap;font-size:12px;max-height:500px;overflow-y:auto;background:#f8fafc;padding:16px;border-radius:8px;">' . e(Storage::disk('local')->get($record->markdown_path)) . '</pre>'))
+                    ->modalHeading(fn ($record) => 'Markdown — '.$record->original_filename)
+                    ->modalContent(fn ($record) => new \Illuminate\Support\HtmlString('<pre style="white-space:pre-wrap;font-size:12px;max-height:500px;overflow-y:auto;background:#f8fafc;padding:16px;border-radius:8px;">'.e(Storage::disk('local')->get($record->markdown_path)).'</pre>'))
                     ->modalSubmitAction(false)
                     ->modalCancelActionLabel('Close'),
                 Tables\Actions\Action::make('download_markdown')
@@ -289,7 +293,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
                     ->color('warning')
                     ->requiresConfirmation()
                     ->modalHeading('Convert to Markdown')
-                    ->modalDescription(fn ($record) => 'Convert "' . $record->original_filename . '" to Markdown? This may take a moment for large files.')
+                    ->modalDescription(fn ($record) => 'Convert "'.$record->original_filename.'" to Markdown? This may take a moment for large files.')
                     ->modalSubmitActionLabel('Start Conversion')
                     ->action(function ($record, \Livewire\Component $livewire) {
                         try {
@@ -369,6 +373,13 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 $data['file_path'] = $newFileName;
                                 $data['original_filename'] = $fileInput->getClientOriginalName();
 
+                                // Invalidate the old conversion — otherwise the
+                                // row keeps serving the previous file's markdown
+                                // forever (zip/corpus are cached-first on it).
+                                $data['markdown_path'] = null;
+                                $data['markdown_conversion_status'] = 'pending';
+                                $data['markdown_converted_at'] = null;
+
                             } else {
                                 $record = $action->getRecord();
                                 if ($record) {
@@ -410,9 +421,13 @@ class InvestigationDocumentsRelationManager extends RelationManager
                                 Log::error('Error creating audit log: '.$e->getMessage());
                             }
 
+                            // Re-convert the replaced file (CreateAction precedent)
+                            \App\Jobs\ConvertDocumentToMarkdown::dispatch($record);
+
                             $this->encryptionData = [];
                             Notification::make()
                                 ->title('Document updated successfully')
+                                ->body('Document queued for Markdown conversion.')
                                 ->success()
                                 ->send();
                         }
