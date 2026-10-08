@@ -139,6 +139,53 @@ class SendIncidentRemindersTest extends TestCase
         Notification::assertNothingSent();
     }
 
+    public function test_not_done_reminder_never_notifies_admins_or_team_leads(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $admin = User::factory()->create();
+        $admin->assignRole(\Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin']));
+        $lead = User::factory()->create();
+        $lead->assignRole(\Spatie\Permission\Models\Role::firstOrCreate(['name' => 'team-lead']));
+        $this->incidentWithPic([
+            'incident_status' => IncidentStatus::Open->value,
+            'fund_status' => FundStatus::NonFundLoss->value,
+            'potential_fund_loss' => 0,
+            'recovered_fund' => 0,
+            // 30 days old — past the old 14-day escalation threshold.
+            'incident_date' => now()->subDays(30),
+        ], $pic);
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertSentTo($pic, ChannelFilteredNotification::class, fn ($n) => $n->databaseType() === IncidentNotDoneReminder::class);
+        Notification::assertNotSentTo($admin, ChannelFilteredNotification::class);
+        Notification::assertNotSentTo($lead, ChannelFilteredNotification::class);
+    }
+
+    public function test_fund_loss_reminder_never_notifies_admins_or_team_leads(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $admin = User::factory()->create();
+        $admin->assignRole(\Spatie\Permission\Models\Role::firstOrCreate(['name' => 'admin']));
+        $lead = User::factory()->create();
+        $lead->assignRole(\Spatie\Permission\Models\Role::firstOrCreate(['name' => 'team-lead']));
+        $this->incidentWithPic([
+            'incident_status' => IncidentStatus::Completed->value,
+            'fund_status' => FundStatus::ConfirmedLoss->value,
+            'potential_fund_loss' => 1000000,
+            'recovered_fund' => 0,
+            'incident_date' => now()->subDays(30),
+        ], $pic);
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertSentTo($pic, ChannelFilteredNotification::class, fn ($n) => $n->databaseType() === FundLossUnsettledReminder::class);
+        Notification::assertNotSentTo($admin, ChannelFilteredNotification::class);
+        Notification::assertNotSentTo($lead, ChannelFilteredNotification::class);
+    }
+
     public function test_global_kill_switch_disables_all_reminders(): void
     {
         Notification::fake();
