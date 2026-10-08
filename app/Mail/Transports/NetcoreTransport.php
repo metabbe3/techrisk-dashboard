@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Mail\Transports;
 
 use App\Models\Setting;
@@ -75,12 +76,15 @@ class NetcoreTransport implements TransportInterface
     {
         $from = $email->getFrom()[0] ?? null;
 
+        // BUG-028: Netcore v5 accepts type html|amp-content ONLY — 'plain'
+        // (the obvious mapping for a text part) is rejected with HTTP 400.
+        // HTML part wins when present; a text-only message (Mail::raw etc.)
+        // is sent as escaped HTML so it renders faithfully.
         $content = [];
         if ($html = $this->bodyToString($email->getHtmlBody())) {
             $content[] = ['type' => 'html', 'value' => $html];
-        }
-        if ($text = $this->bodyToString($email->getTextBody())) {
-            $content[] = ['type' => 'plain', 'value' => $text];
+        } elseif ($text = $this->bodyToString($email->getTextBody())) {
+            $content[] = ['type' => 'html', 'value' => nl2br(e($text))];
         }
 
         $personalization = ['to' => $this->mapAddresses($email->getTo() ?: [])];
@@ -97,7 +101,7 @@ class NetcoreTransport implements TransportInterface
                 'name' => $from?->getName() ?: config('mail.from.name'),
             ],
             'subject' => $email->getSubject() ?? '(no subject)',
-            'content' => $content ?: [['type' => 'plain', 'value' => '']],
+            'content' => $content ?: [['type' => 'html', 'value' => '']],
             'personalizations' => [$personalization],
         ];
 

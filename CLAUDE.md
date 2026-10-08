@@ -181,7 +181,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
-- **Baseline:** 769 tests / 2,578 assertions green (2026-10-05, plus 12 environmental reverb-broadcast errors that only reproduce outside the test env, and 1 pre-existing `RunAiAgentJobTest` failure that reproduces on clean main — AI job, not exports). A change that drops this count or its assertions is a regression, not a refactor.
+- **Baseline:** 770 tests / 2,580 assertions green (2026-10-08, plus 12 environmental reverb-broadcast errors that only reproduce outside the test env, and 1 pre-existing `RunAiAgentJobTest` failure that reproduces on clean main — AI job, not exports). A change that drops this count or its assertions is a regression, not a refactor.
 
 ---
 

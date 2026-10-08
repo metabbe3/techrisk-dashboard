@@ -40,7 +40,33 @@ class NetcoreTransportTest extends TestCase
                 && $body['from']['name'] === 'From Name'
                 && $body['subject'] === 'Hello'
                 && $body['personalizations'][0]['to'][0]['email'] === 'to@example.com'
-                && $body['content'][0]['type'] === 'html';
+                && $body['content'][0]['type'] === 'html'
+                // Netcore v5 accepts html/amp-content only — the text part is
+                // dropped, never emitted as 'plain' (BUG-028).
+                && count($body['content']) === 1;
+        });
+    }
+
+    public function test_plain_text_only_message_is_sent_as_html(): void
+    {
+        Http::fake(['emailapi.netcorecloud.net/*' => Http::response(['status' => 'success'], 200)]);
+
+        $message = (new Email)
+            ->from(new Address('from@example.com', 'From Name'))
+            ->to(new Address('to@example.com', 'To Name'))
+            ->subject('Hello')
+            ->text("Plain body <b>bold</b>\nsecond line"); // Mail::raw() shape — no html part
+
+        (new NetcoreTransport('test-key', 'https://emailapi.netcorecloud.net', 10))->send($message);
+
+        Http::assertSent(function ($request) {
+            $body = json_decode($request->body(), true);
+            $types = array_column($body['content'], 'type');
+
+            return $types === ['html']
+                && str_contains($body['content'][0]['value'], 'Plain body')
+                && str_contains($body['content'][0]['value'], '&lt;b&gt;bold&lt;/b&gt;') // escaped, not raw markup
+                && str_contains($body['content'][0]['value'], '<br />'); // newlines preserved
         });
     }
 

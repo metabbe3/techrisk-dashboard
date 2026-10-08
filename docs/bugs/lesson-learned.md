@@ -1542,3 +1542,46 @@ the target. Two surfaces, two implementations, silent divergence.
 ---
 
 *Last Updated: 2026-10-05*
+### [BUG-028] - Netcore transport sent `type: plain` — every text-only email rejected with HTTP 400
+
+**Date:** 2026-10-08
+**Discovered By:** Prod report — Email Settings test send fails: `Netcore request failed: HTTP 400 — invalid content type, should be html or amp-content` (manual curl with `type: html` succeeds)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+The Email Settings test send (and any plain-text mail, e.g. `Mail::raw`)
+failed against Netcore's v5 API with HTTP 400 `invalid content type`.
+The same endpoint + key accepted a hand-rolled curl whose `content[0].type`
+was `html`.
+
+### Root Cause
+`NetcoreTransport::buildPayload()` mapped the message's text part to
+`['type' => 'plain']` — the natural mapping, but Netcore v5 accepts only
+`html` / `amp-content`. The test email is `Mail::raw()` (text-only, no HTML
+part), so `content[0].type` was literally `plain` → 400. HTML mailables
+carrying a text part hit the same rejection on `content[1]`.
+
+The tests were false-green (same class as c9a2ce7): both faked the HTTP
+layer and asserted URL + `api_key` header — never the payload's content
+types, so an API-contract violation passed CI.
+
+### Fix
+`app/Mail/Transports/NetcoreTransport.php`:
+- HTML body present → send only `[['type' => 'html', 'value' => $html]]`
+  (text part dropped — Netcore has no plain slot).
+- Text-only body (`Mail::raw`) → send as `['type' => 'html', 'value' => nl2br(e($text))]`
+  — escaped (no markup injection) with line breaks preserved.
+- Empty-body fallback → `[['type' => 'html', 'value' => '']]`.
+- The string `plain` no longer appears in any payload Netcore receives.
+
+### Prevention
+- [x] Transport tests assert the full content contract: types, count,
+      escaping — not just URL/headers
+- [x] Feature test (`EmailSettingsTest`) asserts the real `Mail::raw` flow
+      emits `html`, mirroring the failing prod request
+- [x] Lesson: an HTTP fake green-lights whatever payload you build; assert
+      the request BODY against the provider's documented contract, or the
+      fake is testing nothing
+
+---

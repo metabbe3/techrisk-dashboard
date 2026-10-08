@@ -113,8 +113,16 @@ class EmailSettingsTest extends TestCase
             ->call('sendTestEmail')
             ->assertNotified('Test email sent');
 
-        Http::assertSent(fn ($request) => str_contains($request->url(), '/v5/mail/send')
-            && $request->hasHeader('api_key', 'key-123'));
+        Http::assertSent(function ($request) {
+            $body = json_decode($request->body(), true);
+
+            // BUG-028: Mail::raw is text-only — the payload must still carry
+            // content type html (Netcore rejects 'plain' with HTTP 400).
+            return str_contains($request->url(), '/v5/mail/send')
+                && $request->hasHeader('api_key', 'key-123')
+                && in_array('plain', array_column($body['content'], 'type'), true) === false
+                && $body['content'][0]['type'] === 'html';
+        });
     }
 
     public function test_send_test_email_surfaces_the_exact_provider_error(): void
