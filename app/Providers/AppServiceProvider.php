@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Providers;
 
 use App\Events\IncidentCreatedEvent;
@@ -28,8 +29,11 @@ use App\Policies\IncidentPolicy;
 use App\Services\SensitiveDataFilter;
 use App\Services\TraceIdService;
 use Carbon\Carbon;
+use Filament\Facades\Filament;
 use Filament\Support\Facades\FilamentView;
+use Illuminate\Auth\Notifications\ResetPassword as ResetPasswordNotification;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Mail;
@@ -70,6 +74,34 @@ class AppServiceProvider extends ServiceProvider
 
         // Runtime mail activation + From override from dashboard settings.
         \App\Support\MailSettings::apply();
+
+        // Password-reset emails: brand them with the incident-reminder template.
+        // Takes full control of Illuminate's ResetPassword::toMail() (the static
+        // callback is checked before anything else), so the queued vendor
+        // notification renders through here.
+        ResetPasswordNotification::toMailUsing(
+            function (object $notifiable, string $token): MailMessage {
+                $expire = (int) config('auth.passwords.users.expire');
+
+                return (new MailMessage)
+                    ->subject('TechRisk Portal — Reset Password')
+                    ->view('emails.incident-reminder', [
+                        'greeting' => 'Hello '.$notifiable->name.',',
+                        'headline' => 'Reset your password',
+                        'intro' => 'We received a request to reset the password for your TechRisk Portal account. '
+                            ."This link expires in {$expire} minutes. "
+                            .'If you did not request a password reset, no further action is required — you can ignore this email.',
+                        'details' => [],
+                        'actionText' => 'Reset Password',
+                        'footer' => 'This is an automated message from the Technical Risk Portal. Please do not reply to this email.',
+                        // Filament::getPanel() (registry default), NOT the manager's
+                        // getResetPasswordUrl(): that shortcut needs the current-panel
+                        // middleware state, which is NULL in the queue worker where
+                        // this ShouldQueue mail actually renders.
+                        'actionUrl' => Filament::getPanel()->getResetPasswordUrl($token, $notifiable),
+                    ]);
+            }
+        );
 
         // Serialize all dates in the app timezone (Asia/Jakarta, GMT+7) with the
         // offset, instead of Carbon's default UTC "…Z". This makes API JSON

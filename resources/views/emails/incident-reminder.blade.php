@@ -52,7 +52,7 @@
                     {{-- Footer --}}
                     <tr>
                         <td style="padding:16px 28px;border-top:1px solid #e2e8f0;background:#f8fafc;">
-                            <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">This is an automated reminder from the Technical Risk Portal. Please do not reply to this email.</p>
+                            <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">{{ $footer ?? 'This is an automated reminder from the Technical Risk Portal. Please do not reply to this email.' }}</p>
                         </td>
                     </tr>
                 </table>

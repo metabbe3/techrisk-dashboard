@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Providers\Filament;
 
 use App\Filament\Pages\Auth\Login;
@@ -14,11 +15,11 @@ use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
-use Illuminate\Support\Facades\Vite;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
+use Illuminate\Support\Facades\Vite;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 class AdminPanelProvider extends PanelProvider
@@ -34,6 +35,7 @@ class AdminPanelProvider extends PanelProvider
             ->globalSearch(true)
             ->path('admin')
             ->login(Login::class)
+            ->passwordReset()
             ->profile(CustomProfilePage::class)
             ->colors([
                 'primary' => Color::Indigo,
@@ -71,8 +73,8 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->renderHook(
                 'panels::head.end',
-                fn () => '<link rel="stylesheet" href="' . Vite::asset('resources/css/app.css') . '">'
-                    . '<script type="module" src="' . Vite::asset('resources/js/app.js') . '"></script>'
+                fn () => '<link rel="stylesheet" href="'.Vite::asset('resources/css/app.css').'">'
+                    .'<script type="module" src="'.Vite::asset('resources/js/app.js').'"></script>'
             );
     }
 }
