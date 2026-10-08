@@ -206,8 +206,8 @@ class EmailSettings extends Page implements HasForms
         }
 
         try {
-            Mail::raw('This is a test email from the TechRisk Dashboard. If you received it, Netcore delivery works.', function ($message) use ($to): void {
-                $message->to($to)->subject('TechRisk Dashboard — test email');
+            Mail::raw('This is a test email from the TechRisk Portal. If you received it, Netcore delivery works.', function ($message) use ($to): void {
+                $message->to($to)->subject('TechRisk Portal — test email');
             });
         } catch (\Throwable $e) {
             Notification::make()

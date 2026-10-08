@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 use Illuminate\Notifications\Messages\MailMessage;
@@ -20,7 +21,7 @@ class AdminAnnouncement extends BaseNotification
 
     public function toMail(object $notifiable): MailMessage
     {
-        $lines = [$this->body, '— Technical Risk Dashboard'];
+        $lines = [$this->body, '— Technical Risk Portal'];
 
         $actionUrl = $this->url ?? route('filament.admin.pages.dashboard');
 

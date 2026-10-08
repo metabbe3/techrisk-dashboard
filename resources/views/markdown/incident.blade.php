@@ -146,4 +146,4 @@ No investigation documents attached.
 
 ---
 
-*Exported from Technical Risk Dashboard on {{ now()->format('Y-m-d H:i:s') }}*
+*Exported from Technical Risk Portal on {{ now()->format('Y-m-d H:i:s') }}*

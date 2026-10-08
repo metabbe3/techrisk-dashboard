@@ -282,7 +282,7 @@
         </div>
 
         <div class="footer">
-            Exported from TechRisk AI &mdash; TechRisk Dashboard &mdash; {{ $exported_at }}
+            Exported from TechRisk AI &mdash; TechRisk Portal &mdash; {{ $exported_at }}
         </div>
     </div>
 </body>

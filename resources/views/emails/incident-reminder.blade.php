@@ -17,7 +17,7 @@
                     {{-- Header band --}}
                     <tr>
                         <td style="background:#4f46e5;padding:22px 28px;">
-                            <span style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#c7d2fe;">TechRisk Dashboard</span><br>
+                            <span style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#c7d2fe;">TechRisk Portal</span><br>
                             <span style="font-size:18px;font-weight:700;color:#ffffff;">{{ $headline }}</span>
                         </td>
                     </tr>
@@ -52,7 +52,7 @@
                     {{-- Footer --}}
                     <tr>
                         <td style="padding:16px 28px;border-top:1px solid #e2e8f0;background:#f8fafc;">
-                            <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">This is an automated reminder from the Technical Risk Dashboard. Please do not reply to this email.</p>
+                            <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">This is an automated reminder from the Technical Risk Portal. Please do not reply to this email.</p>
                         </td>
                     </tr>
                 </table>
