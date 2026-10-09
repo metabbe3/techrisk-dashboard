@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\NotificationPreferenceResource\Pages;
@@ -81,9 +82,13 @@ class NotificationPreferenceResource extends Resource
                             ->label('New Status Updates')
                             ->helperText('When new status updates are added')
                             ->default(true),
-                        Toggle::make('email_critical_incident')
-                            ->label('Critical Incidents (P1/P2)')
-                            ->helperText('When a new P1 or P2 incident is created')
+                        Toggle::make('email_incident_not_done_reminder')
+                            ->label('Incident Not-Done Reminders')
+                            ->helperText('Daily reminder while one of your incidents is still open')
+                            ->default(true),
+                        Toggle::make('email_fund_loss_unsettled_reminder')
+                            ->label('Unsettled Fund Loss Reminders')
+                            ->helperText('Daily reminder while a fund loss is still unsettled')
                             ->default(true),
                         Toggle::make('email_action_improvement_assigned')
                             ->label('Action Improvement Assigned')
@@ -123,9 +128,13 @@ class NotificationPreferenceResource extends Resource
                             ->label('New Status Updates')
                             ->helperText('Bell icon notifications for new status updates')
                             ->default(true),
-                        Toggle::make('database_critical_incident')
-                            ->label('Critical Incidents (P1/P2)')
-                            ->helperText('Bell icon notifications for new critical incidents')
+                        Toggle::make('database_incident_not_done_reminder')
+                            ->label('Incident Not-Done Reminders')
+                            ->helperText('Bell icon notifications for open-incident reminders')
+                            ->default(true),
+                        Toggle::make('database_fund_loss_unsettled_reminder')
+                            ->label('Unsettled Fund Loss Reminders')
+                            ->helperText('Bell icon notifications for unsettled fund losses')
                             ->default(true),
                         Toggle::make('database_action_improvement_assigned')
                             ->label('Action Improvement Assigned')

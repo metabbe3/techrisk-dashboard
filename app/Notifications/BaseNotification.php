@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
@@ -15,6 +16,23 @@ abstract class BaseNotification extends Notification implements ShouldQueue
     public function via(object $notifiable): array
     {
         return ['database', 'broadcast', 'mail'];
+    }
+
+    /**
+     * Mail body for a combined group email (Support\ReminderMail). Builders
+     * only use $notifiable for the greeting name, so an anonymous object
+     * carrying the joined names works unchanged.
+     *
+     * @param  array<int, \App\Models\User>  $recipients
+     */
+    public function toMailForGroup(array $recipients): MailMessage
+    {
+        $names = implode(', ', array_map(fn ($user) => $user->name, $recipients));
+
+        return $this->toMail(new class($names)
+        {
+            public function __construct(public readonly string $name) {}
+        });
     }
 
     protected function filamentDatabaseFormat(array $overrides): array

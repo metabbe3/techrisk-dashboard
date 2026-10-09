@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -22,6 +23,8 @@ class NotificationPreference extends Model
         'email_critical_incident',
         'email_action_improvement_assigned',
         'email_admin_announcement',
+        'email_incident_not_done_reminder',
+        'email_fund_loss_unsettled_reminder',
         // Database preferences
         'database_incident_assignment',
         'database_incident_update',
@@ -32,6 +35,8 @@ class NotificationPreference extends Model
         'database_critical_incident',
         'database_action_improvement_assigned',
         'database_admin_announcement',
+        'database_incident_not_done_reminder',
+        'database_fund_loss_unsettled_reminder',
     ];
 
     protected $casts = [
@@ -44,6 +49,8 @@ class NotificationPreference extends Model
         'email_critical_incident' => 'boolean',
         'email_action_improvement_assigned' => 'boolean',
         'email_admin_announcement' => 'boolean',
+        'email_incident_not_done_reminder' => 'boolean',
+        'email_fund_loss_unsettled_reminder' => 'boolean',
         'database_incident_assignment' => 'boolean',
         'database_incident_update' => 'boolean',
         'database_incident_status_changed' => 'boolean',
@@ -53,6 +60,8 @@ class NotificationPreference extends Model
         'database_critical_incident' => 'boolean',
         'database_action_improvement_assigned' => 'boolean',
         'database_admin_announcement' => 'boolean',
+        'database_incident_not_done_reminder' => 'boolean',
+        'database_fund_loss_unsettled_reminder' => 'boolean',
     ];
 
     /**

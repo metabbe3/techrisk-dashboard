@@ -12,6 +12,7 @@ use App\Notifications\IncidentNotDoneReminder;
 use App\Services\Ai\PostMortemService;
 use App\Services\Ai\SimilarIncidentService;
 use App\Services\Markdown\IncidentMarkdownExporter;
+use App\Support\ReminderMail;
 use Filament\Actions;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Section;
@@ -77,15 +78,16 @@ class ViewIncident extends ViewRecord
                 ->visible(fn ($record) => $record->pics->isNotEmpty() && $record->isNotDone() && auth()->user()->can('manage incidents'))
                 ->action(function () {
                     $incident = $this->getRecord();
+                    $notification = new IncidentNotDoneReminder($incident);
 
-                    foreach ($incident->pics as $pic) {
-                        $pic->notify(new IncidentNotDoneReminder($incident));
-                    }
+                    $incident->pics->each(fn ($pic) => $pic->notify($notification));
+                    // One combined email for all PICs (owner rule 2026-10-09).
+                    ReminderMail::send($incident->pics, $notification);
 
                     Notification::make()
                         ->success()
-                        ->title('Reminder queued')
-                        ->body('Email queued for '.$incident->pics->pluck('email')->implode(', ').'.')
+                        ->title('Reminder sent')
+                        ->body('Email sent to '.$incident->pics->pluck('email')->implode(', ').'.')
                         ->send();
                 }),
             Actions\Action::make('detect_similar_incidents')

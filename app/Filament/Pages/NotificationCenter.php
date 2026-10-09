@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
@@ -11,7 +12,6 @@ use Filament\Tables\Concerns\InteractsWithTable;
 use Filament\Tables\Contracts\HasTable;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
 class NotificationCenter extends Page implements HasTable
@@ -59,14 +59,12 @@ class NotificationCenter extends Page implements HasTable
                         'incident_assignment' => 'danger',
                         'incident_update' => 'info',
                         'incident_status_changed' => 'warning',
+                        'incident_not_done_reminder' => 'warning',
+                        'fund_loss_unsettled_reminder' => 'danger',
                         'action_improvement_reminder' => 'info',
                         'action_improvement_due_soon' => 'warning',
                         'action_improvement_overdue' => 'danger',
                         'action_improvement_assigned' => 'info',
-                        'critical_incident' => 'danger',
-                        'pic_assigned' => 'info',
-                        'action_improvement_escalated' => 'danger',
-                        'weekly_overdue_digest' => 'warning',
                         'admin_announcement' => 'primary',
                         'new_status_update' => 'success',
                         default => 'gray',

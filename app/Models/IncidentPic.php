@@ -6,7 +6,6 @@ namespace App\Models;
 
 use App\Jobs\RefreshIncidentSearch;
 use App\Notifications\AssignedAsPicNotification;
-use App\Notifications\PicAssignedNotification;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
 /**
@@ -30,14 +29,13 @@ class IncidentPic extends Pivot
 
             if ($user && $incident) {
                 // Don't email the actor their own assignment (mirrors the old
-                // observer self-guard).
+                // observer self-guard). No admin notification — the owner's
+                // rule (2026-10-09) is that nothing automated goes to admins.
                 $actor = auth()->user();
 
                 if (! $actor || $actor->id !== $user->id) {
                     $user->notify(new AssignedAsPicNotification($incident));
                 }
-
-                self::notifyAdminsOfAssignment($incident, $user, $actor);
             }
 
             RefreshIncidentSearch::dispatch($pivot->incident_id);
@@ -48,27 +46,5 @@ class IncidentPic extends Pivot
             // caches still depend on the PIC list.
             RefreshIncidentSearch::dispatch($pivot->incident_id);
         });
-    }
-
-    /**
-     * Moved from IncidentObserver::notifyAdminsOfPicAssignment — admins are
-     * told who was assigned, minus the assignee and the acting user.
-     */
-    private static function notifyAdminsOfAssignment(Incident $incident, User $assignedPic, ?User $actor): void
-    {
-        $notified = [$assignedPic->id];
-
-        if ($actor) {
-            $notified[] = $actor->id;
-        }
-
-        $admins = User::whereHas('roles', fn ($q) => $q->where('name', 'admin'))->get();
-
-        foreach ($admins as $admin) {
-            if (! in_array($admin->id, $notified)) {
-                $admin->notify(new PicAssignedNotification($incident, $assignedPic));
-                $notified[] = $admin->id;
-            }
-        }
     }
 }

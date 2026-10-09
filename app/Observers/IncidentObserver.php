@@ -11,10 +11,8 @@ use App\Jobs\Ai\DetectSimilarIncidentsJob;
 use App\Jobs\CalculateIncidentMetrics;
 use App\Jobs\DetectRecurrenceJob;
 use App\Models\Incident;
-use App\Models\User;
 use App\Notifications\IncidentStatusChanged;
 use App\Notifications\IncidentUpdated;
-use App\Notifications\NewCriticalIncident;
 use Carbon\Carbon;
 
 class IncidentObserver
@@ -39,12 +37,9 @@ class IncidentObserver
         DetectSimilarIncidentsJob::dispatch($incident)->delay(now()->addMinutes(2));
 
         // PIC assignment notifications live in the IncidentPic pivot hooks —
-        // a pivot sync fires no model event (multi-PIC, PROJ-010).
-
-        // Notify admins and team leads for P1/P2 incidents
-        if (in_array($incident->severity, [Severity::P1, Severity::P2])) {
-            $this->notifyCriticalIncident($incident);
-        }
+        // a pivot sync fires no model event (multi-PIC, PROJ-010). No admin
+        // notification for P1/P2 either (owner rule 2026-10-09: nothing
+        // automated goes to admins).
 
         // Fire event for AI proactive analysis
         event(new IncidentCreatedEvent($incident));
@@ -172,31 +167,5 @@ class IncidentObserver
     private function clearAiContextCache(): void
     {
         app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
-    }
-
-    /**
-     * Notify admins and team leads about a new critical incident.
-     */
-    private function notifyCriticalIncident(Incident $incident): void
-    {
-        $currentUser = auth()->user();
-
-        // PICs already know about their own incident — don't double-send.
-        $notified = $incident->pics->pluck('id')->all();
-
-        if ($currentUser) {
-            $notified[] = $currentUser->id;
-        }
-
-        $recipients = User::whereHas('roles', function ($query) {
-            $query->whereIn('name', ['admin', 'team-lead']);
-        })->get();
-
-        foreach ($recipients as $user) {
-            if (! in_array($user->id, $notified)) {
-                $user->notify(new NewCriticalIncident($incident));
-                $notified[] = $user->id;
-            }
-        }
     }
 }

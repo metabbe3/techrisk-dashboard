@@ -8,8 +8,10 @@ use App\Models\ActionImprovement;
 use App\Models\User;
 use App\Notifications\ActionImprovementDueSoon;
 use App\Notifications\ActionImprovementOverdue;
+use App\Support\ReminderMail;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
+use Illuminate\Support\Collection;
 
 /**
  * Sends reminders for pending action improvements with the reminder flag on:
@@ -17,7 +19,8 @@ use Illuminate\Console\Command;
  *   2. Overdue — every day from the due date onward.
  * Recipients are the action's pic_email users plus the parent incident's PICs
  * (deduped). PIC-only (owner rule 2026-10-09): admins are never emailed by
- * this command — no escalation path.
+ * this command — no escalation path. One combined email per action (all PICs
+ * in the TO line) instead of one mail per PIC (owner rule 2026-10-09).
  */
 class SendActionImprovementReminders extends Command
 {
@@ -78,48 +81,51 @@ class SendActionImprovementReminders extends Command
     private function sendDueSoonNotification(ActionImprovement $action): void
     {
         $daysRemaining = (int) now()->diffInDays($action->due_date, false);
-        $notified = [];
+        $recipients = $this->recipientsFor($action);
 
-        foreach ($action->pic_email as $picEmail) {
-            $user = $this->usersByEmail[strtolower($picEmail)] ?? null;
-            if ($user && ! in_array($user->id, $notified)) {
-                $user->notify(new ActionImprovementDueSoon($action, $daysRemaining));
-                $notified[] = $user->id;
-                $this->info("Sent due soon reminder for: {$action->title} to {$picEmail}");
-            }
-        }
+        $recipients->each(fn ($user) => $user->notify(new ActionImprovementDueSoon($action, $daysRemaining)));
+        ReminderMail::send($recipients, new ActionImprovementDueSoon($action, $daysRemaining));
 
-        $incident = $action->incident;
-        foreach ($incident?->pics ?? [] as $pic) {
-            if (! in_array($pic->id, $notified)) {
-                $pic->notify(new ActionImprovementDueSoon($action, $daysRemaining));
-                $notified[] = $pic->id;
-                $this->info("Sent due soon reminder for: {$action->title} to incident PIC {$pic->email}");
-            }
-        }
+        $this->logRecipients($action, 'due soon reminder', $recipients);
     }
 
     private function sendOverdueNotification(ActionImprovement $action): void
     {
         $daysOverdue = (int) (now()->diffInDays($action->due_date, false) * -1);
-        $notified = [];
+        $recipients = $this->recipientsFor($action);
 
-        foreach ($action->pic_email as $picEmail) {
-            $user = $this->usersByEmail[strtolower($picEmail)] ?? null;
-            if ($user && ! in_array($user->id, $notified)) {
-                $user->notify(new ActionImprovementOverdue($action, $daysOverdue));
-                $notified[] = $user->id;
-                $this->info("Sent overdue notification for: {$action->title} to {$picEmail}");
-            }
+        $recipients->each(fn ($user) => $user->notify(new ActionImprovementOverdue($action, $daysOverdue)));
+        ReminderMail::send($recipients, new ActionImprovementOverdue($action, $daysOverdue));
+
+        $this->logRecipients($action, 'overdue notification', $recipients);
+    }
+
+    /**
+     * The action's pic_email users (when they match a User) plus the parent
+     * incident's PICs, deduped by id.
+     *
+     * @return Collection<int, User>
+     */
+    private function recipientsFor(ActionImprovement $action): Collection
+    {
+        $byEmail = collect($action->pic_email ?? [])
+            ->filter()
+            ->map(fn ($email) => $this->usersByEmail[strtolower($email)] ?? null)
+            ->filter();
+
+        return $byEmail
+            ->merge($action->incident?->pics ?? collect())
+            ->unique('id')
+            ->values();
+    }
+
+    private function logRecipients(ActionImprovement $action, string $label, Collection $recipients): void
+    {
+        if ($recipients->isEmpty()) {
+            return;
         }
 
-        $incident = $action->incident;
-        foreach ($incident?->pics ?? [] as $pic) {
-            if (! in_array($pic->id, $notified)) {
-                $pic->notify(new ActionImprovementOverdue($action, $daysOverdue));
-                $notified[] = $pic->id;
-                $this->info("Sent overdue notification for: {$action->title} to incident PIC {$pic->email}");
-            }
-        }
+        $emails = $recipients->pluck('email')->implode(', ');
+        $this->info("Sent {$label} for: {$action->title} to [{$emails}]");
     }
 }

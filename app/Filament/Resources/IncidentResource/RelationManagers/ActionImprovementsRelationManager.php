@@ -6,6 +6,7 @@ namespace App\Filament\Resources\IncidentResource\RelationManagers;
 
 use App\Models\User;
 use App\Notifications\ActionImprovementReminder;
+use App\Support\ReminderMail;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -84,18 +85,20 @@ class ActionImprovementsRelationManager extends RelationManager
                     ->modalDescription('Send a reminder email to the assigned PIC email(s) via Netcore.')
                     ->visible(fn ($record) => $record->status === 'pending')
                     ->action(function ($record) {
-                        $sent = [];
-                        foreach (($record->pic_email ?? []) as $email) {
-                            $user = User::where('email', $email)->first();
-                            if ($user && ! in_array($user->id, $sent)) {
-                                $user->notify(new ActionImprovementReminder($record));
-                                $sent[] = $user->id;
-                            }
-                        }
+                        $recipients = collect($record->pic_email ?? [])
+                            ->map(fn ($email) => User::where('email', $email)->first())
+                            ->filter()
+                            ->unique('id')
+                            ->values();
+
+                        // One combined email for all recipients (owner 2026-10-09)
+                        // plus the per-user in-app notification.
+                        $recipients->each(fn ($user) => $user->notify(new ActionImprovementReminder($record)));
+                        ReminderMail::send($recipients, new ActionImprovementReminder($record));
 
                         Notification::make()
-                            ->when(count($sent), fn ($n) => $n->success()->title('Reminder queued')->body('Email queued for '.count($sent).' recipient(s).'))
-                            ->when(! count($sent), fn ($n) => $n->warning()->title('No matching users')->body('No registered users matched the PIC email(s).'))
+                            ->when($recipients->isNotEmpty(), fn ($n) => $n->success()->title('Reminder sent')->body('Email sent to '.$recipients->count().' recipient(s).'))
+                            ->when($recipients->isEmpty(), fn ($n) => $n->warning()->title('No matching users')->body('No registered users matched the PIC email(s).'))
                             ->send();
                     }),
                 Tables\Actions\EditAction::make(),

@@ -162,13 +162,24 @@ class User extends Authenticatable implements Auditable, FilamentUser
             \App\Notifications\ActionImprovementDueSoon::class => 'action_improvement_reminder',
             \App\Notifications\ActionImprovementOverdue::class => 'action_improvement_overdue',
             \App\Notifications\ActionImprovementAssigned::class => 'action_improvement_assigned',
-            \App\Notifications\NewCriticalIncident::class => 'critical_incident',
-            \App\Notifications\PicAssignedNotification::class => 'incident_assignment',
             \App\Notifications\AdminAnnouncement::class => 'admin_announcement',
             \App\Notifications\IncidentNotDoneReminder::class => 'incident_not_done_reminder',
             \App\Notifications\FundLossUnsettledReminder::class => 'fund_loss_unsettled_reminder',
             default => null,
         };
+    }
+
+    /**
+     * Mail-eligibility check for the combined reminder email (Support\ReminderMail):
+     * unknown notification types send unfiltered, known ones follow the
+     * user's email_{$type} preference.
+     */
+    public function mailPreferenceAllows($instance): bool
+    {
+        $type = $this->getNotificationType($instance);
+
+        return $type === null
+            || NotificationPreference::forUser($this)->getEmailPreference($type);
     }
 
     /**

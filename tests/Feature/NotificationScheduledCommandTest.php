@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Mail\GroupNotificationMail;
 use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
@@ -107,6 +109,33 @@ class NotificationScheduledCommandTest extends TestCase
         // Admins never receive action-improvement emails (owner rule 2026-10-09)
         $this->assertEquals(0, $this->notificationsFor($this->admin, 'action_improvement_escalated'));
         $this->assertEquals(0, $this->notificationsFor($this->admin, 'action_improvement_overdue'));
+    }
+
+    public function test_action_reminder_sends_one_combined_email_to_all_pics(): void
+    {
+        Mail::fake();
+        $pic2 = User::factory()->create();
+        $incident = Incident::factory()->create();
+        $incident->pics()->attach($this->pic->id);
+
+        ActionImprovement::factory()->create([
+            'incident_id' => $incident->id,
+            'pic_email' => [$this->pic->email, $pic2->email],
+            'reminder' => true,
+            'status' => 'pending',
+            'due_date' => now()->subDays(3)->startOfDay(),
+        ]);
+
+        $this->artisan('reminders:send-action-improvements')
+            ->assertSuccessful();
+
+        // One email with every PIC in the TO line (owner rule 2026-10-09).
+        Mail::assertSent(GroupNotificationMail::class, 1);
+        Mail::assertSent(GroupNotificationMail::class, fn ($mail) => $mail->hasTo($this->pic->email) && $mail->hasTo($pic2->email));
+
+        // Both still get the in-app notification.
+        $this->assertEquals(1, $this->notificationsFor($this->pic, 'action_improvement_overdue'));
+        $this->assertEquals(1, $this->notificationsFor($pic2, 'action_improvement_overdue'));
     }
 
     public function test_reminder_command_skips_completed_items(): void

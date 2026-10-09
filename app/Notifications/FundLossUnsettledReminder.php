@@ -7,12 +7,19 @@ namespace App\Notifications;
 use Illuminate\Notifications\Messages\MailMessage;
 
 /**
- * Reminds the PIC (and escalates to admins) that an incident has a fund
- * loss that has not been settled — fund_status is Confirmed loss or
- * Potential recovery and the outstanding amount (potential - recovered) > 0.
+ * Reminds the PIC that an incident has a fund loss that has not been
+ * settled — fund_status is Confirmed loss or Potential recovery and the
+ * outstanding amount (potential - recovered) > 0. PIC-only (owner
+ * 2026-10-08, no admin escalation); mail goes as ONE combined email for
+ * all PICs via Support\ReminderMail (owner 2026-10-09).
  */
 class FundLossUnsettledReminder extends IncidentNotification
 {
+    public function via(object $notifiable): array
+    {
+        return ['database', 'broadcast'];
+    }
+
     public function broadcastType(): string
     {
         return 'incident.fund_loss_unsettled';

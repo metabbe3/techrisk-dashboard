@@ -1,12 +1,20 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 use Illuminate\Notifications\Messages\MailMessage;
 
 class ActionImprovementReminder extends ActionImprovementNotification
 {
+    public function via(object $notifiable): array
+    {
+        // Mail is sent once for the whole PIC group via Support\ReminderMail
+        // (owner 2026-10-09) — not per-user through the notification channel.
+        return ['database', 'broadcast'];
+    }
+
     public function broadcastType(): string
     {
         return 'action.improvement.reminder';

@@ -10,10 +10,16 @@ use Illuminate\Notifications\Messages\MailMessage;
  * Reminds the PIC that an incident is still open / not completed.
  * Sent by the reminders:send-incidents command for incidents whose
  * incident_status != Completed and that are older than the configured
- * age threshold.
+ * age threshold. Mail is NOT a per-user channel here — the command sends
+ * ONE combined email for all PICs via Support\ReminderMail (owner 2026-10-09).
  */
 class IncidentNotDoneReminder extends IncidentNotification
 {
+    public function via(object $notifiable): array
+    {
+        return ['database', 'broadcast'];
+    }
+
     public function broadcastType(): string
     {
         return 'incident.not_done_reminder';

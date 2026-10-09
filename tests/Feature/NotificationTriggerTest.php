@@ -53,39 +53,18 @@ class NotificationTriggerTest extends TestCase
         $this->assertEquals(1, $this->notificationsFor($this->pic, 'incident_assignment'));
     }
 
-    public function test_admin_gets_critical_incident_notification_for_p1(): void
+    /**
+     * Owner rule 2026-10-09: no automated notification ever goes to admins —
+     * the P1/P2 critical-incident alert and the PIC-assignment admin blast
+     * were removed. NoAdminNotificationTest covers those paths.
+     */
+    public function test_pic_does_not_get_assignment_notification_about_themselves(): void
     {
-        tap(Incident::factory()->create(['severity' => 'P1']), fn ($i) => $i->pics()->attach($this->pic->id));
+        $this->actingAs($this->pic);
 
-        $this->assertEquals(1, $this->notificationsFor($this->admin, 'critical_incident'));
-    }
-
-    public function test_admin_gets_critical_incident_notification_for_p2(): void
-    {
-        tap(Incident::factory()->create(['severity' => 'P2']), fn ($i) => $i->pics()->attach($this->pic->id));
-
-        $this->assertEquals(1, $this->notificationsFor($this->admin, 'critical_incident'));
-    }
-
-    public function test_admin_does_not_get_critical_notification_for_p3(): void
-    {
-        tap(Incident::factory()->create(['severity' => 'P3']), fn ($i) => $i->pics()->attach($this->pic->id));
-
-        $this->assertEquals(0, $this->notificationsFor($this->admin, 'critical_incident'));
-    }
-
-    public function test_admin_gets_pic_assigned_notification(): void
-    {
         tap(Incident::factory()->create(), fn ($i) => $i->pics()->attach($this->pic->id));
 
-        $this->assertEquals(1, $this->notificationsFor($this->admin, 'pic_assigned'));
-    }
-
-    public function test_pic_does_not_get_pic_assigned_notification_about_themselves(): void
-    {
-        tap(Incident::factory()->create(), fn ($i) => $i->pics()->attach($this->pic->id));
-
-        $this->assertEquals(0, $this->notificationsFor($this->pic, 'pic_assigned'));
+        $this->assertEquals(0, $this->notificationsFor($this->pic, 'incident_assignment'));
     }
 
     public function test_incident_status_change_notifies_pic(): void
@@ -125,9 +104,8 @@ class NotificationTriggerTest extends TestCase
         $incident->pics()->sync([$newPic->id]);
 
         $this->assertEquals(1, $this->notificationsFor($newPic, 'incident_assignment'));
-        // Actor-exclusion contract: the admin is the current user on both the
-        // attach and sync paths — the pivot hook excludes them every time.
-        $this->assertEquals(0, $this->notificationsFor($this->admin, 'pic_assigned'));
+        // Admins are never notified of PIC assignment (owner rule 2026-10-09).
+        $this->assertEquals(0, $this->notificationsFor($this->admin, 'incident_assignment'));
 
         // Re-syncing an unchanged PIC list must not re-email anyone.
         $incident->pics()->sync([$newPic->id]);

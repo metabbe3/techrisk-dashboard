@@ -1,10 +1,18 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 class ActionImprovementDueSoon extends ActionImprovementNotification
 {
+    public function via(object $notifiable): array
+    {
+        // Mail is sent once for the whole PIC group via Support\ReminderMail
+        // (owner 2026-10-09) — not per-user through the notification channel.
+        return ['database', 'broadcast'];
+    }
+
     public function __construct(
         \App\Models\ActionImprovement $actionImprovement,
         public readonly int $daysRemaining
