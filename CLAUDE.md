@@ -181,7 +181,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
-- **Baseline:** 770 tests / 2,580 assertions green (2026-10-08, plus 12 environmental reverb-broadcast errors that only reproduce outside the test env, and 1 pre-existing `RunAiAgentJobTest` failure that reproduces on clean main — AI job, not exports). A change that drops this count or its assertions is a regression, not a refactor.
+- **Baseline:** 777 tests / 2,611 assertions green (2026-10-09; delta from 770/2,580 on 2026-10-08 = PIC-only reminder tests + password-reset suite + branding, minus the 2 deleted weekly-digest tests when that admin lane was removed by owner rule 2026-10-09. Plus 12 environmental reverb-broadcast errors that only reproduce outside the test env, and 1 pre-existing `RunAiAgentJobTest` failure that reproduces on clean main — AI job, not exports). A change that drops this count or its assertions is a regression, not a refactor — unless the delta is a deliberate feature deletion recorded here.
 
 ---
 

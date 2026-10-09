@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -163,8 +164,6 @@ class User extends Authenticatable implements Auditable, FilamentUser
             \App\Notifications\ActionImprovementAssigned::class => 'action_improvement_assigned',
             \App\Notifications\NewCriticalIncident::class => 'critical_incident',
             \App\Notifications\PicAssignedNotification::class => 'incident_assignment',
-            \App\Notifications\ActionImprovementEscalated::class => 'action_improvement_overdue',
-            \App\Notifications\WeeklyOverdueDigest::class => 'action_improvement_overdue',
             \App\Notifications\AdminAnnouncement::class => 'admin_announcement',
             \App\Notifications\IncidentNotDoneReminder::class => 'incident_not_done_reminder',
             \App\Notifications\FundLossUnsettledReminder::class => 'fund_loss_unsettled_reminder',

@@ -84,7 +84,7 @@ class NotificationScheduledCommandTest extends TestCase
         $this->assertEquals(1, $this->notificationsFor($this->pic, 'action_improvement_overdue'));
     }
 
-    public function test_reminder_command_escalates_7_day_overdue_to_admin(): void
+    public function test_overdue_7_day_still_notifies_only_pics_never_admins(): void
     {
         $incident = Incident::factory()->create();
         $incident->pics()->attach($this->pic->id);
@@ -94,17 +94,19 @@ class NotificationScheduledCommandTest extends TestCase
             'pic_email' => [$this->pic->email],
             'reminder' => true,
             'status' => 'pending',
-            'due_date' => now()->subDays(10)->startOfDay(),
+            // 30 days overdue — past the old 7-day escalation threshold.
+            'due_date' => now()->subDays(30)->startOfDay(),
         ]);
 
         $this->artisan('reminders:send-action-improvements')
             ->assertSuccessful();
 
-        // PIC gets overdue
+        // PIC still gets the overdue reminder
         $this->assertEquals(1, $this->notificationsFor($this->pic, 'action_improvement_overdue'));
 
-        // Admin gets escalation
-        $this->assertEquals(1, $this->notificationsFor($this->admin, 'action_improvement_escalated'));
+        // Admins never receive action-improvement emails (owner rule 2026-10-09)
+        $this->assertEquals(0, $this->notificationsFor($this->admin, 'action_improvement_escalated'));
+        $this->assertEquals(0, $this->notificationsFor($this->admin, 'action_improvement_overdue'));
     }
 
     public function test_reminder_command_skips_completed_items(): void
@@ -124,32 +126,5 @@ class NotificationScheduledCommandTest extends TestCase
             ->assertSuccessful();
 
         $this->assertEquals(0, $this->notificationsFor($this->pic, 'action_improvement_overdue'));
-    }
-
-    public function test_weekly_digest_sends_to_admins_only(): void
-    {
-        $incident = Incident::factory()->create();
-        $incident->pics()->attach($this->pic->id);
-
-        ActionImprovement::factory()->create([
-            'incident_id' => $incident->id,
-            'pic_email' => [$this->pic->email],
-            'status' => 'pending',
-            'due_date' => now()->subDays(3)->startOfDay(),
-        ]);
-
-        $this->artisan('reminders:send-weekly-overdue-digest')
-            ->assertSuccessful();
-
-        $this->assertEquals(1, $this->notificationsFor($this->admin, 'weekly_overdue_digest'));
-        $this->assertEquals(0, $this->notificationsFor($this->pic, 'weekly_overdue_digest'));
-    }
-
-    public function test_weekly_digest_skips_when_no_overdue_items(): void
-    {
-        $this->artisan('reminders:send-weekly-overdue-digest')
-            ->assertSuccessful();
-
-        $this->assertEquals(0, $this->notificationsFor($this->admin, 'weekly_overdue_digest'));
     }
 }
