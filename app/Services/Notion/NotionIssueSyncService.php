@@ -26,7 +26,10 @@ use Illuminate\Support\Facades\Log;
  * full sync (restoreDeleted: true, the "Full sync" checkbox), which
  * re-imports them by direct page lookup. Permanent removal is still deleting
  * the row in Notion; a full sync drops the tombstone of a page that no
- * longer exists there.
+ * longer exists there. The full sync's restore set is the operator's choice
+ * (2026-10-30): the "Sync now" modal lists the restorable deleted issues
+ * (restorableIssues()) and restores only the ticked pages — restorePageIds
+ * null means no pick was made (the console/scheduler path) and restores all.
  *
  * Live shape (verified 2026-10-27 against mcp.notion.com): `notion-fetch` on
  * a database returns its SCHEMA, not rows — including the queryable
@@ -73,9 +76,14 @@ class NotionIssueSyncService
     /**
      * @param  bool  $restoreDeleted  Full sync — also re-import Issues deleted
      *                                from the dashboard (their tombstones).
+     * @param  array<int, string>|null  $restorePageIds  Which tombstoned page
+     *                                                   IDs a full sync may restore: a list restores only those (the
+     *                                                   Sync-now picker's ticked issues), [] restores nothing — a
+     *                                                   deliberate pick of none — and null (no picker involved: the
+     *                                                   console/scheduler path) restores every dangling tombstone.
      * @return array{status: string, message: string, created: int, skipped: int, preview: ?string}
      */
-    public function sync(bool $dryRun = false, bool $restoreDeleted = false): array
+    public function sync(bool $dryRun = false, bool $restoreDeleted = false, ?array $restorePageIds = null): array
     {
         $targetId = Setting::get(self::WATCH_KEY);
 
@@ -121,7 +129,7 @@ class NotionIssueSyncService
         // the fetch. In dry-run this reads Notion only and reports what a full
         // sync would restore.
         if ($restoreDeleted) {
-            $recovered = $this->recoverDeletedIssues($collectionUrl, $lines, $dryRun);
+            $recovered = $this->recoverDeletedIssues($collectionUrl, $lines, $dryRun, $restorePageIds);
             $created += $recovered['created'];
             $duplicates += $recovered['duplicates'];
             $blanks += $recovered['blanks'];
@@ -337,6 +345,48 @@ class NotionIssueSyncService
     }
 
     /**
+     * The full-sync restore picker's options (Notion Settings "Sync now"):
+     * every dangling tombstone a full sync would ACTUALLY restore — its
+     * Notion row is live, titled, and not a duplicate of an existing
+     * dashboard title, the same filters recoverDeletedIssues applies, so the
+     * list the operator picks from and the run agree. Pages whose lookup
+     * fails or that are gone from Notion are not offered (the run reports or
+     * drops them); a disconnected Notion offers nothing.
+     *
+     * @return array<string, string> Notion page ID => "{title} ({date}, {severity})"
+     */
+    public function restorableIssues(): array
+    {
+        $targetId = Setting::get(self::WATCH_KEY);
+
+        if (blank($targetId) || ! $this->notion->connected()) {
+            return [];
+        }
+
+        $fetch = $this->notion->callToolDetailed('notion-fetch', ['id' => $targetId]);
+
+        $collectionUrl = ($fetch === null || $fetch['isError']) ? null : $this->extractCollectionUrl($fetch['text']);
+
+        if ($collectionUrl === null) {
+            return [];
+        }
+
+        $options = [];
+
+        foreach (NotionSyncedPage::query()->whereNull('incident_id')->pluck('page_id') as $pageId) {
+            $row = $this->queryPageById($collectionUrl, $pageId);
+
+            if ($row === null || $row === [] || blank($row['Name'] ?? null) || $this->titleAlreadyExists((string) $row['Name'])) {
+                continue;
+            }
+
+            $options[$pageId] = $this->describeRow($row);
+        }
+
+        return $options;
+    }
+
+    /**
      * Re-import Issues deleted from the dashboard. Their synced-page rows
      * dangle (incident_id NULL via the FK's nullOnDelete). Each dangling
      * page is fetched from Notion DIRECTLY by page ID — no watermark
@@ -352,11 +402,16 @@ class NotionIssueSyncService
      * each restorable page is reported as a would-restore line.
      *
      * @param  array<int, string>  $lines
+     * @param  array<int, string>|null  $onlyPageIds  The picker's selection —
+     *                                                null revisits every dangling tombstone, a list only those.
      * @return array{created: int, duplicates: int, blanks: int, failed: int}
      */
-    protected function recoverDeletedIssues(string $collectionUrl, array &$lines, bool $dryRun): array
+    protected function recoverDeletedIssues(string $collectionUrl, array &$lines, bool $dryRun, ?array $onlyPageIds = null): array
     {
-        $dangling = NotionSyncedPage::query()->whereNull('incident_id')->get();
+        $dangling = NotionSyncedPage::query()
+            ->whereNull('incident_id')
+            ->when($onlyPageIds !== null, fn (\Illuminate\Database\Eloquent\Builder $query) => $query->whereIn('page_id', $onlyPageIds))
+            ->get();
 
         $created = 0;
         $duplicates = 0;

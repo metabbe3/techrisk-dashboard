@@ -9,6 +9,7 @@ use App\Models\Setting;
 use App\Services\Notion\NotionIssueSyncService;
 use App\Services\Notion\NotionMcpClient;
 use Filament\Actions\Action as HeaderAction;
+use Filament\Actions\StaticAction;
 use Filament\Forms\Components\Actions;
 use Filament\Forms\Components\Actions\Action;
 use Filament\Forms\Components\Placeholder;
@@ -52,6 +53,19 @@ class NotionSettings extends Page implements HasForms
     public bool $watchIdJustSaved = false;
 
     public ?string $watchIdError = null;
+
+    // The full-sync restore picker's options (owner 2026-10-30), memoized:
+    // each option is a Notion page lookup, and the picker's options closure
+    // re-runs on every Livewire render while the modal is open — the memo
+    // keeps that to one Notion fan-out per full-sync click instead of one
+    // per checkbox tick. The full-sync click drops the memo so the list is
+    // read fresh from Notion at that moment.
+    public ?array $restorableIssueOptionsCache = null;
+
+    // Owner 2026-10-30: the Sync-now modal is a two-step flow — step 1 asks
+    // full sync vs. normal, step 2 (this flag) replaces the form with the
+    // restore picker once "Full sync" has read Notion.
+    public bool $fullSyncPickerOpen = false;
 
     public static function canAccess(): bool
     {
@@ -191,7 +205,7 @@ class NotionSettings extends Page implements HasForms
                     ]),
 
                 Section::make('Sync issue from Notion')
-                    ->description('Runs at 09:00, 12:00, 15:00, and 18:00 (WIB): new sub-pages import as Issues (dedupe by Notion page ID and title, against Issues and Incidents). Deleting an imported issue from the dashboard is permanent — only "Sync now" with "Full sync" restores deleted issues. Use "Preview" for a read-only dry run first.')
+                    ->description('Runs at 09:00, 12:00, 15:00, and 18:00 (WIB): new sub-pages import as Issues (dedupe by Notion page ID and title, against Issues and Incidents). Deleting an imported issue from the dashboard is permanent — only "Sync now" with "Full sync" brings deleted issues back, and only the ones you pick there.')
                     ->schema([
                         // Owner 2026-10-30: the ID changes only through the
                         // explicit Change → Save flow below, never by typing
@@ -228,9 +242,9 @@ class NotionSettings extends Page implements HasForms
                             ->visible(fn (NotionSettings $livewire): bool => filled($livewire->watchIdError))
                             ->columnSpanFull(),
 
-                        // Owner 2026-10-30: Change, Sync now, and Preview sit
-                        // on ONE horizontal line — while editing, Save/Cancel
-                        // take Change's slot in the same row.
+                        // Owner 2026-10-30: Change and Sync now sit on ONE
+                        // horizontal line — while editing, Save/Cancel take
+                        // Change's slot in the same row.
                         Actions::make([
                             Action::make('changeWatchId')
                                 ->label('Change')
@@ -272,25 +286,82 @@ class NotionSettings extends Page implements HasForms
                                 ->label('Sync now')
                                 ->icon('heroicon-m-arrow-path')
                                 ->form(NotionSyncAction::form())
-                                ->action(fn (array $data) => NotionSyncAction::run(restoreDeleted: (bool) ($data['restoreDeleted'] ?? false))),
+                                // A closed modal re-opens at step 1 (Cancel/X
+                                // leave the step-2 flag behind).
+                                ->mountUsing(function (Form $form, NotionSettings $livewire): void {
+                                    $livewire->fullSyncPickerOpen = false;
+                                    $form->fill();
+                                })
+                                // Owner 2026-10-30: the submit is "Sync" — and
+                                // becomes "Full sync" once the checkbox is
+                                // ticked; at step 2 it is "Import", greyed out
+                                // until at least one issue is selected.
+                                ->modalSubmitActionLabel(function (NotionSettings $livewire): string {
+                                    if ($livewire->fullSyncPickerOpen) {
+                                        return 'Import';
+                                    }
 
-                            Action::make('previewSync')
-                                ->label('Preview')
-                                ->icon('heroicon-o-eye')
-                                ->color('gray')
-                                // Owner 2026-10-30: the dry run opens a
-                                // centered modal (scrollable list, one finding
-                                // per line) — Close, or "Continue full sync"
-                                // to run for real what was just previewed.
-                                ->modalHeading('Preview (dry run) — nothing was imported')
-                                ->modalContent(fn (): \Illuminate\Contracts\View\View => NotionSyncAction::previewModalContent())
-                                ->modalSubmitActionLabel('Continue full sync')
-                                ->modalCancelActionLabel('Close')
-                                ->action(fn () => NotionSyncAction::run(restoreDeleted: true)),
+                                    return ((bool) ($livewire->mountedFormComponentActionsData[0]['restoreDeleted'] ?? false))
+                                        ? 'Full sync'
+                                        : 'Sync';
+                                })
+                                // The param MUST be named $action — that is the
+                                // injected name for the real submit button;
+                                // any other name resolves a throwaway instance
+                                // from the container.
+                                ->modalSubmitAction(function (StaticAction $action, NotionSettings $livewire): void {
+                                    if ($livewire->fullSyncPickerOpen) {
+                                        $action->disabled(blank($livewire->mountedFormComponentActionsData[0]['restorePageIds'] ?? []));
+                                    }
+                                })
+                                ->action(function (array $data, NotionSettings $livewire, Action $action): void {
+                                    if ($livewire->fullSyncPickerOpen) {
+                                        // Step 2: import ONLY the picked issues —
+                                        // the disabled Import button keeps an
+                                        // empty pick from reaching here anyway.
+                                        NotionSyncAction::run(
+                                            restoreDeleted: true,
+                                            restorePageIds: array_values((array) ($data['restorePageIds'] ?? [])),
+                                        );
+
+                                        return;
+                                    }
+
+                                    // blank() is wrong here — booleans are never
+                                    // blank (blank(false) === false), so an
+                                    // unticked checkbox would fall through to the
+                                    // full-sync branch.
+                                    if (! ($data['restoreDeleted'] ?? false)) {
+                                        NotionSyncAction::run(restoreDeleted: false, restorePageIds: null);
+
+                                        return; // normal sync — the tail unmount closes the modal
+                                    }
+
+                                    // Step 1 → 2: "Full sync" clicked. Read Notion
+                                    // NOW (drop the options memo so the list is
+                                    // fresh), then stay open as the picker —
+                                    // halt() keeps the modal mounted; the tail
+                                    // unmount of a normal completion would close it.
+                                    $livewire->restorableIssueOptionsCache = null;
+                                    $livewire->fullSyncPickerOpen = true;
+                                    $action->halt();
+                                }),
                         ]),
                     ]),
             ])
             ->statePath('data');
+    }
+
+    /**
+     * The full-sync restore picker's options, computed once per page load —
+     * each option is a Notion page lookup, and the modal's schema closures
+     * re-run on every Livewire render.
+     *
+     * @return array<string, string> Notion page ID => "{title} ({date}, {severity})"
+     */
+    public function restorableIssueOptions(): array
+    {
+        return $this->restorableIssueOptionsCache ??= app(NotionIssueSyncService::class)->restorableIssues();
     }
 
     /**

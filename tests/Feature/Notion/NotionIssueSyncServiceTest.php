@@ -811,6 +811,120 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->assertSame(0, Incident::count());
     }
 
+    public function test_a_full_sync_restores_only_the_picked_pages(): void
+    {
+        NotionSyncedPage::create(['page_id' => 'aaaa556e44dd81c395b0c542f2599aaa', 'incident_id' => null]);
+        NotionSyncedPage::create(['page_id' => 'bbbb556e44dd81c395b0c542f2599bbb', 'incident_id' => null]);
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
+
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            // Only the PICKED page is looked up — the unpicked one never
+            // reaches Notion (an unexpected lookup would fail the mock).
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', "WHERE url LIKE '%aaaa556e44dd81c395b0c542f2599aaa%'")
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [
+                $this->row('aaaa556e44dd81c395b0c542f2599aaa', 'DB down', '2026-01-12', 'P2', 'Code Bug'),
+            ]]), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+
+        $result = app(NotionIssueSyncService::class)->sync(
+            restoreDeleted: true,
+            restorePageIds: ['aaaa556e44dd81c395b0c542f2599aaa'],
+        );
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(1, $result['created']);
+        $this->assertSame('DB down', Incident::query()->sole()->title);
+        // The unpicked tombstone survived — its issue stays deleted.
+        $this->assertTrue(NotionSyncedPage::query()
+            ->where('page_id', 'bbbb556e44dd81c395b0c542f2599bbb')
+            ->whereNull('incident_id')
+            ->exists());
+    }
+
+    public function test_a_full_sync_with_an_empty_selection_restores_nothing(): void
+    {
+        NotionSyncedPage::create(['page_id' => 'aaaa556e44dd81c395b0c542f2599aaa', 'incident_id' => null]);
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
+
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            // An empty pick queries Notion for NO deleted page — the picker
+            // filtered the tombstones before the lookups.
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+
+        $result = app(NotionIssueSyncService::class)->sync(restoreDeleted: true, restorePageIds: []);
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(0, $result['created']);
+        $this->assertSame(0, Incident::count());
+        // The tombstone survives — the issue stays deleted.
+        $this->assertSame(1, NotionSyncedPage::query()->whereNull('incident_id')->count());
+    }
+
+    public function test_restorable_issues_lists_exactly_what_a_full_sync_would_restore(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        NotionSyncedPage::create(['page_id' => 'aaaa556e44dd81c395b0c542f2599aaa', 'incident_id' => null]);
+        NotionSyncedPage::create(['page_id' => 'bbbb556e44dd81c395b0c542f2599bbb', 'incident_id' => null]);
+        NotionSyncedPage::create(['page_id' => 'cccc556e44dd81c395b0c542f2599ccc', 'incident_id' => null]);
+        Incident::factory()->create(['title' => 'Duplicate of something already here']);
+
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->andReturnUsing(function (string $tool, array $args): array {
+                $query = (string) ($args['data']['query'] ?? '');
+
+                $respond = fn (array $rows): array => ['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false];
+
+                if (str_contains($query, '%aaaa556e44dd81c395b0c542f2599aaa%')) {
+                    return $respond([$this->row('aaaa556e44dd81c395b0c542f2599aaa', 'DB down', '2026-01-12', 'P2', 'Code Bug')]);
+                }
+
+                // Gone from Notion — nothing to restore.
+                if (str_contains($query, '%bbbb556e44dd81c395b0c542f2599bbb%')) {
+                    return $respond([]);
+                }
+
+                // A title the dashboard already has — a restore would be skipped.
+                if (str_contains($query, '%cccc556e44dd81c395b0c542f2599ccc%')) {
+                    return $respond([$this->row('cccc556e44dd81c395b0c542f2599ccc', 'Duplicate of something already here', '2026-02-02', 'P3', 'Data Issue')]);
+                }
+
+                return $respond([]);
+            });
+
+        $options = app(NotionIssueSyncService::class)->restorableIssues();
+
+        $this->assertSame(['aaaa556e44dd81c395b0c542f2599aaa' => 'DB down (2026-01-12, P2)'], $options);
+    }
+
+    public function test_restorable_issues_returns_nothing_when_notion_is_not_connected(): void
+    {
+        NotionSyncedPage::create(['page_id' => 'aaaa556e44dd81c395b0c542f2599aaa', 'incident_id' => null]);
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+
+        $this->mock(NotionMcpClient::class)->shouldReceive('connected')->once()->andReturn(false);
+
+        $this->assertSame([], app(NotionIssueSyncService::class)->restorableIssues());
+    }
+
     public function test_title_dedup_loads_the_issue_table_once_per_run(): void
     {
         Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');

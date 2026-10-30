@@ -78,7 +78,7 @@ class NotionSyncButtonTest extends TestCase
         // posted restoreDeleted data.
         $this->grant('manage api tokens', 'view issues');
         $this->mock(NotionIssueSyncService::class)
-            ->shouldReceive('sync')->once()->with(false, false)
+            ->shouldReceive('sync')->once()->with(false, false, null)
             ->andReturn(['status' => 'ok', 'message' => 'No new issues.', 'created' => 0, 'skipped' => 0, 'preview' => null]);
 
         Livewire::actingAs($this->user)->test(ListIssues::class)
