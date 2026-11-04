@@ -339,7 +339,25 @@ class NotionIssueSyncService
             return false;
         }
 
-        $attributes = array_filter(NotionPageBodyParser::parse($fetch['text']), fn ($value) => filled($value));
+        $body = NotionPageBodyParser::stripFetchEnvelope($fetch['text']);
+        $unknownIds = $this->unknownBlockIds($fetch, $pageId);
+
+        // Oversized pages come back truncated: the omitted section subtrees
+        // are listed as unknown_block_ids and must be fetched one by one
+        // (Notion MCP docs — "pass one of the returned IDs back to
+        // notion-fetch to retrieve that subtree directly").
+        foreach ($unknownIds as $blockId) {
+            // ponytail: same ~3 req/s pacing as the backfill loop
+            usleep(300000);
+
+            $subtree = $this->notion->callToolDetailed('notion-fetch', ['id' => $blockId]);
+
+            if ($subtree !== null && ! $subtree['isError']) {
+                $body .= "\n\n".NotionPageBodyParser::stripFetchEnvelope($subtree['text']);
+            }
+        }
+
+        $attributes = array_filter(NotionPageBodyParser::parse($body), fn ($value) => filled($value));
 
         if ($attributes === []) {
             return false;
@@ -348,6 +366,34 @@ class NotionIssueSyncService
         $incident->update($attributes);
 
         return true;
+    }
+
+    /**
+     * The truncated response's omitted subtree roots. A page flagged
+     * truncated with no readable IDs is logged — that means the structured
+     * payload shape changed and the drain above silently stopped working.
+     *
+     * @param  array{structured: ?array, text: string, isError: bool}  $fetch
+     * @return list<string>
+     */
+    protected function unknownBlockIds(array $fetch, string $pageId): array
+    {
+        $ids = $fetch['structured']['unknown_block_ids'] ?? [];
+
+        if (! is_array($ids)) {
+            $ids = [];
+        }
+
+        $ids = array_values(array_filter($ids, 'is_string'));
+
+        if (! empty($fetch['structured']['truncated']) && $ids === []) {
+            Log::warning('Notion issue sync: page truncated but no unknown_block_ids found — check the structured payload shape.', [
+                'page_id' => $pageId,
+                'structured' => array_keys($fetch['structured'] ?? []),
+            ]);
+        }
+
+        return $ids;
     }
 
     /**

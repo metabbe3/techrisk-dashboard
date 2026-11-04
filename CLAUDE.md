@@ -128,7 +128,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
-- **Baseline: 1035 tests / 3,778 assertions green (2026-11-04, notion-fetch envelope strip + `--force` backfill re-run on top of the page-body fill round; full history in `docs/reference/testing-standards.md`).** A change that drops this count or its assertions is a regression, not a refactor — unless the delta is a deliberate feature deletion recorded in the baseline history (`docs/reference/testing-standards.md`).
+- **Baseline: 1036 tests / 3,788 assertions green (2026-11-04, truncated-page subtree drain after the envelope-strip round; full history in `docs/reference/testing-standards.md`).** A change that drops this count or its assertions is a regression, not a refactor — unless the delta is a deliberate feature deletion recorded in the baseline history (`docs/reference/testing-standards.md`).
 
 ---
 

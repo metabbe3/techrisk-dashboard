@@ -73,7 +73,7 @@ class NotionPageBodyParser
      * (the parent DB's schema — tool metadata, not page content). Bodies
      * without the markers (tests, clean markdown) pass through untouched.
      */
-    protected static function stripFetchEnvelope(string $body): string
+    public static function stripFetchEnvelope(string $body): string
     {
         // Preamble + page wrapper: drop everything up to the <page …> line.
         $body = preg_replace('/^.*?<page\s+url=[^>]*>\s*/s', '', $body) ?? $body;
