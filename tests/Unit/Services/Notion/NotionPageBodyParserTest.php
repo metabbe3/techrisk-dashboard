@@ -130,14 +130,13 @@ class NotionPageBodyParserTest extends TestCase
     {
         $parsed = NotionPageBodyParser::parse(self::ENVELOPE_BODY);
 
-        // The real page text survives, as [image] placeholders for its images.
+        // The real page text survives; images are skipped entirely.
         $this->assertStringContainsString('BKE Pending', $parsed['summary']);
         $this->assertStringContainsString('Top up:', $parsed['summary']);
-        $this->assertStringContainsString('[image]', $parsed['summary']);
 
         // None of the tool envelope leaks in (schema trailer is cut off
         // mid-block in the live sample — no close tag).
-        foreach (['notion-file-block', 'parent-data-source-schema', 'collection://', 'Here is the result', 'SQLite table definition'] as $junk) {
+        foreach (['notion-file-block', '[image]', 'parent-data-source-schema', 'collection://', 'Here is the result', 'SQLite table definition'] as $junk) {
             $this->assertStringNotContainsString($junk, $parsed['summary']);
         }
     }
@@ -160,5 +159,52 @@ class NotionPageBodyParserTest extends TestCase
         $this->assertStringContainsString('15:52 → Many ifcsupergw instances', $parsed['timeline']);
         $this->assertStringContainsString('top-ups were disrupted', $parsed['summary']);
         $this->assertStringNotContainsString('SQLite table definition', $parsed['summary']);
+    }
+
+    public function test_tool_text_body_decodes_the_json_envelope(): void
+    {
+        $toolText = json_encode(['metadata' => ['type' => 'page'], 'title' => 'P', 'text' => 'INNER BODY', 'cover' => null]);
+
+        $this->assertSame('INNER BODY', NotionPageBodyParser::toolTextBody($toolText));
+        // Plain bodies (tests, subtree chunks) pass through untouched.
+        $this->assertSame('plain body', NotionPageBodyParser::toolTextBody('plain body'));
+    }
+
+    /**
+     * The live page shape (2026-11-04 probe): JSON tool text whose "text"
+     * member carries ancestor-path + properties + a label/value TABLE.
+     */
+    protected const TABLE_TOOL_TEXT = <<<'TXT'
+    {"metadata":{"type":"page"},"title":"Summary of Incident - 02 November 2026","url":"https://app.notion.com/p/40c2556e44dd81afa4e5ed13b6171933","text":"Here is the result of \"fetch\" for the Page with URL https:\/\/app.notion.com\/p\/40c2556e44dd81afa4e5ed13b6171933 as of 2026-11-03T03:41:16.885Z:\n<page url=\"https:\/\/app.notion.com\/p\/40c2556e44dd81afa4e5ed13b6171933\">\n<ancestor-path>\n<parent-data-source url=\"collection:\/\/2c72556e-44dd-81cf-8977-000bc43d6f86\" name=\"Summary of Incident 2026 (DB)\"\/>\n<ancestor-2-database url=\"https:\/\/app.notion.com\/p\/2c72556e44dd81909d66ce48a09a9acc\" title=\"\"\/>\n<\/ancestor-path>\n<properties>\n{\"AI summary\":\"On November 2, 2026, multiple bank top-ups (BCA, BNI, Mandiri, and Permata) were disrupted. <b>Root cause: Still under investigation; high memory usage across ifcsupergw instances was observed.<\/b>\",\"Category\":\"Non Performance Incident\",\"Name\":\"Summary of Incident - 02 November 2026\"}\n<\/properties>\n<iconMetadata>null<\/iconMetadata>\n<content>\n<table header-column=\"true\">\n<colgroup>\n<col \/>\n<col width=\"583.99\" \/>\n<\/colgroup>\n<tr>\n<td>\n<b>Issues<\/b>\n<\/td>\n<td>\nMultiple Bank Topup & Merchant IPG Issue\n<\/td>\n<\/tr>\n<tr>\n<td>\n<b>Date Time<\/b>\n<\/td>\n<td>\n02 November 2026, 15:52 - 16:53\n<\/td>\n<\/tr>\n<tr>\n<td>\n<b>Root Cause<\/b>\n<\/td>\n<td>\nStill Investigating\n<\/td>\n<\/tr>\n<tr>\n<td>\n<b>Action Taken<\/b>\n<\/td>\n<td>\n  • SRE gradual restart ifcsupergw<br \/>  • TS create ticket to BRIGHT to investigate the ifcsupergw and top-up issue INC503\n<\/td>\n<\/tr>\n<tr>\n<td>\n<b>Incident Timeline and Chronology<\/b>\n<\/td>\n<td>\n15:52 → Many ifcsupergw instances has high memory usage<br \/>18:01 → Key Account Merchant (TiktokShop) Recover\n<\/td>\n<\/tr>\n<tr>\n<td>\n<b>Attachment<\/b>\n<\/td>\n<td><\/td>\n<\/tr>\n<\/table>\n\n<p \/>\n\n<image source=\"notion-file-block:\/\/40c2556e-44dd-80fd-b0d1-dffb4a3d1d97\/d5d765c0-14e1-4248-a2d2-8c68d29e7260?name=image.png\" \/>\n\nBKE Pending\n\n<parent-data-source-schema url=\"collection:\/\/2c72556e-44dd-81cf-8977-000bc43d6f86\">\nThe SQLite table definition for this page's parent data source."}
+    TXT;
+
+    public function test_routes_the_live_table_shape_into_the_content_fields(): void
+    {
+        $parsed = NotionPageBodyParser::parse(
+            NotionPageBodyParser::toolTextBody(self::TABLE_TOOL_TEXT)
+        );
+
+        $this->assertSame('Still Investigating', $parsed['root_cause']);
+        $this->assertSame(
+            "• SRE gradual restart ifcsupergw\n• TS create ticket to BRIGHT to investigate the ifcsupergw and top-up issue INC503",
+            $parsed['improvements']
+        );
+        $this->assertSame(
+            "15:52 → Many ifcsupergw instances has high memory usage\n18:01 → Key Account Merchant (TiktokShop) Recover",
+            $parsed['timeline']
+        );
+
+        // Summary = Notion's AI summary + unknown rows (labelled) + stray prose.
+        $this->assertStringContainsString('On November 2, 2026, multiple bank top-ups', $parsed['summary']);
+        $this->assertStringContainsString('Root cause: Still under investigation', $parsed['summary']);
+        $this->assertStringContainsString('**Date Time**', $parsed['summary']);
+        $this->assertStringContainsString('02 November 2026, 15:52 - 16:53', $parsed['summary']);
+        $this->assertStringContainsString('**Issues**', $parsed['summary']);
+        $this->assertStringContainsString('BKE Pending', $parsed['summary']);
+
+        // No envelope junk, no image placeholders, routed content stays out.
+        foreach (['ancestor-path', 'AI summary', 'notion-file-block', '[image]', 'SQLite table definition', 'Still Investigating', 'Attachment', 'Non Performance Incident'] as $junk) {
+            $this->assertStringNotContainsString($junk, $parsed['summary']);
+        }
     }
 }

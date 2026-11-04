@@ -99,12 +99,46 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->assertSame('ok', $result['status']);
         $incident = Incident::query()->sole();
 
-        // The subtree's sections landed in their fields; the image-only
-        // top of the page stayed in the summary.
+        // The subtree's sections landed in their fields; the image-only top
+        // of the page left no trace (images are skipped entirely).
         $this->assertSame('Still Investigating', $incident->root_cause);
         $this->assertSame('- SRE gradual restart', $incident->improvements);
         $this->assertStringContainsString('BKE Pending', $incident->summary);
-        $this->assertStringContainsString('[image]', $incident->summary);
+        $this->assertStringNotContainsString('notion-file-block', $incident->summary);
+    }
+
+    public function test_the_page_body_is_decoded_from_the_tool_json_envelope(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
+        $pageId = '4062556e44dd81c395b0c542f2599858';
+
+        $inner = '<content><table header-column="true">'
+            .'<tr><td><b>Root Cause</b></td><td>Dead database.</td></tr>'
+            .'<tr><td><b>Action Taken</b></td><td>- Restarted MySQL</td></tr>'
+            .'</table></content>';
+        $toolText = json_encode(['metadata' => ['type' => 'page'], 'title' => 'P', 'text' => $inner]);
+
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [
+                $this->row($pageId, 'Summary of Incident - DB down', '2026-01-12', 'P1', 'Infrastructure (Database)', createdTime: '2026-07-01 00:00:00Z'),
+            ]]), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => $pageId])
+            ->andReturn(['structured' => null, 'text' => $toolText, 'isError' => false]);
+
+        $result = app(NotionIssueSyncService::class)->sync();
+
+        $this->assertSame('ok', $result['status']);
+        $incident = Incident::query()->sole();
+
+        $this->assertSame('Dead database.', $incident->root_cause);
+        $this->assertSame('- Restarted MySQL', $incident->improvements);
     }
 
     public function test_fails_when_notion_is_not_connected(): void

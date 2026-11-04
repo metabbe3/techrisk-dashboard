@@ -339,13 +339,17 @@ class NotionIssueSyncService
             return false;
         }
 
-        $body = NotionPageBodyParser::stripFetchEnvelope($fetch['text']);
+        // The hosted MCP server wraps the page in a JSON envelope
+        // ({"metadata":…,"text":…}) — decode each chunk to its text member.
+        $body = NotionPageBodyParser::toolTextBody($fetch['text']);
         $unknownIds = $this->unknownBlockIds($fetch, $pageId);
 
         // Oversized pages come back truncated: the omitted section subtrees
         // are listed as unknown_block_ids and must be fetched one by one
         // (Notion MCP docs — "pass one of the returned IDs back to
-        // notion-fetch to retrieve that subtree directly").
+        // notion-fetch to retrieve that subtree directly"). This server
+        // leaves structuredContent empty (no truncation markers observed),
+        // so in practice the list is empty — kept as the documented path.
         foreach ($unknownIds as $blockId) {
             // ponytail: same ~3 req/s pacing as the backfill loop
             usleep(300000);
@@ -353,7 +357,7 @@ class NotionIssueSyncService
             $subtree = $this->notion->callToolDetailed('notion-fetch', ['id' => $blockId]);
 
             if ($subtree !== null && ! $subtree['isError']) {
-                $body .= "\n\n".NotionPageBodyParser::stripFetchEnvelope($subtree['text']);
+                $body .= "\n\n".NotionPageBodyParser::toolTextBody($subtree['text']);
             }
         }
 
