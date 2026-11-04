@@ -31,12 +31,15 @@ class ViewIssue extends ViewRecord
                     ]),
 
                 // Notion page-body sections (NotionPageBodyParser) plus any
-                // hand-written content — same fields, read-only.
+                // hand-written content — same fields, read-only. Markdown
+                // collapses single newlines, so stored line breaks (each
+                // "HH:MM →" timeline entry, "• " action lines, "**Label**"
+                // rows) become hard breaks before rendering.
                 Section::make('Summary')
                     ->icon('heroicon-o-document-text')
                     ->iconColor('primary')
                     ->schema([
-                        TextEntry::make('summary')->markdown()->hiddenLabel()->placeholder('No summary provided'),
+                        TextEntry::make('summary')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No summary provided'),
                     ])
                     ->collapsible()
                     ->columnSpanFull(),
@@ -45,7 +48,7 @@ class ViewIssue extends ViewRecord
                     ->icon('heroicon-o-light-bulb')
                     ->iconColor('warning')
                     ->schema([
-                        TextEntry::make('root_cause')->markdown()->hiddenLabel()->placeholder('No root cause recorded'),
+                        TextEntry::make('root_cause')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No root cause recorded'),
                     ])
                     ->collapsible()
                     ->visible(fn ($record) => filled($record->root_cause))
@@ -55,7 +58,7 @@ class ViewIssue extends ViewRecord
                     ->icon('heroicon-o-clock')
                     ->iconColor('info')
                     ->schema([
-                        TextEntry::make('timeline')->markdown()->hiddenLabel()->placeholder('No timeline recorded'),
+                        TextEntry::make('timeline')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No timeline recorded'),
                     ])
                     ->collapsible()
                     ->visible(fn ($record) => filled($record->timeline))
@@ -65,12 +68,20 @@ class ViewIssue extends ViewRecord
                     ->icon('heroicon-o-check-circle')
                     ->iconColor('success')
                     ->schema([
-                        TextEntry::make('improvements')->markdown()->hiddenLabel()->placeholder('No actions recorded'),
+                        TextEntry::make('improvements')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No actions recorded'),
                     ])
                     ->collapsible()
                     ->visible(fn ($record) => filled($record->improvements))
                     ->columnSpanFull(),
             ]);
+    }
+
+    /** Markdown hard break: single \n → "  \n"; blank lines (\n\n) stay paragraph breaks. */
+    private static function hardBreaks($state)
+    {
+        return is_string($state) && $state !== ''
+            ? preg_replace('/(?<!\n)\n(?!\n)/', "  \n", $state)
+            : $state;
     }
 
     protected function getHeaderActions(): array

@@ -70,4 +70,21 @@ class ViewIssueContentTest extends TestCase
             ->assertDontSeeText('Root Cause Analysis')  // section hidden, only the placeholder-free fields remain
             ->assertDontSeeText('Restarted MySQL');
     }
+
+    public function test_each_timeline_entry_renders_on_its_own_line(): void
+    {
+        // Markdown collapses single newlines — the stored "\n" between
+        // "HH:MM →" entries must become a hard break (<br>) or they run on.
+        $timeline = "23:55 → CIMB started their API public key updates\n00:37 → CIMB informed the key rotation impact\n03:30 → Zoom call dismissed";
+
+        $rendered = Livewire::actingAs($this->admin())
+            ->test(ViewIssue::class, ['record' => (string) $this->issue(['timeline' => $timeline])->id])
+            ->assertSuccessful()
+            ->html();
+
+        $this->assertStringContainsString('23:55 → CIMB started', $rendered);
+        $this->assertStringContainsString('<br', $rendered);
+        // And the run-on mush never appears in the rendered output.
+        $this->assertStringNotContainsString('updates 00:37', strip_tags($rendered));
+    }
 }

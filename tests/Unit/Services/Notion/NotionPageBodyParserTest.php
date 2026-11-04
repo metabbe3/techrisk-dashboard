@@ -99,6 +99,29 @@ class NotionPageBodyParserTest extends TestCase
         $this->assertSame(['summary' => '', 'root_cause' => '', 'timeline' => '', 'improvements' => ''], $parsed);
     }
 
+    public function test_run_on_timeline_entries_each_get_their_own_line(): void
+    {
+        // Live shape (owner paste, 2026-11-04): the timeline cell arrives as
+        // ONE run-on line — every "HH:MM →" entry must own a line.
+        $body = 'Incident Timeline and Chronology'."\n\n"
+            .'23:55 → CIMB started their API public key updates 00:37 → CIMB informed the key rotation impact 03:30 → Zoom call dismissed';
+
+        $parsed = NotionPageBodyParser::parse($body);
+
+        $this->assertSame(
+            "23:55 → CIMB started their API public key updates\n00:37 → CIMB informed the key rotation impact\n03:30 → Zoom call dismissed",
+            $parsed['timeline']
+        );
+
+        // Idempotent: already line-broken entries stay exactly as they are.
+        $split = 'Incident Timeline and Chronology'."\n\n15:52 → high memory usage\n15:54 → topup decrease";
+
+        $this->assertSame(
+            "15:52 → high memory usage\n15:54 → topup decrease",
+            NotionPageBodyParser::parse($split)['timeline']
+        );
+    }
+
     /** The raw notion-fetch envelope (live sample 2026-11-03): preamble, page wrapper, image blocks, schema trailer. */
     protected const ENVELOPE_BODY = <<<'TXT'
     Here is the result of "fetch" for the Page with URL https://app.notion.com/p/40c2556e44dd81afa4e5ed13b6171933 as of 2026-11-03T03:41:16.885Z:

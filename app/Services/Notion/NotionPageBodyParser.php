@@ -128,9 +128,22 @@ class NotionPageBodyParser
         return [
             'summary' => trim(implode("\n\n", array_filter($buffers['summary'], fn ($chunk) => trim($chunk) !== ''))),
             'root_cause' => trim(implode("\n\n", $buffers['root_cause'])),
-            'timeline' => trim(implode("\n\n", $buffers['timeline'])),
+            // Entries open "HH:MM → " — one per line, guaranteed even when
+            // the source cell came through as one run-on paragraph (owner
+            // 2026-11-04: "timeline … exact format time and enter").
+            'timeline' => self::splitTimelineEntries(trim(implode("\n", $buffers['timeline']))),
             'improvements' => trim(implode("\n\n", $buffers['improvements'])),
         ];
+    }
+
+    /** Newline before every "HH:MM → " that is not already at a line start. Idempotent. */
+    protected static function splitTimelineEntries(string $timeline): string
+    {
+        if ($timeline === '') {
+            return '';
+        }
+
+        return preg_replace('/[ \t]+(?=\d{1,2}:\d{2}\s*→)/u', "\n", $timeline) ?? $timeline;
     }
 
     /**
