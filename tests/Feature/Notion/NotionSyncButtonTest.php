@@ -109,7 +109,12 @@ class NotionSyncButtonTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => ($args['data']['data_source_urls'][0] ?? null) === self::COLLECTION_URL
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
     }
 
     private function fetchText(): string

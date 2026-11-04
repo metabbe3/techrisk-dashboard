@@ -10,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class NotionSyncedPage extends Model
 {
-    protected $fillable = ['page_id', 'incident_id'];
+    protected $fillable = ['page_id', 'incident_id', 'last_edited_at'];
 
     /** Null when the synced Issue was deleted — the tombstone a full sync restores from. */
     public function incident(): BelongsTo

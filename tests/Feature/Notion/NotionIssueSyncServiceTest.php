@@ -92,7 +92,12 @@ class NotionIssueSyncServiceTest extends TestCase
                 'unknown_block_count' => 1,
             ], 'text' => '<image source="notion-file-block://a/b?name=image.png" />'."\n\n".'BKE Pending', 'isError' => false])
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'cccc556e44dd81c395b0c542f2599cccc'])
-            ->andReturn(['structured' => null, 'text' => "Root Cause\n\nStill Investigating\n\nAction Taken\n\n- SRE gradual restart", 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => "Root Cause\n\nStill Investigating\n\nAction Taken\n\n- SRE gradual restart", 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync();
 
@@ -130,7 +135,12 @@ class NotionIssueSyncServiceTest extends TestCase
                 $this->row($pageId, 'Summary of Incident - DB down', '2026-01-12', 'P1', 'Infrastructure (Database)', createdTime: '2026-07-01 00:00:00Z'),
             ]]), 'isError' => false])
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => $pageId])
-            ->andReturn(['structured' => null, 'text' => $toolText, 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => $toolText, 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync();
 
@@ -139,6 +149,168 @@ class NotionIssueSyncServiceTest extends TestCase
 
         $this->assertSame('Dead database.', $incident->root_cause);
         $this->assertSame('- Restarted MySQL', $incident->improvements);
+    }
+
+    public function test_a_page_edited_in_notion_is_refreshed_on_the_next_sync(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
+
+        $incident = Incident::factory()->create([
+            'classification' => IncidentClassification::Issue->value,
+            'root_cause' => 'Old cause',
+        ]);
+        NotionSyncedPage::create([
+            'page_id' => '4062556e44dd81c395b0c542f2599858',
+            'incident_id' => $incident->id,
+            'last_edited_at' => '2026-11-01T10:00:00.000Z',
+        ]);
+
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            // The incremental window is empty — the sweep is the run's only work.
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            // Detection scan: the page's edit time moved since its content flowed.
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [[
+                'url' => 'https://www.notion.so/4062556e44dd81c395b0c542f2599858',
+                'createdTime' => '2026-07-01 00:00:00Z',
+                'last_edited' => '2026-11-04T09:00:00.000Z',
+            ]]]), 'isError' => false])
+            // The refresh re-fetches the page body.
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => '4062556e44dd81c395b0c542f2599858'])
+            ->andReturn(['structured' => null, 'text' => "Root Cause\n\nNew cause after the edit", 'isError' => false]);
+
+        $result = app(NotionIssueSyncService::class)->sync();
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame('No new issues; 1 refreshed.', $result['message']);
+        $this->assertSame('New cause after the edit', $incident->refresh()->root_cause);
+        // The new edit time is remembered — the next run sees it as unchanged.
+        $this->assertSame('2026-11-04T09:00:00.000Z', NotionSyncedPage::query()->sole()->last_edited_at);
+    }
+
+    public function test_a_pre_feature_page_without_a_stored_edit_time_is_refreshed(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
+
+        // Rows synced before edit detection existed — NULL stored time means
+        // "content never flowed through the sweep", so the first sweep
+        // refreshes them (the automatic backfill).
+        $incident = Incident::factory()->create([
+            'classification' => IncidentClassification::Issue->value,
+            'root_cause' => null,
+        ]);
+        NotionSyncedPage::create(['page_id' => '4062556e44dd81c395b0c542f2599858', 'incident_id' => $incident->id]);
+
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [[
+                'url' => 'https://www.notion.so/4062556e44dd81c395b0c542f2599858',
+                'createdTime' => '2026-07-01 00:00:00Z',
+                'last_edited' => '2026-11-04T09:00:00.000Z',
+            ]]]), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => '4062556e44dd81c395b0c542f2599858'])
+            ->andReturn(['structured' => null, 'text' => "Root Cause\n\nBackfilled cause", 'isError' => false]);
+
+        $result = app(NotionIssueSyncService::class)->sync();
+
+        $this->assertStringContainsString('1 refreshed', $result['message']);
+        $this->assertSame('Backfilled cause', $incident->refresh()->root_cause);
+        $this->assertSame('2026-11-04T09:00:00.000Z', NotionSyncedPage::query()->sole()->last_edited_at);
+    }
+
+    public function test_a_page_imported_this_run_records_its_edit_time_without_a_second_fetch(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
+        $pageId = '4062556e44dd81c395b0c542f2599858';
+
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [
+                $this->row($pageId, 'Summary of Incident - Fresh import', '2026-01-12', 'P1', 'Infrastructure (Database)', createdTime: '2026-07-01 00:00:00Z'),
+            ]]), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [[
+                'url' => "https://www.notion.so/{$pageId}",
+                'createdTime' => '2026-07-01 00:00:00Z',
+                'last_edited' => '2026-11-04T08:00:00.000Z',
+            ]]]), 'isError' => false])
+            // Exactly ONE body fetch — importRow's. A sweep re-fetch of the
+            // just-imported page would exhaust this and fail the mock.
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => $pageId])
+            ->andReturn(['structured' => null, 'text' => "Root Cause\n\nFresh cause", 'isError' => false]);
+
+        $result = app(NotionIssueSyncService::class)->sync();
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame('Imported 1 issue(s).', $result['message']);
+        $this->assertSame('2026-11-04T08:00:00.000Z', NotionSyncedPage::query()->sole()->last_edited_at);
+        $this->assertSame('Fresh cause', Incident::query()->sole()->root_cause);
+    }
+
+    public function test_an_unchanged_edit_time_is_not_refreshed(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
+
+        $incident = Incident::factory()->create([
+            'classification' => IncidentClassification::Issue->value,
+            'root_cause' => 'Unchanged cause',
+        ]);
+        NotionSyncedPage::create([
+            'page_id' => '4062556e44dd81c395b0c542f2599858',
+            'incident_id' => $incident->id,
+            'last_edited_at' => '2026-11-04T09:00:00.000Z',
+        ]);
+
+        // No page-fetch stub at all: any body fetch fails the mock.
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
+            ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [[
+                'url' => 'https://www.notion.so/4062556e44dd81c395b0c542f2599858',
+                'createdTime' => '2026-07-01 00:00:00Z',
+                'last_edited' => '2026-11-04T09:00:00.000Z',
+            ]]]), 'isError' => false]);
+
+        $result = app(NotionIssueSyncService::class)->sync();
+
+        $this->assertSame('No new issues.', $result['message']);
+        $this->assertSame('Unchanged cause', $incident->refresh()->root_cause);
     }
 
     public function test_fails_when_notion_is_not_connected(): void
@@ -208,7 +380,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', "WHERE createdTime >= '2026-07-01 00:00:00Z'")
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [$row]]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [$row]]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         app(NotionIssueSyncService::class)->sync();
 
@@ -259,7 +436,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync(restoreDeleted: true);
 
@@ -290,7 +472,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync(restoreDeleted: true);
 
@@ -333,7 +520,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync(restoreDeleted: true);
 
@@ -558,7 +750,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', "WHERE createdTime >= '2026-01-12 00:00:00Z'")
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [$row]]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => [$row]]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         app(NotionIssueSyncService::class)->sync();
         $result = app(NotionIssueSyncService::class)->sync();
@@ -871,7 +1068,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->andReturn(['structured' => null, 'text' => json_encode(['results' => [
                 $this->row('aaaa556e44dd81c395b0c542f2599aaa', 'Good row', '2026-07-01', 'P3', 'Data Issue', createdTime: '2026-07-01 00:00:00Z'),
                 $this->row('bbbb556e44dd81c395b0c542f2599bbb', 'Poison row', '2026-07-02', 'P3', 'Data Issue', createdTime: '2026-07-02 00:00:00Z'),
-            ]]), 'isError' => false]);
+            ]]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync();
 
@@ -920,7 +1122,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->twice()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $first = app(NotionIssueSyncService::class)->sync();
         $this->assertSame('partial', $first['status']);
@@ -965,7 +1172,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync(restoreDeleted: true);
 
@@ -1003,7 +1215,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync(
             restoreDeleted: true,
@@ -1035,7 +1252,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => []]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
 
         $result = app(NotionIssueSyncService::class)->sync(restoreDeleted: true, restorePageIds: []);
 
@@ -1151,7 +1373,13 @@ class NotionIssueSyncServiceTest extends TestCase
                         : str_contains($query, "WHERE createdTime >= '{$expectWatermark}'");
                 }
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false])
+            // Edit-sweep detection query (refreshEditedPages) — empty by
+            // default: no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
     }
 
     /** Minimal excerpt of the real fetched data-source document. */

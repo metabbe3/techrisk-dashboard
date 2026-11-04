@@ -60,6 +60,13 @@ class NotionIssueSyncService
     /** Dry-run pagination runaway guard (25 pages × SCAN_LIMIT rows). */
     protected const MAX_SCAN_PAGES = 25;
 
+    /**
+     * Edit-refresh runaway guard: at most this many changed pages re-fetch
+     * per run — the remainder (and their stored edit times) wait for the
+     * next sync.
+     */
+    protected const MAX_REFRESH_PAGES = 50;
+
     /** Normalized titles of existing Issues, loaded once per run — never a per-row table scan. */
     protected ?array $existingIssueTitles = null;
 
@@ -118,6 +125,9 @@ class NotionIssueSyncService
         $blanks = 0;
         $unreadable = 0;
         $lines = [];
+        // Pages whose bodies were fetched during THIS run — the edit sweep
+        // only records their edit time, it must not re-fetch them.
+        $freshPageIds = [];
         // createdTime of the FIRST failed row — the watermark never advances
         // past it, so the row is retried once its data is fixed (everything
         // after it was already imported and is absorbed by page-ID dedupe).
@@ -129,7 +139,7 @@ class NotionIssueSyncService
         // the fetch. In dry-run this reads Notion only and reports what a full
         // sync would restore.
         if ($restoreDeleted) {
-            $recovered = $this->recoverDeletedIssues($collectionUrl, $lines, $dryRun, $restorePageIds);
+            $recovered = $this->recoverDeletedIssues($collectionUrl, $lines, $dryRun, $restorePageIds, $freshPageIds);
             $created += $recovered['created'];
             $duplicates += $recovered['duplicates'];
             $blanks += $recovered['blanks'];
@@ -211,6 +221,7 @@ class NotionIssueSyncService
 
             if ($imported !== null) {
                 $created++;
+                $freshPageIds[] = $pageId;
             } elseif (! $boundary) {
                 // importRow returns null only for a blank title or a duplicate.
                 blank($row['Name'] ?? null) ? $blanks++ : $duplicates++;
@@ -226,13 +237,18 @@ class NotionIssueSyncService
             $this->advanceWatermark($rowsForWatermark);
         }
 
+        // Edit sweep (owner 2026-11-04): re-fetch pages edited in Notion
+        // since their content last flowed. Dry runs are read-only previews
+        // of imports — no refresh, no stored edit times.
+        $refreshed = $dryRun ? 0 : $this->refreshEditedPages($collectionUrl, $freshPageIds);
+
         // Per-reason breakdown (owner 2026-10-30): one lumped
         // "already synced/duplicate/blank" number read as trouble when
         // almost all of it is the normal already-synced state. Only
         // non-zero segments appear; `skipped` stays the aggregate.
         $skipped = $alreadySynced + $duplicates + $blanks + $unreadable;
 
-        if ($created === 0 && $skipped === 0 && $failed === 0) {
+        if ($created === 0 && $skipped === 0 && $failed === 0 && $refreshed === 0) {
             $message = 'No new issues.';
         } else {
             $segments = array_filter([
@@ -242,6 +258,7 @@ class NotionIssueSyncService
                 $blanks > 0 ? "{$blanks} blank title(s)" : null,
                 $unreadable > 0 ? "{$unreadable} unreadable URL(s)" : null,
                 $failed > 0 ? "{$failed} failed" : null,
+                $refreshed > 0 ? "{$refreshed} refreshed" : null,
                 $truncated ? 'scan stopped at the '.self::MAX_SCAN_PAGES.'-page cap — counts cover the first '.count($rows).' rows' : null,
             ]);
 
@@ -489,9 +506,11 @@ class NotionIssueSyncService
      * @param  array<int, string>  $lines
      * @param  array<int, string>|null  $onlyPageIds  The picker's selection —
      *                                                null revisits every dangling tombstone, a list only those.
+     * @param  array<int, string>  $freshPageIds  Out: page IDs restored this
+     *                                            run (their bodies were just fetched).
      * @return array{created: int, duplicates: int, blanks: int, failed: int}
      */
-    protected function recoverDeletedIssues(string $collectionUrl, array &$lines, bool $dryRun, ?array $onlyPageIds = null): array
+    protected function recoverDeletedIssues(string $collectionUrl, array &$lines, bool $dryRun, ?array $onlyPageIds = null, array &$freshPageIds = []): array
     {
         $dangling = NotionSyncedPage::query()
             ->whereNull('incident_id')
@@ -560,6 +579,7 @@ class NotionIssueSyncService
 
             if ($restored) {
                 $created++;
+                $freshPageIds[] = $page->page_id;
             } else {
                 // importRow returned null: blank title or duplicate.
                 blank($row['Name'] ?? null) ? $blanks++ : $duplicates++;
@@ -567,6 +587,128 @@ class NotionIssueSyncService
         }
 
         return ['created' => $created, 'duplicates' => $duplicates, 'blanks' => $blanks, 'failed' => $failed];
+    }
+
+    /**
+     * Edit sweep (owner 2026-11-04, "re-fetch pages edited in Notion"):
+     * every live synced page's stored edit time vs the watched database's
+     * read-only "Last edited time" column. Changed (or never recorded —
+     * pre-feature rows get their content backfilled this way on the first
+     * sweep) → re-fetch the body via fetchAndAttachBody and record the new
+     * edit time. A failed re-fetch does NOT record the time, so the edit is
+     * retried next run. Runs after the import loop, so an edit flows the
+     * same run it is detected; pages imported THIS run only record their
+     * edit time (their body was just fetched).
+     *
+     * @param  list<string>  $freshPageIds
+     * @return int refreshed page count
+     */
+    protected function refreshEditedPages(string $collectionUrl, array $freshPageIds): int
+    {
+        $edited = $this->fetchLastEditedTimes($collectionUrl);
+
+        if ($edited === null) {
+            return 0; // detection query failed — skipped, retried next run
+        }
+
+        $fresh = array_fill_keys($freshPageIds, true);
+        $refreshed = 0;
+
+        foreach (NotionSyncedPage::query()->whereNotNull('incident_id')->get() as $page) {
+            $current = $edited[$page->page_id] ?? null;
+
+            // Not in the read window (detection scan capped, page's row gone)
+            // — nothing to compare, leave it for the next run.
+            if ($current === null) {
+                continue;
+            }
+
+            if ($page->last_edited_at === $current) {
+                continue;
+            }
+
+            if (isset($fresh[$page->page_id])) {
+                $page->update(['last_edited_at' => $current]);
+
+                continue;
+            }
+
+            if ($refreshed >= self::MAX_REFRESH_PAGES) {
+                Log::warning('Notion issue sync: edit-refresh cap reached — remaining pages refresh next run.', ['cap' => self::MAX_REFRESH_PAGES]);
+
+                break;
+            }
+
+            $incident = $page->incident;
+
+            if ($incident === null) {
+                continue; // raced a delete — the tombstone handles it
+            }
+
+            // ponytail: same ~3 req/s pacing as the backfill loop
+            usleep(300000);
+
+            if ($this->fetchAndAttachBody($incident, $page->page_id)) {
+                $page->update(['last_edited_at' => $current]);
+                $refreshed++;
+            }
+        }
+
+        return $refreshed;
+    }
+
+    /**
+     * page ID => "Last edited time" value for every row of the watched
+     * database, drained past the engine's 100-row query cap with the same
+     * moving-tail pattern as the dry-run scan. Null when the query fails —
+     * the sweep is skipped, never fatal to the sync.
+     *
+     * @return array<string, string>|null
+     */
+    protected function fetchLastEditedTimes(string $collectionUrl): ?array
+    {
+        $map = [];
+        $tail = '';
+        $pages = 0;
+
+        do {
+            $query = $this->notion->callToolDetailed('notion-query-data-sources', ['data' => [
+                'data_source_urls' => [$collectionUrl],
+                'query' => sprintf(
+                    'SELECT url, createdTime, "Last edited time" AS last_edited FROM "%s"%s ORDER BY createdTime ASC LIMIT %d',
+                    $collectionUrl,
+                    $tail === '' ? '' : sprintf(" WHERE createdTime >= '%s'", str_replace("'", "''", $tail)),
+                    self::SCAN_LIMIT,
+                ),
+            ]]);
+
+            if ($query === null || $query['isError']) {
+                Log::warning('Notion issue sync: last-edited detection query failed — skipping the refresh sweep.', [
+                    'text' => $query['text'] ?? null,
+                ]);
+
+                return null;
+            }
+
+            $rows = $this->extractRows((string) $query['text']);
+
+            if ($rows === null) {
+                return null;
+            }
+
+            foreach ($rows as $row) {
+                $pageId = $this->pageIdFromUrl((string) ($row['url'] ?? ''));
+
+                if ($pageId !== null) {
+                    $map[$pageId] = (string) ($row['last_edited'] ?? '');
+                }
+            }
+
+            $tail = $rows === [] ? '' : (string) (end($rows)['createdTime'] ?? '');
+            $pages++;
+        } while ($rows !== [] && count($rows) === self::SCAN_LIMIT && $tail !== '' && $pages < self::MAX_SCAN_PAGES);
+
+        return $map;
     }
 
     /**
