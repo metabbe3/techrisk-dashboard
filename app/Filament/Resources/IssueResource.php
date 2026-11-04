@@ -180,6 +180,8 @@ class IssueResource extends Resource
                 \App\Filament\Filters\QuickPeriodFilter::dateRange(),
             ])
             ->actions([
+                Tables\Actions\ViewAction::make()
+                    ->iconButton(),
                 Tables\Actions\EditAction::make()
                     ->iconButton()
                     ->databaseTransaction()

@@ -27,6 +27,46 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->assertStringContainsString('watch target', $result['message']);
     }
 
+    public function test_imports_page_body_into_the_issue_content_fields(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        $body = "# Summary of Incident - DB down\n\nLeading summary paragraph.\n\n"
+            ."## Root Cause\n\nDead database.\n\n"
+            ."## Action Taken\n\n- Restarted MySQL\n\n"
+            ."## Incident Timeline and Chronology\n\n15:00 → DB down";
+        $this->mockConnectedNotion([
+            $this->row('4062556e44dd81c395b0c542f2599858', 'Summary of Incident - DB down', '2026-01-12', 'P1', 'Infrastructure (Database)'),
+        ], pageBody: $body);
+
+        $result = app(NotionIssueSyncService::class)->sync();
+
+        $this->assertSame('ok', $result['status']);
+        $incident = Incident::query()->sole();
+
+        $this->assertStringContainsString('Leading summary paragraph.', $incident->summary);
+        $this->assertSame('Dead database.', $incident->root_cause);
+        $this->assertSame('- Restarted MySQL', $incident->improvements);
+        $this->assertStringContainsString('15:00 → DB down', $incident->timeline);
+    }
+
+    public function test_a_failed_page_body_fetch_still_imports_the_issue(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        // pageBody null → the page-body fetch returns isError.
+        $this->mockConnectedNotion([
+            $this->row('4062556e44dd81c395b0c542f2599858', 'Summary of Incident - DB down', '2026-01-12', 'P1', 'Infrastructure (Database)'),
+        ]);
+
+        $result = app(NotionIssueSyncService::class)->sync();
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame(1, $result['created']);
+
+        $incident = Incident::query()->sole();
+        $this->assertSame('DB down', $incident->title);
+        $this->assertNull($incident->root_cause);
+    }
+
     public function test_fails_when_notion_is_not_connected(): void
     {
         Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
@@ -74,6 +114,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->twice()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            // Page-body fetch for the initial import and the restore (both
+            // import the same page once).
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             // First run — no watermark yet: full backfill scan.
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => ! str_contains($args['data']['query'] ?? '', 'WHERE')
@@ -128,6 +174,10 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', "WHERE url LIKE '%aaaa556e44dd81c395b0c542f2599aaa%'")
             ))
@@ -155,6 +205,10 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE url LIKE')
             ))
@@ -192,6 +246,10 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE url LIKE')
             ))
@@ -262,6 +320,10 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', "WHERE url LIKE '%aaaa556e44dd81c395b0c542f2599aaa%'")
             ))
@@ -402,6 +464,10 @@ class NotionIssueSyncServiceTest extends TestCase
             // First run — no watermark yet: full backfill scan.
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => ($args['data']['data_source_urls'][0] ?? null) === self::COLLECTION_URL
                     && ! str_contains($args['data']['query'] ?? '', 'WHERE')
@@ -411,6 +477,10 @@ class NotionIssueSyncServiceTest extends TestCase
             // Second run — reads only rows created at/after the first run's newest row.
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', "WHERE createdTime >= '2026-01-12 00:00:00Z'")
             ))
@@ -657,6 +727,10 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->mock(NotionMcpClient::class)->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(fn ($args) => is_array($args['data'] ?? null)))
             ->andReturn(['structured' => null, 'text' => 'no such column: "Bogus"', 'isError' => true]);
 
@@ -672,6 +746,10 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->mock(NotionMcpClient::class)->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(fn ($args) => is_array($args['data'] ?? null)))
             ->andReturn(['structured' => null, 'text' => 'Here is what I found, in prose.', 'isError' => false]);
 
@@ -709,6 +787,10 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
@@ -757,6 +839,10 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->twice()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->twice()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE createdTime >=')
             ))
@@ -790,6 +876,10 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             // Recovery lookup finds the page…
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => str_contains($args['data']['query'] ?? '', 'WHERE url LIKE')
@@ -822,6 +912,12 @@ class NotionIssueSyncServiceTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            // Page-body fetch for the picked page's restore (importRow
+            // fetches the body; failure is non-fatal, so isError is fine).
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             // Only the PICKED page is looked up — the unpicked one never
             // reaches Notion (an unexpected lookup would fail the mock).
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
@@ -954,12 +1050,18 @@ class NotionIssueSyncServiceTest extends TestCase
      * $expectWatermark asserts the query's incremental WHERE clause: null = no
      * WHERE (first run / full backfill), a string = rows since that createdTime.
      */
-    private function mockConnectedNotion(array $rows, int $times = 1, ?string $expectWatermark = null): void
+    private function mockConnectedNotion(array $rows, int $times = 1, ?string $expectWatermark = null, ?string $pageBody = null): void
     {
         $this->mock(NotionMcpClient::class)
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->times($times)->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            // Per-imported-row page-body fetch (fetchAndAttachBody). Null body
+            // = fetch error → the issue imports without content.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => $pageBody ?? '', 'isError' => $pageBody === null])
             ->shouldReceive('callToolDetailed')->times($times)->with('notion-query-data-sources', Mockery::on(
                 function (array $args) use ($expectWatermark) {
                     $query = $args['data']['query'] ?? '';

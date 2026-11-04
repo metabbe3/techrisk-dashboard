@@ -102,6 +102,10 @@ class NotionSyncButtonTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => ($args['data']['data_source_urls'][0] ?? null) === self::COLLECTION_URL
             ))

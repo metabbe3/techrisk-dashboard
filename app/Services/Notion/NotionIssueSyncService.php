@@ -312,7 +312,42 @@ class NotionIssueSyncService
             return $incident;
         });
 
+        // The page body (Summary/Root Cause/Timeline/Action Taken sections)
+        // fills the Issue's content fields. Shared with the backfill command.
+        // Never fatal: a failed fetch imports the row without content.
+        $this->fetchAndAttachBody($incident, $pageId);
+
         return $incident;
+    }
+
+    /**
+     * Fetch a synced page's body and fill the Issue's content fields
+     * (summary/root_cause/timeline/improvements). Plain update() — these
+     * columns feed the RAG corpus and similarity, so the observer chain
+     * (RagDocumentObserver + recalc) must fire.
+     */
+    public function fetchAndAttachBody(Incident $incident, string $pageId): bool
+    {
+        $fetch = $this->notion->callToolDetailed('notion-fetch', ['id' => $pageId]);
+
+        if ($fetch === null || $fetch['isError']) {
+            Log::warning('Notion issue sync: page body fetch failed — imported without content.', [
+                'page_id' => $pageId,
+                'error' => $fetch['text'] ?? null,
+            ]);
+
+            return false;
+        }
+
+        $attributes = array_filter(NotionPageBodyParser::parse($fetch['text']), fn ($value) => filled($value));
+
+        if ($attributes === []) {
+            return false;
+        }
+
+        $incident->update($attributes);
+
+        return true;
     }
 
     /**
