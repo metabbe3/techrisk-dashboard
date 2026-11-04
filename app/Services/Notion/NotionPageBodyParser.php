@@ -34,6 +34,8 @@ class NotionPageBodyParser
      */
     public static function parse(string $body): array
     {
+        $body = self::stripFetchEnvelope($body);
+
         $buffers = ['summary' => [], 'root_cause' => [], 'timeline' => [], 'improvements' => []];
         $current = 'summary';
 
@@ -62,6 +64,27 @@ class NotionPageBodyParser
             'timeline' => trim(implode("\n", $buffers['timeline'])),
             'improvements' => trim(implode("\n", $buffers['improvements'])),
         ];
+    }
+
+    /**
+     * The notion-fetch tool wraps the page in an envelope: a preamble
+     * ("Here is the result of "fetch" …"), a <page url="…"> line, image
+     * blocks as UUID-laden tags, and a <parent-data-source-schema> trailer
+     * (the parent DB's schema — tool metadata, not page content). Bodies
+     * without the markers (tests, clean markdown) pass through untouched.
+     */
+    protected static function stripFetchEnvelope(string $body): string
+    {
+        // Preamble + page wrapper: drop everything up to the <page …> line.
+        $body = preg_replace('/^.*?<page\s+url=[^>]*>\s*/s', '', $body) ?? $body;
+
+        // Schema trailer — often cut off mid-block (no close tag), so fall
+        // back to end-of-text.
+        $body = preg_replace('/<parent-data-source-schema\b.*?(?:<\/parent-data-source-schema>|$)/s', '', $body) ?? $body;
+
+        // Image blocks: keep a placeholder so an image-only page still
+        // parses to a non-empty summary (re-runs overwrite the old junk).
+        return preg_replace('/<image\s+source="[^"]*"\s*\/>/', '[image]', $body) ?? $body;
     }
 
     /** The section a line opens, or null when it is not a known heading. */

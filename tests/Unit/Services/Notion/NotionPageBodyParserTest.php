@@ -98,4 +98,67 @@ class NotionPageBodyParserTest extends TestCase
 
         $this->assertSame(['summary' => '', 'root_cause' => '', 'timeline' => '', 'improvements' => ''], $parsed);
     }
+
+    /** The raw notion-fetch envelope (live sample 2026-11-03): preamble, page wrapper, image blocks, schema trailer. */
+    protected const ENVELOPE_BODY = <<<'TXT'
+    Here is the result of "fetch" for the Page with URL https://app.notion.com/p/40c2556e44dd81afa4e5ed13b6171933 as of 2026-11-03T03:41:16.885Z:
+    <page url="https://app.notion.com/p/40c2556e44dd81afa4e5ed13b6171933">
+
+
+
+    <image source="notion-file-block://40c2556e-44dd-80fd-b0d1-dffb4a3d1d97/d5d765c0-14e1-4248-a2d2-8c68d29e7260?space_id=1db670e5-4276-49eb-92b3-c9a7127b677e&name=image.png" />
+
+
+
+    <image source="notion-file-block://40c2556e-44dd-808a-8d47-cce85495f8ba/8258527a-3a6a-4139-9adf-f589641954c2?space_id=1db670e5-4276-49eb-92b3-c9a7127b677e&name=image.png" />
+
+    BKE Pending
+
+    <image source="notion-file-block://40c2556e-44dd-80f8-99cc-e177123d878c/441dea3f-d82e-4f11-a1de-e4e08d25cea8?space_id=1db670e5-4276-49eb-92b3-c9a7127b677e&name=image.png" />
+
+
+
+    Top up:
+
+    <image source="notion-file-block://40c2556e-44dd-803f-bf48-f4cf67097ab7/5eb2a1b8-300d-4a4e-a3aa-a5bf68290f74?space_id=1db670e5-4276-49eb-92b3-c9a7127b677e&name=image.png" />
+
+    <parent-data-source-schema url="collection://2c72556e-44dd-81cf-8977-000bc43d6f86">
+    The SQLite table definition for this page's parent data source. Use these column names and option values to set this page's properties, create sibling pages, or query the data source.
+    TXT;
+
+    public function test_strips_the_fetch_envelope_from_the_summary(): void
+    {
+        $parsed = NotionPageBodyParser::parse(self::ENVELOPE_BODY);
+
+        // The real page text survives, as [image] placeholders for its images.
+        $this->assertStringContainsString('BKE Pending', $parsed['summary']);
+        $this->assertStringContainsString('Top up:', $parsed['summary']);
+        $this->assertStringContainsString('[image]', $parsed['summary']);
+
+        // None of the tool envelope leaks in (schema trailer is cut off
+        // mid-block in the live sample — no close tag).
+        foreach (['notion-file-block', 'parent-data-source-schema', 'collection://', 'Here is the result', 'SQLite table definition'] as $junk) {
+            $this->assertStringNotContainsString($junk, $parsed['summary']);
+        }
+    }
+
+    public function test_plain_headings_inside_the_envelope_still_route(): void
+    {
+        $body = 'Here is the result of "fetch" for the Page with URL https://app.notion.com/p/abc as of 2026-11-03T03:41:16.885Z:'."\n"
+            .'<page url="https://app.notion.com/p/abc">'."\n\n"
+            ."On November 2, 2026, top-ups were disrupted.\n\n"
+            ."Root Cause\n\nStill Investigating\n\n"
+            ."Action Taken\n\n- SRE gradual restart ifcsupergw\n\n"
+            ."Incident Timeline and Chronology\n\n15:52 → Many ifcsupergw instances has high memory usage\n\n"
+            .'<parent-data-source-schema url="collection://2c72556e-44dd-81cf-8977-000bc43d6f86">'."\n"
+            ."The SQLite table definition for this page's parent data source.";
+
+        $parsed = NotionPageBodyParser::parse($body);
+
+        $this->assertSame('Still Investigating', $parsed['root_cause']);
+        $this->assertStringContainsString('SRE gradual restart ifcsupergw', $parsed['improvements']);
+        $this->assertStringContainsString('15:52 → Many ifcsupergw instances', $parsed['timeline']);
+        $this->assertStringContainsString('top-ups were disrupted', $parsed['summary']);
+        $this->assertStringNotContainsString('SQLite table definition', $parsed['summary']);
+    }
 }

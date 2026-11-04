@@ -51,6 +51,25 @@ class BackfillNotionIssueContentTest extends TestCase
         $this->artisan('notion:backfill-issue-content')->assertFailed();
     }
 
+    public function test_force_refetches_rows_whose_content_is_already_filled(): void
+    {
+        // A junk-filled row (e.g. first backfill caught the fetch envelope)
+        // is invisible to the missing-content filter — only --force reaches it.
+        $junk = $this->syncedIssue(['summary' => 'Here is the result of "fetch"…', 'root_cause' => null]);
+
+        $body = 'Root Cause'."\n\n".'Dead database.';
+        $this->mock(NotionMcpClient::class)
+            ->shouldReceive('connected')->andReturn(true)
+            ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => $junk->pageId])
+            ->andReturn(['structured' => null, 'text' => $body, 'isError' => false]);
+
+        $this->artisan('notion:backfill-issue-content', ['--force' => true])
+            ->expectsOutputToContain("Filled: [{$junk->incident->no}] {$junk->incident->title}")
+            ->assertSuccessful();
+
+        $this->assertSame('Dead database.', $junk->incident->fresh()->root_cause);
+    }
+
     /** @return object{incident: Incident, pageId: string} */
     private function syncedIssue(array $incidentOverrides): object
     {

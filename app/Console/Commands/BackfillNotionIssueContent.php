@@ -31,7 +31,9 @@ class BackfillNotionIssueContent extends Command
         $pages = NotionSyncedPage::query()
             ->whereNotNull('incident_id')
             // Only rows still missing content — re-runs skip already-filled ones.
-            ->whereHas('incident', fn ($query) => $query->whereNull('summary')->whereNull('root_cause'))
+            // --force re-fetches every synced row (overwrite junk-filled fields).
+            ->when(! $this->option('force'), fn ($query) => $query
+                ->whereHas('incident', fn ($query) => $query->whereNull('summary')->whereNull('root_cause')))
             ->orderBy('id')
             ->when(filled($this->option('limit')), fn ($query) => $query->limit((int) $this->option('limit')))
             ->get();

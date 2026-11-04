@@ -128,7 +128,7 @@ Services: `app` (PHP-FPM 8.2), `nginx`, `mysql` (port 3306), `redis` (port 6379)
 - **Factories:** Use for all test data generation
 - **RefreshDatabase** trait for clean state
 - SQLite in-memory for fast test runs
-- **Baseline: 1032 tests / 3,761 assertions green (2026-11-03, Notion page-body fill + Issue detail view on top of the 2026-10-30 two-step full-sync round: sync fetches each imported/restored page's body into summary/root_cause/timeline/improvements via `NotionPageBodyParser`, `notion:backfill-issue-content` backfills old rows, ViewIssue page + list ViewAction; full history in `docs/reference/testing-standards.md`).** A change that drops this count or its assertions is a regression, not a refactor — unless the delta is a deliberate feature deletion recorded in the baseline history (`docs/reference/testing-standards.md`).
+- **Baseline: 1035 tests / 3,778 assertions green (2026-11-04, notion-fetch envelope strip + `--force` backfill re-run on top of the page-body fill round; full history in `docs/reference/testing-standards.md`).** A change that drops this count or its assertions is a regression, not a refactor — unless the delta is a deliberate feature deletion recorded in the baseline history (`docs/reference/testing-standards.md`).
 
 ---
 
