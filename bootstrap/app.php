@@ -51,6 +51,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return route('filament.admin.auth.login');
         });
+
+        // Authenticated users hitting a `guest` route (the Microsoft SSO entry)
+        // go to their panel home — the default '/' fallback is a 404 here.
+        $middleware->redirectUsersTo(fn () => route('filament.admin.pages.dashboard'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         // ponytail: one shape for the whole API surface — success and every error path.

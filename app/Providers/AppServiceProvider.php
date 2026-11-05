@@ -66,6 +66,11 @@ class AppServiceProvider extends ServiceProvider
     {
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
 
+        // Microsoft (Entra ID) SSO driver — Laravel 11+ registration (no EventServiceProvider).
+        Event::listen(function (\SocialiteProviders\Manager\SocialiteWasCalled $event) {
+            $event->extendSocialite('microsoft', \SocialiteProviders\Microsoft\Provider::class);
+        });
+
         // Netcore Cloud email transport — registered as the 'netcore' mailer.
         Mail::extend('netcore', function (array $config) {
             return new \App\Mail\Transports\NetcoreTransport(
