@@ -387,6 +387,16 @@ class IncidentResource extends Resource
                 TextColumn::make('root_cause_category')->label('Root Cause Category')->badge()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('responsible_team')->label('Responsible Team')->badge()->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('goc_upload')->boolean()->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\IconColumn::make('notion_investigation_link')
+                    ->label('Notion')
+                    ->state(fn (Incident $record): bool => filled($record->notion_investigation_page_id))
+                    ->trueIcon('heroicon-o-arrow-top-right-on-square')
+                    ->trueColor('info')
+                    ->tooltip('Open the Notion investigation page')
+                    ->url(fn (Incident $record): ?string => filled($record->notion_investigation_page_id)
+                        ? app(\App\Services\Notion\NotionInvestigationService::class)->pageUrl((string) $record->notion_investigation_page_id)
+                        : null)
+                    ->openUrlInNewTab(),
             ])
             ->groups([
                 Group::make('incident_status')
@@ -594,6 +604,18 @@ class IncidentResource extends Resource
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('start_investigation')
+                        ->label('Start Investigation')
+                        ->icon('heroicon-o-magnifying-glass')
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->modalHeading('Start Investigation')
+                        ->modalDescription('Creates a Notion investigation page, links it to this record, and sets the status to In progress. On a soft-unlinked record it continues the existing page instead.')
+                        // Round 10: a soft-unlinked record keeps its page id —
+                        // Start Investigation shows again and CONTINUES it.
+                        ->action(fn (Incident $record) => \App\Filament\Actions\NotionInvestigationAction::start($record))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && (blank($record->notion_investigation_page_id) || filled($record->notion_investigation_unlinked_at))),
                     Tables\Actions\Action::make('update_status')
                         ->label('Update Status')
                         ->icon('heroicon-o-arrow-path')

@@ -174,6 +174,16 @@ class IssueResource extends Resource
                     ->dateTime()
                     ->sortable()
                     ->toggleable(),
+                Tables\Columns\IconColumn::make('notion_investigation_link')
+                    ->label('Notion')
+                    ->state(fn (Incident $record): bool => filled($record->notion_investigation_page_id))
+                    ->trueIcon('heroicon-o-arrow-top-right-on-square')
+                    ->trueColor('info')
+                    ->tooltip('Open the Notion investigation page')
+                    ->url(fn (Incident $record): ?string => filled($record->notion_investigation_page_id)
+                        ? app(\App\Services\Notion\NotionInvestigationService::class)->pageUrl((string) $record->notion_investigation_page_id)
+                        : null)
+                    ->openUrlInNewTab(),
             ])
             ->filters([
                 \App\Filament\Filters\QuickPeriodFilter::make(),
@@ -184,6 +194,8 @@ class IssueResource extends Resource
                     ->iconButton()
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage issues')),
+                // Owner 2026-11-04 (round 9): Start Investigation is
+                // incident-only — the Issues kebab never had it back.
                 Tables\Actions\ActionGroup::make([
                     Tables\Actions\Action::make('upgrade_to_incident')
                         ->label('Upgrade to Incident')
