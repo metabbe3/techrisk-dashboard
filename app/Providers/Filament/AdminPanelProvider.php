@@ -14,6 +14,7 @@ use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -75,6 +76,12 @@ class AdminPanelProvider extends PanelProvider
                 'panels::head.end',
                 fn () => '<link rel="stylesheet" href="'.Vite::asset('resources/css/app.css').'">'
                     .'<script type="module" src="'.Vite::asset('resources/js/app.js').'"></script>'
+            )
+            // "Sign in with Microsoft" button + SSO flash message, below the login form
+            // (the hook renders after the closing </form>, so the anchor can't submit it).
+            ->renderHook(
+                PanelsRenderHook::AUTH_LOGIN_FORM_AFTER,
+                fn (): string => view('auth.microsoft-sso')->render(),
             );
     }
 }

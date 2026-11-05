@@ -210,6 +210,7 @@ class User extends Authenticatable implements Auditable, FilamentUser
     protected $fillable = [
         'name',
         'email',
+        'email_verified_at',
         'password',
         'access_expiry',
         'is_service_account',

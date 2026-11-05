@@ -102,10 +102,19 @@ class NotionSyncButtonTest extends TestCase
             ->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('callToolDetailed')->once()->with('notion-fetch', ['id' => 'db-1'])
             ->andReturn(['structured' => null, 'text' => $this->fetchText(), 'isError' => false])
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-fetch', Mockery::on(
+                fn (array $args) => ($args['id'] ?? '') !== 'db-1'
+            ))
+            ->andReturn(['structured' => null, 'text' => '', 'isError' => true])
             ->shouldReceive('callToolDetailed')->once()->with('notion-query-data-sources', Mockery::on(
                 fn (array $args) => ($args['data']['data_source_urls'][0] ?? null) === self::COLLECTION_URL
             ))
-            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false]);
+            ->andReturn(['structured' => null, 'text' => json_encode(['results' => $rows]), 'isError' => false])
+            // Edit-sweep detection query — no stored edit times, nothing to refresh.
+            ->shouldReceive('callToolDetailed')->zeroOrMoreTimes()->with('notion-query-data-sources', Mockery::on(
+                fn (array $args) => str_contains($args['data']['query'] ?? '', 'Last edited time')
+            ))
+            ->andReturn(['structured' => null, 'text' => '{"results":[]}', 'isError' => false]);
     }
 
     private function fetchText(): string

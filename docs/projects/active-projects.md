@@ -617,6 +617,30 @@ Owner request 2026-10-01: similar-incident detection "is not accurate" (irreleva
 
 ---
 
+### [PROJ-017] Microsoft (Entra ID) SSO Login
+
+**Status:** In Review (code complete, awaiting Azure credentials + owner e2e check)
+**Priority:** P1
+**Start Date:** 2026-11-05
+
+#### Description
+Owner request 2026-11-05: "Sign in with Microsoft" on the Filament login page, tenant-restricted to the company Entra tenant. Owner decisions: first-time Microsoft logins are **auto-created but role-less** — they see nothing until an admin grants a role in User Management (the existing `User::canAccessPanel()` gate enforces this; zero new gating code); existing users matched by email keep their current access (role, `can_login`, `access_expiry`) untouched. Socialite's state (CSRF) validation kept; scopes `openid profile email` only.
+
+#### Technical Approach
+- `laravel/socialite` + `socialiteproviders/microsoft`, driver registered via `SocialiteWasCalled` listener in `AppServiceProvider::boot()`
+- `config/services.php` `microsoft` entry with `tenant` = `MICROSOFT_TENANT_ID` (single-tenant authorize URL); env: `MICROSOFT_CLIENT_SECRET` holds the secret's **Value**, not its Secret ID
+- Guest-only routes `/auth/microsoft/{redirect,callback}` → `MicrosoftLoginController`: case-insensitive email match (`whereRaw('lower(email) = ?)`)`, JIT users get a random unused password (column NOT nullable, same as `upsertFromPicEmails`) + `email_verified_at` now fillable; gate-fail → logout + flash on login page
+- Login button + flash via `PanelsRenderHook::AUTH_LOGIN_FORM_AFTER` render hook + `resources/views/auth/microsoft-sso.blade.php`; `bootstrap/app.php` `redirectUsersTo` keeps authenticated users off the guest routes away from the 404 at `/`
+- No `microsoft_id` column (single-tenant + unique email make it redundant)
+
+#### Tasks
+- [x] Implementation + `MicrosoftSsoTest` (5 tests / 22 assertions) — 2026-11-05
+- [ ] Azure: register both redirect URIs (Web platform): `http://localhost:8000/auth/microsoft/callback` + `https://techrisk.paas.dana.id/auth/microsoft/callback`; fill the 4 `MICROSOFT_*` env vars (dev and prod)
+- [ ] Owner e2e: new-email login → "admin must grant access" flash → grant `user` role → login lands on dashboard; password login still works
+
+#### Blockers
+- None (waiting on Azure-side env credentials)
+
 ---
 
 ## Completed Projects

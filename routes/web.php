@@ -312,3 +312,10 @@ Mcp::oAuthRoutesFor('notion', function (string $client, TokenSet $token) {
 
     return redirect(NotionSettings::getUrl());
 }, middleware: ['web', 'auth', 'can:manage api tokens']);
+
+// Microsoft (Entra ID) SSO. New emails are JIT-created role-less; the existing
+// canAccessPanel() gate keeps them out until an admin grants a role in User Management.
+Route::middleware('guest')->controller(\App\Http\Controllers\Auth\MicrosoftLoginController::class)->group(function () {
+    Route::get('/auth/microsoft/redirect', 'redirect')->name('microsoft.redirect');
+    Route::get('/auth/microsoft/callback', 'callback')->name('microsoft.callback');
+});

@@ -27,6 +27,76 @@ class ViewIssue extends ViewRecord
         }
     }
 
+    /**
+     * PROJ-018's first infolist override, merged with the issue-sync's
+     * page-body sections: the record's own fields (the four visible form
+     * fields — the hidden classification/entry_date_tech_risk were never
+     * rendered — plus the sync-era severity/status), the Notion page-body
+     * fields the sync filled, then the shared Notion Investigation section.
+     */
+    public function infolist(Infolist $infolist): Infolist
+    {
+        return $infolist
+            ->schema([
+                Section::make('Issue Details')
+                    ->columns(4)
+                    ->schema([
+                        TextEntry::make('no')->label('Issue ID'),
+                        TextEntry::make('title')->label('Issue Name'),
+                        TextEntry::make('severity')->badge(),
+                        TextEntry::make('incident_status')->label('Status')->badge(),
+                        TextEntry::make('incident_date')->label('Start Date')->dateTime('Y-m-d'),
+                        TextEntry::make('stop_bleeding_at')->label('End Date')->dateTime('Y-m-d'),
+                    ]),
+
+                // Notion page-body sections (NotionPageBodyParser) plus any
+                // hand-written content — same fields, read-only. Markdown
+                // collapses single newlines, so stored line breaks (each
+                // "HH:MM →" timeline entry, "• " action lines, "**Label**"
+                // rows) become hard breaks before rendering.
+                Section::make('Summary')
+                    ->icon('heroicon-o-document-text')
+                    ->iconColor('primary')
+                    ->schema([
+                        TextEntry::make('summary')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No summary provided'),
+                    ])
+                    ->collapsible()
+                    ->columnSpanFull(),
+
+                Section::make('Root Cause')
+                    ->icon('heroicon-o-light-bulb')
+                    ->iconColor('warning')
+                    ->schema([
+                        TextEntry::make('root_cause')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No root cause recorded'),
+                    ])
+                    ->collapsible()
+                    ->visible(fn ($record) => filled($record->root_cause))
+                    ->columnSpanFull(),
+
+                Section::make('Incident Timeline & Chronology')
+                    ->icon('heroicon-o-clock')
+                    ->iconColor('info')
+                    ->schema([
+                        TextEntry::make('timeline')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No timeline recorded'),
+                    ])
+                    ->collapsible()
+                    ->visible(fn ($record) => filled($record->timeline))
+                    ->columnSpanFull(),
+
+                Section::make('Action Taken')
+                    ->icon('heroicon-o-check-circle')
+                    ->iconColor('success')
+                    ->schema([
+                        TextEntry::make('improvements')->formatStateUsing(self::hardBreaks(...))->markdown()->hiddenLabel()->placeholder('No actions recorded'),
+                    ])
+                    ->collapsible()
+                    ->visible(fn ($record) => filled($record->improvements))
+                    ->columnSpanFull(),
+
+                NotionInvestigationAction::section(),
+            ]);
+    }
+
     protected function getHeaderActions(): array
     {
         return [
@@ -37,26 +107,11 @@ class ViewIssue extends ViewRecord
         ];
     }
 
-    /**
-     * PROJ-018: first infolist override — until now this page rendered the
-     * disabled form. The four visible form fields are reproduced as entries
-     (the hidden classification/entry_date_tech_risk were never rendered),
-     * then the shared Notion Investigation section.
-     */
-    public function infolist(Infolist $infolist): Infolist
+    /** Markdown hard break: single \n → "  \n"; blank lines (\n\n) stay paragraph breaks. */
+    private static function hardBreaks($state)
     {
-        return $infolist
-            ->schema([
-                Section::make('Issue Details')
-                    ->columns(2)
-                    ->schema([
-                        TextEntry::make('no')->label('Issue ID'),
-                        TextEntry::make('title')->label('Issue Name'),
-                        TextEntry::make('incident_date')->label('Start Date')->dateTime(),
-                        TextEntry::make('stop_bleeding_at')->label('End Date')->dateTime(),
-                    ]),
-
-                NotionInvestigationAction::section(),
-            ]);
+        return is_string($state) && $state !== ''
+            ? preg_replace('/(?<!\n)\n(?!\n)/', "  \n", $state)
+            : $state;
     }
 }
