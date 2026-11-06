@@ -26,6 +26,17 @@ class ViewIncident extends ViewRecord
 {
     protected static string $resource = IncidentResource::class;
 
+    public function mount(string|int $record): void
+    {
+        parent::mount($record);
+
+        // Round 8: the investigation body self-refreshes on open when stale —
+        // permission-gated here, quiet in the action.
+        if (auth()->user()->can('manage incidents')) {
+            \App\Filament\Actions\NotionInvestigationAction::autoRefresh($this->getRecord());
+        }
+    }
+
     private function isAiEnhanced($record, string $field): bool
     {
         $data = $record->ai_enhanced_fields;
@@ -158,26 +169,35 @@ class ViewIncident extends ViewRecord
                         ->body('The Retrospective section below is updated.')
                         ->send();
                 }),
-            Actions\Action::make('generate_post_mortem')
-                ->label('Post-Mortem PDF')
-                ->icon('heroicon-o-document-text')
-                ->color('warning')
-                ->requiresConfirmation()
-                ->modalHeading('Generate Post-Mortem Report')
-                ->modalDescription('AI will generate a comprehensive blameless post-mortem. This may take a few seconds.')
-                ->modalSubmitActionLabel('Generate & Download')
-                ->visible(fn (): bool => auth()->user()->can('manage incidents'))
-                ->action(function () {
-                    return redirect()->to(route('ai.post-mortem-pdf', ['incident' => $this->getRecord()->id]));
-                }),
-            Actions\Action::make('export_markdown')
-                ->label('Export to Markdown')
-                ->icon('heroicon-o-document-arrow-down')
-                ->color('success')
-                ->tooltip('Export this incident as a Markdown file for AI analysis')
-                ->action(function (IncidentMarkdownExporter $exporter) {
-                    return $exporter->download($this->getRecord());
-                }),
+            // Owner 2026-11-04: the export pair merged behind one dropdown,
+            // the Notion pair behind a kebab — the header was one button sea.
+            Actions\ActionGroup::make([
+                Actions\Action::make('generate_post_mortem')
+                    ->label('Post-Mortem PDF')
+                    ->icon('heroicon-o-document-text')
+                    ->color('warning')
+                    ->requiresConfirmation()
+                    ->modalHeading('Generate Post-Mortem Report')
+                    ->modalDescription('AI will generate a comprehensive blameless post-mortem. This may take a few seconds.')
+                    ->modalSubmitActionLabel('Generate & Download')
+                    ->action(function () {
+                        return redirect()->to(route('ai.post-mortem-pdf', ['incident' => $this->getRecord()->id]));
+                    }),
+                Actions\Action::make('export_markdown')
+                    ->label('Export to Markdown')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->tooltip('Export this incident as a Markdown file for AI analysis')
+                    ->action(function (IncidentMarkdownExporter $exporter) {
+                        return $exporter->download($this->getRecord());
+                    }),
+            ])
+                ->label('Export')
+                ->icon('heroicon-o-arrow-down-tray')
+                ->color('gray')
+                ->button()
+                ->visible(fn (): bool => auth()->user()->can('manage incidents')),
+            // Round 8: Refresh/Unlink moved into the Notion Investigation
+            // section footer (next to "Open in Notion") — the kebab is gone.
             Actions\EditAction::make()
                 ->visible(fn (): bool => auth()->user()->can('manage incidents')),
         ];
@@ -253,6 +273,8 @@ class ViewIncident extends ViewRecord
                     ->visible(fn ($record) => filled($record->retro_markdown))
                     ->collapsible()
                     ->columnSpanFull(),
+
+                \App\Filament\Actions\NotionInvestigationAction::section(),
 
                 Section::make('Incident Timeline & Chronology')
                     ->icon('heroicon-o-clock')
