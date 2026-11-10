@@ -119,16 +119,33 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
-        // Notion OAuth callback failures (denied consent, expired session state)
-        // throw before the token handler runs — a raw 500 otherwise. The pipeline
+        // Notion OAuth failures (denied consent, expired session state) throw
+        // before the token handler runs — a raw 500 otherwise. The pipeline
         // renders route exceptions itself, so this cannot live in route middleware.
         // Session notifications work here: StartSession has already run.
         $exceptions->renderable(function (\Laravel\Mcp\Client\Exceptions\OAuthException $e, $request) {
-            if ($request->is('mcp/oauth/*')) {
+            if ($request->is('mcp/*')) {
                 \Filament\Notifications\Notification::make()
                     ->danger()
                     ->title('Notion connection failed')
                     ->body($e->getMessage())
+                    ->persistent()
+                    ->send();
+
+                return redirect(\App\Filament\Pages\NotionSettings::getUrl());
+            }
+        });
+
+        // Connection failures on the same routes (the vendored OAuth client's
+        // 2-second connect timeout made slow TLS handshakes a raw 500 on the
+        // token exchange — live 2026-11-10): redirect back to Settings with
+        // the reason, and the operator just clicks Connect again.
+        $exceptions->renderable(function (\Illuminate\Http\Client\ConnectionException $e, $request) {
+            if ($request->is('mcp/*')) {
+                \Filament\Notifications\Notification::make()
+                    ->danger()
+                    ->title('Notion connection failed')
+                    ->body('Notion did not respond in time — check the network and click Connect again. ('.$e->getMessage().')')
                     ->persistent()
                     ->send();
 

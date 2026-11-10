@@ -6,6 +6,7 @@ use App\Enums\IncidentClassification;
 use App\Models\Incident;
 use App\Services\Notion\NotionIssueMapper;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
 /**
@@ -107,5 +108,103 @@ class NotionIssueMapperTest extends TestCase
         $this->incident(IncidentClassification::Incident->value);
 
         $this->assertArrayHasKey('db down', NotionIssueMapper::existingNormalizedTitles());
+    }
+
+    /**
+     * Owner 2026-11-09: issues imported from Notion carry their date in the
+     * title — "2026 Nov 09 - timeout to database" (the row's own date_start,
+     * falling back to createdTime — the same date importRow resolves).
+     */
+    public function test_dated_title_carries_the_y_m_d_date_prefix(): void
+    {
+        $this->assertSame(
+            '2026 Nov 09 - timeout to database',
+            NotionIssueMapper::datedTitle('timeout to database', Carbon::parse('2026-11-09'))
+        );
+        // The Notion "Summary of Incident - " prefix cleans first…
+        $this->assertSame(
+            '2026 Nov 09 - DB down',
+            NotionIssueMapper::datedTitle('Summary of Incident - DB down', Carbon::parse('2026-11-09'))
+        );
+        // …and a title already carrying the sync's prefix is never doubled.
+        $this->assertSame(
+            '2026 Nov 09 - DB down',
+            NotionIssueMapper::datedTitle('2026 Nov 09 - DB down', Carbon::parse('2026-11-09'))
+        );
+    }
+
+    /**
+     * The dedupe net must still catch a re-synced raw name behind a stored
+     * prefixed title — comparison strips the sync's own prefix from BOTH
+     * sides (page-ID dedupe stays the primary net; this is the name net).
+     */
+    public function test_title_dedupe_sees_through_the_date_prefix(): void
+    {
+        $incident = Incident::create([
+            'title' => '2026 Nov 09 - timeout to database',
+            'no' => '20261109_IS_1111',
+            'incident_date' => '2026-11-09',
+            'entry_date_tech_risk' => '2026-11-09',
+            'severity' => 'P3',
+            'classification' => IncidentClassification::Issue->value,
+            'incident_type' => 'Tech',
+            'incident_source' => 'Internal',
+        ]);
+
+        $this->assertSame($incident->id, NotionIssueMapper::findDuplicateByTitle('timeout to database')?->id);
+        $this->assertArrayHasKey('timeout to database', NotionIssueMapper::existingNormalizedTitles());
+    }
+
+    /**
+     * The live bug (2026-11-09): the Notion row's own name already carries a
+     * "9 November 2026 - " prefix (195/300 record titles, round 7) — the
+     * composed title carries the date ONCE.
+     */
+    public function test_dated_title_strips_the_name_s_own_date_prefix(): void
+    {
+        $this->assertSame(
+            '2026 Nov 09 - Multiple App Error Top Spiking',
+            NotionIssueMapper::datedTitle('9 November 2026 - Multiple App Error Top Spiking', Carbon::parse('2026-11-09'))
+        );
+    }
+
+    /**
+     * Comparison strips ANY leading date prefix — the sync's own format, the
+     * record's own "DD Month YYYY - " style, or both stacked (a title
+     * imported before the own-prefix fix). A title that is only a date keeps
+     * it; a real title that merely mentions a date keeps its mention.
+     */
+    public function test_strip_date_prefix_sees_through_both_prefix_kinds(): void
+    {
+        $this->assertSame('DB down', NotionIssueMapper::stripDatePrefix('2026 Nov 09 - DB down'));
+        $this->assertSame('DB down', NotionIssueMapper::stripDatePrefix('9 November 2026 - DB down'));
+        $this->assertSame('DB down', NotionIssueMapper::stripDatePrefix('2026-11-09 - DB down'));
+        $this->assertSame('DB down', NotionIssueMapper::stripDatePrefix('November 9, 2026 - DB down'));
+        $this->assertSame('DB down', NotionIssueMapper::stripDatePrefix('2026 Nov 09 - 9 November 2026 - DB down'));
+        $this->assertSame('9 November 2026', NotionIssueMapper::stripDatePrefix('9 November 2026'));
+        $this->assertSame('Week of 2026-11-09 review', NotionIssueMapper::stripDatePrefix('Week of 2026-11-09 review'));
+    }
+
+    /**
+     * A row imported before the own-prefix fix carries BOTH prefixes — it
+     * still dedupes against the raw Notion name.
+     */
+    public function test_title_dedupe_sees_through_a_doubled_date_prefix(): void
+    {
+        $incident = Incident::create([
+            'title' => '2026 Nov 09 - 9 November 2026 - Multiple App Error Top Spiking',
+            'no' => '20261109_IS_1112',
+            'incident_date' => '2026-11-09',
+            'entry_date_tech_risk' => '2026-11-09',
+            'severity' => 'G',
+            'classification' => IncidentClassification::Issue->value,
+            'incident_type' => 'Tech',
+            'incident_source' => 'Internal',
+        ]);
+
+        $this->assertSame(
+            $incident->id,
+            NotionIssueMapper::findDuplicateByTitle('9 November 2026 - Multiple App Error Top Spiking')?->id
+        );
     }
 }
