@@ -54,6 +54,7 @@ chars.
 | `LLM_MAX_TOKENS` | no | `AI_WAR_ROOM_MAX_OUTPUT_TOKENS` → 16384; `0` omits `max_tokens` (escape hatch if a model rejects it) |
 | `AGENT_MAX_ITER` | no | 60 tool-call iterations (Hermes parity) |
 | `AGENT_WEB_TOOLS` | no | 1 — keyless web research; `0`/`off`/`false`/`no` unregisters both web tools |
+| `AGENT_AUTO_LEARN` | no | 1 — per-user preference learning: after each turn a background no-tools LLM call merges what the conversation revealed (language, format, standing instructions) into `data/profiles.json` (keyed by staffId, ≤8 lines × 150 chars, never wiped by an empty extraction); those lines are injected into that sender's system prompt only. Kill switch: `0`/`off` |
 | `AGENT_MAX_REPLY_CHARS` | no | 8000 — lower it if DingTalk rejects large markdown replies |
 | `DINGTALK_BOT_NAMES` | no | `Risk Agent` — strips whole-name @mentions in groups |
 | `DINGTALK_DATA_DIR` | no | `data` — auto save/auto recall: who chatted (`users.jsonl`) + conversation history (`history.json`) survive restarts |

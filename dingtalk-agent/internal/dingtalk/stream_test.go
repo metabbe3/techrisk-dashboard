@@ -299,3 +299,95 @@ func TestBatchingJoinsRapidMessages(t *testing.T) {
 		t.Errorf("multi-message hint missing: %q", llmCalls[0])
 	}
 }
+
+// TestAutoLearnPersistsProfile verifies the full loop: a completed turn
+// triggers the background extraction call, the profile lands in the store,
+// and profilePrompt serves it back for the next turn.
+func TestAutoLearnPersistsProfile(t *testing.T) {
+	dir := t.TempDir()
+
+	var mu sync.Mutex
+	var learnCalls int
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.Contains(r.URL.Path, "chat/completions") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			Messages []llm.ChatMessage `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+
+		mu.Lock()
+		// Any request whose system prompt is the extraction prompt counts as learning.
+		if len(req.Messages) > 0 && strings.Contains(req.Messages[0].Content, "preference profile") {
+			learnCalls++
+			mu.Unlock()
+			resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", Content: "- Prefers replies in Indonesian\n- Wants short bullet points"}, FinishReason: "stop",
+			}}}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		mu.Unlock()
+
+		resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
+			Message: llm.ChatMessage{Role: "assistant", Content: "Answer delivered."}, FinishReason: "stop",
+		}}}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer llmSrv.Close()
+
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhook.Close()
+
+	cfg := &config.Config{
+		LLMBaseURL: llmSrv.URL, LLMAPIKey: "k", LLMModel: "m",
+		DingTalkOpenAPIHost: llmSrv.URL, // card fails fast → plain path
+		DataDir:             dir, AutoLearn: true,
+	}
+	bot := NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2))
+
+	if _, err := bot.Handle(context.Background(), &chatbot.BotCallbackDataModel{
+		MsgId: "learn1", SenderStaffId: "staff1", SenderNick: "Tester",
+		ConversationId: "cid-learn", SessionWebhook: webhook.URL,
+		Text: chatbot.BotCallbackDataTextModel{Content: "always reply to me in Indonesian, short bullets"},
+	}); err != nil {
+		t.Fatalf("handle: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		done := learnCalls >= 1 && len(bot.store.Profile("staff1")) > 0
+		mu.Unlock()
+		if done || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if learnCalls == 0 {
+		t.Fatal("extraction call never happened")
+	}
+	profile := bot.store.Profile("staff1")
+	if len(profile) != 2 || !strings.Contains(profile[0], "Indonesian") {
+		t.Fatalf("learned profile wrong: %v", profile)
+	}
+	if extra := bot.profilePrompt("staff1"); !strings.Contains(extra, "Indonesian") {
+		t.Errorf("profilePrompt must serve the learned lines: %q", extra)
+	}
+	if extra := bot.profilePrompt("staff2"); extra != "" {
+		t.Errorf("other users must not see staff1's profile: %q", extra)
+	}
+
+	// Kill switch: AutoLearn off → no injection, no extraction.
+	cfg.AutoLearn = false
+	if extra := bot.profilePrompt("staff1"); extra != "" {
+		t.Errorf("kill switch must stop injection: %q", extra)
+	}
+}

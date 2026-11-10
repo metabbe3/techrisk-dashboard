@@ -77,7 +77,7 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, err := agentLoop.Run(context.Background(), "list current directory", nil)
+	finalText, messages, err := agentLoop.Run(context.Background(), "list current directory", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestParallelToolCallsDeterministicOrder(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil)
+	finalText, messages, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -244,5 +244,42 @@ func TestContextBudgetPruning(t *testing.T) {
 	// User and assistant messages must be kept intact
 	if messages[0].Content != "System prompt" || messages[1].Content != "Analyze first log" || messages[3].Content != "Done with first" {
 		t.Errorf("user or assistant message content was corrupted during pruning")
+	}
+}
+
+// TestSysExtraAppendedToSystemPrompt verifies the per-run extra (learned user
+// profile) reaches the LLM inside the system message.
+func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
+	var gotSystem string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []llm.ChatMessage `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		for _, m := range req.Messages {
+			if m.Role == "system" {
+				gotSystem = m.Content
+			}
+		}
+		resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
+			Message: llm.ChatMessage{Role: "assistant", Content: "ok"}, FinishReason: "stop",
+		}}}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
+	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
+
+	if _, _, err := agentLoop.Run(context.Background(), "hi", nil,
+		"## About the user you are replying to\n- prefers Indonesian\n"); err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if !strings.Contains(gotSystem, "prefers Indonesian") {
+		t.Errorf("sysExtra missing from system prompt: %.200s", gotSystem)
+	}
+	if !strings.Contains(gotSystem, "Domain Rules") {
+		t.Errorf("base system prompt lost: %.200s", gotSystem)
 	}
 }

@@ -8,7 +8,7 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 	t.Helper()
 	// Neutralize knobs first: t.Setenv restores only at test END, so without this
 	// a value from an earlier sub-test leaks into later ones (empty = unset for getVal).
-	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS"} {
+	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range set {
@@ -90,4 +90,21 @@ func with(base map[string]string, k, v string) map[string]string {
 	}
 	out[k] = v
 	return out
+}
+
+func TestAutoLearnKillSwitch(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "s", "DASHBOARD_API_TOKEN": "t",
+	}
+	for _, off := range []string{"0", "false", "off", "no"} {
+		if cfg := loadEnv(t, with(base, "AGENT_AUTO_LEARN", off)); cfg.AutoLearn {
+			t.Errorf("AGENT_AUTO_LEARN=%q must disable learning", off)
+		}
+	}
+	if cfg := loadEnv(t, with(base, "AGENT_AUTO_LEARN", "1")); !cfg.AutoLearn {
+		t.Error("AGENT_AUTO_LEARN=1 must enable learning")
+	}
+	if cfg := loadEnv(t, base); !cfg.AutoLearn {
+		t.Error("auto-learning must default on")
+	}
 }

@@ -1,7 +1,9 @@
 package memory
 
 import (
+	"fmt"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -94,5 +96,49 @@ func TestCorruptHistoryFileIgnored(t *testing.T) {
 	s := NewStore(dir)
 	if got := s.TakeHistory("any"); got != nil {
 		t.Errorf("corrupt file must start fresh, got %+v", got)
+	}
+}
+
+func TestProfileLearnRecallAndCaps(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+
+	if lines := s.Profile("staff1"); lines != nil {
+		t.Fatalf("unknown user must have no profile, got %v", lines)
+	}
+
+	long := strings.Repeat("x", 300)
+	many := []string{}
+	for i := 0; i < 20; i++ {
+		many = append(many, fmt.Sprintf("line %d %s", i, long))
+	}
+	if err := s.LearnProfile("staff1", "Nick", many); err != nil {
+		t.Fatalf("LearnProfile: %v", err)
+	}
+	lines := s.Profile("staff1")
+	if len(lines) != MaxProfileLines {
+		t.Errorf("lines = %d, want cap %d", len(lines), MaxProfileLines)
+	}
+	for _, ln := range lines {
+		if len(ln) > MaxProfileLineLen {
+			t.Errorf("line exceeds cap: %d chars", len(ln))
+		}
+	}
+
+	// Empty extraction must never wipe an existing profile.
+	if err := s.LearnProfile("staff1", "Nick", nil); err != nil {
+		t.Fatalf("LearnProfile empty: %v", err)
+	}
+	if got := len(s.Profile("staff1")); got == 0 {
+		t.Error("empty extraction wiped the profile")
+	}
+
+	// Persists across store instances (restart).
+	if got := NewStore(dir).Profile("staff1"); len(got) == 0 {
+		t.Error("profile lost across NewStore (no persistence)")
+	}
+	// And is per-user.
+	if got := NewStore(dir).Profile("staff2"); got != nil {
+		t.Errorf("another user must not see staff1's profile, got %v", got)
 	}
 }

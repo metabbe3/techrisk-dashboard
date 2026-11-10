@@ -94,8 +94,10 @@ type HistoryEntry struct {
 type Store struct {
 	dir string
 
-	mu   sync.Mutex
-	path string // users JSONL
+	mu       sync.Mutex
+	path     string // users JSONL
+	pmu      sync.Mutex
+	profiles map[string]UserProfile
 
 	hmu         sync.Mutex
 	history     map[string]HistoryEntry
@@ -110,8 +112,10 @@ func NewStore(dir string) *Store {
 		path:        filepath.Join(dir, "users.jsonl"),
 		historyPath: filepath.Join(dir, "history.json"),
 		history:     map[string]HistoryEntry{},
+		profiles:    map[string]UserProfile{},
 	}
 	s.loadHistory()
+	s.loadProfiles()
 	return s
 }
 
@@ -223,4 +227,73 @@ func (s *Store) writeJSON(path string, v any) error {
 		return err
 	}
 	return os.Rename(tmp, path)
+}
+
+// UserProfile is what the agent has learned about one person's preferences
+// (language, reply format, standing instructions) — injected into prompts for
+// that sender only.
+type UserProfile struct {
+	Nick      string    `json:"nick"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Lines     []string  `json:"lines"`
+}
+
+// Profile caps: bounded prompt cost per user, however long they've chatted.
+const (
+	MaxProfileLines   = 8
+	MaxProfileLineLen = 150
+	profileFile       = "profiles.json"
+)
+
+type profileFileFormat struct {
+	Profiles map[string]UserProfile `json:"profiles"`
+}
+
+// LearnProfile replaces a user's learned profile, capping line count/length.
+func (s *Store) LearnProfile(staffID, nick string, lines []string) error {
+	clean := make([]string, 0, MaxProfileLines)
+	for _, ln := range lines {
+		ln = strings.TrimSpace(ln)
+		ln = strings.Trim(ln, `-"* `)
+		if ln == "" {
+			continue
+		}
+		if len(ln) > MaxProfileLineLen {
+			ln = ln[:MaxProfileLineLen]
+		}
+		clean = append(clean, ln)
+		if len(clean) == MaxProfileLines {
+			break
+		}
+	}
+	if len(clean) == 0 {
+		return nil // never wipe a profile with an empty extraction
+	}
+
+	s.pmu.Lock()
+	s.profiles[staffID] = UserProfile{Nick: nick, UpdatedAt: time.Now(), Lines: clean}
+	snap := profileFileFormat{Profiles: s.profiles}
+	s.pmu.Unlock()
+	return s.writeJSON(filepath.Join(s.dir, profileFile), snap)
+}
+
+// Profile returns a user's learned preference lines (nil when unknown).
+func (s *Store) Profile(staffID string) []string {
+	s.pmu.Lock()
+	defer s.pmu.Unlock()
+	if p, ok := s.profiles[staffID]; ok {
+		return p.Lines
+	}
+	return nil
+}
+
+func (s *Store) loadProfiles() {
+	data, err := os.ReadFile(filepath.Join(s.dir, profileFile))
+	if err != nil {
+		return // no file yet — start fresh
+	}
+	var pf profileFileFormat
+	if json.Unmarshal(data, &pf) == nil && pf.Profiles != nil {
+		s.profiles = pf.Profiles
+	}
 }

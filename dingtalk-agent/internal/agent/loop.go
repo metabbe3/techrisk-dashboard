@@ -48,18 +48,20 @@ type toolResult struct {
 }
 
 // Run executes the agent cycle with a user message and returns the final assistant reply.
-func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage) (string, []llm.ChatMessage, error) {
-	return l.run(ctx, userText, history, nil)
+// sysExtra (optional) is appended verbatim to the system prompt for this run only —
+// the per-sender learned profile travels through it.
+func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, error) {
+	return l.run(ctx, userText, history, nil, sysExtra)
 }
 
 // RunStreaming is Run with text deltas of the assistant's answers forwarded to
 // onDelta as they arrive. Tool-call reasoning rounds produce no deltas; only the
 // visible answer streams.
-func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string)) (string, []llm.ChatMessage, error) {
-	return l.run(ctx, userText, history, onDelta)
+func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, error) {
+	return l.run(ctx, userText, history, onDelta, sysExtra)
 }
 
-func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string)) (string, []llm.ChatMessage, error) {
+func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, error) {
 	var messages []llm.ChatMessage
 
 	// Ensure system prompt is first
@@ -79,6 +81,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 			if extra := l.SystemExtras(); extra != "" {
 				sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
 			}
+		}
+		if sysExtra != "" {
+			sys += "\n\n" + sysExtra
 		}
 		messages = append(messages, llm.ChatMessage{
 			Role:    "system",

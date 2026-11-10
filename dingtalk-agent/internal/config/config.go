@@ -23,6 +23,7 @@ type Config struct {
 	LLMModel             string
 	LLMMaxTokens         int  // max output tokens (War Room parity); 0 = omit the field
 	WebToolsEnabled      bool // web_search / web_fetch registered for the LLM
+	AutoLearn            bool // per-user preference profiles extracted from conversations
 	MaxReplyChars        int  // reply cap before truncation (DingTalk markdown size)
 	MaxIterations        int
 	HistoryTTL           time.Duration // per-conversation memory retention
@@ -175,6 +176,12 @@ func LoadFromFile(envPath string) (*Config, error) {
 		webTools = false
 	}
 
+	autoLearn := true
+	switch strings.ToLower(getVal("AGENT_AUTO_LEARN", "1")) {
+	case "0", "false", "off", "no":
+		autoLearn = false
+	}
+
 	maxReply := DefaultMaxReplyChars
 	if replyStr := getVal("AGENT_MAX_REPLY_CHARS", ""); replyStr != "" {
 		if parsed, err := strconv.Atoi(replyStr); err == nil && parsed >= 500 {
@@ -202,6 +209,7 @@ func LoadFromFile(envPath string) (*Config, error) {
 		LLMModel:             model,
 		LLMMaxTokens:         maxTokens,
 		WebToolsEnabled:      webTools,
+		AutoLearn:            autoLearn,
 		MaxReplyChars:        maxReply,
 		MaxIterations:        maxIter,
 		HistoryTTL:           historyTTL,

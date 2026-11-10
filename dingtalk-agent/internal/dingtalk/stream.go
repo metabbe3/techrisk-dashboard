@@ -41,6 +41,7 @@ type Bot struct {
 	replier *chatbot.ChatbotReplier
 	allowed map[string]struct{}
 	api     *openAPIClient
+	llm     *llm.Client   // no-tools client for profile extraction
 	store   *memory.Store // nil = memory-only (tests)
 
 	mu      sync.Mutex
@@ -79,6 +80,7 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 		replier: chatbot.NewChatbotReplier(),
 		allowed: allowed,
 		api:     newOpenAPIClient(cfg),
+		llm:     llm.NewClient(cfg),
 		history: make(map[string]historyEntry),
 		seen:    make(map[string]time.Time),
 		inboxes: make(map[string]chan chatTask),
@@ -291,6 +293,8 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 		}
 	}
 
+	sysExtra := b.profilePrompt(m.SenderStaffId)
+
 	// Preferred path: a streaming AI card (typewriter). If the card cannot be
 	// created (missing card permission, API hiccup) fall back to a one-shot
 	// webhook reply — the answer still arrives, just without streaming.
@@ -301,10 +305,10 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 		if ack != "" {
 			b.reply(ctx, m, ack)
 		}
-		return b.processPlain(ctx, m, text)
+		return b.processPlain(ctx, m, text, sysExtra)
 	}
 
-	filtered, err := b.processStreaming(ctx, m, text, card)
+	filtered, err := b.processStreaming(ctx, m, text, sysExtra, card)
 	if err != nil {
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
 		_ = card.fail(ctx)
@@ -314,14 +318,96 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 	if err := card.finish(ctx, filtered); err != nil {
 		log.Printf("[dingtalk] card finish failed (conversation %s): %v", m.ConversationId, err)
 	}
+	b.learnLater(m)
 	return filtered
+}
+
+// profilePrompt renders the sender's learned preferences for the system prompt.
+func (b *Bot) profilePrompt(staffID string) string {
+	if b.store == nil || !b.cfg.AutoLearn {
+		return ""
+	}
+	lines := b.store.Profile(staffID)
+	if len(lines) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString("## About the user you are replying to (learned preferences — apply them)\n")
+	for _, ln := range lines {
+		fmt.Fprintf(&sb, "- %s\n", ln)
+	}
+	return sb.String()
+}
+
+// learnLater updates the sender's learned profile in the background after a
+// completed turn — never blocks the reply path.
+func (b *Bot) learnLater(m *chatbot.BotCallbackDataModel) {
+	if b.store == nil || !b.cfg.AutoLearn || b.llm == nil {
+		return
+	}
+	history := b.takeHistory(m.ConversationId)
+	if len(history) == 0 {
+		return
+	}
+	go b.learnProfile(context.Background(), m.SenderStaffId, m.SenderNick, history)
+}
+
+// learnProfile asks the LLM to merge what the recent conversation reveals about
+// the user (language, format, standing instructions) into their stored profile.
+// One cheap no-tools call; any failure is logged and skipped — learning must
+// never break chatting.
+func (b *Bot) learnProfile(ctx context.Context, staffID, nick string, history []llm.ChatMessage) {
+	var cur strings.Builder
+	for _, ln := range b.store.Profile(staffID) {
+		fmt.Fprintf(&cur, "- %s\n", ln)
+	}
+	if cur.Len() == 0 {
+		cur.WriteString("(none yet)")
+	}
+
+	var convo strings.Builder
+	start := len(history) - 8
+	if start < 0 {
+		start = 0
+	}
+	for _, msg := range history[start:] {
+		if msg.Role != "user" && msg.Role != "assistant" {
+			continue
+		}
+		fmt.Fprintf(&convo, "%s: %s\n", msg.Role, truncateStr(msg.Content, 400))
+	}
+	if convo.Len() == 0 {
+		return
+	}
+
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: "You maintain a compact preference profile of a DingTalk user for an assistant. Merge what the conversation reveals (preferred language, reply format, seniority, recurring topics, standing instructions like 'always reply in Indonesian') into the existing profile. Output ONLY the updated profile as at most 8 short lines (max 150 chars each), no numbering, no commentary. Drop lines that no longer apply. If nothing new, output the existing lines unchanged."},
+		{Role: "user", Content: "EXISTING PROFILE:\n" + cur.String() + "\nRECENT CONVERSATION with user " + nick + ":\n" + convo.String()},
+	}
+	reply, err := b.llm.ChatCompletion(ctx, msgs, nil)
+	if err != nil {
+		log.Printf("[dingtalk] profile learning skipped: %v", err)
+		return
+	}
+	var lines []string
+	for _, ln := range strings.Split(reply.Content, "\n") {
+		ln = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ln), "-"))
+		if ln != "" {
+			lines = append(lines, ln)
+		}
+	}
+	if err := b.store.LearnProfile(staffID, nick, lines); err != nil {
+		log.Printf("[dingtalk] persist profile failed: %v", err)
+	} else {
+		log.Printf("[dingtalk] learned profile for %s (%d lines)", nick, len(lines))
+	}
 }
 
 // processStreaming runs the agent loop, streaming answer deltas into the card
 // (throttled — one API push per flushInterval, not one per token).
-func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataModel, text string, card *aiCard) (string, error) {
+func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string, card *aiCard) (string, error) {
 	writer := newCardWriter(card)
-	reply, newHistory, err := b.loop.RunStreaming(ctx, text, b.takeHistory(m.ConversationId), writer.onDelta)
+	reply, newHistory, err := b.loop.RunStreaming(ctx, text, b.takeHistory(m.ConversationId), writer.onDelta, sysExtra)
 	if err != nil {
 		return "", err
 	}
@@ -336,7 +422,7 @@ func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataMo
 	return filtered, nil
 }
 
-func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel, text string) string {
+func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string) string {
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[dingtalk] panic in agent loop: %v", r)
@@ -344,7 +430,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 		}
 	}()
 
-	reply, newHistory, err := b.loop.Run(ctx, text, b.takeHistory(m.ConversationId))
+	reply, newHistory, err := b.loop.Run(ctx, text, b.takeHistory(m.ConversationId), sysExtra)
 	if err != nil {
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
 		b.reply(ctx, m, "Sorry, that request failed. Please try again in a moment.")
@@ -358,6 +444,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 		filtered = "Sorry, I could not produce an answer for that."
 	}
 	b.reply(ctx, m, filtered)
+	b.learnLater(m)
 	return filtered
 }
 
