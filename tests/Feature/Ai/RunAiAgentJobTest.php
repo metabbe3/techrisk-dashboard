@@ -589,7 +589,9 @@ class RunAiAgentJobTest extends TestCase
     public function test_include_corpus_skips_block_when_corpus_never_built(): void
     {
         // No refresh() — corpus has never been built. The run must still
-        // complete; the block is simply absent.
+        // complete; the block is simply absent. Fake the disk too: the corpus
+        // lives on the real `local` disk, so dev-built files would leak in.
+        Storage::fake('local');
         Http::fake(['*/chat/completions' => Http::response([
             'choices' => [['message' => ['content' => 'ok']]],
         ])]);

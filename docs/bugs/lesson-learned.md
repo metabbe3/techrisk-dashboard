@@ -1739,3 +1739,69 @@ connection, at the exact moment they were trying to fix it.
       round-trip and was never exercised until the feature tests faked it
 
 ---
+
+### [BUG-031] - String env values into typed internal functions: AI web search silently returned "no results" once .env set AI_SEARCH_TIMEOUT / AI_SEARCH_MAX_RESULTS
+
+**Date:** 2026-11-10
+**Discovered By:** Pre-merge full-suite run on the feature branch — 2 AI
+tests failing on a tree that was green on clean HEAD (environment drift,
+not the branch's changes)
+**Severity:** Medium
+**Status:** Resolved
+
+### Description
+`WebSearchService::searchViaGemini()` collapsed to the "no relevant
+public results" fallback on EVERY call once .env gained
+`AI_SEARCH_TIMEOUT=15` and `AI_SEARCH_MAX_RESULTS=8`. Two TypeError
+layers, both swallowed by the broad catch in `search()` and converted
+into the benign empty-result fallback: first
+`PendingRequest::timeout('15')` (int|float), then — after that cast —
+`array_slice(..., '8')` in `parseGeminiResponse()` (int $length). No
+error surfaced anywhere a human reads; the only visible symptom was the
+fenced-context assertions in `ChatPersonaParityTest` failing. Tests
+passed until the .env gained those vars — environments that never set
+them were fine.
+
+### Root Cause
+Same family as BUG-021 (strict_types + string into a typed function),
+one layer up the config chain: `config()` returns env values AS
+STRINGS — `env('AI_SEARCH_TIMEOUT')` is `'15'`, not `15`. The config
+reads for `ai.search.timeout` and `ai.search.max_results` had no
+`(int)` cast while their sibling reads in the same file
+(`max_parallel_queries`, `max_context_chars`, `relevance_threshold`,
+`parallel_timeout`) did — the vars were added to config/ai.php later,
+without the cast convention. The typed-literal defaults in
+config/ai.php are harmless; only env-provided values break, so the bug
+hides until someone sets the var. And a TypeError thrown mid-parse is
+caught-and-degraded into "no results" — a crashed fetch indistinguishable
+from an empty result set.
+
+### Fix
+- `WebSearchService`: `(int)` casts at the four unguarded numeric config
+  reads — `ai.search.timeout` (×2) and `ai.search.max_results` (×2) —
+  each with a one-line comment naming the trap ("Env values are
+  strings — …").
+- `RunAiAgentJobTest::test_include_corpus_skips_block_when_corpus_never_built`
+  gained `Storage::fake('local')`: the corpus lives on the REAL local
+  disk (phpunit forces CACHE_STORE=array, which hides the manifest but
+  not the files), so dev-built corpus files leaked into the test and
+  flipped its count assertion.
+- Pint applied to `WebSearchService` (pre-existing style debt — the
+  file pre-dated the current Pint ruleset; HEAD's copy already failed
+  `--test` with the same fixers).
+
+### Prevention Checklist
+- [x] Any `config()` feeding a typed internal function (timeout, slice
+      length, limit, threshold) is cast at the READ SITE — never trust
+      an env-backed value's type
+- [x] Grep pattern for the next sweep: `config\('ai\.` — every numeric
+      read carries a cast
+- [x] Search/parse paths must not catch-and-degrade a TypeError into an
+      empty result set silently: the fallback DOES log the error string,
+      but treat "always-empty search" in prod as a crash signal, not a
+      content problem
+- [x] Run the full suite on the HOST (where .env carries the real vars)
+      before merging — the Docker container's env differs and hides
+      env-drift bugs like this one
+
+---
