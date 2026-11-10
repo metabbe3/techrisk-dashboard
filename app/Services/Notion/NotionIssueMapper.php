@@ -22,6 +22,46 @@ class NotionIssueMapper
         return str_replace('Summary of Incident - ', '', $name);
     }
 
+    /**
+     * The sync's stored title format (owner 2026-11-09): the issue's date
+     * prefixes the cleaned name — "2026 Nov 09 - timeout to database". A
+     * name already carrying the format is never doubled.
+     */
+    public static function datedTitle(string $name, Carbon $date): string
+    {
+        return $date->format('Y M d').' - '.self::stripDatePrefix(self::cleanTitle($name));
+    }
+
+    /**
+     * Remove ANY leading date prefix from a title — the sync's own
+     * "Y M d - " format AND the record's own "9 November 2026 - " style
+     * (195/300 record titles, round 7; the live doubled title 2026-11-09).
+     * Every title comparison strips it from BOTH sides — a re-synced raw
+     * name must still match a prefixed stored title (the page-ID net catches
+     * the same page; this keeps the name net working for re-created rows).
+     * Repeats so both prefixes stacked strip too. A title that is ONLY a
+     * date keeps it; a separator is required so a title that merely mentions
+     * a date stays intact.
+     */
+    public static function stripDatePrefix(string $title): string
+    {
+        while (true) {
+            $stripped = preg_replace(
+                '/^(?:\d{4} [A-Za-z]{3} \d{2}|\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2}|\w+\s+\d{1,2},?\s+\d{4})\s*[-–—:]\s*/',
+                '',
+                $title,
+            ) ?? $title;
+
+            // No match (preg_replace returns the subject) or nothing left
+            // (the title was only a date) — done.
+            if ($stripped === $title || blank($stripped)) {
+                return $title;
+            }
+
+            $title = $stripped;
+        }
+    }
+
     /** Parse "Month DD, YYYY" (Notion's format) with a generic fallback. */
     public static function parseNotionDate(string $dateString): Carbon
     {
@@ -78,11 +118,11 @@ class NotionIssueMapper
      */
     public static function findDuplicateByTitle(string $name): ?Incident
     {
-        $normalizedTitle = StringHelper::normalizeForComparison($name);
+        $normalizedTitle = StringHelper::normalizeForComparison(self::stripDatePrefix($name));
 
         return Incident::query()
             ->get()
-            ->first(fn (Incident $incident) => StringHelper::normalizeForComparison((string) $incident->title) === $normalizedTitle);
+            ->first(fn (Incident $incident) => StringHelper::normalizeForComparison(self::stripDatePrefix((string) $incident->title)) === $normalizedTitle);
     }
 
     /**
@@ -95,7 +135,7 @@ class NotionIssueMapper
     {
         return Incident::query()
             ->pluck('title')
-            ->mapWithKeys(fn ($title) => [StringHelper::normalizeForComparison((string) $title) => true])
+            ->mapWithKeys(fn ($title) => [StringHelper::normalizeForComparison(self::stripDatePrefix((string) $title)) => true])
             ->all();
     }
 }
