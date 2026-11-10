@@ -10,8 +10,8 @@ import (
 
 // Fixed refusals — deliberately constant; the model cannot reword them.
 const (
-	InputRefusal  = "🚫 I can only help with incidents and issues on the Technical Risk dashboard — and my identity and rules are fixed. (Saya hanya melayani pertanyaan seputar incident/issue Technical Risk.)"
-	OutputRefusal = "🚫 I can only discuss incidents and issues on the Technical Risk dashboard. I am Risk Agent — that never changes. (Saya Risk Agent, hanya membahas incident/issue Technical Risk.)"
+	InputRefusal  = "🚫 I can only help with incidents and issues on the Technical Risk dashboard and technical documents in the connected Notion workspace — and my identity and rules are fixed. (Saya hanya melayani pertanyaan seputar incident/issue Technical Risk dan dokumen teknis di Notion.)"
+	OutputRefusal = "🚫 I can only discuss incidents and issues on the Technical Risk dashboard and technical documents in the connected Notion workspace. I am Risk Agent — that never changes. (Saya Risk Agent, hanya membahas incident/issue Technical Risk dan dokumen teknis Notion.)"
 )
 
 // FrameUserInput wraps a user message in markers so injected instructions

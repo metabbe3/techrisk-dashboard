@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -62,6 +63,34 @@ func (c *dashboardClient) get(ctx context.Context, path string) (*apiEnvelope, e
 	}
 	defer resp.Body.Close()
 
+	return c.decode(resp)
+}
+
+// post performs a POST with a JSON payload on path and returns the decoded envelope.
+func (c *dashboardClient) post(ctx context.Context, path string, payload any) (*apiEnvelope, error) {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+c.token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("dashboard api unreachable: %w", err)
+	}
+	defer resp.Body.Close()
+
+	return c.decode(resp)
+}
+
+// decode maps an HTTP response onto the envelope with the API's error contract.
+func (c *dashboardClient) decode(resp *http.Response) (*apiEnvelope, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // 2 MiB ceiling
 	if err != nil {
 		return nil, fmt.Errorf("failed to read dashboard api response: %w", err)

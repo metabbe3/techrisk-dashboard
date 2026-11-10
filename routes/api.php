@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ActionImprovementController;
 use App\Http\Controllers\Api\Ai\ExportController;
 use App\Http\Controllers\Api\IncidentController;
+use App\Http\Controllers\Api\NotionController;
 use App\Http\Controllers\Api\TokenController;
 use Illuminate\Support\Facades\Route;
 
@@ -54,6 +55,14 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
         Route::get('incident-types', [IncidentController::class, 'getIncidentTypes']);
         Route::get('categories', [IncidentController::class, 'getCategories']);
         Route::get('users', [IncidentController::class, 'getUsers']);
+    });
+
+    // Notion read-only proxy for the DingTalk agent (search / fetch / query —
+    // reuses the workspace OAuth server-side; rate limit editable in Admin → API Settings)
+    Route::prefix('v1/notion')->middleware('throttle:reference')->group(function () {
+        Route::post('search', [NotionController::class, 'search']);
+        Route::post('fetch', [NotionController::class, 'fetch']);
+        Route::post('query', [NotionController::class, 'query']);
     });
 
     // Action improvements read (rate limit editable in Admin → API Settings)

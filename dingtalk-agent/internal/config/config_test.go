@@ -8,7 +8,7 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 	t.Helper()
 	// Neutralize knobs first: t.Setenv restores only at test END, so without this
 	// a value from an earlier sub-test leaks into later ones (empty = unset for getVal).
-	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN"} {
+	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range set {
@@ -35,6 +35,9 @@ func TestDefaults(t *testing.T) {
 	}
 	if !cfg.WebToolsEnabled {
 		t.Error("WebToolsEnabled should default to true")
+	}
+	if !cfg.NotionToolsEnabled {
+		t.Error("NotionToolsEnabled should default to true")
 	}
 	if DefaultMaxReplyChars != 8000 || cfg.MaxReplyChars != 8000 {
 		t.Errorf("MaxReplyChars = %d (default %d), want 8000", cfg.MaxReplyChars, DefaultMaxReplyChars)
@@ -70,6 +73,39 @@ func TestWebToolsKillSwitch(t *testing.T) {
 	}
 	if cfg := loadEnv(t, with(base, "AGENT_WEB_TOOLS", "1")); !cfg.WebToolsEnabled {
 		t.Error("AGENT_WEB_TOOLS=1 must enable web tools")
+	}
+}
+
+func TestNotionToolsKillSwitch(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "s", "DASHBOARD_API_TOKEN": "t",
+	}
+	for _, off := range []string{"0", "false", "off", "no", "OFF"} {
+		if cfg := loadEnv(t, with(base, "AGENT_NOTION_TOOLS", off)); cfg.NotionToolsEnabled {
+			t.Errorf("AGENT_NOTION_TOOLS=%q must disable notion tools", off)
+		}
+	}
+	if cfg := loadEnv(t, with(base, "AGENT_NOTION_TOOLS", "1")); !cfg.NotionToolsEnabled {
+		t.Error("AGENT_NOTION_TOOLS=1 must enable notion tools")
+	}
+}
+
+func TestNotionDatabasesParsing(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "s", "DASHBOARD_API_TOKEN": "t",
+	}
+	cfg := loadEnv(t, with(base, "NOTION_DATABASES", "PRD=abc123 , TA = https://notion.so/db/x , broken no-equals, =noid , EMPTYID="))
+	want := map[string]string{"PRD": "abc123", "TA": "https://notion.so/db/x"}
+	if len(cfg.NotionDatabases) != len(want) {
+		t.Fatalf("NotionDatabases = %v, want %v", cfg.NotionDatabases, want)
+	}
+	for k, v := range want {
+		if cfg.NotionDatabases[k] != v {
+			t.Errorf("NotionDatabases[%s] = %q, want %q", k, cfg.NotionDatabases[k], v)
+		}
+	}
+	if cfg := loadEnv(t, base); cfg.NotionDatabases != nil {
+		t.Errorf("unset NOTION_DATABASES must stay nil, got %v", cfg.NotionDatabases)
 	}
 }
 

@@ -16,16 +16,21 @@ type ToolHandler func(argsJSON string) (string, error)
 type Tool struct {
 	Definition llm.ToolDefinition
 	Handler    ToolHandler
+	// ResultCapBytes caps this tool's result before it enters LLM context;
+	// 0 = the agent loop's default (MaxToolResultBytes).
+	ResultCapBytes int
 }
 
 // Registry manages the set of available tools and dispatches execution.
 type Registry struct {
-	mu    sync.RWMutex
-	tools map[string]Tool
+	mu     sync.RWMutex
+	tools  map[string]Tool
+	notion *notionTools // nil when the Notion tools are disabled
 }
 
 // NewRegistry initializes the registry with the dashboard API tools, plus the
-// web research tools when enabled (AGENT_WEB_TOOLS=0 to revoke).
+// web research tools when enabled (AGENT_WEB_TOOLS=0 to revoke) and the
+// read-only Notion doc tools when enabled (AGENT_NOTION_TOOLS=0 to revoke).
 func NewRegistry(cfg *config.Config) *Registry {
 	r := &Registry{
 		tools: make(map[string]Tool),
@@ -35,6 +40,9 @@ func NewRegistry(cfg *config.Config) *Registry {
 		r.registerGenerateTools(cfg)
 		if cfg.WebToolsEnabled {
 			r.registerWebTools()
+		}
+		if cfg.NotionToolsEnabled {
+			r.registerNotionTools(cfg)
 		}
 	}
 	return r
@@ -48,14 +56,27 @@ func (r *Registry) Has(name string) bool {
 	return ok
 }
 
-// Register adds a tool to the registry.
+// Register adds a tool to the registry (default result cap).
 func (r *Registry) Register(def llm.ToolDefinition, handler ToolHandler) {
+	r.RegisterCapped(def, handler, 0)
+}
+
+// RegisterCapped adds a tool with a per-tool result cap in bytes (0 = default).
+func (r *Registry) RegisterCapped(def llm.ToolDefinition, handler ToolHandler, capBytes int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.tools[def.Function.Name] = Tool{
-		Definition: def,
-		Handler:    handler,
+		Definition:     def,
+		Handler:        handler,
+		ResultCapBytes: capBytes,
 	}
+}
+
+// ResultCap returns the tool's result cap in bytes (0 = default, also when absent).
+func (r *Registry) ResultCap(name string) int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return r.tools[name].ResultCapBytes
 }
 
 // GetDefinitions returns the OpenAI tool definitions for all registered tools.

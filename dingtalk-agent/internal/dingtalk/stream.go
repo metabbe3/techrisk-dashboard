@@ -19,6 +19,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/ingest"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/memory"
+	"techrisk-dashboard/dingtalk-agent/internal/tools"
 )
 
 const (
@@ -323,6 +324,7 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
 		_ = card.fail(ctx)
 		_ = card.finish(ctx, "Sorry, that request failed. Please try again in a moment.")
+		b.learnNotion(m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
 		return ""
 	}
 	filtered = b.deliverGenerated(ctx, m, filtered)
@@ -330,6 +332,7 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 		log.Printf("[dingtalk] card finish failed (conversation %s): %v", m.ConversationId, err)
 	}
 	b.learnLater(m)
+	b.learnNotion(m)
 	return filtered
 }
 
@@ -414,6 +417,51 @@ func (b *Bot) learnProfile(ctx context.Context, staffID, nick string, history []
 	}
 }
 
+// learnNotion drains the Notion pages read this turn and summarizes them into
+// knowledge memory in the background — the same never-blocks contract as learnLater.
+func (b *Bot) learnNotion(m *chatbot.BotCallbackDataModel) {
+	if b.store == nil || b.llm == nil || b.loop == nil {
+		return
+	}
+	reads := b.loop.Registry().TakeNotionReads()
+	if len(reads) == 0 {
+		return
+	}
+	go b.summarizeNotionReads(context.Background(), m.SenderNick, reads)
+}
+
+// summarizeNotionReads asks the LLM for a compact per-page summary and appends
+// it to knowledge.jsonl (flows into the last-8 knowledge prompt automatically).
+// Errors are logged and skipped — learning must never break chatting.
+func (b *Bot) summarizeNotionReads(ctx context.Context, nick string, reads []tools.NotionRead) {
+	if len(reads) > 6 {
+		reads = reads[:6]
+	}
+	var pages strings.Builder
+	for _, r := range reads {
+		fmt.Fprintf(&pages, "PAGE %s (%s)\n%s\n\n", r.Title, r.URL, r.Excerpt)
+	}
+
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: "You maintain the assistant's document memory. Summarize the Notion pages below in at most 6 short lines total — per page: name + 1-2 key facts (decisions, risks, requirements). Output ONLY those lines."},
+		{Role: "user", Content: pages.String()},
+	}
+	reply, err := b.llm.ChatCompletion(ctx, msgs, nil)
+	if err != nil {
+		log.Printf("[dingtalk] notion learning skipped: %v", err)
+		return
+	}
+	file := "Notion: " + reads[0].Title
+	if len(reads) > 1 {
+		file = fmt.Sprintf("%s (+%d more)", file, len(reads)-1)
+	}
+	if err := b.store.AppendKnowledge(memory.KnowledgeEntry{
+		File: file, Author: nick, Summary: truncateStr(reply.Content, 2000),
+	}); err != nil {
+		log.Printf("[dingtalk] persist knowledge failed: %v", err)
+	}
+}
+
 // processStreaming runs the agent loop, streaming answer deltas into the card
 // (throttled — one API push per flushInterval, not one per token).
 func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string, card *aiCard) (string, error) {
@@ -438,6 +486,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 		if r := recover(); r != nil {
 			log.Printf("[dingtalk] panic in agent loop: %v", r)
 			b.reply(ctx, m, "Sorry, something went wrong while processing that request.")
+			b.learnNotion(m) // same leak as the error branch: a panic mid-turn must not strand its reads
 		}
 	}()
 
@@ -445,6 +494,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 	if err != nil {
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
 		b.reply(ctx, m, "Sorry, that request failed. Please try again in a moment.")
+		b.learnNotion(m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
 		return ""
 	}
 
@@ -457,6 +507,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 	filtered = b.deliverGenerated(ctx, m, filtered)
 	b.reply(ctx, m, filtered)
 	b.learnLater(m)
+	b.learnNotion(m)
 	return filtered
 }
 

@@ -115,9 +115,9 @@ func TestParseDeckSpec(t *testing.T) {
 // The 2026-11-10 prod outage was a raw-string Parameters: it double-encodes to
 // "parameters":"{…}" and the upstream 400s the WHOLE chat request.
 func TestAllToolSchemasFlat(t *testing.T) {
-	reg := NewRegistry(&config.Config{WebToolsEnabled: true})
+	reg := NewRegistry(&config.Config{WebToolsEnabled: true, NotionToolsEnabled: true})
 	defs := reg.GetDefinitions()
-	if len(defs) < 7 {
+	if len(defs) < 11 { // 3 dashboard + 2 web + 2 generate + 4 notion
 		t.Fatalf("expected the full fleet, got %d defs", len(defs))
 	}
 	for _, def := range defs {

@@ -40,6 +40,9 @@ func NewLoop(llmClient *llm.Client, registry *tools.Registry, maxIterations int)
 	}
 }
 
+// Registry exposes the tool registry (e.g. the bot drains Notion reads from it).
+func (l *Loop) Registry() *tools.Registry { return l.registry }
+
 type toolResult struct {
 	index      int
 	toolCallID string
@@ -76,6 +79,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		sys := SystemPrompt
 		if l.registry.Has("web_search") {
 			sys += "\n\n" + WebResearchPrompt
+		}
+		if l.registry.Has("notion_search") {
+			sys += "\n\n" + NotionPrompt
 		}
 		if l.registry.Has("generate_pdf_report") {
 			sys += "\n\n" + DeliverablesPrompt
@@ -149,8 +155,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 					output = fmt.Sprintf("Error executing tool: %v", err)
 				}
 
-				// Tool result truncation (cap 8000 bytes + footer)
-				truncated := TruncateToolOutput(output, MaxToolResultBytes)
+				// Tool result truncation (per-tool cap when registered — e.g.
+				// notion_read_page at 48k — else the 8000-byte default + footer)
+				truncated := TruncateToolOutput(output, l.registry.ResultCap(call.Function.Name))
 
 				// Secret redaction before adding to LLM context
 				redacted, _ := guardrail.Redact(truncated)

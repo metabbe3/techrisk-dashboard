@@ -54,6 +54,8 @@ chars.
 | `LLM_MAX_TOKENS` | no | `AI_WAR_ROOM_MAX_OUTPUT_TOKENS` → 16384; `0` omits `max_tokens` (escape hatch if a model rejects it) |
 | `AGENT_MAX_ITER` | no | 60 tool-call iterations (Hermes parity) |
 | `AGENT_WEB_TOOLS` | no | 1 — keyless web research; `0`/`off`/`false`/`no` unregisters both web tools |
+| `AGENT_NOTION_TOOLS` | no | 1 — read-only Notion doc tools (below); `0`/`off`/`false`/`no` unregisters all four |
+| `NOTION_DATABASES` | no | `NAME=<id>` comma list (e.g. `PRD=<id>,TA=<id>`) seeding the agent's database catalog |
 | `AGENT_AUTO_LEARN` | no | 1 — per-user preference learning: after each turn a background no-tools LLM call merges what the conversation revealed (language, format, standing instructions) into `data/profiles.json` (keyed by staffId, ≤8 lines × 150 chars, never wiped by an empty extraction); those lines are injected into that sender's system prompt only. Kill switch: `0`/`off` |
 | `AGENT_MAX_REPLY_CHARS` | no | 8000 — lower it if DingTalk rejects large markdown replies |
 | `DINGTALK_BOT_NAMES` | no | `Risk Agent` — strips whole-name @mentions in groups |
@@ -103,11 +105,41 @@ deferred remove, success or failure. Only summaries persist, never the file.
 - Pictures/audio/video are not handled in v1 (they arrive as other msgtypes
   and are ignored).
 
+## Notion (read-only workspace docs)
+
+Four tools proxy the Laravel v1 API's `/notion/*` endpoints, which reuse the
+dashboard's Notion OAuth — the agent never sees a Notion token. All read-only
+(POST requests, read semantics); `AGENT_NOTION_TOOLS=0` unregisters the set.
+
+| Tool | Endpoint | Notes |
+|---|---|---|
+| `notion_search(query)` | `POST /notion/search` | workspace keyword search → titles + URLs |
+| `notion_query_database(database, query)` | `POST /notion/query` | SQL against a NAMED database (or raw id/URL); rows capped at 100 by Notion — page with `WHERE createdTime >= '<last row createdTime>'` |
+| `notion_read_page(id_or_url)` | `POST /notion/fetch` | one page as Markdown; per-tool result cap 48k (others stay 8k) |
+| `notion_add_database(name, id)` | — | teaches the catalog a name; re-registers the query tool with the updated listing |
+
+**Catalog semantics:** named databases live in `<DataDir>/notion_catalog.json`
+(`{"databases": {name: {id, added_at}}}`). Seeds from `NOTION_DATABASES` are
+**upsert-only** — env config never deletes a taught name; `notion_add_database`
+adds/updates and persists, surviving restarts. Names match `^[A-Za-z0-9_-]{1,32}$`.
+An unknown name-like reference errors with the current catalog listing (no
+server call) so the LLM self-corrects.
+
+**Knowledge append:** every `notion_read_page` records a read (title, URL,
+3000-char excerpt); after the turn a background no-tools LLM call summarizes
+the pages (≤6) into `data/knowledge.jsonl` as `Notion: <first title>` — the
+same last-8 memory injected document uploads use.
+
+**Token:** the `DASHBOARD_API_TOKEN` needs the `notion` endpoint ability ticked
+in Filament → API Tokens (or an empty endpoint allowlist). A 403 with a
+"missing ability" message means the token, not the agent.
+
 ## Hard guardrails (owner directive 2026-11-10 — no kill switch, by design)
 
 The bot answers **only** about incidents/issues on the Technical Risk
-dashboard, its identity is fixed as **Risk Agent**, and it never writes
-poems/stories/essays/code/recipes or general-purpose content. Enforcement is
+dashboard, incident-related web research, and technical documents in the
+connected Notion workspace, its identity is fixed as **Risk Agent**, and it
+never writes poems/stories/essays/code/recipes or general-purpose content. Enforcement is
 three Go layers — model compliance is not required for any of them:
 
 1. **Input gate** (`guardrail.InputGate`, `stream.go` Handle): prompt-injection

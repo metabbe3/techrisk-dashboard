@@ -15,6 +15,7 @@ enum ApiEndpoint: string
     case AI_EXPORT = 'ai-export';
     case CATEGORIES = 'categories';
     case USERS = 'users';
+    case NOTION = 'notion';
 
     /**
      * Get all endpoints as an array for select options
@@ -39,6 +40,7 @@ enum ApiEndpoint: string
             self::AI_EXPORT => 'AI Bulk Export',
             self::CATEGORIES => 'Categories (Reference Data)',
             self::USERS => 'Users (Reference Data)',
+            self::NOTION => 'Notion (read-only docs)',
         };
     }
 
@@ -57,6 +59,7 @@ enum ApiEndpoint: string
             self::AI_EXPORT => 'api/v1/ai/export',
             self::CATEGORIES => 'api/v1/categories',
             self::USERS => 'api/v1/users',
+            self::NOTION => 'api/v1/notion',
         };
     }
 

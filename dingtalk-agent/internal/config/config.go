@@ -21,10 +21,12 @@ type Config struct {
 	LLMBaseURL           string   // OpenAI-compatible gateway (maps to the app's AI_API_BASE_URL)
 	LLMAPIKey            string
 	LLMModel             string
-	LLMMaxTokens         int  // max output tokens (War Room parity); 0 = omit the field
-	WebToolsEnabled      bool // web_search / web_fetch registered for the LLM
-	AutoLearn            bool // per-user preference profiles extracted from conversations
-	MaxReplyChars        int  // reply cap before truncation (DingTalk markdown size)
+	LLMMaxTokens         int               // max output tokens (War Room parity); 0 = omit the field
+	WebToolsEnabled      bool              // web_search / web_fetch registered for the LLM
+	NotionToolsEnabled   bool              // read-only Notion doc tools registered for the LLM
+	NotionDatabases      map[string]string // named Notion databases (NAME=<id>), seed for the agent's catalog
+	AutoLearn            bool              // per-user preference profiles extracted from conversations
+	MaxReplyChars        int               // reply cap before truncation (DingTalk markdown size)
 	MaxIterations        int
 	HistoryTTL           time.Duration // per-conversation memory retention
 	DataDir              string        // user registry + persistent history (empty = memory-only)
@@ -182,6 +184,26 @@ func LoadFromFile(envPath string) (*Config, error) {
 		autoLearn = false
 	}
 
+	notionTools := true
+	switch strings.ToLower(getVal("AGENT_NOTION_TOOLS", "1")) {
+	case "0", "false", "off", "no":
+		notionTools = false
+	}
+
+	// NOTION_DATABASES="PRD=<id>,TA=<id>" — comma split, first '=' split,
+	// trim; malformed entries are skipped.
+	var notionDBs map[string]string
+	if raw := getVal("NOTION_DATABASES", ""); raw != "" {
+		notionDBs = make(map[string]string)
+		for _, part := range strings.Split(raw, ",") {
+			name, id, ok := strings.Cut(part, "=")
+			name, id = strings.TrimSpace(name), strings.TrimSpace(id)
+			if ok && name != "" && id != "" {
+				notionDBs[name] = id
+			}
+		}
+	}
+
 	maxReply := DefaultMaxReplyChars
 	if replyStr := getVal("AGENT_MAX_REPLY_CHARS", ""); replyStr != "" {
 		if parsed, err := strconv.Atoi(replyStr); err == nil && parsed >= 500 {
@@ -209,6 +231,8 @@ func LoadFromFile(envPath string) (*Config, error) {
 		LLMModel:             model,
 		LLMMaxTokens:         maxTokens,
 		WebToolsEnabled:      webTools,
+		NotionToolsEnabled:   notionTools,
+		NotionDatabases:      notionDBs,
 		AutoLearn:            autoLearn,
 		MaxReplyChars:        maxReply,
 		MaxIterations:        maxIter,

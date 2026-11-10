@@ -74,6 +74,8 @@ func TestInputGateAllowsDashboardWork(t *testing.T) {
 		"call me if a new P1 comes in",
 		"the incident was caused by a bash script error",
 		"what code caused it — the python function?",
+		"summarize the PRD for the payment gateway",
+		"what does the TA say about the database migration",
 	} {
 		if got := InputGate(in); got != "" {
 			t.Errorf("dashboard work wrongly refused: %q (got %q)", in, got)
