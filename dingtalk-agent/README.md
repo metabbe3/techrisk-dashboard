@@ -1,0 +1,117 @@
+# dingtalk-agent
+
+DingTalk **stream-mode** AI agent for the Technical Risk Dashboard. An outbound
+WebSocket to DingTalk (works behind the VPN-only prod network — no public IP,
+no callback URL). Team members @mention the bot (or DM it 1:1), it answers
+from dashboard data via the Laravel v1 API, streaming the reply into a DingTalk
+AI card (typewriter), falling back to a one-shot webhook reply when cards
+aren't available.
+
+**Brain:** fork of [metabbe3/GoAgent](https://github.com/metabbe3/GoAgent) (MIT,
+see `LICENSE-GoAgent`). **Transport:** official
+[open-dingtalk/dingtalk-stream-sdk-go](https://github.com/open-dingtalk/dingtalk-stream-sdk-go) v0.9.2-beta.1 (v0.9.1 has a `send on closed channel` panic that kills the process on network wobble — fixed in the beta's channel-lifecycle rewrite; VPN-only prod would hit it constantly).
+
+## Fork surgery log
+
+Upstream commit: `b71ae8ee0b3d0874f4e20bead1b30ad8a7793446` (MIT).
+
+| Action | What |
+|---|---|
+| Kept (module path rewritten) | agent loop (8 iterations, 4-concurrent tool pool, 8 KB tool-result truncation, 60 K token pruning), guardrails (`secretredact`, `replyfilter`), OpenAI-compatible LLM client |
+| Deleted | telegram package, logengine, commandguard, pathguard, all 8 local-machine tools, `AllowShell` plumbing |
+| Added | `internal/dingtalk` (stream handler, @mention strip, allowlist, history+TTL, dedup, AI-card streaming, DM push), `internal/tools/dashboard.go` (3 read-only tools), env config, Dockerfile |
+
+The reply guardrail runs on **every** streamed card frame and the final card;
+the fallback webhook reply gets the same filter. Tool errors are returned to
+the LLM as content (`Error executing …`) so it can self-correct — upstream
+design, kept.
+
+## Tools (all the LLM can reach — GET-only, read-only)
+
+| Tool | Endpoint | Notes |
+|---|---|---|
+| `search_incidents` | `GET /incidents` | counts via `limit=1` + `meta.total`; single-sided dates auto-paired; limit capped at 100 |
+| `get_incident` | `GET /incidents-by-no/{no}` or `/incidents/{id}` | path segment sanitized to `[A-Za-z0-9_-]` |
+| `get_incident_markdown` | `GET /incidents-by-no/{no}/markdown` | base64-decoded for AI ingestion |
+
+API traps encoded in the tool layer (and tests): dates need **both** bounds or
+the server ignores them; omitted `limit` = full-table dump; `search` needs ≥2
+chars.
+
+## Env contract
+
+| Var | Required | Default / source |
+|---|---|---|
+| `DINGTALK_CLIENT_ID` / `DINGTALK_CLIENT_SECRET` | yes | DingTalk Open Platform app |
+| `DINGTALK_ALLOWLIST` | no | **empty = everyone** (access gated by the DingTalk app's visibility range); comma staffIds to narrow further |
+| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown` |
+| `DASHBOARD_API_BASE` | no | `http://nginx/api/v1` (compose) |
+| `LLM_BASE_URL` | no | `AI_API_BASE_URL` → gateway default |
+| `LLM_API_KEY` | no | `AI_API_KEY` (dashboard .env — compose maps it) |
+| `LLM_MODEL` | no | `AI_API_DEFAULT_MODEL` (placeholder values ignored) → **`glm-5.3-flashx`** |
+| `DINGTALK_BOT_NAMES` | no | `Risk Agent` — strips whole-name @mentions in groups |
+| `DINGTALK_DATA_DIR` | no | `data` — auto save/auto recall: who chatted (`users.jsonl`) + conversation history (`history.json`) survive restarts |
+| `HISTORY_TTL` | no | 12h per-conversation memory (last 12 messages) |
+
+Local dev: copy values into `dingtalk-agent.env` (git-ignored; loaded
+automatically). Compose maps root `.env`'s `AI_API_*` → `LLM_*`.
+
+**Known gap:** the Filament *AI Settings* page stores its values in the DB
+(`AiSetting`); this agent reads **env only**. Changing the model for the bot
+means changing `DINGTALK_MODEL`/env, not the AI Settings page.
+
+## Owner runbook
+
+1. **DingTalk app** (Open Platform → enterprise-internal app): note App
+   Key/Secret → `DINGTALK_CLIENT_ID/SECRET`. Enable the Robot, message receive
+   mode **Stream mode**, publish.
+2. **Permissions** on the app: robot send-message (`qyapi_robot_sendmsg`) for
+   proactive DMs; card streaming (`Card.Instance.Write` /
+   `Card.Streaming.Write`) for typewriter replies — without card perms the bot
+   still answers via webhook fallback.
+3. **API token**: Filament → API Tokens → `dingtalk-agent` with the three
+   abilities above → `DASHBOARD_API_TOKEN`.
+4. **Allowlist**: leave empty, have each user DM/mention the bot once, copy the
+   `staffId` from the deny log (`denied sender staffId=…`), set
+   `DINGTALK_ALLOWLIST`.
+5. **Deploy**: `docker compose up -d --build dingtalk-agent`; logs should show
+   the online line and stay connected (auto-reconnect is on).
+6. **Test DM delivery**: `docker compose exec dingtalk-agent /agent -dm <staffId> -dm-text "hello"`
+   (or `./agent -dm …` locally with `dingtalk-agent.env` present).
+
+## Document ingestion (send the bot a file)
+
+DM the bot a file (or send one in a group — must @mention it). Flow:
+download via `POST /v1.0/robot/messageFiles/download` (needs the same
+`qyapi_robot_sendmsg`-family app rights) → extract text → summarize /
+follow the sender's caption instruction → **the reply's summary is saved to
+`data/knowledge.jsonl`** and injected into every later system prompt (last 8
+docs, summary clamped) → **the downloaded file is deleted from disk** in a
+deferred remove, success or failure. Only summaries persist, never the file.
+
+- Formats: txt, md, csv, json, log, xml (plain); docx (zip → document.xml →
+  tag-strip); pdf (`ledongthuc/pdf`, pure Go — scanned/image PDFs yield "no
+  extractable text").
+- Caps: 15 MB download, 48,000 chars to the LLM, 2,000-char knowledge summary.
+- Pictures/audio/video are not handled in v1 (they arrive as other msgtypes
+  and are ignored).
+
+## Start
+
+Dev (build + run, loads `dingtalk-agent.env`): `./start.sh` — same idea as the
+dashboard's `clear_cache.sh`. Prod: compose service `dingtalk-agent`.
+
+## Reminder DMs (design, Laravel side)
+
+`reminders:send-incidents` and `reminders:send-action-improvements` already
+compute who to remind and funnel through `ReminderMail::send($pics, …)` — that
+funnel is the single hook point for a DingTalk channel (Laravel calls
+`POST /v1.0/robot/oToMessages/batchSend` directly with the app token; `userIds`
+= staffIds, max 20/call; email→staffId map in env). Do **not** re-derive
+"who's due" in Go — one rule, one surface (BUG-005 lesson).
+
+## Testing
+
+`go vet ./... && go test ./...` — all tests hermetic (httptest fakes for the
+LLM SSE stream, DingTalk OpenAPI, dashboard API). No Laravel changes; the
+1045-test baseline is untouched.

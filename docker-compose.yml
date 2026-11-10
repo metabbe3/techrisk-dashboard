@@ -188,6 +188,30 @@ services:
       find /app-logs -type f -name '*.log' -mtime +14 -delete 2>/dev/null;
       echo 'Janitor: done.'"
 
+  # DingTalk stream-mode AI agent (Go sidecar) — outbound WSS only, no ports.
+  dingtalk-agent:
+    build:
+      context: ./dingtalk-agent
+      dockerfile: Dockerfile
+    container_name: techrisk-dingtalk-agent
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    env_file:
+      - .env
+    environment:
+      LLM_BASE_URL: ${AI_API_BASE_URL:-}
+      LLM_API_KEY: ${AI_API_KEY:-}
+      LLM_MODEL: ${DINGTALK_MODEL:-}
+      DASHBOARD_API_BASE: http://nginx/api/v1
+    volumes:
+      - dingtalk-agent-data:/data
+    networks:
+      - techrisk-network
+
 networks:
   techrisk-network:
     driver: bridge
+
+volumes:
+  dingtalk-agent-data:

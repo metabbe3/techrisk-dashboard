@@ -45,6 +45,7 @@
 
 ## Active Projects
 
+<<<<<<< HEAD
 ### [PROJ-018] Start Investigation — a Notion investigation page per incident/issue
 
 **Status:** In Progress (code + tests done; live check + merge pending)
@@ -93,6 +94,41 @@ Owner request 2026-11-03: "Start Investigation" in the existing row kebab ("…"
 
 #### Progress Updates
 - 2026-11-03: Implemented on `feature/notion-start-investigation`, TDD throughout. Owner decisions settled up front: configurable parent page; reuse `In progress`; manual refresh (no scheduled sync); row kebab menu.
+
+---
+
+### [PROJ-019] DingTalk stream-mode AI agent (Go sidecar)
+
+**Status:** In Progress (dev smoke test)
+**Priority:** P2
+**Start Date:** 2026-11-10
+
+#### Description
+Interactive Q&A bot in DingTalk answering from dashboard data: @mention in a group or DM 1:1, the agent (fork of metabbe3/GoAgent, MIT) calls three read-only Laravel v1 API tools (`search_incidents`, `get_incident`, `get_incident_markdown`) and streams the reply into a DingTalk AI card (typewriter), falling back to a one-shot webhook reply. Stream mode = outbound WebSocket — works behind the VPN-only prod network, no public IP. Also ships a proactive DM push path (`oToMessages/batchSend`) tested via `./agent -dm <staffId>`, earmarked as an extra delivery channel for the existing `reminders:send-*` commands (hook at `ReminderMail::send()`, one rule one surface).
+
+#### Technical Approach
+- Zero Laravel code changes — data API only (`.env.example` keys + compose service are the only root-repo changes).
+- `dingtalk-agent/` Go module: official `dingtalk-stream-sdk-go` v0.9.2-beta.1 transport; upstream commit `b71ae8ee` surgery log in `dingtalk-agent/README.md`.
+- LLM via dashboard's AI gateway env (`AI_API_*` → `LLM_*`), default model `glm-5.3-flashx` (owner 2026-11-10).
+- Open access by default: empty allowlist = everyone in the app visibility range (owner directive 2026-11-10); per-conversation history (12 msgs, 12h TTL); msgId dedup; guardrails on every streamed frame.
+
+#### Tasks
+- [x] Fork surgery + 3 dashboard tools + stream handler + tests — Done
+- [x] AI-card streaming reply + webhook fallback — Done
+- [x] DM push path + `-dm` CLI — Done
+- [x] Dockerfile + compose service + `.env.example` + README — Done
+- [x] Document ingestion (send file → summarize → knowledge memory → delete file) + `start.sh` — Done
+- [ ] Live smoke test (dev app creds; owner DMs bot, staffId captured) — In Progress
+- [ ] Owner: mint API token, grant `qyapi_robot_sendmsg` + card perms — Pending
+- [ ] (Follow-up scope) DingTalk channel on `reminders:send-*`; auto-create skills — Backlog
+
+#### Blockers
+- Dev DingTalk credentials are temporary — owner rotates the secret after testing.
+
+#### Progress Updates
+- 2026-11-10: Built, `go vet`/`go test` green (hermetic); bot live-logged in with dev creds; awaiting owner first message to capture staffId.
+- 2026-11-10 (later): Live smoke verified — stream connect, allowlist inversion (empty = everyone, gated by app visibility; owner directive), staffId capture from deny logs, proactive DM via `oToMessages/batchSend` (2xx), interactive reply via webhook fallback (AI card blocked on `Card.Instance.Write` grant). Upgraded SDK v0.9.1 → v0.9.2-beta.1 (fixed `send on closed channel` panic killing the process on connection loss). Added persistent memory (`DINGTALK_DATA_DIR`: users.jsonl + history.json, auto save/recall across restarts). Data answers pending real `DASHBOARD_API_TOKEN`; reminder-DM Laravel channel still backlog.
+- 2026-11-10 (latest): Document ingestion shipped — file msg → `POST /v1.0/robot/messageFiles/download` (contract pinned live) → extract (txt/md/csv/json/log/xml/docx/pdf via `ledongthuc/pdf`) → summarize per sender caption → summary appended to `knowledge.jsonl` (last 8 injected into every system prompt) → downloaded file deleted on completion (deferred remove, success or failure; only summaries persist, never files). `./start.sh` = easy dev start (loads `dingtalk-agent.env`). All Go tests green. Awaiting owner file-send test; picture/audio msgtypes unsupported in v1.
 
 ---
 

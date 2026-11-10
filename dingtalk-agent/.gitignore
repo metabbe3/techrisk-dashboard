@@ -1,0 +1,9 @@
+# Local secrets — never commit. Compose supplies these via the root .env instead.
+dingtalk-agent.env
+
+# Build artifact (root-anchored so it never matches cmd/agent or internal/agent)
+/agent
+/dist/
+
+# Persistent memory (users + conversation history)
+/data/
