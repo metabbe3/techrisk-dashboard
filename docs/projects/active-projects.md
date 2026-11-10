@@ -45,6 +45,64 @@
 
 ## Active Projects
 
+### [PROJ-020] Incident list: one Export dropdown
+
+**Status:** Done
+**Priority:** P3
+**Start Date:** 2026-11-10
+
+#### Description
+Owner 2026-11-10: the Incidents list header carried two export buttons ("Export" + "Export Markdown ZIP") — merge them behind ONE dropdown, like the incident detail page's Export group (ViewIncident, 2026-11-04's same header declutter).
+
+#### Tasks
+- [x] TDD RED → GREEN: `IncidentMarkdownZipTest::test_both_exports_live_in_one_header_group` — both `export` and `export_markdown_zip` must live inside one ActionGroup labeled "Export" and neither may be a top-level header button (reflection on `getHeaderActions`, the ViewIncident group-test pattern; a dot-path `assertActionVisible('export.export_markdown_zip')` canNOT resolve because `ActionGroup::make()` takes no name). Full suite **1155 tests / 4,560 assertions** (2 known AI env failures + 5 deprecations only).
+- [x] `ListIncidents::getHeaderActions()`: the pair wrapped in `Actions\ActionGroup` — label "Export", sky `header-btn-export` styling kept; members relabeled artifact-first ("Excel Report" = the presets form, "Markdown ZIP" = the confirmation) — behavior untouched.
+- [x] Docs: exports.md preset-6 line, dependency-map `ExportActionSchema` row, testing-standards baseline bullet.
+- [x] Commit / push / PR — merged to main 2026-11-10 (owner ask).
+
+#### Dependencies
+- None.
+
+#### Progress Updates
+- 2026-11-10: Implemented on `feature/notion-issue-title-date` (same branch as the dated-title + connect-failure work).
+
+### [PROJ-021] Issue sync: dated issue titles
+
+**Status:** Done
+**Priority:** P3
+**Start Date:** 2026-11-09
+
+#### Description
+Owner request 2026-11-09: issues imported from the Notion sync store their title as `[date(yyyy mm dd)] - [title]` — "2026 Nov 09 - timeout to database". The date is the issue's own date (the row's `date_start`, falling back to `createdTime` — the same date `importRow()` already resolves for `incident_date`).
+
+#### Technical Approach
+- `NotionIssueMapper::datedTitle()` composes `"Y M d - " . stripDatePrefix(cleanTitle($name))` — the Notion "Summary of Incident - " prefix cleans first and a name already carrying the sync's own format is never doubled. `importRow()`'s create uses it (sync path ONLY — the shared `cleanTitle()` and the CSV importer's stored titles are untouched).
+- Dedupe sees through the prefix: `NotionIssueMapper::stripDatePrefix()` (`/^\d{4} [A-Za-z]{3} \d{2} - /`) is stripped from BOTH sides of every title comparison — `titleAlreadyExists()`, the in-run set, and the mapper's `findDuplicateByTitle()`/`existingNormalizedTitles()` — so a re-synced raw Notion name still matches a prefixed stored title (page-ID dedupe via `NotionSyncedPage` stays the primary net; the CSV importer's dedupe inherits the stripping through `findDuplicateByTitle()`).
+- Scope discipline: the prefix applies to the sync path only; dry-run `describeRow()` lines keep showing the raw Notion name.
+
+#### Tasks
+- [x] TDD RED: mapper unit tests (`datedTitle` composition + dedupe-through-prefix) and the service feature test (`test_imported_titles_carry_the_dated_prefix`, date_start and createdTime fallbacks) — failing for the right reasons — 2026-11-09
+- [x] GREEN: mapper `datedTitle()`/`stripDatePrefix()` + comparison stripping; service `titleAlreadyExists()` strip, in-run set strip, create via `datedTitle()` — 2026-11-09
+- [x] Existing stored-title asserts reworded to the prefixed format (7 asserts across 3 test files; poison-row `Incident::creating` matchers → `str_ends_with` since the created title now carries the prefix); dedupe tests untouched — they ARE the strip verification — 2026-11-09
+- [x] Pint; round chunk 244/1,416 green; **full suite 1150 tests / 4,541 assertions** (2 known AI env failures + 5 deprecations only) — 2026-11-09
+- [x] Docs: dependency-map `NotionIssueSyncService` row (dated-title rule), testing-standards baseline bullet, CLAUDE.md baseline — 2026-11-09
+- [x] **Live check feedback (2026-11-09, round 2):** (1) the sync's 500 (`Unknown column 'last_edited_at'`) was the edit-sweep migration `2026_11_04_000001` still **Pending on the local DB** (came in with the PROJ-018 merge) — applied locally (additive nullable column; prod migrate stays owner-only); the issue itself had imported fine; (2) **the composed title doubled the date** — the row's own name already carries "9 November 2026 - " (round 7's 195/300 lesson) → `stripDatePrefix()` now strips ANY leading date prefix (the sync's `Y M d - ` + the record's `DD Month YYYY - `/`YYYY-MM-DD - `/`Month D, YYYY - ` shapes, repeated so stacked pairs strip; date-only titles kept; separator required) on BOTH comparison sides, TDD (+3 tests; the service test reproduces the live row verbatim) — full suite **1153 tests / 4,550 assertions** (2 known AI env failures + 5 deprecations only); the two live doubled rows (330, 334) re-composed to the single-prefix format on the local DB
+- [x] **Operator feedback round 3 (2026-11-09, sync message):** (1) **the edit sweep's "N refreshed" segment is GONE from the message** (owner: "50 refreshed tidak perlu ditampilkan") — the sweep still runs, logs, and records edit times, it just doesn't report itself; (2) **restores say "Restored"** — "Restored N deleted issue(s)" segment (dry run: "Would restore N deleted issue(s)"), restore-only runs lead with it (no "Imported" lead; "No new issues" only when nothing at all happened); the return's `created` stays the total. TDD (5 message asserts reworded + 2 added) — full suite **1153 tests / 4,552 assertions**. (3) **Why restores are slow — answered, no change:** 2 sequential hosted-MCP round trips per page (the `WHERE url LIKE` lookup + the body fetch, ~1–3s each, no batch endpoint), the picker flow double-looks-up every picked page, and — until the edit-time backfill finishes (was 106 pages left, ≤50/run) — every sync also carries the 50-page × 300ms-paced backfill wave. Nothing to fix unless asked.
+- [x] **Connect-timeout round 4 (2026-11-10):** the operator's Connect attempt died UNHANDLED — `ConnectionException`, `cURL error 28: Connection timed out after 2002 milliseconds … https://mcp.notion.com/token` — right after authorizing in Notion. **Root cause in the vendored package, not our config:** `laravel/mcp` v1.1.1's `InteractsWithOAuthEndpoints::oAuthRequest()` hardcodes `->timeout(5)->connectTimeout(2)` on every OAuth request (token exchange AND discovery), and the vendor Connect/Callback route closures call `exchangeCallback()` with no try/catch — a TLS handshake just over 2s (the sync worked minutes earlier from the same container) escapes as a raw 500; v1.1.2 (latest) still doesn't make the timeouts configurable, so no vendor-side knob exists. **Two app-side guards, no vendor coupling:** (1) `AppServiceProvider::boot()` registers ONE scoped Guzzle global middleware raising `connect_timeout` → 10 for every request to the `notion.mcp_url` host only; (2) `bootstrap/app.php` gains a `ConnectionException` renderable beside the existing `OAuthException` one (danger notification "Notion connection failed" + redirect to NotionSettings — click Connect again; the existing renderable's guard widened `mcp/oauth/*` → `mcp/*` so the Connect route renders friendly too). TDD (+2 tests in `McpOauthConnectFailureTest`: the middleware test walks the app's real global stack, the renderer test drives `ExceptionHandler::render`) — full suite **1155 tests / 4,557 assertions** (2 known AI env failures + 5 deprecations only).
+- [x] Commit / push / PR — merged to main 2026-11-10 (owner ask; renumbered PROJ-019 → PROJ-021, PROJ-019 was taken by main's DingTalk agent)
+- [ ] Next real sync: imported titles read "2026 Nov 09 - Multiple App Error Top Spiking" (single date)
+
+#### Dependencies
+- None (rides the existing PROJ-017 sync path)
+
+#### Blockers
+- None
+
+#### Progress Updates
+- 2026-11-09: Implemented on `feature/notion-issue-title-date`, TDD throughout. RED confirmed (mapper error: `datedTitle` missing; service failures: unprefixed titles), GREEN on the round chunk, full suite 1150/4,541 with only the 2 documented env failures.
+
+---
+
 ### [PROJ-018] Start Investigation — a Notion investigation page per incident/issue
 
 **Status:** In Progress (code + tests done; live check + merge pending)
