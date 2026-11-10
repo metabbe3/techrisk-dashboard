@@ -23,15 +23,27 @@ type Registry struct {
 	tools map[string]Tool
 }
 
-// NewRegistry initializes the registry with the dashboard API tools.
+// NewRegistry initializes the registry with the dashboard API tools, plus the
+// web research tools when enabled (AGENT_WEB_TOOLS=0 to revoke).
 func NewRegistry(cfg *config.Config) *Registry {
 	r := &Registry{
 		tools: make(map[string]Tool),
 	}
 	if cfg != nil {
 		r.registerDashboardTools(cfg)
+		if cfg.WebToolsEnabled {
+			r.registerWebTools()
+		}
 	}
 	return r
+}
+
+// Has reports whether a tool with that name is registered.
+func (r *Registry) Has(name string) bool {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	_, ok := r.tools[name]
+	return ok
 }
 
 // Register adds a tool to the registry.

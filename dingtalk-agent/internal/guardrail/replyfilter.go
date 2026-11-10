@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	MaxReplyLength   = 3800
+	MaxReplyLength   = 8000
 	TruncationFooter = "\n\n_(truncated — type \"more\")_"
 )
 
@@ -31,8 +31,18 @@ var (
 // 1. Redacts sensitive secrets, keys, and tokens.
 // 2. Strips internal reasoning markup, HTML comments, <s> tags, and raw tool call fences.
 // 3. Sanitizes accidental quotations of system instructions.
-// 4. Caps reply length to MaxReplyLength (3800 chars) with a friendly truncation footer.
+// 4. Caps reply length to MaxReplyLength (8000 chars, configurable via
+// FilterReplyCap) with a friendly truncation footer.
 func FilterReply(reply string) string {
+	return FilterReplyCap(reply, MaxReplyLength)
+}
+
+// FilterReplyCap is FilterReply with an explicit reply cap (cfg.MaxReplyChars).
+func FilterReplyCap(reply string, maxLen int) string {
+	if maxLen <= 0 {
+		maxLen = MaxReplyLength
+	}
+
 	// Step 1: Secret redaction
 	redacted, _ := Redact(reply)
 
@@ -52,9 +62,9 @@ func FilterReply(reply string) string {
 	}
 	filtered = strings.TrimSpace(filtered)
 
-	// Step 4: Cap length to MaxReplyLength
-	if len(filtered) > MaxReplyLength {
-		cutIndex := MaxReplyLength - len(TruncationFooter)
+	// Step 4: Cap length to maxLen
+	if len(filtered) > maxLen {
+		cutIndex := maxLen - len(TruncationFooter)
 		if cutIndex > 0 {
 			// Find nearest newline or space before cutIndex if possible
 			lastNL := strings.LastIndex(filtered[:cutIndex], "\n")
@@ -63,7 +73,7 @@ func FilterReply(reply string) string {
 			}
 			filtered = strings.TrimRight(filtered[:cutIndex], "\r\n ") + TruncationFooter
 		} else {
-			filtered = filtered[:MaxReplyLength]
+			filtered = filtered[:maxLen]
 		}
 	}
 

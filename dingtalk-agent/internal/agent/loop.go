@@ -6,6 +6,7 @@ import (
 	"log"
 	"sync"
 
+	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
@@ -13,7 +14,7 @@ import (
 
 const (
 	MaxToolResultBytes = 8000
-	MaxContextChars    = 60000
+	MaxContextChars    = 100000 // ponytail: raised for multi-incident analysis; PruneContextBudget still guards
 	MaxConcurrentTools = 4
 )
 
@@ -30,7 +31,7 @@ type Loop struct {
 // NewLoop creates a new agent loop runner.
 func NewLoop(llmClient *llm.Client, registry *tools.Registry, maxIterations int) *Loop {
 	if maxIterations <= 0 {
-		maxIterations = 8
+		maxIterations = config.DefaultMaxIterations
 	}
 	return &Loop{
 		llmClient:     llmClient,
@@ -71,6 +72,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 	}
 	if !hasSystem {
 		sys := SystemPrompt
+		if l.registry.Has("web_search") {
+			sys += "\n\n" + WebResearchPrompt
+		}
 		if l.SystemExtras != nil {
 			if extra := l.SystemExtras(); extra != "" {
 				sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra

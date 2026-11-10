@@ -27,6 +27,11 @@ const (
 	historyKeepMsgs = 12
 	// seenCap bounds the msgId dedup map before a purge pass.
 	seenCap = 4096
+	// Message batching: rapid consecutive messages join into one agent turn.
+	// A batch closes after batchQuietWait with no new message, or at batchMaxWait.
+	batchQuietWait = 800 * time.Millisecond
+	batchMaxWait   = 2500 * time.Millisecond
+	inboxCap       = 64
 )
 
 // Bot bridges DingTalk stream messages to the agent loop.
@@ -44,7 +49,16 @@ type Bot struct {
 	seenMu sync.Mutex
 	seen   map[string]time.Time
 
+	inboxMu sync.Mutex
+	inboxes map[string]chan chatTask // per-conversation batching workers
+
 	sem chan struct{}
+}
+
+// chatTask is one inbound text message queued for a conversation worker.
+type chatTask struct {
+	m    *chatbot.BotCallbackDataModel
+	text string
 }
 
 type historyEntry struct {
@@ -67,6 +81,7 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 		api:     newOpenAPIClient(cfg),
 		history: make(map[string]historyEntry),
 		seen:    make(map[string]time.Time),
+		inboxes: make(map[string]chan chatTask),
 		sem:     make(chan struct{}, MaxConcurrentAgents),
 	}
 	if cfg.DataDir != "" {
@@ -116,6 +131,7 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	if fm, ok := parseFileMessage(m.Content); ok {
 		log.Printf("[dingtalk] file from %s (%s) in conversation %s: %s",
 			m.SenderNick, m.SenderStaffId, m.ConversationId, fm.FileName)
+		b.reply(ctx, m, fmt.Sprintf("📥 Got **%s** — reading it now…", fm.FileName))
 		b.sem <- struct{}{}
 		go func() {
 			defer func() { <-b.sem }()
@@ -131,14 +147,92 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	log.Printf("[dingtalk] message from %s (%s) in conversation %s: %s",
 		m.SenderNick, m.SenderStaffId, m.ConversationId, text)
 
-	// Block when all agent slots are busy; the SDK reads frames concurrently.
-	b.sem <- struct{}{}
-	go func() {
-		defer func() { <-b.sem }()
-		b.process(context.Background(), m, text)
-	}()
+	b.enqueue(m, text)
 
 	return nil, nil // ack the frame; the reply travels over the session webhook
+}
+
+// enqueue hands a message to its conversation's batching worker, creating the
+// worker on first contact. Never blocks: an overflowing inbox is refused with
+// a webhook apology instead of stalling the SDK's frame reader.
+func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string) {
+	b.inboxMu.Lock()
+	ch, ok := b.inboxes[m.ConversationId]
+	if !ok {
+		ch = make(chan chatTask, inboxCap)
+		b.inboxes[m.ConversationId] = ch
+		go b.conversationWorker(ch)
+	}
+	b.inboxMu.Unlock()
+
+	select {
+	case ch <- chatTask{m: m, text: text}:
+	default:
+		b.reply(context.Background(), m, "I'm backed up with queued messages — please retry in a moment.")
+	}
+}
+
+// conversationWorker is the single consumer for one conversation: it batches
+// rapid messages into one agent turn, answers, then picks up anything that
+// arrived while the LLM was running as the next (follow-up) turn.
+func (b *Bot) conversationWorker(ch chan chatTask) {
+	followUp := false // true when this batch arrived while a previous run was answering
+	for first := range ch {
+		batch := []chatTask{first}
+
+		// Debounce: close the batch after a quiet gap, or a hard deadline.
+		quiet := time.NewTimer(batchQuietWait)
+		hardStop := time.NewTimer(batchMaxWait)
+	collect:
+		for {
+			select {
+			case t, ok := <-ch:
+				if !ok {
+					break collect
+				}
+				batch = append(batch, t)
+				quiet.Reset(batchQuietWait)
+			case <-quiet.C:
+				break collect
+			case <-hardStop.C:
+				break collect
+			}
+		}
+		quiet.Stop()
+		hardStop.Stop()
+
+		b.runBatch(batch, followUp)
+		followUp = len(ch) > 0 // messages queued during the run become a follow-up turn
+	}
+}
+
+// runBatch turns a batch into one agent call. The LAST message's callback model
+// is used for replies (freshest session webhook).
+func (b *Bot) runBatch(batch []chatTask, followUp bool) {
+	m := batch[len(batch)-1].m
+
+	var sb strings.Builder
+	for i, t := range batch {
+		if i > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(t.text)
+	}
+	text := sb.String()
+	if len(batch) > 1 {
+		text = fmt.Sprintf("[The user sent %d messages in quick succession — treat them as ONE combined request.]\n\n%s", len(batch), text)
+	}
+
+	ack := "👌 On it — working on that…"
+	if followUp {
+		ack = "👌 Got it — added to the current task, continuing…"
+	} else if len(batch) > 1 {
+		ack = fmt.Sprintf("👌 Got %d messages — working on them together…", len(batch))
+	}
+
+	b.sem <- struct{}{}
+	defer func() { <-b.sem }()
+	b.process(context.Background(), m, text, ack)
 }
 
 // processFile handles a chat-uploaded document: download, extract text,
@@ -173,7 +267,7 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 
 	content := fmt.Sprintf("[The user attached the document %q. Its text follows.]\n\n%s\n\n[End of document. User instruction: %s]",
 		fm.FileName, ingest.Truncate(text), orDefault(caption, "Summarize this document."))
-	reply := b.process(ctx, m, content)
+	reply := b.process(ctx, m, content, "") // file path already acked at Handle time
 
 	if b.store != nil && reply != "" {
 		if err := b.store.AppendKnowledge(memory.KnowledgeEntry{
@@ -185,7 +279,9 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 }
 
 // process runs one agent turn and returns the guarded reply text ("" on failure).
-func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text string) string {
+// ack, when non-empty, is webhoked as an instant receipt on the fallback path
+// (when the AI card is unavailable, nothing else signals "task accepted").
+func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text, ack string) string {
 	if b.store != nil { // auto save who chats
 		if err := b.store.AppendUser(memory.UserRecord{
 			StaffID: m.SenderStaffId, Nick: m.SenderNick,
@@ -202,6 +298,9 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 	card, err := newAICard(ctx, b.api, m, title)
 	if err != nil {
 		log.Printf("[dingtalk] AI card unavailable, falling back to webhook reply: %v", err)
+		if ack != "" {
+			b.reply(ctx, m, ack)
+		}
 		return b.processPlain(ctx, m, text)
 	}
 
@@ -229,7 +328,7 @@ func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataMo
 
 	b.saveHistory(m.ConversationId, newHistory)
 
-	filtered := guardrail.FilterReply(reply)
+	filtered := guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars)
 	if filtered == "" {
 		filtered = "Sorry, I could not produce an answer for that."
 	}
@@ -254,7 +353,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 
 	b.saveHistory(m.ConversationId, newHistory)
 
-	filtered := guardrail.FilterReply(reply)
+	filtered := guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars)
 	if filtered == "" {
 		filtered = "Sorry, I could not produce an answer for that."
 	}

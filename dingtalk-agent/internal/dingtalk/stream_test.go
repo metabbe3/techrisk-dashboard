@@ -3,6 +3,7 @@ package dingtalk
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -172,15 +173,22 @@ func TestHandleEndToEnd(t *testing.T) {
 		t.Fatalf("handle error: %v", err)
 	}
 
-	deadline := time.Now().Add(3 * time.Second)
-	for {
+	deadline := time.Now().Add(5 * time.Second)
+	gotAnswer, gotAck := false, false
+	for !gotAnswer && time.Now().Before(deadline) {
 		mu.Lock()
-		got := len(replyBodies)
-		mu.Unlock()
-		if got > 0 || time.Now().After(deadline) {
-			break
+		for _, b := range replyBodies {
+			if strings.Contains(b, "P1 incidents") {
+				gotAnswer = true
+			}
+			if strings.Contains(b, "On it") {
+				gotAck = true
+			}
 		}
-		time.Sleep(10 * time.Millisecond)
+		mu.Unlock()
+		if !gotAnswer {
+			time.Sleep(10 * time.Millisecond)
+		}
 	}
 
 	mu.Lock()
@@ -188,12 +196,106 @@ func TestHandleEndToEnd(t *testing.T) {
 	if len(replyBodies) == 0 {
 		t.Fatal("no reply was delivered to the session webhook")
 	}
-	if !strings.Contains(replyBodies[0], "P1 incidents") {
-		t.Errorf("reply body does not carry the agent answer: %s", replyBodies[0])
+	if !gotAck {
+		t.Errorf("no receipt ack was delivered: %v", replyBodies)
+	}
+	if !gotAnswer {
+		t.Errorf("no body carries the agent answer: %v", replyBodies)
 	}
 
 	// Conversation history must now exist for the next turn.
 	if hist := bot.takeHistory("cid-e2e"); len(hist) == 0 {
 		t.Error("history not saved after a successful turn")
+	}
+}
+
+// TestBatchingJoinsRapidMessages verifies that messages sent in quick
+// succession become ONE combined LLM call, not two racing answers.
+func TestBatchingJoinsRapidMessages(t *testing.T) {
+	var mu sync.Mutex
+	var llmCalls []string // user content of each LLM request
+	var replyBodies []string
+
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		replyBodies = append(replyBodies, string(body))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhook.Close()
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The AI-card attempt also lands on this host; count only real LLM calls.
+		if !strings.Contains(r.URL.Path, "chat/completions") {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			Messages []llm.ChatMessage `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		var userText string
+		for _, m := range req.Messages {
+			if m.Role == "user" {
+				userText = m.Content
+			}
+		}
+		mu.Lock()
+		llmCalls = append(llmCalls, userText)
+		mu.Unlock()
+
+		resp := llm.ChatResponse{
+			Choices: []llm.ChatChoice{{
+				Message:      llm.ChatMessage{Role: "assistant", Content: "Combined answer."},
+				FinishReason: "stop",
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer llmSrv.Close()
+
+	cfg := &config.Config{
+		LLMBaseURL: llmSrv.URL, LLMAPIKey: "k", LLMModel: "m",
+		DingTalkOpenAPIHost: llmSrv.URL, // card fails fast → webhook fallback path
+	}
+	loop := agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
+	bot := NewBot(cfg, loop)
+
+	send := func(id, text string) {
+		_, err := bot.Handle(context.Background(), &chatbot.BotCallbackDataModel{
+			MsgId: id, SenderStaffId: "staff1", SenderNick: "Tester",
+			ConversationId: "cid-batch", SessionWebhook: webhook.URL,
+			Text: chatbot.BotCallbackDataTextModel{Content: text},
+		})
+		if err != nil {
+			t.Fatalf("handle %s: %v", id, err)
+		}
+	}
+	send("b1", "analyze October incidents")
+	send("b2", "include issues too")
+
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		mu.Lock()
+		done := len(llmCalls) > 0 && len(replyBodies) >= 2 // ack + answer
+		mu.Unlock()
+		if done || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(llmCalls) != 1 {
+		t.Fatalf("rapid messages must produce ONE llm call, got %d: %q", len(llmCalls), llmCalls)
+	}
+	if !strings.Contains(llmCalls[0], "analyze October incidents") || !strings.Contains(llmCalls[0], "include issues too") {
+		t.Errorf("combined call is missing a message: %q", llmCalls[0])
+	}
+	if !strings.Contains(llmCalls[0], "ONE combined request") {
+		t.Errorf("multi-message hint missing: %q", llmCalls[0])
 	}
 }

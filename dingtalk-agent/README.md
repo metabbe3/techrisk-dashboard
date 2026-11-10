@@ -33,6 +33,8 @@ design, kept.
 | `search_incidents` | `GET /incidents` | counts via `limit=1` + `meta.total`; single-sided dates auto-paired; limit capped at 100 |
 | `get_incident` | `GET /incidents-by-no/{no}` or `/incidents/{id}` | path segment sanitized to `[A-Za-z0-9_-]` |
 | `get_incident_markdown` | `GET /incidents-by-no/{no}/markdown` | base64-decoded for AI ingestion |
+| `web_search` | DuckDuckGo HTML (keyless) | top 6 results, title + snippet + link |
+| `web_fetch` | any public http(s) page | **SSRF-guarded** (dialer blocks loopback/private/link-local post-DNS), 256 KiB cap, tags stripped, ~7k chars |
 
 API traps encoded in the tool layer (and tests): dates need **both** bounds or
 the server ignores them; omitted `limit` = full-table dump; `search` needs ≥2
@@ -49,6 +51,10 @@ chars.
 | `LLM_BASE_URL` | no | `AI_API_BASE_URL` → gateway default |
 | `LLM_API_KEY` | no | `AI_API_KEY` (dashboard .env — compose maps it) |
 | `LLM_MODEL` | no | `AI_API_DEFAULT_MODEL` (placeholder values ignored) → **`glm-5.3-flashx`** |
+| `LLM_MAX_TOKENS` | no | `AI_WAR_ROOM_MAX_OUTPUT_TOKENS` → 16384; `0` omits `max_tokens` (escape hatch if a model rejects it) |
+| `AGENT_MAX_ITER` | no | 60 tool-call iterations (Hermes parity) |
+| `AGENT_WEB_TOOLS` | no | 1 — keyless web research; `0`/`off`/`false`/`no` unregisters both web tools |
+| `AGENT_MAX_REPLY_CHARS` | no | 8000 — lower it if DingTalk rejects large markdown replies |
 | `DINGTALK_BOT_NAMES` | no | `Risk Agent` — strips whole-name @mentions in groups |
 | `DINGTALK_DATA_DIR` | no | `data` — auto save/auto recall: who chatted (`users.jsonl`) + conversation history (`history.json`) survive restarts |
 | `HISTORY_TTL` | no | 12h per-conversation memory (last 12 messages) |

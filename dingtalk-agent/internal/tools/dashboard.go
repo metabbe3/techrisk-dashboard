@@ -158,16 +158,22 @@ func searchIncidentDef() llm.ToolDefinition {
 		Type: "function",
 		Function: llm.ToolFunctionDef{
 			Name: "search_incidents",
-			Description: "Search or count dashboard incidents. Response has meta.total (total matches — THE source " +
-				"for any count question: request limit=1 and read meta.total) and data (returned rows). " +
+			Description: "Search or count dashboard records (incidents AND issues). Response has meta.total (total matches — " +
+				"THE source for any count question: request limit=1 and read meta.total) and data (returned rows). " +
+				"IMPORTANT: meta.total is a RAW count — it includes severity G, 'Non Incident', and Issue rows. " +
+				"Official incident count = total(classification=Incident) − total(classification=Incident,severity=G) − " +
+				"total(classification=Incident,severity=Non Incident) as three limit=1 calls. " +
 				"Dates are YYYY-MM-DD; a range needs both start and end (a lone start_date means 'until today'). " +
-				"severity: P1|P2|P3|P4|X1|X2|X3|X4|G|Non Incident. status: Open|In progress|Finalization|Completed. " +
-				"classification: Incident|Issue. type: Tech|Non-tech. Official counts use P1–P4 + X1–X4 only.",
+				"severity: P1|P2|P3|P4 (tech) | X1|X2|X3|X4 (non-tech) | G (glitch) | Non Incident. " +
+				"status: Open|In progress|Finalization|Completed. classification: Incident|Issue. " +
+				"fund_status: Non fundLoss|Confirmed loss|Potential recovery|Fully recovered|Non Tech Loss. " +
+				"type: Tech|Non-tech. tags: label names (e.g. Outlier).",
 			Parameters: schema(
 				map[string]any{
 					"severity":                map[string]any{"type": "string", "description": "Severity filter (P1-P4, X1-X4, G, 'Non Incident')"},
 					"status":                  map[string]any{"type": "string", "description": "Incident status: Open, In progress, Finalization, Completed"},
 					"classification":          map[string]any{"type": "string", "description": "Incident or Issue"},
+					"fund_status":             map[string]any{"type": "string", "description": "Non fundLoss, Confirmed loss, Potential recovery, Fully recovered, or Non Tech Loss"},
 					"type":                    map[string]any{"type": "string", "description": "Tech or Non-tech"},
 					"tags":                    map[string]any{"type": "string", "description": "Comma-separated label names, e.g. payment,database"},
 					"search":                  map[string]any{"type": "string", "description": "Keyword (min 2 chars) matched against title, summary, and incident number"},
@@ -190,6 +196,7 @@ type searchArgs struct {
 	Severity         string   `json:"severity"`
 	Status           string   `json:"status"`
 	Classification   string   `json:"classification"`
+	FundStatus       string   `json:"fund_status"`
 	Type             string   `json:"type"`
 	Tags             string   `json:"tags"`
 	Search           string   `json:"search"`
@@ -242,6 +249,7 @@ func (c *dashboardClient) handleSearchIncidents(argsJSON string) (string, error)
 	setIfNotEmpty("severity", args.Severity)
 	setIfNotEmpty("incident_status", args.Status)
 	setIfNotEmpty("classification", args.Classification)
+	setIfNotEmpty("fund_status", args.FundStatus)
 	setIfNotEmpty("type", args.Type)
 	setIfNotEmpty("tags", args.Tags)
 	if len(strings.TrimSpace(args.Search)) >= 2 {

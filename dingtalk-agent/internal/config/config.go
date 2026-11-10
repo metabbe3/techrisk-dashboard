@@ -21,6 +21,9 @@ type Config struct {
 	LLMBaseURL           string   // OpenAI-compatible gateway (maps to the app's AI_API_BASE_URL)
 	LLMAPIKey            string
 	LLMModel             string
+	LLMMaxTokens         int  // max output tokens (War Room parity); 0 = omit the field
+	WebToolsEnabled      bool // web_search / web_fetch registered for the LLM
+	MaxReplyChars        int  // reply cap before truncation (DingTalk markdown size)
 	MaxIterations        int
 	HistoryTTL           time.Duration // per-conversation memory retention
 	DataDir              string        // user registry + persistent history (empty = memory-only)
@@ -30,7 +33,9 @@ type Config struct {
 const (
 	DefaultLLMBaseURL       = "https://api.openai.com/v1"
 	DefaultLLMModel         = "glm-5.3-flashx"
-	DefaultMaxIterations    = 8
+	DefaultMaxIterations    = 60    // Hermes parity — owner 2026-11-10
+	DefaultLLMMaxTokens     = 16384 // = War Room's code default (config/ai.php)
+	DefaultMaxReplyChars    = 8000
 	DefaultDashboardAPIBase = "http://nginx/api/v1"
 	DefaultEnvFile          = "dingtalk-agent.env"
 	DefaultHistoryTTL       = 12 * time.Hour
@@ -154,6 +159,29 @@ func LoadFromFile(envPath string) (*Config, error) {
 		}
 	}
 
+	// LLM_MAX_TOKENS wins, then the War Room's own env key (parity on prod), then
+	// the default. 0 = omit max_tokens entirely (escape hatch for models that
+	// reject it); invalid values fall back like maxIter.
+	maxTokens := DefaultLLMMaxTokens
+	if tokStr := getVal("LLM_MAX_TOKENS", getVal("AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "")); tokStr != "" {
+		if parsed, err := strconv.Atoi(tokStr); err == nil && parsed >= 0 {
+			maxTokens = parsed
+		}
+	}
+
+	webTools := true
+	switch strings.ToLower(getVal("AGENT_WEB_TOOLS", "1")) {
+	case "0", "false", "off", "no":
+		webTools = false
+	}
+
+	maxReply := DefaultMaxReplyChars
+	if replyStr := getVal("AGENT_MAX_REPLY_CHARS", ""); replyStr != "" {
+		if parsed, err := strconv.Atoi(replyStr); err == nil && parsed >= 500 {
+			maxReply = parsed
+		}
+	}
+
 	historyTTL := DefaultHistoryTTL
 	if ttlStr := getVal("AGENT_HISTORY_TTL", ""); ttlStr != "" {
 		if parsed, err := time.ParseDuration(ttlStr); err == nil && parsed > 0 {
@@ -172,6 +200,9 @@ func LoadFromFile(envPath string) (*Config, error) {
 		LLMBaseURL:           baseURL,
 		LLMAPIKey:            apiKey,
 		LLMModel:             model,
+		LLMMaxTokens:         maxTokens,
+		WebToolsEnabled:      webTools,
+		MaxReplyChars:        maxReply,
 		MaxIterations:        maxIter,
 		HistoryTTL:           historyTTL,
 		DataDir:              getVal("DINGTALK_DATA_DIR", DefaultDataDir),

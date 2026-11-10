@@ -56,6 +56,7 @@ func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 		"severity": "P1",
 		"status": "Completed",
 		"classification": "Incident",
+		"fund_status": "Confirmed loss",
 		"type": "Tech",
 		"tags": "payment,database",
 		"search": "outage",
@@ -69,6 +70,7 @@ func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 
 	for _, want := range []string{
 		"severity=P1", "incident_status=Completed", "classification=Incident",
+		"fund_status=Confirmed+loss",
 		"type=Tech", "tags=payment%2Cdatabase", "search=outage",
 		"start_date=2026-10-01", "end_date=2026-10-31", "limit=1",
 	} {

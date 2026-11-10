@@ -79,6 +79,14 @@ func TestChatCompletionMockServer(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer test-key" {
 			t.Errorf("expected Bearer test-key, got '%s'", r.Header.Get("Authorization"))
 		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if got, ok := body["max_tokens"].(float64); !ok || int(got) != 16384 {
+			t.Errorf("max_tokens = %v, want 16384", body["max_tokens"])
+		}
+		if _, present := body["temperature"]; present {
+			t.Error("temperature must never be sent (gateway models reject it)")
+		}
 
 		resp := ChatResponse{
 			ID: "chatcmpl-mock",
@@ -99,9 +107,10 @@ func TestChatCompletionMockServer(t *testing.T) {
 	defer server.Close()
 
 	cfg := &config.Config{
-		LLMBaseURL: server.URL,
-		LLMAPIKey:  "test-key",
-		LLMModel:   "test-model",
+		LLMBaseURL:   server.URL,
+		LLMAPIKey:    "test-key",
+		LLMModel:     "test-model",
+		LLMMaxTokens: 16384,
 	}
 
 	client := NewClient(cfg)

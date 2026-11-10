@@ -52,10 +52,11 @@ type ToolFunctionDef struct {
 
 // ChatRequest represents the payload sent to /chat/completions.
 type ChatRequest struct {
-	Model    string           `json:"model"`
-	Messages []ChatMessage    `json:"messages"`
-	Tools    []ToolDefinition `json:"tools,omitempty"`
-	Stream   bool             `json:"stream,omitempty"`
+	Model     string           `json:"model"`
+	Messages  []ChatMessage    `json:"messages"`
+	Tools     []ToolDefinition `json:"tools,omitempty"`
+	Stream    bool             `json:"stream,omitempty"`
+	MaxTokens int              `json:"max_tokens,omitempty"` // 0 = omit; temperature is NEVER sent (gateway models reject it)
 }
 
 // chatStreamChunk is one SSE frame of a streaming completion.
@@ -104,6 +105,7 @@ type Client struct {
 	baseURL    string
 	apiKey     string
 	model      string
+	maxTokens  int
 	httpClient *http.Client
 }
 
@@ -121,9 +123,10 @@ func NewClient(cfg *config.Config) *Client {
 	}
 
 	return &Client{
-		baseURL: baseURL,
-		apiKey:  cfg.LLMAPIKey,
-		model:   model,
+		baseURL:   baseURL,
+		apiKey:    cfg.LLMAPIKey,
+		model:     model,
+		maxTokens: cfg.LLMMaxTokens,
 		httpClient: &http.Client{
 			Timeout: 120 * time.Second,
 		},
@@ -133,9 +136,10 @@ func NewClient(cfg *config.Config) *Client {
 // ChatCompletion sends a request to the LLM provider and returns the assistant's reply.
 func (c *Client) ChatCompletion(ctx context.Context, messages []ChatMessage, tools []ToolDefinition) (*ChatMessage, error) {
 	reqBody := ChatRequest{
-		Model:    c.model,
-		Messages: messages,
-		Tools:    tools,
+		Model:     c.model,
+		Messages:  messages,
+		Tools:     tools,
+		MaxTokens: c.maxTokens,
 	}
 
 	data, err := json.Marshal(reqBody)
@@ -194,10 +198,11 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []ChatMessag
 	}
 
 	reqBody := ChatRequest{
-		Model:    c.model,
-		Messages: messages,
-		Tools:    tools,
-		Stream:   true,
+		Model:     c.model,
+		Messages:  messages,
+		Tools:     tools,
+		Stream:    true,
+		MaxTokens: c.maxTokens,
 	}
 
 	data, err := json.Marshal(reqBody)

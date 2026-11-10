@@ -47,8 +47,8 @@ func main() {
 		log.Printf("DINGTALK_ALLOWLIST empty — answering EVERYONE who can reach the bot (gated by the DingTalk app visibility range).")
 	}
 
-	log.Printf("Config: model=%s, api_base=%s, allowlist=%d sender(s), max_iter=%d",
-		cfg.LLMModel, cfg.DashboardAPIBase, len(cfg.DingTalkAllowlist), cfg.MaxIterations)
+	log.Printf("Config: model=%s, api_base=%s, allowlist=%d sender(s), max_iter=%d, max_tokens=%d, web=%v",
+		cfg.LLMModel, cfg.DashboardAPIBase, len(cfg.DingTalkAllowlist), cfg.MaxIterations, cfg.LLMMaxTokens, cfg.WebToolsEnabled)
 
 	llmClient := llm.NewClient(cfg)
 	toolRegistry := tools.NewRegistry(cfg)
