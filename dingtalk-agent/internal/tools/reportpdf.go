@@ -48,7 +48,11 @@ func (r *Registry) registerGenerateTools(cfg *config.Config) {
 		Function: llm.ToolFunctionDef{
 			Name:        "generate_deck",
 			Description: "Render a slide deck to a PPTX file and send it to the user. Use for 'make me a deck / PPT / slides of…' requests. Content must be composed from dashboard tool results — never fabricate data.",
-			Parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Deck title"},"slides":{"type":"array","maxItems":20,"items":{"type":"object","properties":{"heading":{"type":"string"},"bullets":{"type":"array","items":{"type":"string"}}},"required":["heading"]}}},"required":["title","slides"]}`,
+			// ponytail: schema stays minimal (no maxItems / nested required) — strict
+			// upstream tool validation (TencentException, 2026-11-10) rejects exotic
+			// keywords and 400s the WHOLE request; the 20-slide/15-bullet caps live
+			// in renderDeck instead.
+			Parameters: `{"type":"object","properties":{"title":{"type":"string","description":"Deck title"},"slides":{"type":"array","description":"Max 20 slides; each slide needs a heading, bullets are optional (max 15 each)","items":{"type":"object","properties":{"heading":{"type":"string"},"bullets":{"type":"array","items":{"type":"string"}}}}}},"required":["title","slides"]}`,
 		},
 	}, func(argsJSON string) (string, error) {
 		return handleGenerateDeck(dir, argsJSON)
