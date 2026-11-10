@@ -48,11 +48,12 @@ func (r *Registry) registerGenerateTools(cfg *config.Config) {
 		Function: llm.ToolFunctionDef{
 			Name:        "generate_deck",
 			Description: "Render a slide deck to a PPTX file and send it to the user. Use for 'make me a deck / PPT / slides of…' requests. Content must be composed from dashboard tool results — never fabricate data.",
-			// ponytail: schema stays minimal (no maxItems / nested required) — strict
-			// upstream tool validation (TencentException, 2026-11-10) rejects exotic
-			// keywords and 400s the WHOLE request; the 20-slide/15-bullet caps live
-			// in renderDeck instead.
-			Parameters: `{"type":"object","properties":{"title":{"type":"string","description":"Deck title"},"slides":{"type":"array","description":"Max 20 slides; each slide needs a heading, bullets are optional (max 15 each)","items":{"type":"object","properties":{"heading":{"type":"string"},"bullets":{"type":"array","items":{"type":"string"}}}}}},"required":["title","slides"]}`,
+			// ponytail: FLAT schema on purpose — the upstream behind glm-5.3-flashx
+			// strictly validates tool parameters and 400s the WHOLE request on any
+			// nested array/object (TencentException tools[N].function.parameters,
+			// 2026-11-10). Slides ride as one markdown string parsed in Go; caps
+			// enforced in renderDeck. TestAllToolSchemasFlat pins the whole fleet.
+			Parameters: `{"type":"object","properties":{"title":{"type":"string","description":"Deck title"},"slides":{"type":"string","description":"Slides as markdown, blocks separated by blank lines. First line of each block (## Heading or plain text) is the slide heading; following '- ' lines are its bullets. Max 20 slides, 15 bullets each."}},"required":["title","slides"]}`,
 		},
 	}, func(argsJSON string) (string, error) {
 		return handleGenerateDeck(dir, argsJSON)

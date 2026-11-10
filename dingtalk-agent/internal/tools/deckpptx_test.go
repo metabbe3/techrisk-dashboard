@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"techrisk-dashboard/dingtalk-agent/internal/config"
 )
 
 func readZip(t *testing.T, path string) map[string]string {
@@ -31,13 +33,9 @@ func readZip(t *testing.T, path string) map[string]string {
 
 func TestGenerateDeckTool(t *testing.T) {
 	dir := t.TempDir()
-	args, _ := json.Marshal(map[string]any{
-		"title": "Severity Breakdown 2026",
-		"slides": []map[string]any{
-			{"heading": "Overview & <Totals>", "bullets": []string{"12 P1", "30 P2"}},
-			{"heading": "Trends", "bullets": []string{"MTTR improving"}},
-			{"heading": "Actions"},
-		},
+	args, _ := json.Marshal(map[string]string{
+		"title":  "Severity Breakdown 2026",
+		"slides": "## Overview & <Totals>\n- 12 P1\n- 30 P2\n\n## Trends\n- MTTR improving\n\n## Actions",
 	})
 	out, err := handleGenerateDeck(dir, string(args))
 	if err != nil {
@@ -82,13 +80,83 @@ func TestGenerateDeckTool(t *testing.T) {
 }
 
 func TestGenerateDeckEmpty(t *testing.T) {
-	args, _ := json.Marshal(map[string]any{"title": "X", "slides": []map[string]any{}})
+	args, _ := json.Marshal(map[string]string{"title": "X", "slides": "   "})
 	out, err := handleGenerateDeck(t.TempDir(), string(args))
 	if err != nil {
 		t.Fatalf("handleGenerateDeck: %v", err)
 	}
 	if !strings.Contains(out, "Error") {
 		t.Errorf("empty slides should return an error note, got: %s", out)
+	}
+}
+
+func TestParseDeckSpec(t *testing.T) {
+	slides := parseDeckSpec("## Root Causes\n- pool exhausted\n- retry storm\n\nBare Heading\n- one\nplain line as bullet\n\n### Actions")
+	if len(slides) != 3 {
+		t.Fatalf("got %d slides, want 3: %+v", len(slides), slides)
+	}
+	if slides[0].Heading != "Root Causes" || len(slides[0].Bullets) != 2 {
+		t.Errorf("slide0 wrong: %+v", slides[0])
+	}
+	if slides[1].Heading != "Bare Heading" || len(slides[1].Bullets) != 2 {
+		t.Errorf("slide1 wrong: %+v", slides[1])
+	}
+	if slides[2].Heading != "Actions" || len(slides[2].Bullets) != 0 {
+		t.Errorf("slide2 wrong: %+v", slides[2])
+	}
+	if parseDeckSpec("  \n\n") != nil {
+		t.Errorf("whitespace-only spec must parse to nil")
+	}
+}
+
+// TestAllToolSchemasFlat pins every registered tool's parameters schema to the
+// flat subset strict upstream validators accept (string/number/integer/
+// boolean properties with type+description only). One nested array/object
+// 400s the WHOLE chat request — this failed in prod 2026-11-10.
+func TestAllToolSchemasFlat(t *testing.T) {
+	reg := NewRegistry(&config.Config{WebToolsEnabled: true})
+	defs := reg.GetDefinitions()
+	if len(defs) < 7 {
+		t.Fatalf("expected the full fleet, got %d defs", len(defs))
+	}
+	for _, def := range defs {
+		var raw []byte
+		switch v := def.Function.Parameters.(type) {
+		case string: // generate tools pass the schema as a raw JSON string
+			raw = []byte(v)
+		default:
+			var err error
+			if raw, err = json.Marshal(v); err != nil {
+				t.Fatalf("%s: cannot marshal parameters: %v", def.Function.Name, err)
+			}
+		}
+		var sch struct {
+			Type       string         `json:"type"`
+			Properties map[string]any `json:"properties"`
+		}
+		if err := json.Unmarshal(raw, &sch); err != nil {
+			t.Fatalf("%s: parameters not valid JSON: %v", def.Function.Name, err)
+		}
+		if sch.Type != "object" {
+			t.Errorf("%s: top-level type %q, want object", def.Function.Name, sch.Type)
+		}
+		for name, p := range sch.Properties {
+			pm, ok := p.(map[string]any)
+			if !ok {
+				t.Errorf("%s.%s: property is not an object", def.Function.Name, name)
+				continue
+			}
+			switch pm["type"] {
+			case "string", "number", "integer", "boolean":
+			default:
+				t.Errorf("%s.%s: type %v — nested/non-flat types 400 the whole request on strict upstreams", def.Function.Name, name, pm["type"])
+			}
+			for k := range pm {
+				if k != "type" && k != "description" {
+					t.Errorf("%s.%s: keyword %q not allowed (keep schemas flat)", def.Function.Name, name, k)
+				}
+			}
+		}
 	}
 }
 

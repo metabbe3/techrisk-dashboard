@@ -24,16 +24,50 @@ type deckSlide struct {
 	Bullets []string `json:"bullets"`
 }
 
+// parseDeckSpec turns the flat slides string (blank-line-separated blocks;
+// "## Heading" or bare first line = heading, "- " lines = bullets) into
+// slides. Keeps the LLM-facing schema flat — nested arrays 400 the whole
+// request on strict upstreams (see reportpdf.go).
+func parseDeckSpec(spec string) []deckSlide {
+	var slides []deckSlide
+	for _, block := range strings.Split(spec, "\n\n") {
+		var s deckSlide
+		for _, ln := range strings.Split(block, "\n") {
+			ln = strings.TrimSpace(ln)
+			switch {
+			case ln == "":
+			case strings.HasPrefix(ln, "#"):
+				if s.Heading == "" {
+					s.Heading = strings.TrimLeft(ln, "# ")
+				}
+			case strings.HasPrefix(ln, "- ") || strings.HasPrefix(ln, "* "):
+				s.Bullets = append(s.Bullets, strings.TrimSpace(ln[2:]))
+			default:
+				if s.Heading == "" {
+					s.Heading = ln
+				} else {
+					s.Bullets = append(s.Bullets, ln)
+				}
+			}
+		}
+		if s.Heading != "" || len(s.Bullets) > 0 {
+			slides = append(slides, s)
+		}
+	}
+	return slides
+}
+
 func handleGenerateDeck(dir, argsJSON string) (string, error) {
 	var args struct {
-		Title  string      `json:"title"`
-		Slides []deckSlide `json:"slides"`
+		Title  string `json:"title"`
+		Slides string `json:"slides"`
 	}
 	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
 	}
-	if len(args.Slides) == 0 {
-		return "Error: slides array is empty — compose the deck from tool results first.", nil
+	slides := parseDeckSpec(args.Slides)
+	if len(slides) == 0 {
+		return "Error: slides are empty — compose the deck from tool results first.", nil
 	}
 	title := orDefaultStr(args.Title, "Technical Risk Deck")
 
@@ -41,7 +75,7 @@ func handleGenerateDeck(dir, argsJSON string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := renderDeck(path, title, args.Slides); err != nil {
+	if err := renderDeck(path, title, slides); err != nil {
 		return "", err
 	}
 	rel, _ := filepath.Rel(dir, path)
