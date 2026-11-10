@@ -37,7 +37,7 @@ func (r *Registry) registerGenerateTools(cfg *config.Config) {
 		Function: llm.ToolFunctionDef{
 			Name:        "generate_pdf_report",
 			Description: "Render a report to a styled A4 PDF file and send it to the user. Use for 'make me a PDF report of…' requests. Content must be composed from dashboard tool results — never fabricate data.",
-			Parameters:  `{"type":"object","properties":{"title":{"type":"string","description":"Report title"},"markdown":{"type":"string","description":"Report body as markdown: # h1, ## h2, ### h3, - bullets, **bold**, plain paragraphs"}},"required":["title","markdown"]}`,
+			Parameters:  rawSchema(`{"type":"object","properties":{"title":{"type":"string","description":"Report title"},"markdown":{"type":"string","description":"Report body as markdown: # h1, ## h2, ### h3, - bullets, **bold**, plain paragraphs"}},"required":["title","markdown"]}`),
 		},
 	}, func(argsJSON string) (string, error) {
 		return handleGeneratePDF(dir, argsJSON)
@@ -48,12 +48,13 @@ func (r *Registry) registerGenerateTools(cfg *config.Config) {
 		Function: llm.ToolFunctionDef{
 			Name:        "generate_deck",
 			Description: "Render a slide deck to a PPTX file and send it to the user. Use for 'make me a deck / PPT / slides of…' requests. Content must be composed from dashboard tool results — never fabricate data.",
-			// ponytail: FLAT schema on purpose — the upstream behind glm-5.3-flashx
-			// strictly validates tool parameters and 400s the WHOLE request on any
-			// nested array/object (TencentException tools[N].function.parameters,
-			// 2026-11-10). Slides ride as one markdown string parsed in Go; caps
-			// enforced in renderDeck. TestAllToolSchemasFlat pins the whole fleet.
-			Parameters: `{"type":"object","properties":{"title":{"type":"string","description":"Deck title"},"slides":{"type":"string","description":"Slides as markdown, blocks separated by blank lines. First line of each block (## Heading or plain text) is the slide heading; following '- ' lines are its bullets. Max 20 slides, 15 bullets each."}},"required":["title","slides"]}`,
+			// ponytail: rawSchema — the 2026-11-10 prod outage was DOUBLE-ENCODING:
+			// a raw string here marshals as "parameters":"{...}" and the upstream
+			// 400s the WHOLE request (live-bisected against the gateway). Slides
+			// ride as one flat markdown string parsed in Go (kept from the earlier
+			// flatten — conservative, proven working). TestAllToolSchemasFlat pins
+			// the whole fleet: flat types AND object wire-form.
+			Parameters: rawSchema(`{"type":"object","properties":{"title":{"type":"string","description":"Deck title"},"slides":{"type":"string","description":"Slides as markdown, blocks separated by blank lines. First line of each block (## Heading or plain text) is the slide heading; following '- ' lines are its bullets. Max 20 slides, 15 bullets each."}},"required":["title","slides"]}`),
 		},
 	}, func(argsJSON string) (string, error) {
 		return handleGenerateDeck(dir, argsJSON)

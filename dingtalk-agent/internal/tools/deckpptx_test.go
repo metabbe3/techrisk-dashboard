@@ -111,8 +111,9 @@ func TestParseDeckSpec(t *testing.T) {
 
 // TestAllToolSchemasFlat pins every registered tool's parameters schema to the
 // flat subset strict upstream validators accept (string/number/integer/
-// boolean properties with type+description only). One nested array/object
-// 400s the WHOLE chat request — this failed in prod 2026-11-10.
+// boolean properties with type+description only), AND to the object wire-form.
+// The 2026-11-10 prod outage was a raw-string Parameters: it double-encodes to
+// "parameters":"{…}" and the upstream 400s the WHOLE chat request.
 func TestAllToolSchemasFlat(t *testing.T) {
 	reg := NewRegistry(&config.Config{WebToolsEnabled: true})
 	defs := reg.GetDefinitions()
@@ -120,9 +121,21 @@ func TestAllToolSchemasFlat(t *testing.T) {
 		t.Fatalf("expected the full fleet, got %d defs", len(defs))
 	}
 	for _, def := range defs {
+		// wire-form: parameters must marshal as a JSON object, never a string
+		fnJSON, err := json.Marshal(def.Function)
+		if err != nil {
+			t.Fatalf("%s: cannot marshal function def: %v", def.Function.Name, err)
+		}
+		var fn struct {
+			Parameters json.RawMessage `json:"parameters"`
+		}
+		if err := json.Unmarshal(fnJSON, &fn); err != nil || len(fn.Parameters) == 0 || fn.Parameters[0] != '{' {
+			t.Errorf("%s: parameters must be a JSON object on the wire, got: %s", def.Function.Name, fn.Parameters)
+			continue
+		}
 		var raw []byte
 		switch v := def.Function.Parameters.(type) {
-		case string: // generate tools pass the schema as a raw JSON string
+		case string: // tolerated for content validation; the wire check above still rejects it
 			raw = []byte(v)
 		default:
 			var err error

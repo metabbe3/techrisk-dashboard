@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -100,4 +101,16 @@ func schema(properties map[string]any, required []string) any {
 		s["required"] = required
 	}
 	return s
+}
+
+// rawSchema decodes a static JSON schema literal into a value that marshals as
+// a JSON OBJECT. Parameters must never be a raw string — json.Marshal
+// double-encodes it and the upstream 400s the WHOLE request
+// ("tools[N].function.parameters is invalid or missing", prod 2026-11-10).
+func rawSchema(s string) any {
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		panic("rawSchema: invalid literal: " + err.Error()) // static input; fail at boot
+	}
+	return v
 }

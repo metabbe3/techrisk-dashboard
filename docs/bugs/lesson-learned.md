@@ -1515,6 +1515,52 @@ the target. Two surfaces, two implementations, silent divergence.
 
 ---
 
+### [BUG-031] - DingTalk agent 400'd every LLM call: tool schema sent as a JSON string (double-encoded)
+
+**Date:** 2026-11-10 · **Component:** dingtalk-agent (Go) · **Severity:** full outage — every message failed
+
+#### Symptom
+Every DingTalk message → `litellm.BadRequestError: TencentException - The
+request parameter tools[N].function.parameters is invalid or missing`. The
+index N varied across boots (tool map iteration order). Three hotfix rounds
+(`62d6711` maxItems/nested-required removal, `e7f82a4` full flatten) each
+shipped with green tests while the error persisted in prod.
+
+#### Root Cause
+`llm.ToolFunctionDef.Parameters` is `any`. The two generate tools
+(`generate_pdf_report`, `generate_deck`) assigned a raw JSON **string** —
+`json.Marshal` then double-encodes to `"parameters":"{\"type\"…}"`, a string
+where the API demands an object, and the upstream 400s the WHOLE chat request.
+The schema *content* was never the problem; both hotfixes rearranged content
+while the encoding bug rode along. The lint test that should have caught it
+(`TestAllToolSchemasFlat`) helpfully `case string:`-unwrapped the literal
+before validating — it checked the parsed content, never the wire form.
+
+#### Diagnosis (the part worth copying)
+A throwaway probe (`cmd/probe`, since deleted) dumped the registry's defs
+exactly as the client marshals them; the escaped quotes were visible in the
+dump. Replaying 4 payloads against the real gateway isolated it in minutes:
+string-encoded deck → 400 (exact prod error), object-encoded deck → 200,
+entire fleet object-encoded → 200. Local bisect of the actual bytes beats a
+third blind hotfix.
+
+#### Fix
+- `rawSchema()` in `internal/tools/registry.go` — decodes a static JSON
+  schema literal into a map so it marshals as an object; both generate tools
+  use it (panics at boot on a bad literal — static input).
+- `TestAllToolSchemasFlat` now asserts the **wire form** too: the marshaled
+  `parameters` must start with `{`. A raw string can never pass again.
+
+#### Prevention
+- [x] Validate the wire form, not the parsed content — a schema lint test
+      must marshal the definition exactly as the client sends it
+- [x] When an upstream rejects a payload, replay the actual bytes against the
+      real endpoint and bisect (per-item requests) before theorizing
+- [x] `any`-typed JSON fields are double-encoding traps — a raw string
+      literal must pass through a decoder (`rawSchema`), never ride as-is
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
