@@ -31,6 +31,7 @@ func NewRegistry(cfg *config.Config) *Registry {
 	}
 	if cfg != nil {
 		r.registerDashboardTools(cfg)
+		r.registerGenerateTools(cfg)
 		if cfg.WebToolsEnabled {
 			r.registerWebTools()
 		}

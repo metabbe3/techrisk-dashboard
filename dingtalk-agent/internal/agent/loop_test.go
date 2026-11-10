@@ -248,18 +248,23 @@ func TestContextBudgetPruning(t *testing.T) {
 }
 
 // TestSysExtraAppendedToSystemPrompt verifies the per-run extra (learned user
-// profile) reaches the LLM inside the system message.
+// profile) reaches the LLM inside the system message, the user message is
+// framed as data, and the constitution tail rides as the LAST message.
 func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
-	var gotSystem string
+	var firstSystem, lastMsgRole, lastMsgContent, userMsg string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			Messages []llm.ChatMessage `json:"messages"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		for _, m := range req.Messages {
-			if m.Role == "system" {
-				gotSystem = m.Content
+			if m.Role == "system" && firstSystem == "" {
+				firstSystem = m.Content
 			}
+			if m.Role == "user" {
+				userMsg = m.Content
+			}
+			lastMsgRole, lastMsgContent = m.Role, m.Content
 		}
 		resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
 			Message: llm.ChatMessage{Role: "assistant", Content: "ok"}, FinishReason: "stop",
@@ -276,10 +281,16 @@ func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
 		"## About the user you are replying to\n- prefers Indonesian\n"); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
-	if !strings.Contains(gotSystem, "prefers Indonesian") {
-		t.Errorf("sysExtra missing from system prompt: %.200s", gotSystem)
+	if !strings.Contains(firstSystem, "prefers Indonesian") {
+		t.Errorf("sysExtra missing from system prompt: %.200s", firstSystem)
 	}
-	if !strings.Contains(gotSystem, "Domain Rules") {
-		t.Errorf("base system prompt lost: %.200s", gotSystem)
+	if !strings.Contains(firstSystem, "Domain Rules") {
+		t.Errorf("base system prompt lost: %.200s", firstSystem)
+	}
+	if !strings.Contains(userMsg, "[user message —") || !strings.Contains(userMsg, "hi") {
+		t.Errorf("user message not framed: %q", userMsg)
+	}
+	if lastMsgRole != "system" || !strings.Contains(lastMsgContent, "Risk Agent") {
+		t.Errorf("constitution tail must be the last message, got %s: %.120s", lastMsgRole, lastMsgContent)
 	}
 }

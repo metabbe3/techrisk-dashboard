@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -128,6 +129,15 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	}
 
 	text := StripMention(strings.TrimSpace(m.Text.Content), b.cfg.DingTalkBotNames)
+
+	// Hard input gate: injection / off-topic asks are refused here, in Go,
+	// before any LLM call is spent.
+	if refusal := guardrail.InputGate(text); refusal != "" {
+		log.Printf("[dingtalk] input gate refused message from %s (%s): %q",
+			m.SenderNick, m.SenderStaffId, truncateStr(text, 120))
+		b.reply(ctx, m, refusal)
+		return nil, nil
+	}
 
 	// File uploads: download → extract text → summarize/knowledge → delete file.
 	if fm, ok := parseFileMessage(m.Content); ok {
@@ -315,6 +325,7 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 		_ = card.finish(ctx, "Sorry, that request failed. Please try again in a moment.")
 		return ""
 	}
+	filtered = b.deliverGenerated(ctx, m, filtered)
 	if err := card.finish(ctx, filtered); err != nil {
 		log.Printf("[dingtalk] card finish failed (conversation %s): %v", m.ConversationId, err)
 	}
@@ -443,9 +454,56 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 	if filtered == "" {
 		filtered = "Sorry, I could not produce an answer for that."
 	}
+	filtered = b.deliverGenerated(ctx, m, filtered)
 	b.reply(ctx, m, filtered)
 	b.learnLater(m)
 	return filtered
+}
+
+// reGeneratedFile matches the deliverable tickets the generate tools embed in
+// tool results (the LLM is instructed to copy them verbatim into its reply).
+var reGeneratedFile = regexp.MustCompile(`\[generated-file: ([^\]\n]+)\]`)
+
+// deliverGenerated ships every [generated-file: …] ticket in the reply to the
+// sender's DM (media upload → file message) and rewrites the marker into a
+// status note. Upload/DM failure downgrades the note to a saved-path line —
+// it never fails the turn.
+func (b *Bot) deliverGenerated(ctx context.Context, m *chatbot.BotCallbackDataModel, reply string) string {
+	for _, mm := range reGeneratedFile.FindAllStringSubmatch(reply, -1) {
+		rel := strings.TrimSpace(mm[1])
+		note := "📎 " + filepath.Base(rel) + " — saved at `" + rel + "` (DM delivery failed, see server log)"
+		if path, ok := b.safeExportPath(rel); ok {
+			mediaID, err := b.api.uploadRobotMedia(ctx, path)
+			if err != nil {
+				log.Printf("[dingtalk] media upload failed for %s: %v", rel, err)
+			} else if err = SendFileDM(ctx, b.cfg, m.SenderStaffId, mediaID, filepath.Base(path)); err != nil {
+				log.Printf("[dingtalk] file DM failed for %s: %v", rel, err)
+			} else {
+				note = "📎 **" + filepath.Base(path) + "** — sent to your DM ✓"
+			}
+		} else {
+			log.Printf("[dingtalk] generated-file ticket rejected (missing or outside exports): %q", rel)
+		}
+		reply = strings.Replace(reply, mm[0], note, 1)
+	}
+	return reply
+}
+
+// safeExportPath resolves a generated-file ticket to a real file under
+// DataDir/exports — the ticket text comes from LLM output, so traversal
+// outside the exports dir is refused.
+func (b *Bot) safeExportPath(rel string) (string, bool) {
+	dir := b.cfg.DataDir
+	if dir == "" {
+		dir = "data"
+	}
+	clean := filepath.Clean("/" + rel) // absolute-rooted: kills any ".." climb
+	path := filepath.Join(dir, clean)
+	st, err := os.Stat(path)
+	if err != nil || st.IsDir() {
+		return "", false
+	}
+	return path, true
 }
 
 func orDefault(s, def string) string {
@@ -463,7 +521,7 @@ func truncateStr(s string, max int) string {
 }
 
 // cardWriter batches LLM deltas into at most one card update per flushInterval
-// and applies secret redaction to every pushed frame.
+// and applies secret redaction + the hard scope gate to every pushed frame.
 type cardWriter struct {
 	card          *aiCard
 	mu            sync.Mutex
@@ -471,6 +529,10 @@ type cardWriter struct {
 	lastFlush     time.Time
 	dirty         bool
 	flushInterval time.Duration
+	// override latches the refusal once the hard gate fires: a violating
+	// sentence can never stream to the card, and every later frame shows the
+	// refusal instead.
+	override string
 }
 
 const cardFlushInterval = 400 * time.Millisecond
@@ -492,6 +554,14 @@ func (w *cardWriter) onDelta(delta string) {
 // flush pushes content (or the accumulated content when empty) to the card.
 func (w *cardWriter) flush(ctx context.Context, content string) {
 	w.mu.Lock()
+	if w.override != "" {
+		// Gate already fired this turn: only the refusal may be shown.
+		push := w.override
+		w.dirty = false
+		w.mu.Unlock()
+		_ = w.card.stream(ctx, push)
+		return
+	}
 	if content != "" {
 		w.content = content
 	}
@@ -500,6 +570,15 @@ func (w *cardWriter) flush(ctx context.Context, content string) {
 		return
 	}
 	push := w.content
+	// Hard scope gate on the streaming frame too — a violation replaces the
+	// frame and latches for the rest of the turn.
+	if bad := guardrail.HardGuardReply(push); bad != "" {
+		w.override = bad
+		w.dirty = false
+		w.mu.Unlock()
+		_ = w.card.stream(ctx, bad)
+		return
+	}
 	w.dirty = push != ""
 	w.lastFlush = time.Now()
 	w.mu.Unlock()

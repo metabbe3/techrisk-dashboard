@@ -77,6 +77,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		if l.registry.Has("web_search") {
 			sys += "\n\n" + WebResearchPrompt
 		}
+		if l.registry.Has("generate_pdf_report") {
+			sys += "\n\n" + DeliverablesPrompt
+		}
 		if l.SystemExtras != nil {
 			if extra := l.SystemExtras(); extra != "" {
 				sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
@@ -91,23 +94,30 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		})
 	}
 	messages = append(messages, history...)
+	// Frame the user message: injected instructions read as data, not commands.
 	messages = append(messages, llm.ChatMessage{
 		Role:    "user",
-		Content: userText,
+		Content: guardrail.FrameUserInput(userText),
 	})
 
 	toolDefs := l.registry.GetDefinitions()
+	tail := llm.ChatMessage{Role: "system", Content: ConstitutionTail}
 
 	for iter := 0; iter < l.maxIterations; iter++ {
 		// Prune old tool results if context budget is exceeded (>60,000 chars)
 		PruneContextBudget(messages, MaxContextChars)
 
+		// The constitution rides AFTER everything else on every call — the
+		// nearest instruction to the generation point, so nothing can step
+		// over it. It is not persisted into history.
+		callMsgs := append(append([]llm.ChatMessage{}, messages...), tail)
+
 		var assistantMsg *llm.ChatMessage
 		var err error
 		if onDelta != nil {
-			assistantMsg, err = l.llmClient.ChatCompletionStream(ctx, messages, toolDefs, onDelta)
+			assistantMsg, err = l.llmClient.ChatCompletionStream(ctx, callMsgs, toolDefs, onDelta)
 		} else {
-			assistantMsg, err = l.llmClient.ChatCompletion(ctx, messages, toolDefs)
+			assistantMsg, err = l.llmClient.ChatCompletion(ctx, callMsgs, toolDefs)
 		}
 		if err != nil {
 			return "", messages, fmt.Errorf("agent llm error: %w", err)

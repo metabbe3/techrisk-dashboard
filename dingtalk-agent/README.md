@@ -103,6 +103,57 @@ deferred remove, success or failure. Only summaries persist, never the file.
 - Pictures/audio/video are not handled in v1 (they arrive as other msgtypes
   and are ignored).
 
+## Hard guardrails (owner directive 2026-11-10 — no kill switch, by design)
+
+The bot answers **only** about incidents/issues on the Technical Risk
+dashboard, its identity is fixed as **Risk Agent**, and it never writes
+poems/stories/essays/code/recipes or general-purpose content. Enforcement is
+three Go layers — model compliance is not required for any of them:
+
+1. **Input gate** (`guardrail.InputGate`, `stream.go` Handle): prompt-injection
+   ("ignore/disregard/forget … instructions/aturan", "reveal your system
+   prompt", "you are now a…", jailbreak/DAN/dev-mode, fake `system:` prefixes)
+   and blatant off-topic asks (verb+object pairs, EN+ID: poem/puisi/cerita/
+   story/essay/song/lagu/resep/recipe + language-tagged codegen) are refused
+   with a **fixed** message before any LLM call — no token spend, no history
+   pollution. File captions are gated the same way.
+2. **LLM-context hardening** (`agent/loop.go`): every user message is wrapped
+   in `[user message — …]` data markers (`FrameUserInput`), and a
+   `ConstitutionTail` system message rides as the **last message of every
+   LLM call** (never persisted to history, never pruned) restating identity +
+   scope, so "ignore everything above" cannot reach past it.
+3. **Output net** (`guardrail.HardGuardReply`): identity renames/renouncements
+   (unless the name is Risk Agent), verbatim internal-prompt leaks, off-topic
+   delivery ("here's a poem…", ingredients lists), and language-tagged code
+   fences are replaced with a fixed refusal — at `FilterReplyCap` (the single
+   choke point) and at the streaming card writer (override latch, so a
+   violating frame never even flashes).
+
+False positives are engineered against: "write a summary of incident X",
+"ignore completed incidents in the count", "show me the rules for MTTR",
+"call me if a P1 comes in", plain/`sql` code fences (log/SQL quoting) all
+stay legal. There is **no env flag to disable any layer** — that is the point.
+
+## Deliverables (PDF / deck generation + DM delivery)
+
+Two generative tools (the ONLY writing the bot may produce, dashboard data
+only): `generate_pdf_report(title, markdown)` renders agent-composed markdown
+to a styled A4 PDF (`go-pdf/fpdf`; h1–h3, bullets, bold; 30k char cap), and
+`generate_deck(title, slides)` writes a native PPTX (stdlib zip/OOXML, no
+deps; ≤20 slides, heading + bullets per slide). Files land in
+`<DataDir>/exports/<yyyymmdd-hhmmss>-<slug>.{pdf,pptx}` and the tool result
+embeds a ticket `[generated-file: exports/<name>]`.
+
+After a completed turn, `deliverGenerated` scans the final reply for tickets:
+each file is uploaded via **`POST /v1.0/robot/messageFiles/upload`**
+(multipart: `robotCode`, `fileType=file`, `file` → `mediaId`; contract per
+docs, needs live pin like `messageFiles/download` was) and pushed to the
+**sender's DM** via `oToMessages/batchSend` msgKey `sampleFile`
+(`{mediaId, fileName, fileDuration}`). The marker is rewritten to a status
+note ("sent to your DM ✓" / saved-path fallback). Failure never fails the
+turn; tickets resolving outside `DataDir/exports` are refused (the ticket text
+comes from LLM output).
+
 ## Start
 
 Dev (build + run, loads `dingtalk-agent.env`): `./start.sh` — same idea as the

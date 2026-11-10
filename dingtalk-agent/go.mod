@@ -8,6 +8,7 @@ require (
 )
 
 require (
+	github.com/go-pdf/fpdf v0.9.0 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 )

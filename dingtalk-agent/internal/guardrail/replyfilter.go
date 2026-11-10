@@ -43,6 +43,12 @@ func FilterReplyCap(reply string, maxLen int) string {
 		maxLen = MaxReplyLength
 	}
 
+	// Step 0: Hard scope gate — identity lock, prompt-leak lock, off-topic
+	// delivery lock. A firing gate replaces the ENTIRE reply.
+	if guarded := HardGuardReply(reply); guarded != "" {
+		reply = guarded
+	}
+
 	// Step 1: Secret redaction
 	redacted, _ := Redact(reply)
 
