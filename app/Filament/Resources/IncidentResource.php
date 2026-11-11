@@ -296,15 +296,35 @@ class IncidentResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'superIncident:id,no,title']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->withCount('subIncidents')) // PROJ-022 chevron/badge visibility
             ->defaultSort('incident_date', 'desc')
             ->columns([
+                // PROJ-022: expand/collapse. Row-conditional ->hidden() is not
+                // available on columns (it is evaluated once per column set,
+                // with no record) — a null icon / null badge state renders the
+                // cell empty on sub-less rows instead.
+                IconColumn::make('expand_sub_incidents')
+                    ->label('')
+                    ->width('20px')
+                    ->icon(fn (Incident $record) => $record->sub_incidents_count === 0
+                        ? null
+                        : (in_array($record->getKey(), $this->expandedSubIncidents) ? 'heroicon-m-chevron-down' : 'heroicon-m-chevron-right'))
+                    ->action(fn (Incident $record) => $record->sub_incidents_count > 0
+                        ? $this->toggleExpandedSubIncidents((int) $record->getKey())
+                        : null),
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')
                     ->searchable()
                     ->html()
                     ->width('200px')
-                    ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render()),
+                    ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render())
+                    ->description(fn (Incident $record) => $record->parent_incident_id ? "Sub of: {$record->superIncident?->no}" : null),
+                TextColumn::make('sub_incidents_count')
+                    ->label('Subs')
+                    ->badge()
+                    ->color('info')
+                    ->formatStateUsing(fn ($state) => $state > 0 ? $state : null),
                 TextColumn::make('mttr_formatted')->label('MTTR')->width('70px')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
                 }),

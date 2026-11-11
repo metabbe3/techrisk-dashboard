@@ -12,6 +12,7 @@ use App\Exports\IncidentTableExport;
 use App\Exports\MultiSheetIncidentsExport;
 use App\Filament\Actions\ExportActionSchema;
 use App\Filament\Resources\IncidentResource;
+use App\Models\Incident;
 use Filament\Actions;
 use Filament\Resources\Components\Tab;
 use Filament\Resources\Pages\ListRecords;
@@ -21,6 +22,9 @@ use Maatwebsite\Excel\Facades\Excel;
 class ListIncidents extends ListRecords
 {
     protected static string $resource = IncidentResource::class;
+
+    /** Super ids whose sub-incidents the user expanded (chevron). Stale ids are harmless. */
+    public array $expandedSubIncidents = [];
 
     protected function getHeaderActions(): array
     {
@@ -192,6 +196,95 @@ class ListIncidents extends ListRecords
                 ])
                 ->visible(fn (): bool => auth()->user()->can('manage incidents')),
         ];
+    }
+
+    /**
+     * PROJ-022: the list shows top-level incidents (and the families the
+     * user expanded) — sub-incidents render as normal rows only when an
+     * active search / filter / tab / drill-in surfaces them.
+     */
+    public function getFilteredTableQuery(): Builder
+    {
+        $query = parent::getFilteredTableQuery();
+
+        if ($this->subIncidentsSurfaced()) {
+            return $query;
+        }
+
+        $query->where(fn (Builder $q) => $q->whereNull('parent_incident_id')
+            ->when($this->expandedSubIncidents !== [], fn (Builder $q) => $q->orWhereIn('parent_incident_id', $this->expandedSubIncidents)));
+
+        // Family adjacency under the default sort: children land directly
+        // under their super (family rows share the super's incident date).
+        // An explicit column sort wins — adjacency is not guaranteed then.
+        if ($this->expandedSubIncidents !== [] && blank($this->tableSortColumn)) {
+            $query->orderByRaw('COALESCE((SELECT s.incident_date FROM incidents s WHERE s.id = incidents.parent_incident_id), incidents.incident_date) DESC, parent_incident_id IS NULL DESC, incident_date DESC');
+        }
+
+        return $query;
+    }
+
+    /**
+     * TRUE (subs render as normal rows) when the view is anything but the
+     * untouched default: a search, a real filter, a non-default tab, the
+     * heat-matrix ?ids= drill-in, or an AI search (which funnels into
+     * tableSearch/tableFilters). FALSE only on the fresh default view.
+     */
+    private function subIncidentsSurfaced(): bool
+    {
+        if (filled($this->tableSearch) || request()->filled('ids')) {
+            return true;
+        }
+
+        if (($this->activeTab ?? 'All Cases') !== 'All Cases') {
+            return true;
+        }
+
+        foreach ($this->tableFilters ?? [] as $name => $data) {
+            // Quick Period's default ('year') pre-populates the filter state —
+            // it is not a user pick. A different period (or a cleared one)
+            // surfaces subs, matching "All Time" semantics.
+            if ($name === 'quick_period') {
+                $value = is_array($data) ? ($data['value'] ?? null) : null;
+                if (blank($value) || $value === 'year') {
+                    continue;
+                }
+
+                return true;
+            }
+
+            if (is_array($data)) {
+                foreach ($data as $value) {
+                    // `false` is "filled" in Laravel (blank() skips booleans) —
+                    // the default `missing_root_cause: {enabled: false}` state
+                    // must not count as an active filter.
+                    if (filled($value) && $value !== false) {
+                        return true;
+                    }
+                }
+            } elseif (filled($data) && $data !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function toggleExpandedSubIncidents(int $id): void
+    {
+        if (in_array($id, $this->expandedSubIncidents, true)) {
+            $this->expandedSubIncidents = array_values(array_diff($this->expandedSubIncidents, [$id]));
+        } else {
+            $this->expandedSubIncidents[] = $id;
+        }
+    }
+
+    /** Task 7's panel rows call this to detach a sub without deleting either record. */
+    public function unlinkSubIncident(int $id): void
+    {
+        abort_unless((bool) auth()->user()?->can('manage incidents'), 403);
+
+        Incident::findOrFail($id)->update(['parent_incident_id' => null]);
     }
 
     public function getTableQuery(): Builder
