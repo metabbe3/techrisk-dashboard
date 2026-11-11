@@ -351,9 +351,10 @@ class IncidentKanbanBoard extends Component
             'potential_fund_loss', 'recovered_fund', 'fund_loss',
             'summary', 'incident_type', 'incident_category',
             'business_category', 'root_cause_category', 'responsible_team',
-            'classification',
+            'classification', 'parent_incident_id',
         ])
-            ->with(['pics', 'latestStatusUpdate', 'labels', 'incidentType'])
+            ->with(['pics', 'latestStatusUpdate', 'labels', 'incidentType', 'superIncident:id,no'])
+            ->withCount('subIncidents')
             ->orderByRaw(Severity::fieldOrderExpression('severity'))
             ->orderBy('incident_date', 'desc')
             ->limit(200);

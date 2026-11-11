@@ -275,6 +275,7 @@
                                 <div class="flex items-center gap-1.5 mb-1.5">
                                     <span class="text-[11px] font-mono text-gray-500 dark:text-gray-400 tracking-tight">{{ $incident->no }}</span>
                                     <span class="kanban-badge kanban-badge--{{ $severityColor }}">{{ $incident->severity }}</span>
+                                    @include('livewire.incident-kanban-sub-chips', ['incident' => $incident])
                                 </div>
 
                                 {{-- PIC Avatar or Unassigned + Date + Fund Status --}}
