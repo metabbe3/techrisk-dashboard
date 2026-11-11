@@ -14,6 +14,20 @@ Full detail of every counting/metric/fund rule. CLAUDE.md carries only the headl
 - Export BASELINE is widget-aligned by default (owner rule 2026-10-23, amended 2026-10-27): All Cases / Completed / quarter tabs, Custom and Executive data count **Confirmed loss + Non fundLoss + null/empty fund_status** — the total tile's `excludedFromCounts` scope (a null fund_status counts on the tile, so it exports; the original strict-`IN` baseline dropped such rows — prod 2026: widget 39, export 38, the widget correct by owner ruling). An explicit Fund Status filter in the export form overrides the default and stays strict (null excluded); dedicated fund-status tabs (and Recovered Cases / On Going / P4 / Non-Tech / Issues / Group By / Markdown ZIP) keep their full row sets.
 - Known remaining divergence: the live table's `mtbf_display` column still anchors first-of-year at `dayOfYear`.
 
+## Sub-incident roll-up (PROJ-022, owner-approved 2026-11-11)
+
+A **super-incident** is a main incident with sub-incidents linked to it; a **sub-incident** is a separate full incident record whose `parent_incident_id` points at its super. One level deep (a sub can never have subs, and a linked record can't be linked again). Issues are untouched.
+
+- **Counts roll up into the super.** Sub-incidents are excluded from every incident-COUNT surface: dashboard cards/charts (dimension charts roll subs into their supers), weekly counts, Reporting/SendReport listings, exports. Implemented as `countEligible(withSubIncidents: false)` / `aiCounts(withSubIncidents: false)` defaults + `withoutSubIncidents()` (`whereNull('parent_incident_id')`) — a new count surface MUST exclude subs.
+- **Money stays with subs.** The Fund Loss tile/trend/Pareto keep counting sub fund loss — money surfaces opt in with `withSubIncidents: true`.
+- **List:** subs are hidden unless expanded or surfaced — search, tabs, filters, `?ids=` drill-in all surface them; an expanded family sorts super→subs by adjacency. Issues/board are unaffected (board shows only chips).
+- **Exports exclude subs entirely** (all 5 presets + Markdown ZIP) — via `baseExportScope()`; the **AI corpus keeps them** (knowledge base).
+- **Reporting/SendReport mirror the dashboard** (subs rolled up, money kept).
+- **Classification guard:** a record linked in a hierarchy (sub of a super, or a super with subs) cannot change classification Incident ↔ Issue until unlinked — edit-form rule, `downgrade_to_issue` and `bulk_downgrade` refuse with a notification. `hasIncidentLinks()` is the predicate.
+- **Link semantics are MOVE:** `parent_incident_id` is a single column — linking a linked record means unlink first. Deleting a super orphans its subs (`nullOnDelete`), never deletes them.
+- **Unlink never deletes:** every unlink path (list row action, view page, board) just sets `parent_incident_id = null`; both records stay.
+- **Cache freshness:** `parent_incident_id` is in the observer's dirty-field trigger list — a link change recalcs metrics and bumps `dashboard_cache_version`.
+
 ## Outlier rule (owner 2026-10-01)
 
 A Label `Outlier` tag removes the row from every MTBF/MTTR *average* (calculator nulls its stored metrics; every metric query/span composes `withoutOutliers()`; predecessor gaps telescope over it so Σgaps still equals span) while it stays in every *count* (Total Cases, status tabs, severity breakdowns, KPI counts, Group-By Cases) and every table/export row — its own MTTR/MTBF cells render the literal **`Outlier`** (`mttr_formatted` accessor + per-surface mtbf cells; live-table `state()` returns `int|string`). Tagging fires a recalc + cache bump via the `IncidentLabel` pivot — NOT the observer; raw pivot writes and deleting/renaming the label record bypass it (remedy: Recalculate button / sweep command).

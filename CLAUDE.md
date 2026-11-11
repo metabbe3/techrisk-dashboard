@@ -76,7 +76,7 @@ app/
 
 ## Core Business Rules (full detail in `docs/reference/business-rules.md`)
 
-- Counts exclude severity `G` / `Non Incident` everywhere (`aiCounts()` / `countEligible()`); exports exclude them entirely; severity breakdowns are P1–P4 + X1–X4 only.
+- Counts exclude severity `G` / `Non Incident` everywhere (`aiCounts()` / `countEligible()`) **and exclude sub-incidents** (PROJ-022: they roll up into their super; money surfaces opt in with `withSubIncidents: true`); exports exclude both entirely; severity breakdowns are P1–P4 + X1–X4 only.
 - MTTR: positive = minutes, negative = elapsed calendar days, **no `+1`** (owner 2026-10-13). Fund Loss card = classification `Incident` + `Completed` + `excludedFromCounts`.
 - `Outlier` label (owner 2026-10-01): out of every MTBF/MTTR *average*, stays in every *count*; tagging fires recalc via the `IncidentLabel` pivot, NOT the observer; its own cells render `Outlier`.
 - Action Improvements: reminders/escalation/overdue gate on `status = 'pending'` only; `due_date = null` = TBD — never invent dates; TBD rows are tracked (filter + widget count) but never chased.
