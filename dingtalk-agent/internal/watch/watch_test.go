@@ -87,3 +87,18 @@ func TestPendingPutClaim(t *testing.T) {
 		t.Error("claimed token must not re-apply")
 	}
 }
+
+// TestPendingPutTwo: Put used to never set the entry's timestamp, so every
+// new Put swept every OTHER pending request (zero `at` = older than the TTL)
+// — two watches in one turn lost all but the last. #13
+func TestPendingPutTwo(t *testing.T) {
+	p := NewPending()
+	t1 := p.Put(Request{No: "A"})
+	t2 := p.Put(Request{No: "B"})
+	for tok, want := range map[string]string{t1: "A", t2: "B"} {
+		req, ok := p.Claim(tok)
+		if !ok || req.No != want {
+			t.Errorf("claim %q: got %+v ok=%v, want no=%q", tok, req, ok, want)
+		}
+	}
+}

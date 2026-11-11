@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,7 +48,7 @@ func TestNotionSearchPosts(t *testing.T) {
 		envelope(w, map[string]any{"text": "1. Payments PRD — https://notion.so/pg1", "truncated": false}, nil)
 	})
 
-	out, err := reg.Execute("notion_search", `{"query":"payments PRD"}`)
+	out, err := reg.Execute(context.Background(), "notion_search", `{"query":"payments PRD"}`)
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
@@ -66,7 +67,7 @@ func TestNotionQueryResolvesCatalogName(t *testing.T) {
 		envelope(w, []any{map[string]any{"Name": "Payments PRD", "url": "https://notion.so/pg1"}}, nil)
 	})
 
-	out, err := reg.Execute("notion_query_database", `{"database":"PRD","query":"SELECT * FROM \"collection://x\" LIMIT 1"}`)
+	out, err := reg.Execute(context.Background(), "notion_query_database", `{"database":"PRD","query":"SELECT * FROM \"collection://x\" LIMIT 1"}`)
 	if err != nil {
 		t.Fatalf("query failed: %v", err)
 	}
@@ -92,7 +93,7 @@ func TestNotionQueryUnknownNameListsCatalogWithoutServerCall(t *testing.T) {
 		t.Error("server must not be called for an unknown database name")
 	})
 
-	out, err := reg.Execute("notion_query_database", `{"database":"MISSING","query":"SELECT 1"}`)
+	out, err := reg.Execute(context.Background(), "notion_query_database", `{"database":"MISSING","query":"SELECT 1"}`)
 	if err != nil {
 		t.Fatalf("Execute should not error (error becomes tool content), got %v", err)
 	}
@@ -114,7 +115,7 @@ func TestNotionQueryUnknownNameListsCatalogWithoutServerCall(t *testing.T) {
 		"collection://12345678-1234-1234-1234-123456789012",
 		"12345678-1234-1234-1234-123456789012",
 	} {
-		if _, err := reg2.Execute("notion_query_database", `{"database":"`+ref+`","query":"SELECT 1"}`); err != nil {
+		if _, err := reg2.Execute(context.Background(), "notion_query_database", `{"database":"`+ref+`","query":"SELECT 1"}`); err != nil {
 			t.Fatalf("query with %s failed: %v", ref, err)
 		}
 		if got != ref {
@@ -140,14 +141,14 @@ func TestNotionQueryAutoSavesRawIDOnSuccess(t *testing.T) {
 	const raw = "2c72556e-44dd-81cf-8977-000bc43d6f86"
 	query := `{"database":"` + raw + `","query":"SELECT 1"}`
 
-	_, _ = reg.Execute("notion_query_database", query)
+	_, _ = reg.Execute(context.Background(), "notion_query_database", query)
 	if data, _ := os.ReadFile(filepath.Join(dir, "notion_catalog.json")); strings.Contains(string(data), raw) {
 		t.Fatalf("failed query must not save to the catalog: %s", data)
 	}
 
 	fail = false
 	for i := 0; i < 2; i++ { // twice: second run must not duplicate
-		if _, err := reg.Execute("notion_query_database", query); err != nil {
+		if _, err := reg.Execute(context.Background(), "notion_query_database", query); err != nil {
 			t.Fatalf("query failed: %v", err)
 		}
 	}
@@ -163,7 +164,7 @@ func TestNotionQueryAutoSavesRawIDOnSuccess(t *testing.T) {
 	}
 
 	// Naming it replaces the db-… entry rather than duplicating it.
-	if _, err := reg.Execute("notion_add_database", `{"name":"Investigations","id":"`+raw+`"}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "notion_add_database", `{"name":"Investigations","id":"`+raw+`"}`); err != nil {
 		t.Fatal(err)
 	}
 	data, _ = os.ReadFile(filepath.Join(dir, "notion_catalog.json"))
@@ -173,7 +174,7 @@ func TestNotionQueryAutoSavesRawIDOnSuccess(t *testing.T) {
 
 	// A raw id already under a catalog name is not re-saved under db-<hex>.
 	reg2, dir2 := newNotionTestRegistry(t, func(w http.ResponseWriter, r *http.Request) { envelope(w, []any{}, nil) })
-	if _, err := reg2.Execute("notion_query_database", `{"database":"dbid1","query":"SELECT 1"}`); err != nil {
+	if _, err := reg2.Execute(context.Background(), "notion_query_database", `{"database":"dbid1","query":"SELECT 1"}`); err != nil {
 		t.Fatal(err)
 	}
 	data2, _ := os.ReadFile(filepath.Join(dir2, "notion_catalog.json"))
@@ -187,7 +188,7 @@ func TestNotionAddDatabasePersistsAndReRegisters(t *testing.T) {
 		envelope(w, []any{}, nil)
 	})
 
-	out, err := reg.Execute("notion_add_database", `{"name":"TA","id":"dbid2"}`)
+	out, err := reg.Execute(context.Background(), "notion_add_database", `{"name":"TA","id":"dbid2"}`)
 	if err != nil {
 		t.Fatalf("add failed: %v", err)
 	}
@@ -234,7 +235,7 @@ func TestNotionAddDatabasePersistsAndReRegisters(t *testing.T) {
 		DashboardAPIBase:   freshSrv.URL,
 		DashboardAPIToken:  "test-token",
 	})
-	if _, err := reg2.Execute("notion_query_database", `{"database":"TA","query":"SELECT 1"}`); err != nil {
+	if _, err := reg2.Execute(context.Background(), "notion_query_database", `{"database":"TA","query":"SELECT 1"}`); err != nil {
 		t.Fatalf("query via fresh registry failed: %v", err)
 	}
 	if resolved != "dbid2" {
@@ -242,7 +243,7 @@ func TestNotionAddDatabasePersistsAndReRegisters(t *testing.T) {
 	}
 
 	// Malformed names are rejected.
-	if out, _ := reg.Execute("notion_add_database", `{"name":"bad name!","id":"x"}`); !strings.Contains(out, "Error") {
+	if out, _ := reg.Execute(context.Background(), "notion_add_database", `{"name":"bad name!","id":"x"}`); !strings.Contains(out, "Error") {
 		t.Errorf("malformed name must error: %s", out)
 	}
 }
@@ -261,7 +262,10 @@ func TestNotionReadPageRecordsAndDrains(t *testing.T) {
 		envelope(w, map[string]any{"content": content, "truncated": false}, nil)
 	})
 
-	out, err := reg.Execute("notion_read_page", `{"id_or_url":"pg1"}`)
+	// Reads go to the per-turn sink in ctx (up to 4 turns run concurrently —
+	// a shared buffer credited reads to whichever turn drained first).
+	ctx := WithNotionSink(context.Background())
+	out, err := reg.Execute(ctx, "notion_read_page", `{"id_or_url":"pg1"}`)
 	if err != nil {
 		t.Fatalf("read_page failed: %v", err)
 	}
@@ -269,25 +273,31 @@ func TestNotionReadPageRecordsAndDrains(t *testing.T) {
 		t.Errorf("content not surfaced: %s", out)
 	}
 
-	reads := reg.TakeNotionReads()
+	reads := TakeNotionReads(ctx)
 	if len(reads) != 1 {
 		t.Fatalf("TakeNotionReads = %d reads, want 1", len(reads))
 	}
 	if reads[0].Title != "Payments PRD v2" || reads[0].URL != "pg1" || !strings.Contains(reads[0].Excerpt, "Refresh tokens") {
 		t.Errorf("read recorded wrong: %+v", reads[0])
 	}
-	if second := reg.TakeNotionReads(); second != nil {
+	if second := TakeNotionReads(ctx); second != nil {
 		t.Errorf("second drain must be empty, got %d", len(second))
+	}
+
+	// No sink in ctx → reads are dropped, never crash.
+	if out, _ := reg.Execute(context.Background(), "notion_read_page", `{"id_or_url":"pg1"}`); !strings.Contains(out, "Refresh tokens") {
+		t.Errorf("sinkless read must still succeed: %s", out)
 	}
 
 	// Empty page: success note, no read recorded.
 	reg2, _ := newNotionTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
 		envelope(w, map[string]any{"content": nil}, nil)
 	})
-	if out, _ := reg2.Execute("notion_read_page", `{"id_or_url":"pg2"}`); !strings.Contains(out, "empty page") {
+	ctx2 := WithNotionSink(context.Background())
+	if out, _ := reg2.Execute(ctx2, "notion_read_page", `{"id_or_url":"pg2"}`); !strings.Contains(out, "empty page") {
 		t.Errorf("empty page must note it: %s", out)
 	}
-	if reads := reg2.TakeNotionReads(); len(reads) != 0 {
+	if reads := TakeNotionReads(ctx2); len(reads) != 0 {
 		t.Errorf("empty page must not record a read, got %d", len(reads))
 	}
 }
@@ -298,8 +308,8 @@ func TestNotionKillSwitch(t *testing.T) {
 	if reg.Has("notion_search") || reg.Has("notion_query_database") || reg.Has("notion_read_page") || reg.Has("notion_add_database") {
 		t.Error("Notion tools must be unregistered when AGENT_NOTION_TOOLS is off")
 	}
-	if reads := reg.TakeNotionReads(); reads != nil {
-		t.Errorf("TakeNotionReads must be nil when disabled, got %d", len(reads))
+	if reads := TakeNotionReads(WithNotionSink(context.Background())); reads != nil {
+		t.Errorf("sink must be empty when the tools are disabled, got %d", len(reads))
 	}
 }
 

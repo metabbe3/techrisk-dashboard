@@ -110,17 +110,18 @@ func TestLearnNotionDrainsAndSkips(t *testing.T) {
 	m := &chatbot.BotCallbackDataModel{SenderStaffId: "staff1", SenderNick: "Tester", ConversationId: "cid-n"}
 
 	// No reads recorded → nothing happens, no panic, no knowledge entry.
-	bot.learnNotion(m)
+	turnCtx := tools.WithNotionSink(context.Background())
+	bot.learnNotion(turnCtx, m)
 	if k := bot.store.Knowledge(); len(k) != 0 {
 		t.Fatalf("learnNotion without reads must not append knowledge, got %+v", k)
 	}
 
 	// A read recorded through the tool lands as knowledge after learnNotion.
-	if _, err := reg.Execute("notion_read_page", `{"id_or_url":"pg1"}`); err != nil {
+	if _, err := reg.Execute(turnCtx, "notion_read_page", `{"id_or_url":"pg1"}`); err != nil {
 		t.Fatalf("read_page: %v", err)
 	}
 
-	bot.learnNotion(m)
+	bot.learnNotion(turnCtx, m)
 
 	var entries int
 	deadline := time.Now().Add(5 * time.Second)
@@ -184,7 +185,8 @@ func TestProcessPlainErrorPathDrainsNotionReads(t *testing.T) {
 	bot := NewBot(llmCfg, agent.NewLoop(llm.NewClient(llmCfg), reg, 2))
 
 	// The turn reads a page, then its LLM call fails — seed exactly that state.
-	if _, err := reg.Execute("notion_read_page", `{"id_or_url":"pg1"}`); err != nil {
+	turnCtx := tools.WithNotionSink(context.Background())
+	if _, err := reg.Execute(turnCtx, "notion_read_page", `{"id_or_url":"pg1"}`); err != nil {
 		t.Fatalf("read_page: %v", err)
 	}
 
@@ -192,7 +194,7 @@ func TestProcessPlainErrorPathDrainsNotionReads(t *testing.T) {
 		SenderStaffId: "staff1", SenderNick: "Tester",
 		ConversationId: "cid-err", SessionWebhook: hookSrv.URL,
 	}
-	if got := bot.processPlain(context.Background(), m, "summarize the payments PRD", ""); got != "" {
+	if got := bot.processPlain(turnCtx, m, "summarize the payments PRD", ""); got != "" {
 		t.Fatalf("processPlain on a failed turn must return empty, got %q", got)
 	}
 
@@ -212,7 +214,7 @@ func TestProcessPlainErrorPathDrainsNotionReads(t *testing.T) {
 	if !strings.Contains(entry.File, "Notion: Payments PRD") || entry.Author != "Tester" {
 		t.Errorf("entry wrong (attribution): %+v", entry)
 	}
-	if left := reg.TakeNotionReads(); len(left) != 0 {
+	if left := tools.TakeNotionReads(turnCtx); len(left) != 0 {
 		t.Errorf("tracker must be drained after the failed turn, left %+v", left)
 	}
 }

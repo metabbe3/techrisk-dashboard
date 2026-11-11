@@ -45,11 +45,9 @@ func TestGeneratePDFTool(t *testing.T) {
 func TestGeneratePDFEmptyMarkdown(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"title": "X", "markdown": "  "})
 	out, err := handleGeneratePDF(t.TempDir(), string(args))
-	if err != nil {
-		t.Fatalf("handleGeneratePDF: %v", err)
-	}
-	if !strings.Contains(out, "Error") {
-		t.Errorf("empty markdown should return an error note, got: %s", out)
+	// Empty markdown is a real error — Execute renders it as tool content.
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty markdown must error, got out=%q err=%v", out, err)
 	}
 }
 

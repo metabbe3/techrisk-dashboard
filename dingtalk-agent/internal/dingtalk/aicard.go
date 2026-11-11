@@ -204,9 +204,10 @@ func (a *aiCard) finish(ctx context.Context, content string) error {
 	return a.putCardData(ctx, content, flowStatusFinished)
 }
 
-// fail marks the card failed (flowStatus=5).
-func (a *aiCard) fail(ctx context.Context) error {
-	return a.putCardData(ctx, "", flowStatusFailed)
+// failWith marks the card failed (flowStatus=5) with a visible reason — an
+// empty failed card reads as "finished" to the user (#27: fail+finish pair).
+func (a *aiCard) failWith(ctx context.Context, text string) error {
+	return a.putCardData(ctx, text, flowStatusFailed)
 }
 
 func (a *aiCard) putCardData(ctx context.Context, content string, flowStatus int) error {

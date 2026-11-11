@@ -1,8 +1,10 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"sync"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
@@ -13,7 +15,7 @@ import (
 )
 
 // ToolHandler is a function that executes a tool with parsed JSON arguments.
-type ToolHandler func(argsJSON string) (string, error)
+type ToolHandler func(ctx context.Context, argsJSON string) (string, error)
 
 // Tool represents a registered agent tool.
 type Tool struct {
@@ -98,11 +100,12 @@ func (r *Registry) GetDefinitions() []llm.ToolDefinition {
 	for _, t := range r.tools {
 		defs = append(defs, t.Definition)
 	}
+	sort.Slice(defs, func(i, j int) bool { return defs[i].Function.Name < defs[j].Function.Name })
 	return defs
 }
 
 // Execute runs the named tool with the given JSON arguments.
-func (r *Registry) Execute(name, argsJSON string) (string, error) {
+func (r *Registry) Execute(ctx context.Context, name, argsJSON string) (string, error) {
 	r.mu.RLock()
 	tool, exists := r.tools[name]
 	r.mu.RUnlock()
@@ -115,7 +118,7 @@ func (r *Registry) Execute(name, argsJSON string) (string, error) {
 		argsJSON = "{}"
 	}
 
-	result, err := tool.Handler(argsJSON)
+	result, err := tool.Handler(ctx, argsJSON)
 	if err != nil {
 		return fmt.Sprintf("Error executing %s: %v", name, err), nil
 	}
@@ -134,14 +137,14 @@ func schema(properties map[string]any, required []string) any {
 	return s
 }
 
-// rawSchema decodes a static JSON schema literal into a value that marshals as
-// a JSON OBJECT. Parameters must never be a raw string — json.Marshal
-// double-encodes it and the upstream 400s the WHOLE request
-// ("tools[N].function.parameters is invalid or missing", prod 2026-11-10).
-func rawSchema(s string) any {
-	var v any
-	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		panic("rawSchema: invalid literal: " + err.Error()) // static input; fail at boot
+// typed wraps a handler that wants its arguments pre-parsed into T, so each
+// tool doesn't repeat the same unmarshal + "invalid arguments" dance.
+func typed[T any](h func(context.Context, T) (string, error)) ToolHandler {
+	return func(ctx context.Context, argsJSON string) (string, error) {
+		var args T
+		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+			return fmt.Errorf("invalid arguments: %w", err).Error(), nil
+		}
+		return h(ctx, args)
 	}
-	return v
 }

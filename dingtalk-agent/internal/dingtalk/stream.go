@@ -20,7 +20,9 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/kb"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/memory"
+	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 	"techrisk-dashboard/dingtalk-agent/internal/watch"
 )
 
@@ -63,10 +65,12 @@ type Bot struct {
 	sem chan struct{}
 }
 
-// chatTask is one inbound text message queued for a conversation worker.
+// chatTask is one inbound message queued for a conversation worker. file is
+// non-nil for an uploaded document — it runs alone, not batched with text.
 type chatTask struct {
 	m    *chatbot.BotCallbackDataModel
 	text string
+	file *fileMessage
 }
 
 type historyEntry struct {
@@ -119,11 +123,11 @@ func (b *Bot) knowledgePrompt() string {
 	}
 	var sb strings.Builder
 	for _, e := range b.store.Knowledge() {
-		summary := e.Summary
-		if len(summary) > 600 {
-			summary = summary[:600] + "…"
+		summary := util.Cut(e.Summary, 600)
+		if summary != e.Summary {
+			summary += "…"
 		}
-		fmt.Fprintf(&sb, "- [%s] %s — %s\n", e.Time.Format("2006-01-02"), e.File, summary)
+		fmt.Fprintf(&sb, "- [%s] %s — %s\n", e.Time.In(schedule.WIB).Format("2006-01-02"), e.File, summary)
 	}
 	return sb.String()
 }
@@ -153,16 +157,17 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	}
 
 	// File uploads: download → extract text → summarize/knowledge → delete file.
-	if fm, ok := parseFileMessage(m.Content); ok {
-		log.Printf("[dingtalk] file from %s (%s) in conversation %s: %s",
-			m.SenderNick, m.SenderStaffId, m.ConversationId, fm.FileName)
-		b.reply(ctx, m, fmt.Sprintf("📥 Got **%s** — reading it now…", fm.FileName))
-		b.sem <- struct{}{}
-		go func() {
-			defer func() { <-b.sem }()
-			b.processFile(context.Background(), m, fm, text)
-		}()
-		return nil, nil
+	// Only real file messages — pictures/audio also carry downloadCode but are
+	// not documents. Routed through the SAME per-conversation worker as text so
+	// it can never race takeHistory/saveHistory for that chat.
+	if m.Msgtype == "file" {
+		if fm, ok := parseFileMessage(m.Content); ok {
+			log.Printf("[dingtalk] file from %s (%s) in conversation %s: %s",
+				m.SenderNick, m.SenderStaffId, m.ConversationId, fm.FileName)
+			b.reply(ctx, m, fmt.Sprintf("📥 Got **%s** — reading it now…", fm.FileName))
+			b.enqueue(m, text, &fm)
+			return nil, nil
+		}
 	}
 
 	if text == "" {
@@ -172,7 +177,7 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	log.Printf("[dingtalk] message from %s (%s) in conversation %s: %s",
 		m.SenderNick, m.SenderStaffId, m.ConversationId, text)
 
-	b.enqueue(m, text)
+	b.enqueue(m, text, nil)
 
 	return nil, nil // ack the frame; the reply travels over the session webhook
 }
@@ -180,7 +185,7 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 // enqueue hands a message to its conversation's batching worker, creating the
 // worker on first contact. Never blocks: an overflowing inbox is refused with
 // a webhook apology instead of stalling the SDK's frame reader.
-func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string) {
+func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string, file *fileMessage) {
 	b.inboxMu.Lock()
 	ch, ok := b.inboxes[m.ConversationId]
 	if !ok {
@@ -191,7 +196,7 @@ func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string) {
 	b.inboxMu.Unlock()
 
 	select {
-	case ch <- chatTask{m: m, text: text}:
+	case ch <- chatTask{m: m, text: text, file: file}:
 	default:
 		b.reply(context.Background(), m, "I'm backed up with queued messages — please retry in a moment.")
 	}
@@ -208,11 +213,7 @@ func (b *Bot) conversationWorker(ch chan chatTask) {
 		if carry != nil {
 			first, carry = *carry, nil
 		} else {
-			t, ok := <-ch
-			if !ok {
-				return
-			}
-			first = t
+			first = <-ch // inboxes are never closed
 		}
 		batch := []chatTask{first}
 
@@ -222,11 +223,12 @@ func (b *Bot) conversationWorker(ch chan chatTask) {
 	collect:
 		for {
 			select {
-			case t, ok := <-ch:
-				if !ok {
-					break collect
-				}
-				if t.m.SenderStaffId != first.m.SenderStaffId {
+			case t := <-ch:
+				// Batching is keyed on BOTH sender ids — either differing means
+				// a different person (SenderStaffId is empty for external
+				// users, SenderId for test payloads). A file upload always
+				// runs as its own turn.
+				if t.m.SenderId != first.m.SenderId || t.m.SenderStaffId != first.m.SenderStaffId || t.file != nil || first.file != nil {
 					carry = &t
 					break collect
 				}
@@ -249,6 +251,14 @@ func (b *Bot) conversationWorker(ch chan chatTask) {
 // callback model is used for replies (freshest session webhook).
 func (b *Bot) runBatch(batch []chatTask) {
 	m := batch[len(batch)-1].m
+
+	// A file upload runs alone through the same concurrency gate.
+	if len(batch) == 1 && batch[0].file != nil {
+		b.sem <- struct{}{}
+		defer func() { <-b.sem }()
+		b.processFile(context.Background(), m, *batch[0].file, batch[0].text)
+		return
+	}
 
 	var sb strings.Builder
 	for i, t := range batch {
@@ -292,17 +302,14 @@ func (b *Bot) runBatch(batch []chatTask) {
 
 	b.sem <- struct{}{}
 	defer func() { <-b.sem }()
-	b.process(context.Background(), m, text, ack)
+	// One sink per turn: concurrent turns no longer share the Notion-reads buffer.
+	b.process(tools.WithNotionSink(context.Background()), m, text, ack)
 }
 
 // processFile handles a chat-uploaded document: download, extract text,
 // summarize via the agent, remember the summary — then ALWAYS delete the file.
 func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, fm fileMessage, caption string) {
-	dir := "data" // ponytail: relative to cwd, matches default DataDir
-	if b.cfg.DataDir != "" {
-		dir = b.cfg.DataDir
-	}
-	path, err := b.downloadMessageFile(ctx, fm, filepath.Join(dir, "tmp"))
+	path, err := b.downloadMessageFile(ctx, fm, filepath.Join(b.dataDir(), "tmp"))
 	defer func() {
 		if path != "" {
 			_ = os.Remove(path) // delete after done, success or failure
@@ -374,18 +381,32 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 	filtered, err := b.processStreaming(ctx, m, text, sysExtra, card)
 	if err != nil {
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
-		_ = card.fail(ctx)
-		_ = card.finish(ctx, "Sorry, that request failed. Please try again in a moment.")
-		b.learnNotion(m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
+		// One failed card state — fail+finish used to overwrite the failure
+		// with flowStatus=3, so the card LOOKED finished.
+		_ = card.failWith(ctx, "Sorry, that request failed. Please try again in a moment.")
+		b.learnNotion(ctx, m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
 		return ""
 	}
 	filtered = b.deliverGenerated(ctx, m, filtered)
 	if err := card.finish(ctx, filtered); err != nil {
 		log.Printf("[dingtalk] card finish failed (conversation %s): %v", m.ConversationId, err)
 	}
-	b.learnLater(m)
-	b.learnNotion(m)
+	// Whole-group history is everyone's messages — learning from it would pin
+	// other people's style onto one sender's profile.
+	if m.ConversationType != "2" {
+		b.learnLater(m)
+	}
+	b.learnNotion(ctx, m)
 	return filtered
+}
+
+// dataDir resolves the agent's data directory (config always sets it at boot;
+// tests may leave it empty → cwd-relative "data").
+func (b *Bot) dataDir() string {
+	if b.cfg.DataDir != "" {
+		return b.cfg.DataDir
+	}
+	return "data"
 }
 
 // profilePrompt renders the sender's learned preferences for the system prompt.
@@ -471,11 +492,11 @@ func (b *Bot) learnProfile(ctx context.Context, staffID, nick string, history []
 
 // learnNotion drains the Notion pages read this turn and summarizes them into
 // knowledge memory in the background — the same never-blocks contract as learnLater.
-func (b *Bot) learnNotion(m *chatbot.BotCallbackDataModel) {
+func (b *Bot) learnNotion(ctx context.Context, m *chatbot.BotCallbackDataModel) {
 	if b.store == nil || b.llm == nil || b.loop == nil {
 		return
 	}
-	reads := b.loop.Registry().TakeNotionReads()
+	reads := tools.TakeNotionReads(ctx)
 	if len(reads) == 0 {
 		return
 	}
@@ -525,17 +546,9 @@ func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataMo
 		return "", err
 	}
 
-	b.saveHistory(m.ConversationId, newHistory)
-
-	filtered := guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars)
-	if filtered == "" {
-		filtered = "Sorry, I could not produce an answer for that."
-	}
-	filtered = b.applySchedules(m, newHistory, filtered)
-	filtered = b.applyWatches(m, newHistory, filtered)
-	writer.flush(ctx, filtered) // ensure the visible card matches the guarded final text
-	b.reportTurn(m, text, filtered, usage, time.Since(started), "")
-	return filtered, nil
+	// card.finish pushes the final frame itself — an extra flush here rewrote
+	// the same content.
+	return b.finalize(m, text, reply, newHistory, usage, started), nil
 }
 
 func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string) string {
@@ -544,7 +557,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 		if r := recover(); r != nil {
 			log.Printf("[dingtalk] panic in agent loop: %v", r)
 			b.reply(ctx, m, "Sorry, something went wrong while processing that request.")
-			b.learnNotion(m) // same leak as the error branch: a panic mid-turn must not strand its reads
+			b.learnNotion(ctx, m) // same leak as the error branch: a panic mid-turn must not strand its reads
 			b.reportTurn(m, text, "", llm.Usage{}, time.Since(started), fmt.Sprintf("panic: %v", r))
 		}
 	}()
@@ -553,24 +566,32 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 	if err != nil {
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
 		b.reply(ctx, m, "Sorry, that request failed. Please try again in a moment.")
-		b.learnNotion(m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
+		b.learnNotion(ctx, m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
 		b.reportTurn(m, text, "", usage, time.Since(started), err.Error())
 		return ""
 	}
 
-	b.saveHistory(m.ConversationId, newHistory)
+	filtered := b.finalize(m, text, reply, newHistory, usage, started)
+	filtered = b.deliverGenerated(ctx, m, filtered)
+	b.reply(ctx, m, filtered)
+	if m.ConversationType != "2" {
+		b.learnLater(m)
+	}
+	b.learnNotion(ctx, m)
+	return filtered
+}
 
+// finalize is the shared tail of a successful turn: persist history, guard the
+// reply, bind parked reminder/watch tickets, report the turn.
+func (b *Bot) finalize(m *chatbot.BotCallbackDataModel, text, reply string, newHistory []llm.ChatMessage, usage llm.Usage, started time.Time) string {
+	b.saveHistory(m.ConversationId, newHistory)
 	filtered := guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars)
 	if filtered == "" {
 		filtered = "Sorry, I could not produce an answer for that."
 	}
 	filtered = b.applySchedules(m, newHistory, filtered)
 	filtered = b.applyWatches(m, newHistory, filtered)
-	filtered = b.deliverGenerated(ctx, m, filtered)
-	b.reply(ctx, m, filtered)
 	b.reportTurn(m, text, filtered, usage, time.Since(started), "")
-	b.learnLater(m)
-	b.learnNotion(m)
 	return filtered
 }
 
@@ -641,10 +662,7 @@ func (b *Bot) deliverGenerated(ctx context.Context, m *chatbot.BotCallbackDataMo
 // DataDir/exports — the ticket text comes from LLM output, so traversal
 // outside the exports dir is refused.
 func (b *Bot) safeExportPath(rel string) (string, bool) {
-	dir := b.cfg.DataDir
-	if dir == "" {
-		dir = "data"
-	}
+	dir := b.dataDir()
 	clean := filepath.Clean("/" + rel) // absolute-rooted: kills any ".." climb
 	path := filepath.Join(dir, clean)
 	st, err := os.Stat(path)
@@ -662,21 +680,21 @@ func orDefault(s, def string) string {
 }
 
 func truncateStr(s string, max int) string {
-	if len(s) <= max {
-		return s
+	t := util.Cut(s, max)
+	if t != s {
+		return t + "…"
 	}
-	return s[:max] + "…"
+	return t
 }
 
 // cardWriter batches LLM deltas into at most one card update per flushInterval
 // and applies secret redaction + the hard scope gate to every pushed frame.
 type cardWriter struct {
-	card          *aiCard
-	mu            sync.Mutex
-	content       string
-	lastFlush     time.Time
-	dirty         bool
-	flushInterval time.Duration
+	card      *aiCard
+	mu        sync.Mutex
+	content   string
+	lastFlush time.Time
+	dirty     bool
 	// override latches the refusal once the hard gate fires: a violating
 	// sentence can never stream to the card, and every later frame shows the
 	// refusal instead.
@@ -686,13 +704,14 @@ type cardWriter struct {
 const cardFlushInterval = 400 * time.Millisecond
 
 func newCardWriter(card *aiCard) *cardWriter {
-	return &cardWriter{card: card, flushInterval: cardFlushInterval}
+	return &cardWriter{card: card}
 }
 
 func (w *cardWriter) onDelta(delta string) {
 	w.mu.Lock()
 	w.content += delta
-	due := time.Since(w.lastFlush) >= w.flushInterval
+	w.dirty = true // a delta arrived — the next flush must push (the missing line that kept streaming dead)
+	due := time.Since(w.lastFlush) >= cardFlushInterval
 	w.mu.Unlock()
 	if due {
 		w.flush(context.Background(), "")
@@ -739,8 +758,8 @@ func (w *cardWriter) flush(ctx context.Context, content string) {
 
 func (b *Bot) reply(ctx context.Context, m *chatbot.BotCallbackDataModel, text string) {
 	title := "Risk Agent"
-	if len(text) > 40 {
-		title = text[:40]
+	if t := util.Cut(text, 40); t != text {
+		title = t
 	}
 	if err := b.replier.SimpleReplyMarkdown(ctx, m.SessionWebhook, []byte(title), []byte(text)); err != nil {
 		// DingTalk markdown is a subset — fall back to plain text when it rejects the payload.
@@ -799,6 +818,11 @@ func (b *Bot) takeHistory(conversationID string) []llm.ChatMessage {
 func (b *Bot) saveHistory(conversationID string, messages []llm.ChatMessage) {
 	if len(messages) > historyKeepMsgs {
 		messages = messages[len(messages)-historyKeepMsgs:]
+		// A history starting on a tool result (orphaned from its tool_calls)
+		// 400s the whole gateway request.
+		for len(messages) > 0 && messages[0].Role == "tool" {
+			messages = messages[1:]
+		}
 	}
 
 	b.mu.Lock()

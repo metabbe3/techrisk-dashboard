@@ -60,12 +60,12 @@ func TestMessageFileDownloadURL(t *testing.T) {
 }
 
 func TestFileURLAllowed(t *testing.T) {
-	for _, ok := range []string{"https://a.com/x", "http://a.com/x"} {
+	for _, ok := range []string{"https://a.com/x"} { // http is cleartext — rejected
 		if !fileURLAllowed(ok) {
 			t.Errorf("%q should be allowed", ok)
 		}
 	}
-	for _, bad := range []string{"file:///etc/passwd", "ftp://a.com", "not a url", ""} {
+	for _, bad := range []string{"file:///etc/passwd", "ftp://a.com", "not a url", "", "http://a.com/x"} {
 		if fileURLAllowed(bad) {
 			t.Errorf("%q should be rejected", bad)
 		}

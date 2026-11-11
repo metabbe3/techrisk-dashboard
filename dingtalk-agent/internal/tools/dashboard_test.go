@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -52,7 +53,7 @@ func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 		envelope(w, []any{}, map[string]any{"total": 7})
 	})
 
-	out, err := reg.Execute("search_incidents", `{
+	out, err := reg.Execute(context.Background(), "search_incidents", `{
 		"severity": "P1",
 		"status": "Completed",
 		"classification": "Incident",
@@ -91,7 +92,7 @@ func TestSearchIncidentsPassesUpdatedSince(t *testing.T) {
 		gotQuery = r.URL.RawQuery
 		envelope(w, []any{}, map[string]any{"total": 0})
 	})
-	if _, err := reg.Execute("search_incidents", `{"updated_since":"2026-11-10T17:00:00Z","limit":1}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "search_incidents", `{"updated_since":"2026-11-10T17:00:00Z","limit":1}`); err != nil {
 		t.Fatalf("updated_since search failed: %v", err)
 	}
 	if !strings.Contains(gotQuery, "updated_since=2026-11-10T17%3A00%3A00Z") {
@@ -107,7 +108,7 @@ func TestSearchIncidentsPairsStartDateWithToday(t *testing.T) {
 	})
 
 	// A lone start_date must be paired — the API ignores a single bound (all-time counts otherwise).
-	if _, err := reg.Execute("search_incidents", `{"start_date":"2026-01-01","limit":1}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "search_incidents", `{"start_date":"2026-01-01","limit":1}`); err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
 	if !strings.Contains(gotQuery, "start_date=2026-01-01") || !strings.Contains(gotQuery, "end_date=") {
@@ -122,7 +123,7 @@ func TestSearchIncidentsClampsLimitAndIgnoresShortSearch(t *testing.T) {
 		envelope(w, []any{}, map[string]any{"total": 0})
 	})
 
-	if _, err := reg.Execute("search_incidents", `{"limit": 5000, "search": "a"}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "search_incidents", `{"limit": 5000, "search": "a"}`); err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
 	if !strings.Contains(gotQuery, "limit=100") {
@@ -144,7 +145,7 @@ func TestSearchIncidentsRejectsBadDate(t *testing.T) {
 		`{"start_date":"2026-13-45","limit":1}`,
 		`{"start_date":"2026-10-05","end_date":"2026-10-01","limit":1}`,
 	} {
-		out, err := reg.Execute("search_incidents", args)
+		out, err := reg.Execute(context.Background(), "search_incidents", args)
 		if err != nil {
 			t.Fatalf("Execute should not error (error becomes tool content), got %v", err)
 		}
@@ -161,14 +162,14 @@ func TestGetIncidentByNoAndID(t *testing.T) {
 		envelope(w, map[string]any{"no": "20250115_IN_1234", "title": "Payment Gateway Timeout"}, nil)
 	})
 
-	if _, err := reg.Execute("get_incident", `{"no":"20250115_IN_1234"}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "get_incident", `{"no":"20250115_IN_1234"}`); err != nil {
 		t.Fatalf("get by no failed: %v", err)
 	}
 	if gotPath != "/incidents-by-no/20250115_IN_1234" {
 		t.Errorf("unexpected path: %s", gotPath)
 	}
 
-	if _, err := reg.Execute("get_incident", `{"id": 42}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "get_incident", `{"id": 42}`); err != nil {
 		t.Fatalf("get by id failed: %v", err)
 	}
 	if gotPath != "/incidents/42" {
@@ -182,7 +183,7 @@ func TestGetIncidentRejectsUnsafeRef(t *testing.T) {
 	})
 
 	for _, bad := range []string{`{"no":"../../etc/passwd"}`, `{"no":"2026 IN 01"}`, `{"no":""}`, `{"no":"abc%20def"}`} {
-		out, err := reg.Execute("get_incident", bad)
+		out, err := reg.Execute(context.Background(), "get_incident", bad)
 		if err != nil {
 			t.Fatalf("Execute should not error (error becomes tool content), got %v", err)
 		}
@@ -200,7 +201,7 @@ func TestGetIncidentMarkdownDecodesBase64(t *testing.T) {
 		envelope(w, base64.StdEncoding.EncodeToString([]byte("# Payment Gateway Timeout\n\n**Root cause:** pool exhausted")), nil)
 	})
 
-	out, err := reg.Execute("get_incident_markdown", `{"no":"20250115_IN_1234"}`)
+	out, err := reg.Execute(context.Background(), "get_incident_markdown", `{"no":"20250115_IN_1234"}`)
 	if err != nil {
 		t.Fatalf("markdown failed: %v", err)
 	}
@@ -230,7 +231,7 @@ func TestDashboardErrorSurfacing(t *testing.T) {
 			w.WriteHeader(tc.status)
 			fmt.Fprintf(w, `{"code":%d,"status":"Error","message":"boom"}`, tc.status)
 		})
-		out, err := reg.Execute("search_incidents", `{"limit":1}`)
+		out, err := reg.Execute(context.Background(), "search_incidents", `{"limit":1}`)
 		if err != nil {
 			t.Fatalf("status %d: unexpected Execute error: %v", tc.status, err)
 		}

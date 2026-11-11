@@ -13,6 +13,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
 
 	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -47,7 +48,6 @@ func NewLoop(llmClient *llm.Client, registry *tools.Registry, maxIterations int)
 func (l *Loop) Registry() *tools.Registry { return l.registry }
 
 type toolResult struct {
-	index      int
 	toolCallID string
 	name       string
 	content    string
@@ -69,53 +69,16 @@ func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.
 }
 
 func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
-	var messages []llm.ChatMessage
-
-	// Ensure system prompt is first
-	hasSystem := false
+	// The system prompt is rebuilt fresh EVERY turn and stripped from history —
+	// a persisted system message would pin a stale clock/sender profile/knowledge
+	// set into every later turn until the trim drops it.
+	messages := []llm.ChatMessage{{Role: "system", Content: l.buildSystemPrompt(sysExtra)}}
 	for _, m := range history {
 		if m.Role == "system" {
-			hasSystem = true
-			break
+			continue
 		}
+		messages = append(messages, m)
 	}
-	if !hasSystem {
-		sys := SystemPrompt
-		if l.registry.Has("web_search") {
-			sys += "\n\n" + WebResearchPrompt
-		}
-		if l.registry.Has("notion_search") {
-			sys += "\n\n" + NotionPrompt
-		}
-		if l.registry.Has("generate_pdf_report") {
-			sys += "\n\n" + DeliverablesPrompt
-		}
-		if l.registry.Has("schedule_reminder") {
-			sys += "\n\n" + SchedulePrompt
-		}
-		if l.registry.Has("watch_incident") {
-			sys += "\n\n" + WatchPrompt
-		}
-		if l.registry.Has("search_knowledge") {
-			sys += "\n\n" + KnowledgePrompt
-		}
-		if l.SystemExtras != nil {
-			if extra := l.SystemExtras(); extra != "" {
-				sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
-			}
-		}
-		if sysExtra != "" {
-			sys += "\n\n" + sysExtra
-		}
-		// "since yesterday" and friends are unreliable without the clock —
-		// scheduled task-runs especially (they fire at any hour on any day).
-		sys += "\n\nCurrent date/time: " + time.Now().In(schedule.WIB).Format("Mon 2006-01-02 15:04 MST")
-		messages = append(messages, llm.ChatMessage{
-			Role:    "system",
-			Content: sys,
-		})
-	}
-	messages = append(messages, history...)
 	// Frame the user message: injected instructions read as data, not commands.
 	messages = append(messages, llm.ChatMessage{
 		Role:    "user",
@@ -155,58 +118,99 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 
 		// If no tool calls requested, we have the final answer
 		if len(assistantMsg.ToolCalls) == 0 {
-			return assistantMsg.Content, messages, totalUsage, nil
+			return assistantMsg.Content, messages[1:], totalUsage, nil
 		}
 
-		// Parallel execution of tool calls (max 4 concurrent), preserving deterministic order
-		toolCalls := assistantMsg.ToolCalls
-		results := make([]toolResult, len(toolCalls))
-		sem := make(chan struct{}, MaxConcurrentTools)
-		var wg sync.WaitGroup
-
-		for i, tc := range toolCalls {
-			wg.Add(1)
-			go func(idx int, call llm.ToolCall) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				log.Printf("[agent] executing tool %s (id: %s) [worker]", call.Function.Name, call.ID)
-				output, err := l.registry.Execute(call.Function.Name, call.Function.Arguments)
-				if err != nil {
-					output = fmt.Sprintf("Error executing tool: %v", err)
-				}
-
-				// Tool result truncation (per-tool cap when registered — e.g.
-				// notion_read_page at 48k — else the 8000-byte default + footer)
-				truncated := TruncateToolOutput(output, l.registry.ResultCap(call.Function.Name))
-
-				// Secret redaction before adding to LLM context
-				redacted, _ := guardrail.Redact(truncated)
-
-				results[idx] = toolResult{
-					index:      idx,
-					toolCallID: call.ID,
-					name:       call.Function.Name,
-					content:    redacted,
-				}
-			}(i, tc)
-		}
-
-		wg.Wait()
-
-		// Append tool results in original slice index order
-		for _, res := range results {
-			messages = append(messages, llm.ChatMessage{
-				Role:       "tool",
-				ToolCallID: res.toolCallID,
-				Name:       res.name,
-				Content:    res.content,
-			})
-		}
+		messages = append(messages, l.execTools(ctx, assistantMsg.ToolCalls)...)
 	}
 
-	return "Reached maximum tool execution iterations without final conclusion. Please narrow your query.", messages, totalUsage, nil
+	return "Reached maximum tool execution iterations without final conclusion. Please narrow your query.", messages[1:], totalUsage, nil
+}
+
+// execTools runs one round of tool calls (max 4 concurrent) and returns the
+// tool messages in original call order.
+func (l *Loop) execTools(ctx context.Context, toolCalls []llm.ToolCall) []llm.ChatMessage {
+	results := make([]toolResult, len(toolCalls))
+	sem := make(chan struct{}, MaxConcurrentTools)
+	var wg sync.WaitGroup
+
+	for i, tc := range toolCalls {
+		wg.Add(1)
+		go func(idx int, call llm.ToolCall) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			log.Printf("[agent] executing tool %s (id: %s) [worker]", call.Function.Name, call.ID)
+			output, err := l.registry.Execute(ctx, call.Function.Name, call.Function.Arguments)
+			if err != nil {
+				output = fmt.Sprintf("Error executing tool: %v", err)
+			}
+
+			// Tool result truncation (per-tool cap when registered — e.g.
+			// notion_read_page at 48k — else the 8000-byte default + footer)
+			truncated := TruncateToolOutput(output, l.registry.ResultCap(call.Function.Name))
+
+			// Secret redaction before adding to LLM context
+			redacted, _ := guardrail.Redact(truncated)
+
+			results[idx] = toolResult{
+				toolCallID: call.ID,
+				name:       call.Function.Name,
+				content:    redacted,
+			}
+		}(i, tc)
+	}
+
+	wg.Wait()
+
+	out := make([]llm.ChatMessage, 0, len(results))
+	for _, res := range results {
+		out = append(out, llm.ChatMessage{
+			Role:       "tool",
+			ToolCallID: res.toolCallID,
+			Name:       res.name,
+			Content:    res.content,
+		})
+	}
+	return out
+}
+
+// buildSystemPrompt assembles the system message fresh for this turn: base
+// prompt + one section per registered tool family + dynamic knowledge extras
+// + the current WIB clock.
+func (l *Loop) buildSystemPrompt(sysExtra string) string {
+	sys := SystemPrompt
+	if l.registry.Has("web_search") {
+		sys += "\n\n" + WebResearchPrompt
+	}
+	if l.registry.Has("notion_search") {
+		sys += "\n\n" + NotionPrompt
+	}
+	if l.registry.Has("generate_pdf_report") {
+		sys += "\n\n" + DeliverablesPrompt
+	}
+	if l.registry.Has("schedule_reminder") {
+		sys += "\n\n" + SchedulePrompt
+	}
+	if l.registry.Has("watch_incident") {
+		sys += "\n\n" + WatchPrompt
+	}
+	if l.registry.Has("search_knowledge") {
+		sys += "\n\n" + KnowledgePrompt
+	}
+	if l.SystemExtras != nil {
+		if extra := l.SystemExtras(); extra != "" {
+			sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
+		}
+	}
+	if sysExtra != "" {
+		sys += "\n\n" + sysExtra
+	}
+	// "since yesterday" and friends are unreliable without the clock —
+	// scheduled task-runs especially (they fire at any hour on any day).
+	sys += "\n\nCurrent date/time: " + time.Now().In(schedule.WIB).Format("Mon 2006-01-02 15:04 MST")
+	return sys
 }
 
 // TruncateToolOutput caps output to maxBytes with a truncation notice.
@@ -216,6 +220,10 @@ func TruncateToolOutput(output string, maxBytes int) string {
 	}
 	if len(output) > maxBytes {
 		truncated := len(output) - maxBytes
+		// Back off to a rune boundary — a split rune is invalid UTF-8 in LLM context.
+		for maxBytes > 0 && !utf8.RuneStart(output[maxBytes]) {
+			maxBytes--
+		}
 		return output[:maxBytes] + fmt.Sprintf("\n...[truncated %d bytes]", truncated)
 	}
 	return output
@@ -226,19 +234,16 @@ func PruneContextBudget(messages []llm.ChatMessage, maxChars int) {
 	if maxChars <= 0 {
 		maxChars = MaxContextChars
 	}
-	for {
-		total := 0
-		for _, m := range messages {
-			total += len(m.Content)
-		}
-		if total <= maxChars {
-			break
-		}
-
+	total := 0
+	for _, m := range messages {
+		total += len(m.Content)
+	}
+	for total > maxChars {
 		// Find the oldest tool result not yet omitted
 		found := false
 		for i := range messages {
 			if messages[i].Role == "tool" && messages[i].Content != "[tool result omitted]" {
+				total -= len(messages[i].Content)
 				messages[i].Content = "[tool result omitted]"
 				found = true
 				break

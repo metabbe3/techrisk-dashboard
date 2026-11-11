@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
@@ -23,6 +24,33 @@ func sse(frames ...string) string {
 		out += "data: " + f + "\n\n"
 	}
 	return out + "data: [DONE]\n\n"
+}
+
+// A stream that ends without [DONE] must FAIL, not return partial text as a
+// successful answer (the 2026-11-11 fix: EOF-before-DONE looked like success).
+func TestStreamEndWithoutDoneFails(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"partial ans"}}]}`+"\n\n") // connection dies, no [DONE]
+	})
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "[DONE]") {
+		t.Fatalf("missing [DONE] must error, got msg=%q err=%v", msg, err)
+	}
+}
+
+// finish_reason=length means the answer was cut mid-generation — tool-call
+// JSON truncated mid-way MUST NOT be executed.
+func TestStreamFinishReasonLengthFails(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sse(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"search_incidents","arguments":"{\"query\":\"P1\""}}]}}]}`,
+			`{"choices":[{"delta":{},"finish_reason":"length"}]}`))
+	})
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "length") {
+		t.Fatalf("finish_reason=length must error, got msg=%q err=%v", msg, err)
+	}
 }
 
 func TestChatCompletionStreamContent(t *testing.T) {

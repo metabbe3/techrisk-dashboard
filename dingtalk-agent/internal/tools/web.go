@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // Keyless web research tools (owner request 2026-11-10). web_search hits DuckDuckGo's
@@ -46,11 +47,20 @@ func newWebTools() *webTools {
 	return &webTools{searchClient: plain, fetchClient: guarded}
 }
 
+var (
+	cgnatRange  = netip.MustParsePrefix("100.64.0.0/10") // carrier NAT incl. Alibaba metadata 100.100.100.200
+	benchRange  = netip.MustParsePrefix("198.18.0.0/15") // benchmarking, some cloud metadata mirrors
+	thisNetRng  = netip.MustParsePrefix("0.0.0.0/8")     // "this network"
+	nat64Prefix = netip.MustParsePrefix("64:ff9b::/96")  // IPv6 translation to v4 intranets
+)
+
 // blockedIP reports whether an address must never be dialed.
 func blockedIP(a netip.Addr) bool {
 	a = a.Unmap()
 	return !a.IsValid() || a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() ||
-		a.IsLinkLocalMulticast() || a.IsMulticast() || a.IsUnspecified()
+		a.IsLinkLocalMulticast() || a.IsMulticast() || a.IsUnspecified() ||
+		cgnatRange.Contains(a) || benchRange.Contains(a) || thisNetRng.Contains(a) ||
+		(a.Is6() && nat64Prefix.Contains(a))
 }
 
 // guardedTransport resolves + dials only public IPs (Control fires post-DNS,
@@ -75,8 +85,8 @@ func guardedTransport() *http.Transport {
 
 func (r *Registry) registerWebTools() {
 	wt := newWebTools()
-	r.Register(webSearchDef(), wt.handleWebSearch)
-	r.Register(webFetchDef(), wt.handleWebFetch)
+	r.Register(webSearchDef(), typed(wt.handleWebSearch))
+	r.Register(webFetchDef(), typed(wt.handleWebFetch))
 }
 
 func webSearchDef() llm.ToolDefinition {
@@ -101,11 +111,7 @@ type webSearchArgs struct {
 	Query string `json:"query"`
 }
 
-func (w *webTools) handleWebSearch(argsJSON string) (string, error) {
-	var args webSearchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (w *webTools) handleWebSearch(_ context.Context, args webSearchArgs) (string, error) {
 	q := strings.TrimSpace(args.Query)
 	if q == "" {
 		return "", fmt.Errorf("query is required")
@@ -217,11 +223,7 @@ var (
 	blockElRe     = regexp.MustCompile(`(?is)</(p|div|br|li|tr|h[1-6])>`)
 )
 
-func (w *webTools) handleWebFetch(argsJSON string) (string, error) {
-	var args webFetchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (w *webTools) handleWebFetch(_ context.Context, args webFetchArgs) (string, error) {
 	raw := strings.TrimSpace(args.URL)
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
@@ -277,5 +279,5 @@ func selfTruncate(s string) string {
 	if len(s) <= webResultMaxChars {
 		return s
 	}
-	return s[:webResultMaxChars] + fmt.Sprintf("\n…[truncated %d chars]", len(s)-webResultMaxChars)
+	return util.Cut(s, webResultMaxChars) + fmt.Sprintf("\n…[truncated %d chars]", len([]rune(s))-webResultMaxChars)
 }

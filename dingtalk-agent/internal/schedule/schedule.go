@@ -6,13 +6,12 @@
 package schedule
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // WIB is the team's wall clock. ponytail: fixed +7 (Indonesia has no DST);
@@ -112,12 +111,12 @@ func parseCron(expr string) (*cronExpr, error) {
 	if len(f) != 5 {
 		return nil, fmt.Errorf("need 5 fields, got %d", len(f))
 	}
-	c := &cronExpr{domStar: f[2] == "*", dowStar: f[4] == "*"}
+	c := &cronExpr{domStar: strings.HasPrefix(f[2], "*"), dowStar: strings.HasPrefix(f[4], "*")}
 	for i, spec := range []struct {
 		set      *[64]bool
-		lo, hi   int
+		lo       int
 		maxValue int
-	}{{&c.min, 0, 59, 59}, {&c.hour, 0, 23, 23}, {&c.dom, 1, 31, 31}, {&c.month, 1, 12, 12}, {&c.dow, 0, 6, 7}} {
+	}{{&c.min, 0, 59}, {&c.hour, 0, 23}, {&c.dom, 1, 31}, {&c.month, 1, 12}, {&c.dow, 0, 7}} {
 		if err := parseField(f[i], spec.lo, spec.maxValue, spec.set); err != nil {
 			return nil, fmt.Errorf("field %d (%q): %v", i+1, f[i], err)
 		}
@@ -187,42 +186,12 @@ type Request struct {
 	Mode     string
 	Text     string
 	CancelID int
-	at       time.Time
 }
 
 // Pending parks tool requests under random tokens until the bot claims the
 // tokens found in its own turn's tool results. A token only appears in the
 // history of the conversation whose turn created it, so concurrent turns
 // cannot pick up each other's requests, and a claimed token never re-applies.
-type Pending struct {
-	mu   sync.Mutex
-	reqs map[string]Request
-}
+type Pending = util.Pending[Request]
 
-func NewPending() *Pending { return &Pending{reqs: map[string]Request{}} }
-
-// Put parks req and returns its token.
-func (p *Pending) Put(req Request) string {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	token := hex.EncodeToString(b)
-	req.at = time.Now()
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for t, r := range p.reqs {
-		if time.Since(r.at) > pendingTTL {
-			delete(p.reqs, t)
-		}
-	}
-	p.reqs[token] = req
-	return token
-}
-
-// Claim removes and returns the request for token.
-func (p *Pending) Claim(token string) (Request, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	r, ok := p.reqs[token]
-	delete(p.reqs, token)
-	return r, ok
-}
+func NewPending() *Pending { return util.NewPending[Request](pendingTTL) }

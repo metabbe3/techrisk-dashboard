@@ -82,25 +82,45 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 		return "", fmt.Errorf("download file: HTTP %d", resp.StatusCode)
 	}
 
+	// Reject oversize UP FRONT: the 15MB LimitReader used to store a silently
+	// truncated document and the agent summarized half a file as if whole.
+	if fm.FileSize > MaxFileDownloadBytes {
+		return "", fmt.Errorf("file too large (%d bytes, max %d) — compress or split it", fm.FileSize, MaxFileDownloadBytes)
+	}
+	if fm.FileSize <= 0 {
+		return "", fmt.Errorf("file reports no size — download refused")
+	}
+
 	name := filepath.Base(fm.FileName) // never trust a client path
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, name)
-	out, err := os.Create(path)
+	// os.CreateTemp: two uploads named report.docx in one chat overwrote each
+	// other mid-read.
+	out, err := os.CreateTemp(dir, "up-*-"+name)
 	if err != nil {
 		return "", err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, io.LimitReader(resp.Body, MaxFileDownloadBytes)); err != nil {
+	path := out.Name()
+	if _, err := io.Copy(out, io.LimitReader(resp.Body, MaxFileDownloadBytes+1)); err != nil {
+		out.Close()
 		_ = os.Remove(path)
 		return "", err
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Size() > MaxFileDownloadBytes {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("file exceeds the %d byte limit", MaxFileDownloadBytes)
 	}
 	return path, nil
 }
 
-// fileURLWhitelisted guards against the API returning an unexpected host.
+// fileURLAllowed guards against the API returning an unexpected host —
+// https only: a plain-http download URL would carry the document in cleartext.
 func fileURLAllowed(raw string) bool {
 	u, err := url.Parse(raw)
-	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
+	return err == nil && u.Scheme == "https" && u.Host != ""
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -87,12 +88,12 @@ func Load() (*Config, error) {
 func LoadFromFile(envPath string) (*Config, error) {
 	envMap := make(map[string]string)
 
-	// If file exists, load KEY=VALUE pairs
-	if _, err := os.Stat(envPath); err == nil {
-		file, err := os.Open(envPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open env file %s: %w", envPath, err)
-		}
+	// If file exists, load KEY=VALUE pairs (os.Open alone — Stat+Open doubled the syscalls)
+	file, err := os.Open(envPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("failed to open env file %s: %w", envPath, err)
+	}
+	if file != nil {
 		defer file.Close()
 
 		scanner := bufio.NewScanner(file)

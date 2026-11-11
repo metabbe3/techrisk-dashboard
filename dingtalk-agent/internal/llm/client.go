@@ -155,8 +155,13 @@ func NewClient(cfg *config.Config) *Client {
 		apiKey:    cfg.LLMAPIKey,
 		model:     model,
 		maxTokens: cfg.LLMMaxTokens,
+		// No overall Client.Timeout: long streaming answers (big reports
+		// through the tool loop) legitimately exceed any fixed ceiling and
+		// Timeout kills the connection mid-stream. ResponseHeaderTimeout
+		// still fails fast on a dead gateway; the callers' contexts bound
+		// the rest.
 		httpClient: &http.Client{
-			Timeout: 120 * time.Second,
+			Transport: &http.Transport{ResponseHeaderTimeout: 120 * time.Second},
 		},
 		embedModel:   cfg.EmbeddingModel,
 		embedArrayOK: true, // optimistic — flips off on the first batch failure
@@ -377,6 +382,11 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []ChatMessag
 	var assembled ChatMessage
 	var usage Usage
 	toolCalls := map[int]*ToolCall{}
+	// Stream-end validation: an EOF before [DONE] used to return partial
+	// text as SUCCESS, and finish_reason=length (truncated tool-call JSON)
+	// used to execute anyway.
+	var sawDone bool
+	finishReason := ""
 
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 0, 64<<10), 256<<10)
@@ -389,7 +399,11 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []ChatMessag
 			continue
 		}
 		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-		if payload == "" || payload == "[DONE]" {
+		if payload == "[DONE]" {
+			sawDone = true
+			continue
+		}
+		if payload == "" {
 			continue
 		}
 
@@ -405,6 +419,9 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []ChatMessag
 		}
 		if len(chunk.Choices) == 0 {
 			continue
+		}
+		if chunk.Choices[0].FinishReason != "" {
+			finishReason = chunk.Choices[0].FinishReason
 		}
 
 		delta := chunk.Choices[0].Delta
@@ -429,6 +446,12 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []ChatMessag
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, Usage{}, fmt.Errorf("llm stream read failed: %w", err)
+	}
+	if !sawDone {
+		return nil, Usage{}, fmt.Errorf("llm stream ended before [DONE] — answer truncated")
+	}
+	if finishReason == "length" {
+		return nil, Usage{}, fmt.Errorf("llm hit the token limit mid-answer (finish_reason=length) — narrow the request")
 	}
 
 	if len(toolCalls) > 0 {

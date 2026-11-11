@@ -5,11 +5,9 @@
 set -e
 cd "$(dirname "$0")"
 
-if [ -f dingtalk-agent.env ]; then
-    set -a
-    . ./dingtalk-agent.env
-    set +a
-fi
+# The env file is read by config.Load itself — shell-sourcing it here mangled
+# $ and backticks inside secrets, and sourced values won over the app's own
+# parsing.
 
 echo "[start.sh] building..."
 go build -o agent ./cmd/agent

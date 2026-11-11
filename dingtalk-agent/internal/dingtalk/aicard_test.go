@@ -125,11 +125,11 @@ func TestNewAICardGroup(t *testing.T) {
 		t.Errorf("finish params = %v", finishParams)
 	}
 
-	if err := card.fail(context.Background()); err != nil {
-		t.Fatalf("fail: %v", err)
+	if err := card.failWith(context.Background(), "failed, try again"); err != nil {
+		t.Fatalf("failWith: %v", err)
 	}
 	failParams := f.body(5)["cardData"].(map[string]any)["cardParamMap"].(map[string]any)
-	if failParams["flowStatus"] != "5" {
+	if failParams["flowStatus"] != "5" || failParams["msgContent"] != "failed, try again" {
 		t.Errorf("fail params = %v", failParams)
 	}
 }

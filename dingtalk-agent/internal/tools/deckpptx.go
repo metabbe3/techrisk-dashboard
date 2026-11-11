@@ -134,9 +134,21 @@ func renderDeck(path, title string, slides []deckSlide) error {
 	return zw.Close()
 }
 
+// xmlEsc escapes XML text content. Package var — a fresh Replacer per call
+// recompiled the rules every slide. Control chars are dropped: they are
+// invalid in XML 1.0 and PowerPoint refuses the file outright.
+var xmlEscReplacer = strings.NewReplacer(
+	"&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;",
+	"\x00", "", "\x01", "", "\x02", "", "\x03", "", "\x04", "",
+	"\x05", "", "\x06", "", "\x07", "", "\x08", "", "\x0b", "",
+	"\x0c", "", "\x0e", "", "\x0f", "", "\x10", "", "\x11", "",
+	"\x12", "", "\x13", "", "\x14", "", "\x15", "", "\x16", "",
+	"\x17", "", "\x18", "", "\x19", "", "\x1a", "", "\x1b", "",
+	"\x1c", "", "\x1d", "", "\x1e", "", "\x1f", "",
+)
+
 func xmlEsc(s string) string {
-	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&apos;")
-	return r.Replace(s)
+	return xmlEscReplacer.Replace(s)
 }
 
 const (
@@ -173,13 +185,13 @@ const rootRelsXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 func presentationXML(slides int) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+"\n<p:presentation %s %s>", nsP, nsR)
-	b.WriteString(`<sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></sldMasterIdLst>`)
-	b.WriteString(`<sldIdLst>`)
+	b.WriteString(`<p:sldMasterIdLst><p:sldMasterId id="2147483648" r:id="rId1"/></p:sldMasterIdLst>`)
+	b.WriteString(`<p:sldIdLst>`)
 	for i := 1; i <= slides; i++ {
 		fmt.Fprintf(&b, `<p:sldId id="%d" r:id="rId%d"/>`, 255+i, i+1)
 	}
-	b.WriteString(`</sldIdLst>`)
-	b.WriteString(`<sldSz cx="12192000" cy="6858000"/><notesSz cx="6858000" cy="9144000"/></p:presentation>`)
+	b.WriteString(`</p:sldIdLst>`)
+	b.WriteString(`<p:sldSz cx="12192000" cy="6858000"/><p:notesSz cx="6858000" cy="9144000"/></p:presentation>`)
 	return b.String()
 }
 
@@ -255,19 +267,19 @@ const themeXML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 func slideXML(s deckSlide) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`+"\n<p:sld %s %s %s>\n<p:cSld><p:spTree>\n", nsP, nsA, nsR)
-	b.WriteString(`<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>\n`)
+	b.WriteString(`<p:nvGrpSpPr><p:cNvPr id="1" name=""/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr/>`)
 
 	// Heading
 	fmt.Fprintf(&b, `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Heading"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`)
 	b.WriteString(`<p:spPr><a:xfrm><a:off x="685800" y="457200"/><a:ext cx="10820400" cy="1371600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>`)
 	b.WriteString(`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="l"/><a:r><a:rPr lang="en-US" sz="3200" b="1"><a:solidFill><a:srgbClr val="1E293B"/></a:solidFill><a:latin typeface="Calibri Light"/></a:rPr><a:t>`)
 	b.WriteString(xmlEsc(s.Heading))
-	b.WriteString(`</a:t></a:r></a:p></p:txBody></p:sp>\n`)
+	b.WriteString(`</a:t></a:r></a:p></p:txBody></p:sp>`)
 
 	// Accent rule
 	b.WriteString(`<p:sp><p:nvSpPr><p:cNvPr id="3" name="Rule"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>`)
 	b.WriteString(`<p:spPr><a:xfrm><a:off x="685800" y="1828800"/><a:ext cx="2286000" cy="38100"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="4F46E5"/></a:solidFill><a:ln><a:noFill/></a:ln></p:spPr>`)
-	b.WriteString(`<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>\n`)
+	b.WriteString(`<p:txBody><a:bodyPr/><a:lstStyle/><a:p/></p:txBody></p:sp>`)
 
 	// Bullets
 	if len(s.Bullets) > maxSlidePoints {
@@ -283,7 +295,7 @@ func slideXML(s deckSlide) string {
 			b.WriteString(xmlEsc(pt))
 			b.WriteString(`</a:t></a:r></a:p>`)
 		}
-		b.WriteString(`</p:txBody></p:sp>\n`)
+		b.WriteString(`</p:txBody></p:sp>`)
 	}
 
 	b.WriteString(`</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`)

@@ -14,6 +14,7 @@ import (
 
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/tools"
 )
 
 // The internal listener is the dashboard's engine endpoint. RunAiAgentJob
@@ -21,15 +22,14 @@ import (
 // "message") over the compose network, guarded by the shared X-Agent-Token
 // secret. It is started from main only when AGENT_INTERNAL_TOKEN is set.
 
-// internalRunRequest is the dashboard's RunAiAgentJob payload.
+// internalRunRequest is the dashboard's RunAiAgentJob payload (run_id, agent_id
+// and model are sent too but are the dashboard's own bookkeeping — the Go
+// engine runs its configured model).
 type internalRunRequest struct {
-	RunID            string `json:"run_id"`
-	AgentID          string `json:"agent_id"`
 	AgentName        string `json:"agent_name"`
 	Mode             string `json:"mode"` // "task" (agent loop) | "message" (deliver text, no LLM)
 	System           string `json:"system,omitempty"`
 	Text             string `json:"text"`
-	Model            string `json:"model,omitempty"`
 	ConversationType string `json:"conversation_type,omitempty"`
 	ConversationID   string `json:"conversation_id,omitempty"`
 	StaffID          string `json:"staff_id,omitempty"`
@@ -98,7 +98,7 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 		return internalRunResult{
 			OK:             true,
 			Output:         req.Text,
-			ResponseTimeMs: msSince(started),
+			ResponseTimeMs: time.Since(started).Milliseconds(),
 			Delivered:      delivered,
 			DeliveryError:  derr,
 		}
@@ -109,18 +109,17 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 		runCtx, cancel := context.WithTimeout(ctx, 360*time.Second)
 		defer func() { <-b.sem; cancel() }()
 
-		var history []llm.ChatMessage
-		if req.System != "" {
-			history = append(history, llm.ChatMessage{Role: "system", Content: req.System})
-		}
-		reply, _, usage, err := b.loop.Run(runCtx, req.Text, history, "")
-		b.loop.Registry().TakeNotionReads() // a scheduled run must not leak reads into the next chat turn
+		// The dashboard's System prompt rides as sysExtra (appended to the
+		// loop's own system prompt) — history is never trusted to carry one.
+		turnCtx := tools.WithNotionSink(runCtx)
+		reply, _, usage, err := b.loop.Run(turnCtx, req.Text, nil, req.System)
+		tools.TakeNotionReads(turnCtx) // a scheduled run must not leak reads into the next chat turn
 		if err != nil {
 			return internalRunResult{
 				OK:             false,
 				Error:          err.Error(),
 				Usage:          usagePtr(usage),
-				ResponseTimeMs: msSince(started),
+				ResponseTimeMs: time.Since(started).Milliseconds(),
 			}
 		}
 
@@ -138,7 +137,7 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 			Output:         filtered,
 			Model:          b.llm.Model(),
 			Usage:          usagePtr(usage),
-			ResponseTimeMs: msSince(started),
+			ResponseTimeMs: time.Since(started).Milliseconds(),
 			Delivered:      delivered,
 			DeliveryError:  derr,
 		}
@@ -180,10 +179,6 @@ func usagePtr(u llm.Usage) *llm.Usage {
 		return nil
 	}
 	return &u
-}
-
-func msSince(started time.Time) int64 {
-	return time.Since(started).Milliseconds()
 }
 
 func writeInternalJSON(w http.ResponseWriter, code int, v any) {

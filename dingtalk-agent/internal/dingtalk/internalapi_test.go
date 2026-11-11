@@ -153,7 +153,7 @@ func TestInternalRunMessageModeDeliversWithoutLLM(t *testing.T) {
 	defer srv.Close()
 
 	code, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{
-		RunID: "run-1", AgentName: "P1 digest", Mode: "message",
+		AgentName: "P1 digest", Mode: "message",
 		Text:             "Morning check: no new P1s.",
 		ConversationType: "1", ConversationID: "cid-dm", StaffID: "staff-9",
 	})
@@ -192,7 +192,7 @@ func TestInternalRunMessageModeUnbound(t *testing.T) {
 	defer srv.Close()
 
 	code, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{
-		RunID: "run-1", Mode: "message", Text: "report text",
+		Mode: "message", Text: "report text",
 	})
 	if code != http.StatusOK || out["ok"] != true {
 		t.Fatalf("status=%d out=%v", code, out)
@@ -214,7 +214,7 @@ func TestInternalRunTaskModeRunsLoopAndReportsUsage(t *testing.T) {
 	defer srv.Close()
 
 	code, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{
-		RunID: "run-2", AgentID: "a-1", AgentName: "Open P1 watch", Mode: "task",
+		AgentName: "Open P1 watch", Mode: "task",
 		System:           "You are the open-incident watcher.",
 		Text:             "List open P1 incidents now.",
 		ConversationType: "1", ConversationID: "cid-dm", StaffID: "staff-9",
@@ -271,7 +271,7 @@ func TestInternalRunTaskErrorReturnsNotOK(t *testing.T) {
 	defer srv.Close()
 
 	code, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{
-		RunID: "run-3", Mode: "task", System: "sys", Text: "do the thing",
+		Mode: "task", System: "sys", Text: "do the thing",
 		ConversationType: "1", ConversationID: "cid-dm", StaffID: "staff-9",
 	})
 	if code != http.StatusOK {

@@ -16,6 +16,7 @@ import (
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 )
 
 // dashboardClient issues GET requests against the read-only Laravel API.
@@ -165,7 +166,7 @@ func normalizeDate(name, val string) (string, error) {
 // (IncidentController silently ignores a lone bound): a missing side is filled in so the intended
 // range is never widened to all-time.
 func pairDates(start, end string) (string, string, error) {
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().In(schedule.WIB).Format("2006-01-02")
 	switch {
 	case start != "" && end == "":
 		end = today
@@ -194,9 +195,9 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	client := newDashboardClient(cfg)
 	r.dash = client
 
-	r.Register(searchIncidentDef(), client.handleSearchIncidents)
-	r.Register(getIncidentDef(), client.handleGetIncident)
-	r.Register(getIncidentMarkdownDef(), client.handleGetIncidentMarkdown)
+	r.Register(searchIncidentDef(), typed(client.handleSearchIncidents))
+	r.Register(getIncidentDef(), typed(client.handleGetIncident))
+	r.Register(getIncidentMarkdownDef(), typed(client.handleGetIncidentMarkdown))
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number
@@ -281,12 +282,7 @@ type searchArgs struct {
 const searchLimitCeiling = 100
 const searchLimitDefault = 20
 
-func (c *dashboardClient) handleSearchIncidents(argsJSON string) (string, error) {
-	var args searchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
-
+func (c *dashboardClient) handleSearchIncidents(ctx context.Context, args searchArgs) (string, error) {
 	start, end, err := pairDates(args.StartDate, args.EndDate)
 	if err != nil {
 		return "", err
@@ -373,12 +369,7 @@ type getIncidentArgs struct {
 	ID *int   `json:"id"`
 }
 
-func (c *dashboardClient) handleGetIncident(argsJSON string) (string, error) {
-	var args getIncidentArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
-
+func (c *dashboardClient) handleGetIncident(ctx context.Context, args getIncidentArgs) (string, error) {
 	var path string
 	switch {
 	case args.ID != nil && *args.ID > 0:
@@ -393,7 +384,7 @@ func (c *dashboardClient) handleGetIncident(argsJSON string) (string, error) {
 		return "", fmt.Errorf("provide either no (incident number) or id (numeric)")
 	}
 
-	env, err := c.get(context.Background(), path)
+	env, err := c.get(ctx, path)
 	if err != nil {
 		return "", err
 	}
@@ -417,18 +408,13 @@ func getIncidentMarkdownDef() llm.ToolDefinition {
 	}
 }
 
-func (c *dashboardClient) handleGetIncidentMarkdown(argsJSON string) (string, error) {
-	var args getIncidentArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
-
+func (c *dashboardClient) handleGetIncidentMarkdown(ctx context.Context, args getIncidentArgs) (string, error) {
 	no, err := sanitizeRef(args.No)
 	if err != nil {
 		return "", err
 	}
 
-	env, err := c.get(context.Background(), "/incidents-by-no/"+url.PathEscape(no)+"/markdown")
+	env, err := c.get(ctx, "/incidents-by-no/"+url.PathEscape(no)+"/markdown")
 	if err != nil {
 		return "", err
 	}

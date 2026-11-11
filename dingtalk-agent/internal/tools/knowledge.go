@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -14,7 +13,7 @@ import (
 // exposes it to the bot (file ingestion). Nil index = never called.
 func (r *Registry) RegisterKnowledgeTools(ix *kb.Index) {
 	r.kbIndex = ix
-	r.Register(searchKnowledgeDef(), r.handleSearchKnowledge)
+	r.Register(searchKnowledgeDef(), typed(r.handleSearchKnowledge))
 }
 
 // KBIndex exposes the knowledge index to the bot (file uploads ingest into it).
@@ -37,18 +36,20 @@ func searchKnowledgeDef() llm.ToolDefinition {
 	}
 }
 
-func (r *Registry) handleSearchKnowledge(argsJSON string) (string, error) {
-	var a struct {
-		Query string `json:"query"`
-	}
-	if err := json.Unmarshal([]byte(argsJSON), &a); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (r *Registry) handleSearchKnowledge(ctx context.Context, a struct {
+	Query string `json:"query"`
+}) (string, error) {
 	a.Query = strings.TrimSpace(a.Query)
 	if a.Query == "" || len(a.Query) > 500 {
 		return "", fmt.Errorf("query must be 1-500 characters")
 	}
-	hits := r.kbIndex.Search(context.Background(), a.Query, searchTopK)
+	if r.kbIndex == nil {
+		return "", fmt.Errorf("knowledge base is not available")
+	}
+	hits, err := r.kbIndex.Search(ctx, a.Query, searchTopK)
+	if err != nil {
+		return "", err
+	}
 	if len(hits) == 0 {
 		return "No knowledge-base documents match. If none were uploaded yet, say that plainly.", nil
 	}

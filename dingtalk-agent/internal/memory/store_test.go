@@ -3,6 +3,7 @@ package memory
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +16,8 @@ func writeFile(path, content string) error {
 }
 
 func TestUserRegistryRoundtrip(t *testing.T) {
-	s := NewStore(t.TempDir())
+	dir := t.TempDir()
+	s := NewStore(dir)
 	rec := UserRecord{StaffID: "s1", Nick: "Nick", ConversationID: "c1", ConversationType: "1"}
 	if err := s.AppendUser(rec); err != nil {
 		t.Fatalf("AppendUser: %v", err)
@@ -24,15 +26,24 @@ func TestUserRegistryRoundtrip(t *testing.T) {
 		t.Fatalf("AppendUser: %v", err)
 	}
 
-	users, err := s.Users()
+	// __USERS_ANCHOR__
+
+	// S9: the registry dedupes by staff id — one line per person, not one
+	// per message (the file used to grow a line every chat turn).
+	before, err := os.ReadFile(filepath.Join(dir, "users.jsonl"))
 	if err != nil {
-		t.Fatalf("Users: %v", err)
+		t.Fatalf("read users.jsonl: %v", err)
 	}
-	if len(users) != 2 || users[0].StaffID != "s1" || users[1].Nick != "Tomy" {
-		t.Errorf("users = %+v", users)
+	if err := s.AppendUser(UserRecord{StaffID: "s1", Nick: "Nick again", ConversationID: "c1", ConversationType: "1"}); err != nil {
+		t.Fatalf("re-append: %v", err)
 	}
-	if users[0].Time.IsZero() {
-		t.Error("timestamp must be auto-filled")
+	after, _ := os.ReadFile(filepath.Join(dir, "users.jsonl"))
+	if string(before) != string(after) {
+		t.Errorf("duplicate staff id appended: %s", after)
+	}
+	lines := strings.Count(string(after), "\n")
+	if lines != 2 {
+		t.Errorf("users.jsonl has %d lines, want 2", lines)
 	}
 }
 
@@ -47,7 +58,7 @@ func TestHistoryPersistAndRecall(t *testing.T) {
 
 	// Fresh store from the same dir = restart simulation (auto recall).
 	s2 := NewStore(dir)
-	if got := s2.TakeHistory("c1"); len(got) != 2 || got[0].Content != "berapa P1?" {
+	if got := s2.All()["c1"].Messages; len(got) != 2 || got[0].Content != "berapa P1?" {
 		t.Errorf("recalled = %+v", got)
 	}
 	if all := s2.All(); len(all) != 1 {
@@ -94,7 +105,7 @@ func TestCorruptHistoryFileIgnored(t *testing.T) {
 		t.Fatal(err)
 	}
 	s := NewStore(dir)
-	if got := s.TakeHistory("any"); got != nil {
+	if got := s.All(); len(got) != 0 {
 		t.Errorf("corrupt file must start fresh, got %+v", got)
 	}
 }

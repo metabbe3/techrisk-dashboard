@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
@@ -35,30 +34,14 @@ const watchListHeader = "[Active watches in this chat:"
 // applyWatches binds the watch requests parked by THIS turn's tool calls to
 // the real sender/conversation, verifies each incident via the dashboard API,
 // and saves the watch. Same contract as applySchedules — the LLM never
-// supplies a conversation id.
+// supplies a conversation id. (Ticket tokens are stripped from the reply too —
+// the schedule twin always did this, watches forgot.)
 func (b *Bot) applyWatches(m *chatbot.BotCallbackDataModel, history []llm.ChatMessage, reply string) string {
 	if b.loop == nil || b.loop.Registry().WatchPending() == nil {
 		return reply
 	}
-	pending := b.loop.Registry().WatchPending()
-
-	var notes []string
-	for _, msg := range history {
-		if msg.Role != "tool" {
-			continue
-		}
-		for _, mm := range tools.WatchTicket.FindAllStringSubmatch(msg.Content, -1) {
-			req, ok := pending.Claim(mm[1]) // earlier turns' tokens are already claimed
-			if !ok {
-				continue
-			}
-			notes = append(notes, b.bindWatch(m, req))
-		}
-	}
-	if len(notes) == 0 {
-		return reply
-	}
-	return reply + "\n\n" + strings.Join(notes, "\n")
+	return claimTickets(history, reply, tools.WatchTicket, b.loop.Registry().WatchPending(),
+		func(req watch.Request) string { return b.bindWatch(m, req) })
 }
 
 // bindWatch resolves the incident (title + current status) via the dashboard
@@ -103,54 +86,60 @@ type sweepRow struct {
 }
 
 // sweepWatches runs ONE updated_since query and fires a task-mode agent turn
-// for every watched incident whose status changed.
+// for every watched incident whose status changed. It reports whether the sweep
+// COMPLETED (the poller advances its watermark only then — an outage, a late
+// tick, or a truncated page must never lose changes for good).
 // ponytail: sweep misses sub-window A→B→A round-trips (60s window) — acceptable.
-func (b *Bot) sweepWatches(ctx context.Context) {
+func (b *Bot) sweepWatches(ctx context.Context, watermark time.Time) bool {
 	ws := b.watches.All()
 	if len(ws) == 0 || b.loop == nil {
-		return
+		return true
 	}
-	watermark := time.Now().Add(-watchTick - watchWatermarkSlack)
 
 	dash := b.loop.Registry().Dashboard()
 	env, err := dash.Search(ctx, "/incidents?updated_since="+url.QueryEscape(watermark.UTC().Format(time.RFC3339))+"&limit="+strconv.Itoa(sweepLimit))
 	if err != nil {
 		log.Printf("[watch] sweep failed: %v", err)
-		return
+		return false
 	}
 	var rows []sweepRow
-	if json.Unmarshal(env.Data, &rows) != nil {
-		return
+	if err := json.Unmarshal(env.Data, &rows); err != nil {
+		log.Printf("[watch] sweep decode failed: %v", err)
+		return false
 	}
 
-	byNo := map[string]watch.Item{}
+	// Two chats watching one incident BOTH fire — a single map keyed by
+	// incident number let the later watch overwrite the earlier one.
+	byNo := map[string][]watch.Item{}
 	for _, it := range ws {
-		byNo[it.IncidentNo] = it
+		byNo[it.IncidentNo] = append(byNo[it.IncidentNo], it)
 	}
 	for _, row := range rows {
-		it, ok := byNo[row.No]
-		if !ok || row.Status == it.LastStatus || row.Status == "" {
-			continue
+		for _, it := range byNo[row.No] {
+			if row.Status == it.LastStatus || row.Status == "" {
+				continue
+			}
+			old := it.LastStatus
+			if err := b.watches.SetStatus(it.ID, row.Status); err != nil { // persist BEFORE firing: never refire
+				log.Printf("[watch] #%d status persist failed: %v", it.ID, err)
+				continue
+			}
+			go b.fireWatch(ctx, it, old, row.Status)
 		}
-		old := it.LastStatus
-		if err := b.watches.SetStatus(it.ID, row.Status); err != nil { // persist BEFORE firing: never refire
-			log.Printf("[watch] #%d status persist failed: %v", it.ID, err)
-			continue
-		}
-		go b.fireWatch(ctx, it, old, row.Status)
 	}
+	return len(rows) < sweepLimit // a full page may have been truncated
 }
 
 // fireWatch runs a task-mode agent turn (fresh context, guarded output) and
 // delivers the change report — same flow as a task-mode scheduled reminder.
 func (b *Bot) fireWatch(ctx context.Context, it watch.Item, old, new string) {
-	b.sem <- struct{}{}
-	reply, _, _, err := b.loop.Run(ctx,
+	defer func() { <-b.sem }() // no defer used to mean a panic leaked the slot forever
+	turnCtx := tools.WithNotionSink(ctx)
+	reply, _, _, err := b.loop.Run(turnCtx,
 		fmt.Sprintf("[Watch #%d — incident %s status changed %s → %s — report which project and all relevant information about this incident now. Do not create or cancel reminders or watches.]",
 			it.ID, it.IncidentNo, old, new),
 		nil, "")
-	b.loop.Registry().TakeNotionReads() // a watch turn must not leak reads into the next chat turn
-	<-b.sem
+	tools.TakeNotionReads(turnCtx) // a watch turn must not leak reads into the next chat turn
 
 	body := guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars)
 	if err != nil || body == "" {
@@ -169,8 +158,14 @@ func (b *Bot) fireWatch(ctx context.Context, it watch.Item, old, new string) {
 func (b *Bot) RunWatchPoller(ctx context.Context) {
 	t := time.NewTicker(watchTick)
 	defer t.Stop()
+	// lastOK is what the next sweep scans from — advanced ONLY after a complete
+	// sweep. The old fixed now-65s window lost changes across any outage or
+	// late tick.
+	lastOK := time.Now().Add(-watchTick - watchWatermarkSlack)
 	for {
-		b.sweepWatches(ctx)
+		if b.sweepWatches(ctx, lastOK) {
+			lastOK = time.Now().Add(-watchWatermarkSlack)
+		}
 		select {
 		case <-ctx.Done():
 			return

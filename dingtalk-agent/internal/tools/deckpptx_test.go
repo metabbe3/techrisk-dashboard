@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"encoding/xml"
 	"archive/zip"
 	"encoding/json"
 	"io"
@@ -87,6 +88,41 @@ func TestGenerateDeckEmpty(t *testing.T) {
 	}
 	if !strings.Contains(out, "Error") {
 		t.Errorf("empty slides should return an error note, got: %s", out)
+	}
+}
+
+// TestPptxWellFormed: every XML part unmarshals (well-formedness + declared
+// namespaces) — PowerPoint answers a malformed part with a "repair" dialog.
+// Also pins the p:-prefixed presentation elements (sldMasterIdLst/sldIdLst/
+// sldSz/notesSz shipped unprefixed once and PowerPoint refused the file).
+func TestPptxWellFormed(t *testing.T) {
+	dir := t.TempDir()
+	args, _ := json.Marshal(map[string]string{
+		"title": "WF", "slides": "## One & <Two>\n- bullet <1>\n- bullet 2\n",
+	})
+	if _, err := handleGenerateDeck(dir, string(args)); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "exports", "*.pptx"))
+	z := readZip(t, files[0])
+
+	for name, content := range z {
+		if !strings.HasSuffix(name, ".xml") && !strings.HasSuffix(name, ".rels") {
+			continue
+		}
+		var v any
+		if err := xml.Unmarshal([]byte(content), &v); err != nil {
+			t.Errorf("part %s not well-formed: %v", name, err)
+		}
+		if strings.Contains(content, "\\n") {
+			t.Errorf("part %s contains a literal backslash-n", name)
+		}
+	}
+	pres := z["ppt/presentation.xml"]
+	for _, want := range []string{"<p:sldMasterIdLst>", "</p:sldMasterIdLst>", "<p:sldIdLst>", "</p:sldIdLst>", "<p:sldSz ", "<p:notesSz "} {
+		if !strings.Contains(pres, want) {
+			t.Errorf("presentation.xml missing %s — PowerPoint will ask to repair", want)
+		}
 	}
 }
 

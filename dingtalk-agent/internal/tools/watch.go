@@ -1,10 +1,9 @@
 package tools
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"regexp"
-	"strings"
 
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/watch"
@@ -17,8 +16,8 @@ var WatchTicket = regexp.MustCompile(`\[watch-ticket: ([0-9a-f]{16})\]`)
 
 func (r *Registry) registerWatchTools() {
 	r.watchPending = watch.NewPending()
-	r.Register(watchIncidentDef(), r.handleWatchIncident)
-	r.Register(unwatchIncidentDef(), r.handleUnwatchIncident)
+	r.Register(watchIncidentDef(), typed(r.handleWatchIncident))
+	r.Register(unwatchIncidentDef(), typed(r.handleUnwatchIncident))
 }
 
 // WatchPending exposes the parked requests to the bot (nil when disabled).
@@ -65,25 +64,21 @@ type watchArgs struct {
 	No string `json:"no"`
 }
 
-func (r *Registry) handleWatchIncident(argsJSON string) (string, error) {
-	var a watchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &a); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
+func (r *Registry) handleWatchIncident(_ context.Context, a watchArgs) (string, error) {
+	// Same validation the dashboard API applies (no re-implemented variant).
+	no, err := sanitizeRef(a.No)
+	if err != nil {
+		return "", err
 	}
-	a.No = strings.TrimSpace(a.No)
-	if a.No == "" || len(a.No) > 64 || strings.ContainsAny(a.No, " /?#") {
-		return "", fmt.Errorf("no must be an incident number like 20250115_IN_1234")
-	}
-	token := r.watchPending.Put(watch.Request{No: a.No})
+	token := r.watchPending.Put(watch.Request{No: no})
 	return fmt.Sprintf("[watch-ticket: %s] Accepted — the bot verifies the incident, saves the watch to this chat after your reply, "+
 		"and appends the confirmed watch ID. Tell the user what is now watched; do not invent an ID.", token), nil
 }
 
-func (r *Registry) handleUnwatchIncident(argsJSON string) (string, error) {
-	var a struct {
-		ID int `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(argsJSON), &a); err != nil || a.ID < 1 {
+func (r *Registry) handleUnwatchIncident(_ context.Context, a struct {
+	ID int `json:"id"`
+}) (string, error) {
+	if a.ID < 1 {
 		return "", fmt.Errorf("id must be a positive watch ID")
 	}
 	token := r.watchPending.Put(watch.Request{CancelID: a.ID})

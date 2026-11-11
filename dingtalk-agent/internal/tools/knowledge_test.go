@@ -34,13 +34,13 @@ func TestSearchKnowledgeTool(t *testing.T) {
 	ix.Ingest("SOP.pdf", "restart the payment gateway")
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		if len(ix.Search(context.Background(), "restart", 6)) > 0 {
+		if hits, _ := ix.Search(context.Background(), "restart", 6); len(hits) > 0 {
 			break
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
 
-	out, err := reg.Execute("search_knowledge", `{"query":"restart gateway"}`)
+	out, err := reg.Execute(context.Background(), "search_knowledge", `{"query":"restart gateway"}`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,10 +49,10 @@ func TestSearchKnowledgeTool(t *testing.T) {
 	}
 
 	// Blank or oversized queries are rejected (Execute wraps the error).
-	if out, _ := reg.Execute("search_knowledge", `{"query":"  "}`); !strings.Contains(out, "Error executing") {
+	if out, _ := reg.Execute(context.Background(), "search_knowledge", `{"query":"  "}`); !strings.Contains(out, "Error executing") {
 		t.Fatalf("blank query not rejected: %s", out)
 	}
-	if out, _ := reg.Execute("search_knowledge", `{"query":"`+strings.Repeat("q", 501)+`"}`); !strings.Contains(out, "Error executing") {
+	if out, _ := reg.Execute(context.Background(), "search_knowledge", `{"query":"`+strings.Repeat("q", 501)+`"}`); !strings.Contains(out, "Error executing") {
 		t.Fatalf("oversized query not rejected: %s", out)
 	}
 }

@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 const (
@@ -110,6 +112,8 @@ func (ix *Index) needsRebuild() bool {
 // retried next boot) or mis-embeds that one doc until the next boot — the
 // rebuild window is seconds and boot-only, not worth a generation counter.
 func (ix *Index) rebuild() {
+	ix.ingest <- struct{}{} // serialized with ingests, same slot
+	defer func() { <-ix.ingest }()
 	log.Printf("[kb] re-embedding %d chunks under %s", len(ix.chunks), ix.model)
 	ix.mu.RLock()
 	texts := make([]string, len(ix.chunks))
@@ -141,13 +145,8 @@ func (ix *Index) rebuild() {
 // Ingest chunks and embeds one document in the background; errors only log —
 // an un-embeddable doc degrades to summary-only knowledge, it never breaks a turn.
 func (ix *Index) Ingest(doc, text string) {
-	select {
-	case ix.ingest <- struct{}{}:
-	default:
-		log.Printf("[kb] ingest busy — skipping %s", doc)
-		return
-	}
 	go func() {
+		ix.ingest <- struct{}{} // blocking — a concurrent upload waits, never drops
 		defer func() { <-ix.ingest }()
 		if err := ix.ingestNow(context.Background(), doc, text); err != nil {
 			log.Printf("[kb] ingest %s failed: %v", doc, err)
@@ -207,17 +206,20 @@ func (ix *Index) evictOldestLocked() {
 }
 
 // Search embeds the query and returns the top-k chunks by cosine similarity.
-func (ix *Index) Search(ctx context.Context, query string, k int) []chunk {
+// An embed failure is surfaced as an error — it is NOT "no documents".
+func (ix *Index) Search(ctx context.Context, query string, k int) ([]chunk, error) {
 	ix.mu.RLock()
 	total := len(ix.chunks)
 	ix.mu.RUnlock()
 	if total == 0 || ix.embed == nil {
-		return nil
+		return nil, nil
 	}
 	vecs, err := ix.embed.Embed(ctx, []string{query})
-	if err != nil || len(vecs) != 1 {
-		log.Printf("[kb] query embed failed: %v", err)
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("knowledge-base query embed failed: %w", err)
+	}
+	if len(vecs) != 1 {
+		return nil, fmt.Errorf("knowledge-base query embed: want 1 vector, got %d", len(vecs))
 	}
 	q := vecs[0]
 
@@ -239,7 +241,7 @@ func (ix *Index) Search(ctx context.Context, query string, k int) []chunk {
 	for _, s := range all[:k] {
 		out = append(out, s.c)
 	}
-	return out
+	return out, nil
 }
 
 // embedAll embeds texts in batches of embedBatchSize.
@@ -275,11 +277,7 @@ func (ix *Index) save() error {
 		sb.Write(b)
 		sb.WriteByte('\n')
 	}
-	tmp := ix.path + ".tmp"
-	if err := os.WriteFile(tmp, []byte(sb.String()), 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, ix.path)
+	return util.AtomicWrite(ix.path, []byte(sb.String()), 0o600)
 }
 
 // chunkText splits text into overlapping rune-safe chunks, capped per doc.

@@ -12,7 +12,7 @@ import (
 var (
 	// Common API Keys
 	reOpenAIKey = regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{16,}\b`)
-	reGitHubKey = regexp.MustCompile(`\b(?:ghp|gho|github_pat)_[A-Za-z0-9_]{16,}\b`)
+	reGitHubKey = regexp.MustCompile(`\b(?:ghp|gho|ghs|ghu|ghr|github_pat)_[A-Za-z0-9_]{16,}\b`)
 	reAWSKey    = regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)
 	reSlackKey  = regexp.MustCompile(`\bxox[bap]-[A-Za-z0-9_-]{10,}\b`)
 	reGoogleKey = regexp.MustCompile(`\bAIza[0-9A-Za-z_-]{30,}\b`)
@@ -27,8 +27,10 @@ var (
 	// Private Key Block
 	rePrivateKey = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9 ]+)?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9 ]+)?PRIVATE KEY-----`)
 
-	// Key-Value Credentials (password=, passwd=, secret=, token=, api_key=, apikey=)
-	reKeyValueCred = regexp.MustCompile(`(?i)\b(password|passwd|secret|token|api_key|apikey)\s*=\s*(["']?)([^\s;&"'\r\n]+)(["']?)`)
+	// Key-Value Credentials — both `key=value` and JSON/YAML `key: value`
+	// shapes. client_secret et al. must be LISTED: \b before "secret" does
+	// not match mid-word (client_secret slipped through).
+	reKeyValueCred = regexp.MustCompile(`(?i)\b(password|passwd|secret|client_secret|secret_key|api_secret|token|access_token|refresh_token|api_key|apikey)\s*([:=])\s*(["']?)([^\s;&"'\r\n]+)(["']?)`)
 
 	// Email
 	reEmail = regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`)
@@ -119,21 +121,28 @@ func Redact(text string) (string, []string) {
 	if reKeyValueCred.MatchString(result) {
 		result = reKeyValueCred.ReplaceAllStringFunc(result, func(s string) string {
 			m := reKeyValueCred.FindStringSubmatch(s)
-			if len(m) == 5 {
+			if len(m) == 6 {
 				keyName := strings.ToLower(m[1])
-				val := m[3]
+				val := m[4]
+				// An earlier pass (JWT/bearer) already redacted this value —
+				// never re-redact our own marker into a different type.
+				if strings.HasPrefix(val, "[REDACTED:") {
+					return s
+				}
 				if len(val) > 3 {
 					tag := "secret"
 					switch keyName {
 					case "password", "passwd":
 						tag = "password"
-					case "token":
+					case "token", "access_token", "refresh_token":
 						tag = "token"
 					case "api_key", "apikey":
 						tag = "api_key"
 					}
 					addHit(tag)
-					return fmt.Sprintf("%s=%s[REDACTED:%s]%s", m[1], m[2], tag, m[4])
+					// Keep the original separator (= or :) — a JSON/YAML body
+					// must not be rewritten into = form.
+					return fmt.Sprintf("%s%s[REDACTED:%s]", m[1], m[2], tag)
 				}
 			}
 			return s

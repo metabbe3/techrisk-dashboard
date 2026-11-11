@@ -5,16 +5,16 @@
 package watch
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
+	"log"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
 	"time"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 const (
@@ -39,9 +39,9 @@ type Item struct {
 
 // Describe renders "#3 20250115_IN_1234 'Payment timeout' (status: Open)".
 func (it Item) Describe() string {
-	title := it.Title
-	if len(title) > 60 {
-		title = title[:60] + "…"
+	title := util.Cut(it.Title, 60)
+	if title != it.Title {
+		title += "…"
 	}
 	return fmt.Sprintf("#%d %s %q (status: %s)", it.ID, it.IncidentNo, title, it.LastStatus)
 }
@@ -59,13 +59,12 @@ func NewStore(dir string) *Store {
 		return s
 	}
 	s.path = filepath.Join(dir, "watches.json")
-	if data, err := os.ReadFile(s.path); err == nil {
-		var list []Item
-		if json.Unmarshal(data, &list) == nil {
-			for _, it := range list {
-				s.items[it.ID] = it
-			}
-		}
+	var list []Item
+	if err := util.LoadJSON(s.path, &list); err != nil {
+		log.Printf("[watch] loading %s: %v — starting empty", s.path, err)
+	}
+	for _, it := range list {
+		s.items[it.ID] = it
 	}
 	return s
 }
@@ -166,11 +165,7 @@ func (s *Store) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.path)
+	return util.AtomicWrite(s.path, data, 0o600)
 }
 
 // Request is what an LLM tool call asks for, before it is bound to a chat.
@@ -178,39 +173,10 @@ func (s *Store) saveLocked() error {
 type Request struct {
 	No       string
 	CancelID int
-	at       time.Time
 }
 
 // Pending parks tool requests under random tokens until the bot claims the
 // tokens found in its own turn's tool results (same contract as schedule).
-type Pending struct {
-	mu   sync.Mutex
-	reqs map[string]Request
-}
+type Pending = util.Pending[Request]
 
-func NewPending() *Pending { return &Pending{reqs: map[string]Request{}} }
-
-// Put parks req and returns its token.
-func (p *Pending) Put(req Request) string {
-	b := make([]byte, 8)
-	_, _ = rand.Read(b)
-	token := hex.EncodeToString(b)
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	for t, r := range p.reqs {
-		if time.Since(r.at) > pendingTTL {
-			delete(p.reqs, t)
-		}
-	}
-	p.reqs[token] = req
-	return token
-}
-
-// Claim removes and returns the request for token.
-func (p *Pending) Claim(token string) (Request, bool) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	r, ok := p.reqs[token]
-	delete(p.reqs, token)
-	return r, ok
-}
+func NewPending() *Pending { return util.NewPending[Request](pendingTTL) }

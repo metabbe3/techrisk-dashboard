@@ -160,7 +160,7 @@ func TestSweepFiresOnChangeAndSkipsUnchanged(t *testing.T) {
 	f.mu.Lock()
 	f.sweep = []map[string]any{{"incident_no": "20261101_IN_0042", "incident_status": "Open"}}
 	f.mu.Unlock()
-	bot.sweepWatches(ctx)
+	bot.sweepWatches(ctx, time.Now().Add(-time.Hour))
 	if got := bot.watches.All()[0].LastStatus; got != "Open" {
 		t.Fatalf("unchanged row must not fire: %s", got)
 	}
@@ -169,7 +169,7 @@ func TestSweepFiresOnChangeAndSkipsUnchanged(t *testing.T) {
 	f.mu.Lock()
 	f.sweep = []map[string]any{{"incident_no": "20261101_IN_0042", "incident_status": "In progress"}}
 	f.mu.Unlock()
-	bot.sweepWatches(ctx)
+	bot.sweepWatches(ctx, time.Now().Add(-time.Hour))
 	f.waitFor(t, "watch report DM", func() bool { return len(f.pushes) > 0 })
 
 	f.mu.Lock()

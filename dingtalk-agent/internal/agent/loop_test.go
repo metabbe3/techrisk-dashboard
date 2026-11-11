@@ -74,7 +74,7 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	reg := tools.NewRegistry(nil)
 	reg.Register(
 		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "stub_lookup", Description: "test stub"}},
-		func(argsJSON string) (string, error) { return "Directory listing: 3 files", nil },
+		func(ctx context.Context, argsJSON string) (string, error) { return "Directory listing: 3 files", nil },
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
@@ -87,9 +87,19 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 		t.Errorf("unexpected final text: %s", finalText)
 	}
 
-	// Verify messages: system, user, assistant (tool_call), tool (result), assistant (final)
-	if len(messages) < 5 {
-		t.Errorf("expected at least 5 messages in conversation history, got %d", len(messages))
+	// Verify messages: user, assistant (tool_call), tool (result), assistant
+	// (final). The system prompt is NOT in the returned history — it is rebuilt
+	// fresh every turn (#11), so history never pins a stale clock or profile.
+	if len(messages) < 4 {
+		t.Errorf("expected at least 4 messages in conversation history, got %d", len(messages))
+	}
+	if messages[0].Role != "user" {
+		t.Errorf("history must start at the user turn (no system), got %q", messages[0].Role)
+	}
+	for _, m := range messages {
+		if m.Role == "system" {
+			t.Errorf("system prompt must never persist into history")
+		}
 	}
 
 	hasToolResult := false
@@ -169,11 +179,11 @@ func TestParallelToolCallsDeterministicOrder(t *testing.T) {
 	reg := tools.NewRegistry(nil)
 	reg.Register(
 		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "stub_one", Description: "test stub"}},
-		func(argsJSON string) (string, error) { return "first tool result", nil },
+		func(ctx context.Context, argsJSON string) (string, error) { return "first tool result", nil },
 	)
 	reg.Register(
 		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "stub_two", Description: "test stub"}},
-		func(argsJSON string) (string, error) { return "second tool result", nil },
+		func(ctx context.Context, argsJSON string) (string, error) { return "second tool result", nil },
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
@@ -335,7 +345,7 @@ func TestRunSumsUsageAcrossIterations(t *testing.T) {
 	reg := tools.NewRegistry(nil)
 	reg.Register(
 		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "stub_lookup", Description: "test stub"}},
-		func(argsJSON string) (string, error) { return "result", nil },
+		func(ctx context.Context, argsJSON string) (string, error) { return "result", nil },
 	)
 	agentLoop := NewLoop(
 		llm.NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}),

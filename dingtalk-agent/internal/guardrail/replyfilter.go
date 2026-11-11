@@ -15,10 +15,14 @@ var (
 	reHTMLComment    = regexp.MustCompile(`(?s)<!--.*?-->`)
 	reSTags          = regexp.MustCompile(`(?s)<s>.*?</s>|<s\s*/?>|</s>`)
 	reSystemLine     = regexp.MustCompile(`(?m)^system:.*$\r?\n?`)
+	reBlank3         = regexp.MustCompile(`\n{3,}`)
 	reToolCallFence  = regexp.MustCompile("(?s)```(?:json|tool_call|function_call)?\\s*\\{[^`]*?\"(?:name|tool_calls|function)\"[^`]*?\\}\\s*```")
 	reGenericFenceTC = regexp.MustCompile("(?s)```(?:tool_call|function_call)\\b.*?```")
 
 	// Markers of system prompt leakage
+	// Case-SENSITIVE: a lowercase match turned every "peraturan OJK" line
+	// into a "[System instruction omitted]" redaction. These markers are
+	// only ever quoted in the system prompt's exact casing.
 	systemLeakMarkers = []string{
 		"You are GoAgent",
 		"You are Risk Agent",
@@ -63,9 +67,7 @@ func FilterReplyCap(reply string, maxLen int) string {
 	filtered = sanitizeSystemLeaks(filtered)
 
 	// Clean up extra blank lines
-	for strings.Contains(filtered, "\n\n\n") {
-		filtered = strings.ReplaceAll(filtered, "\n\n\n", "\n\n")
-	}
+	filtered = reBlank3.ReplaceAllString(filtered, "\n\n")
 	filtered = strings.TrimSpace(filtered)
 
 	// Step 4: Cap length to maxLen
@@ -90,16 +92,11 @@ func FilterReplyCap(reply string, maxLen int) string {
 func sanitizeSystemLeaks(text string) string {
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
-		lowerLine := strings.ToLower(line)
-		hasLeak := false
 		for _, marker := range systemLeakMarkers {
-			if strings.Contains(line, marker) || strings.Contains(lowerLine, strings.ToLower(marker)) {
-				hasLeak = true
+			if strings.Contains(line, marker) {
+				lines[i] = "[System instruction omitted]"
 				break
 			}
-		}
-		if hasLeak {
-			lines[i] = "[System instruction omitted]"
 		}
 	}
 	return strings.Join(lines, "\n")

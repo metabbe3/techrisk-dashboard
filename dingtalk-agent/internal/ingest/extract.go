@@ -7,12 +7,15 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"html"
 	"io"
 	"path"
 	"regexp"
 	"strings"
 
 	pdf "github.com/ledongthuc/pdf"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // MaxExtractChars caps what is fed to the LLM from one file.
@@ -55,10 +58,11 @@ func extractDocx(data []byte) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		// Paragraph boundaries become newlines, then drop every tag.
+		// Paragraph boundaries become newlines, then drop every tag and
+		// resolve XML entities — "&amp;" used to land in the prompt raw.
 		withBreaks := strings.ReplaceAll(string(xml), "</w:p>", "\n")
 		text := tagRe.ReplaceAllString(withBreaks, "")
-		return strings.TrimSpace(text), nil
+		return strings.TrimSpace(html.UnescapeString(text)), nil
 	}
 	return "", fmt.Errorf("docx has no word/document.xml")
 }
@@ -93,5 +97,5 @@ func Truncate(s string) string {
 	if len(s) <= MaxExtractChars {
 		return s
 	}
-	return s[:MaxExtractChars] + "\n…[truncated]"
+	return util.Cut(s, MaxExtractChars) + "\n…[truncated]"
 }

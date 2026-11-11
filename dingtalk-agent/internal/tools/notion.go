@@ -19,6 +19,7 @@ import (
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // NotionRead is one page the agent read this turn — drained by the bot after
@@ -194,30 +195,51 @@ func (c *notionCatalog) listing() string {
 }
 
 // notionTools carries the Notion tool state: its own API client (90s timeout —
-// the Notion MCP backend is slow; the shared dashboard client keeps 30s), the
-// persistent catalog, and the read tracker drained after each turn.
+// the Notion MCP backend is slow; the shared dashboard client keeps 30s) and
+// the persistent catalog. Reads are collected per turn via the ctx sink
+// (WithNotionSink) — a global buffer was drained by whichever concurrent turn
+// finished first, crediting pages to the wrong sender.
 type notionTools struct {
 	client   *dashboardClient
 	catalog  *notionCatalog
 	registry *Registry
+}
 
+// notionSink is a per-turn collector for Notion page reads.
+type notionSink struct {
 	mu    sync.Mutex
 	reads []NotionRead
 }
 
-func (n *notionTools) recordRead(r NotionRead) {
-	n.mu.Lock()
-	n.reads = append(n.reads, r)
-	n.mu.Unlock()
+type notionSinkKey struct{}
+
+// WithNotionSink returns a ctx that collects Notion page reads for exactly
+// this turn; drain them with TakeNotionReads(ctx) after Run returns.
+func WithNotionSink(ctx context.Context) context.Context {
+	return context.WithValue(ctx, notionSinkKey{}, &notionSink{})
 }
 
-// takeNotionReads drains the reads recorded since the last call.
-func (n *notionTools) takeNotionReads() []NotionRead {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	reads := n.reads
-	n.reads = nil
+// TakeNotionReads drains the Notion reads recorded on this turn's ctx.
+func TakeNotionReads(ctx context.Context) []NotionRead {
+	s, _ := ctx.Value(notionSinkKey{}).(*notionSink)
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	reads := s.reads
+	s.reads = nil
 	return reads
+}
+
+func (n *notionTools) recordRead(ctx context.Context, r NotionRead) {
+	s, _ := ctx.Value(notionSinkKey{}).(*notionSink)
+	if s == nil {
+		return // no sink = nobody wants the reads (e.g. internal runs)
+	}
+	s.mu.Lock()
+	s.reads = append(s.reads, r)
+	s.mu.Unlock()
 }
 
 func (r *Registry) registerNotionTools(cfg *config.Config) {
@@ -233,19 +255,10 @@ func (r *Registry) registerNotionTools(cfg *config.Config) {
 		registry: r,
 	}
 	r.notion = n
-	r.Register(notionSearchDef(), n.handleNotionSearch)
-	r.Register(n.notionQueryDatabaseDef(), n.handleNotionQueryDatabase)
-	r.RegisterCapped(notionReadPageDef(), n.handleNotionReadPage, 48000) // a PRD is ~48k; default 8k would gut it
-	r.Register(notionAddDatabaseDef(), n.handleNotionAddDatabase)
-}
-
-// TakeNotionReads drains the Notion pages read this turn (nil when the notion
-// tools are disabled) — the bot summarizes them into knowledge memory.
-func (r *Registry) TakeNotionReads() []NotionRead {
-	if r.notion == nil {
-		return nil
-	}
-	return r.notion.takeNotionReads()
+	r.Register(notionSearchDef(), typed(n.handleNotionSearch))
+	r.Register(n.notionQueryDatabaseDef(), typed(n.handleNotionQueryDatabase))
+	r.RegisterCapped(notionReadPageDef(), typed(n.handleNotionReadPage), 48000) // a PRD is ~48k; default 8k would gut it
+	r.Register(notionAddDatabaseDef(), typed(n.handleNotionAddDatabase))
 }
 
 func notionSearchDef() llm.ToolDefinition {
@@ -269,17 +282,13 @@ type notionSearchArgs struct {
 	Query string `json:"query"`
 }
 
-func (n *notionTools) handleNotionSearch(argsJSON string) (string, error) {
-	var args notionSearchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (n *notionTools) handleNotionSearch(ctx context.Context, args notionSearchArgs) (string, error) {
 	q := strings.TrimSpace(args.Query)
 	if q == "" {
 		return "", fmt.Errorf("query is required")
 	}
 
-	env, err := n.client.post(context.Background(), "/notion/search", map[string]string{"query": q})
+	env, err := n.client.post(ctx, "/notion/search", map[string]string{"query": q})
 	if err != nil {
 		return "", err
 	}
@@ -323,11 +332,7 @@ type notionQueryArgs struct {
 	Query    string `json:"query"`
 }
 
-func (n *notionTools) handleNotionQueryDatabase(argsJSON string) (string, error) {
-	var args notionQueryArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (n *notionTools) handleNotionQueryDatabase(ctx context.Context, args notionQueryArgs) (string, error) {
 	ref := strings.TrimSpace(args.Database)
 	if ref == "" || strings.TrimSpace(args.Query) == "" {
 		return "", fmt.Errorf("database and query are required")
@@ -340,13 +345,13 @@ func (n *notionTools) handleNotionQueryDatabase(argsJSON string) (string, error)
 		return "", fmt.Errorf("unknown database name %q. Known databases: %s", ref, n.catalog.listing())
 	}
 
-	env, err := n.client.post(context.Background(), "/notion/query", map[string]string{"database": resolved, "query": args.Query})
+	env, err := n.client.post(ctx, "/notion/query", map[string]string{"database": resolved, "query": args.Query})
 	if err != nil {
 		return "", err
 	}
 	// A raw id the user shared is kept for later use — only once it is proven queryable.
 	if resolved == ref && n.catalog.remember(ref) {
-		n.registry.Register(n.notionQueryDatabaseDef(), n.handleNotionQueryDatabase)
+		n.registry.Register(n.notionQueryDatabaseDef(), typed(n.handleNotionQueryDatabase))
 	}
 	return string(env.Data), nil // rows as JSON
 }
@@ -372,17 +377,13 @@ type notionReadPageArgs struct {
 	IDOrURL string `json:"id_or_url"`
 }
 
-func (n *notionTools) handleNotionReadPage(argsJSON string) (string, error) {
-	var args notionReadPageArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (n *notionTools) handleNotionReadPage(ctx context.Context, args notionReadPageArgs) (string, error) {
 	ref := strings.TrimSpace(args.IDOrURL)
 	if ref == "" {
 		return "", fmt.Errorf("id_or_url is required")
 	}
 
-	env, err := n.client.post(context.Background(), "/notion/fetch", map[string]string{"id": ref})
+	env, err := n.client.post(ctx, "/notion/fetch", map[string]string{"id": ref})
 	if err != nil {
 		return "", err
 	}
@@ -402,11 +403,8 @@ func (n *notionTools) handleNotionReadPage(argsJSON string) (string, error) {
 	if title == "" {
 		title = firstHeadingOrRef(content, ref)
 	}
-	excerpt := content
-	if len(excerpt) > notionExcerptChars {
-		excerpt = excerpt[:notionExcerptChars]
-	}
-	n.recordRead(NotionRead{Title: title, URL: ref, Excerpt: excerpt})
+	excerpt := util.Cut(content, notionExcerptChars)
+	n.recordRead(ctx, NotionRead{Title: title, URL: ref, Excerpt: excerpt})
 	return content, nil
 }
 
@@ -445,16 +443,12 @@ type notionAddDatabaseArgs struct {
 	ID   string `json:"id"`
 }
 
-func (n *notionTools) handleNotionAddDatabase(argsJSON string) (string, error) {
-	var args notionAddDatabaseArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (n *notionTools) handleNotionAddDatabase(ctx context.Context, args notionAddDatabaseArgs) (string, error) {
 	if err := n.catalog.add(strings.TrimSpace(args.Name), strings.TrimSpace(args.ID)); err != nil {
 		return "", err
 	}
 	// Re-register the query def so its description lists the new name on the
 	// next GetDefinitions() (defs are re-collected every LLM call).
-	n.registry.Register(n.notionQueryDatabaseDef(), n.handleNotionQueryDatabase)
+	n.registry.Register(n.notionQueryDatabaseDef(), typed(n.handleNotionQueryDatabase))
 	return "Catalog now: " + n.catalog.listing(), nil
 }

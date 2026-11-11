@@ -80,7 +80,10 @@ func TestSearchRanksAndReingestReplaces(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	hits := ix.Search(context.Background(), "query about alpha restart", 6)
+	hits, err := ix.Search(context.Background(), "query about alpha restart", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(hits) != 2 || hits[0].Doc != "Alpha SOP.pdf" {
 		t.Fatalf("ranking wrong: %+v", hits)
 	}
@@ -89,7 +92,10 @@ func TestSearchRanksAndReingestReplaces(t *testing.T) {
 	if err := ix.ingestNow(context.Background(), "Alpha SOP.pdf", "alpha v2 text"); err != nil {
 		t.Fatal(err)
 	}
-	hits = ix.Search(context.Background(), "query about alpha", 6)
+	hits, err = ix.Search(context.Background(), "query about alpha", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(hits) != 2 {
 		t.Fatalf("re-ingest duplicated the doc: %+v", hits)
 	}
@@ -107,7 +113,10 @@ func TestReload(t *testing.T) {
 	}
 
 	ix2 := NewIndex(dir, "m1", &fakeEmb{})
-	hits := ix2.Search(context.Background(), "query alpha", 6)
+	hits, err := ix2.Search(context.Background(), "query alpha", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(hits) != 1 || hits[0].Doc != "SOP.pdf" || hits[0].Model != "m1" {
 		t.Fatalf("reload lost the index: %+v", hits)
 	}
@@ -119,7 +128,7 @@ func TestEmbedFailureDegrades(t *testing.T) {
 	if err := ix.ingestNow(context.Background(), "SOP.pdf", "alpha text"); err == nil {
 		t.Fatal("expected ingest error")
 	}
-	if hits := ix.Search(context.Background(), "anything", 6); hits != nil {
+	if hits, _ := ix.Search(context.Background(), "anything", 6); hits != nil {
 		t.Fatalf("expected no hits, got %+v", hits)
 	}
 }
@@ -137,7 +146,10 @@ func TestGlobalCapEvictsOldestDoc(t *testing.T) {
 	if err := ix.ingestNow(context.Background(), "new.pdf", strings.Repeat("beta y", 400)); err != nil {
 		t.Fatal(err) // 2 chunks → 4 > 3 → evict old.pdf
 	}
-	hits := ix.Search(context.Background(), "query alpha", 6)
+	hits, err := ix.Search(context.Background(), "query alpha", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(hits) != 2 || hits[0].Doc != "new.pdf" {
 		t.Fatalf("oldest doc not evicted: %+v", hits)
 	}
