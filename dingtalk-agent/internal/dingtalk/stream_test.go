@@ -448,10 +448,11 @@ func TestInputGateRefusesBeforeLLM(t *testing.T) {
 	}
 }
 
-// fakeFileAPI answers the robot media-upload contract and records batchSend bodies.
-func fakeFileAPI(t *testing.T) (*httptest.Server, *[]map[string]any) {
+// fakeFileAPI answers the robot media-upload contract and records batchSend +
+// groupMessages bodies. groupStatus controls the group-send endpoint's reply.
+func fakeFileAPI(t *testing.T, groupStatus int) (*httptest.Server, *[]map[string]any, *[]map[string]any) {
 	t.Helper()
-	var bodies []map[string]any
+	var bodies, groupBodies []map[string]any
 	var mu sync.Mutex
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -469,13 +470,22 @@ func fakeFileAPI(t *testing.T) (*httptest.Server, *[]map[string]any) {
 			mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{}`)
+		case "/v1.0/robot/groupMessages/send":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			mu.Lock()
+			groupBodies = append(groupBodies, body)
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(groupStatus)
+			fmt.Fprint(w, `{}`)
 		default:
 			t.Errorf("unexpected API call: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
 	t.Cleanup(srv.Close)
-	return srv, &bodies
+	return srv, &bodies, &groupBodies
 }
 
 func TestDeliverGenerated(t *testing.T) {
@@ -488,7 +498,7 @@ func TestDeliverGenerated(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	srv, dmBodies := fakeFileAPI(t)
+	srv, dmBodies, _ := fakeFileAPI(t, 200)
 	cfg := &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv.URL, DataDir: dir}
 	bot := &Bot{cfg: cfg, api: newOpenAPIClient(cfg)}
 	m := &chatbot.BotCallbackDataModel{SenderStaffId: "staff1"}
@@ -526,5 +536,52 @@ func TestDeliverGenerated(t *testing.T) {
 	}
 	if len(*dmBodies) != before {
 		t.Errorf("missing file triggered an upload")
+	}
+}
+
+// Group asks deliver the attachment into the group; when the robot lacks the
+// group-send capability the delivery falls back to the sender's DM.
+func TestDeliverGeneratedGroup(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "exports"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pdf := filepath.Join(dir, "exports", "g.pdf")
+	if err := os.WriteFile(pdf, []byte("%PDF-1.7 fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := &chatbot.BotCallbackDataModel{SenderStaffId: "staff1", ConversationType: "2", ConversationId: "cidG"}
+
+	srv, dmBodies, groupBodies := fakeFileAPI(t, 200)
+	cfg := &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv.URL, DataDir: dir}
+	bot := &Bot{cfg: cfg, api: newOpenAPIClient(cfg)}
+
+	got := bot.deliverGenerated(context.Background(), m, "Deck ready. [generated-file: exports/g.pdf]")
+	if !strings.Contains(got, "sent to the group") {
+		t.Errorf("group note wrong: %s", got)
+	}
+	if len(*groupBodies) != 1 {
+		t.Fatalf("groupMessages calls = %d, want 1", len(*groupBodies))
+	}
+	g := (*groupBodies)[0]
+	if g["msgKey"] != "sampleFile" || g["openConversationId"] != "cidG" {
+		t.Errorf("group file send wrong: %v", g)
+	}
+	if len(*dmBodies) != 0 {
+		t.Errorf("group success must not also DM: %d DM call(s)", len(*dmBodies))
+	}
+
+	// Robot lacks the group-send capability → DM fallback.
+	srv2, dmBodies2, groupBodies2 := fakeFileAPI(t, 400)
+	cfg2 := &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv2.URL, DataDir: dir}
+	bot2 := &Bot{cfg: cfg2, api: newOpenAPIClient(cfg2)}
+
+	got = bot2.deliverGenerated(context.Background(), m, "Deck ready. [generated-file: exports/g.pdf]")
+	if !strings.Contains(got, "group send failed, sent to your DM") {
+		t.Errorf("fallback note wrong: %s", got)
+	}
+	if len(*groupBodies2) != 1 || len(*dmBodies2) != 1 {
+		t.Errorf("fallback calls wrong: group=%d dm=%d", len(*groupBodies2), len(*dmBodies2))
 	}
 }

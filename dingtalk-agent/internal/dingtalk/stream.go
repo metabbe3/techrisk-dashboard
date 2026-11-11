@@ -542,10 +542,12 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 // tool results (the LLM is instructed to copy them verbatim into its reply).
 var reGeneratedFile = regexp.MustCompile(`\[generated-file: ([^\]\n]+)\]`)
 
-// deliverGenerated ships every [generated-file: …] ticket in the reply to the
-// sender's DM (media upload → file message) and rewrites the marker into a
-// status note. Upload/DM failure downgrades the note to a saved-path line —
-// it never fails the turn.
+// deliverGenerated ships every [generated-file: …] ticket in the reply as a
+// downloadable attachment. Flexible by conversation type: a group ask tries
+// the group first (file appears where the question was asked) and falls back
+// to the sender's DM when the robot lacks the group-send capability; a DM ask
+// delivers to the DM. Upload/DM failure downgrades the note to a saved-path
+// line — it never fails the turn.
 func (b *Bot) deliverGenerated(ctx context.Context, m *chatbot.BotCallbackDataModel, reply string) string {
 	for _, mm := range reGeneratedFile.FindAllStringSubmatch(reply, -1) {
 		rel := strings.TrimSpace(mm[1])
@@ -554,10 +556,21 @@ func (b *Bot) deliverGenerated(ctx context.Context, m *chatbot.BotCallbackDataMo
 			mediaID, err := b.api.uploadRobotMedia(ctx, path)
 			if err != nil {
 				log.Printf("[dingtalk] media upload failed for %s: %v", rel, err)
-			} else if err = SendFileDM(ctx, b.cfg, m.SenderStaffId, mediaID, filepath.Base(path)); err != nil {
-				log.Printf("[dingtalk] file DM failed for %s: %v", rel, err)
+			} else if m.ConversationType != "2" { // p2p chat (or unknown): DM the sender
+				if err := SendFileDM(ctx, b.cfg, m.SenderStaffId, mediaID, filepath.Base(path)); err != nil {
+					log.Printf("[dingtalk] file DM failed for %s: %v", rel, err)
+				} else {
+					note = "📎 **" + filepath.Base(path) + "** — sent to your DM ✓"
+				}
+			} else if err := SendFileGroup(ctx, b.cfg, m.ConversationId, mediaID, filepath.Base(path)); err != nil {
+				log.Printf("[dingtalk] group file send failed for %s: %v — falling back to DM", rel, err)
+				if err := SendFileDM(ctx, b.cfg, m.SenderStaffId, mediaID, filepath.Base(path)); err != nil {
+					log.Printf("[dingtalk] file DM failed for %s: %v", rel, err)
+				} else {
+					note = "📎 **" + filepath.Base(path) + "** — group send failed, sent to your DM ✓"
+				}
 			} else {
-				note = "📎 **" + filepath.Base(path) + "** — sent to your DM ✓"
+				note = "📎 **" + filepath.Base(path) + "** — sent to the group ✓"
 			}
 		} else {
 			log.Printf("[dingtalk] generated-file ticket rejected (missing or outside exports): %q", rel)

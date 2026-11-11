@@ -62,9 +62,14 @@ func TestLiveFileDMAttachment(t *testing.T) {
 
 	if cid := os.Getenv("LIVE_DM_CID"); cid != "" {
 		if err := SendFileGroup(ctx, cfg, cid, mediaID, filepath.Base(path)); err != nil {
-			t.Logf("group send probe failed (scope or contract): %v", err)
+			t.Logf("group file send probe failed (scope or contract): %v", err)
+		} else {
+			t.Logf("group file send sent to %s — check the group for the attachment", cid)
+		}
+		if err := SendMarkdownGroup(ctx, cfg, cid, "probe", "**live probe** — group send capability test, safe to ignore."); err != nil {
+			t.Logf("group markdown send probe failed: %v", err)
 			return
 		}
-		t.Logf("group file send sent to %s — check the group for the attachment", cid)
+		t.Logf("group markdown send WORKS for %s", cid)
 	}
 }
