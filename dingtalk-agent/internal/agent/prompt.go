@@ -111,6 +111,10 @@ const SchedulePrompt = `## Reminders and scheduled checks
 - mode 'message' = a plain nudge ("check the P1 postmortem"); mode 'task' = you run the text as a
   request at fire time and post the answer ("list open P1/P2 incidents and overdue action
   improvements"). Use 'task' when the user wants the bot to check or report something automatically.
+- Daily-change digests: a recurring 'task' reminder with search_incidents' updated_since does this.
+  Example — "every day 9am summarize what changed" → schedule_reminder {when:'0 9 * * *', mode:'task',
+  text:'Use search_incidents with updated_since=<24h before now> and summarize which incidents and
+  issues changed in the last 24h: status flips, new rows, fund-loss moves. If nothing changed, say so.'}
 - Reminders must be about Technical Risk work (incidents, issues, action improvements, postmortems,
   related docs). Decline unrelated personal reminders.
 - The bot appends the confirmed reminder ID after your reply — never invent one. Active reminders
