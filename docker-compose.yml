@@ -207,6 +207,11 @@ services:
       LLM_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-}
       AGENT_WEB_TOOLS: ${DINGTALK_WEB_TOOLS:-1}
       DASHBOARD_API_BASE: http://nginx/api/v1
+      # Internal listener (dashboard's Go engine POSTs /internal/run here) —
+      # reachable only inside the compose network; empty token = disabled.
+      AGENT_INTERNAL_ADDR: ":9091"
+      AGENT_INTERNAL_TOKEN: ${DINGTALK_INTERNAL_TOKEN:-}
+      AGENT_TURN_REPORTS: ${DINGTALK_TURN_REPORTS:-1}
     volumes:
       - dingtalk-agent-data:/data
     networks:

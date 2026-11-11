@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\ActionImprovementController;
+use App\Http\Controllers\Api\AgentRunController;
+use App\Http\Controllers\Api\AgentScheduleController;
 use App\Http\Controllers\Api\Ai\ExportController;
 use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\NotionController;
@@ -74,5 +76,15 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     // AI Export endpoints - for bulk data ingestion (rate limit editable in Admin → API Settings)
     Route::prefix('v1/ai')->middleware('throttle:ai_export')->group(function () {
         Route::get('/export', [ExportController::class, 'export']);
+    });
+
+    // DingTalk agent integration — chat reminders live as AiAgent rows and
+    // every chat turn is reported as a run (first live API writes; the Go
+    // agent is the only intended client). Rate limit editable in Admin → API Settings.
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('agent-schedules', [AgentScheduleController::class, 'index']);
+        Route::post('agent-schedules', [AgentScheduleController::class, 'store']);
+        Route::delete('agent-schedules/{no}', [AgentScheduleController::class, 'destroy']);
+        Route::post('agent-runs', [AgentRunController::class, 'store']);
     });
 });

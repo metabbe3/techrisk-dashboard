@@ -46,8 +46,11 @@ chars.
 |---|---|---|
 | `DINGTALK_CLIENT_ID` / `DINGTALK_CLIENT_SECRET` | yes | DingTalk Open Platform app |
 | `DINGTALK_ALLOWLIST` | no | **empty = everyone** (access gated by the DingTalk app's visibility range); comma staffIds to narrow further |
-| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown` |
+| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `agent-schedules`, `agent-runs` |
 | `DASHBOARD_API_BASE` | no | `http://nginx/api/v1` (compose) |
+| `AGENT_INTERNAL_ADDR` | no | `:9091` — internal listener (the dashboard's Go engine POSTs `/internal/run` here); compose-network only |
+| `AGENT_INTERNAL_TOKEN` | no | shared secret — **must equal** the dashboard `.env`'s `GO_AGENT_INTERNAL_TOKEN`; empty = listener disabled |
+| `AGENT_TURN_REPORTS` | no | 1 — POST every chat turn (input/output/tokens/latency) to `/api/v1/agent-runs` under the synthetic "DingTalk Bot (chat turns)" agent; `0`/`off` silences it |
 | `LLM_BASE_URL` | no | `AI_API_BASE_URL` → gateway default |
 | `LLM_API_KEY` | no | `AI_API_KEY` (dashboard .env — compose maps it) |
 | `LLM_MODEL` | no | `AI_API_DEFAULT_MODEL` (placeholder values ignored) → **`glm-5.3-flashx`** |
@@ -80,8 +83,10 @@ means changing `DINGTALK_MODEL`/env, not the AI Settings page.
    proactive DMs; card streaming (`Card.Instance.Write` /
    `Card.Streaming.Write`) for typewriter replies — without card perms the bot
    still answers via webhook fallback.
-3. **API token**: Filament → API Tokens → `dingtalk-agent` with the three
+3. **API token**: Filament → API Tokens → `dingtalk-agent` with the five
    abilities above → `DASHBOARD_API_TOKEN`.
+   Then set the same shared secret in root `.env` as `DINGTALK_INTERNAL_TOKEN`
+   **and** `GO_AGENT_INTERNAL_TOKEN`, and `GO_AGENT_BASE_URL=http://dingtalk-agent:9091`.
 4. **Allowlist**: leave empty, have each user DM/mention the bot once, copy the
    `staffId` from the deny log (`denied sender staffId=…`), set
    `DINGTALK_ALLOWLIST`.
@@ -242,20 +247,28 @@ kerja jam 8:30 kirim ringkasan action improvement overdue ke grup ini". These
 are **not** the system reminders above: they never decide who is due; a `task`
 reminder reads the dashboard API like any chat question does.
 
+**Storage and dispatch live in the dashboard** (unification, 2026-11-12): each
+chat reminder is an `AiAgent` row (visible/editable/cancellable in Filament →
+AI Agents), fired by the dashboard's scheduler and executed through the normal
+agent pipeline — a `task` reminder runs through this agent's tool loop via the
+internal listener, a `message` reminder is delivered as-is. The local
+`schedules.json` store and the 30s Go scheduler loop are retired.
+
 | Piece | Where |
 |---|---|
 | `schedule_reminder(when, mode, text)` / `cancel_reminder(id)` | `internal/tools/schedule.go` |
-| cron/one-shot parser, store (`<DataDir>/schedules.json`), pending handoff | `internal/schedule/` |
-| bind to chat, 30s scheduler loop, group/DM delivery | `internal/dingtalk/reminders.go` |
+| cron/one-shot parser + pending handoff (grammar stays Go-owned) | `internal/schedule/` |
+| dashboard `agent-schedules` API client (create/list/cancel) | `internal/tools/schedules.go` |
+| bind to chat + group/DM delivery | `internal/dingtalk/reminders.go` |
+| storage + dispatch (`AiAgent` rows, `run_at`/cron) | dashboard — `AgentScheduleController`, `DispatchDueAiAgentsCommand` |
 
-- **when** (WIB, fixed UTC+7): 5-field cron (`0 9 * * 1`, `30 8 * * 1-5`), one-shot `YYYY-MM-DD HH:MM`, or `in 30m` / `in 2h`.
-- **mode**: `message` posts the text; `task` runs the text through the agent at fire time (fresh context, same guardrails) and posts the answer.
+- **when** (WIB, fixed UTC+7): 5-field cron (`0 9 * * 1`, `30 8 * * 1-5`), one-shot `YYYY-MM-DD HH:MM`, or `in 30m` / `in 2h`. The Go side validates the grammar; a cron passes through verbatim, a one-shot arrives as a resolved `run_at`.
+- **mode**: `message` = Static engine, text delivered as-is; `task` = Go engine, the text runs through the agent's tool loop at fire time and the answer is posted.
 - **delivery**: created in a group → `groupMessages/send` into that group; in a DM → `oToMessages/batchSend` to the creator.
 - **binding is Go-side, never LLM-side**: the tool only validates and parks the request under a random token; after the turn the bot claims tokens found in *its own turn's* tool results and binds them to the callback's real conversation + sender. A prompt cannot aim a reminder at another chat, concurrent turns cannot steal each other's requests, and a claimed token never re-applies. Cancel only works from the owning conversation.
 - **limits**: recurring ≥30 min apart, 20 per chat, text ≤1000 chars, task text must pass `InputGate`.
-- **downtime**: a recurring reminder >1h overdue at boot is skipped to its next run; a one-shot still fires, marked delayed. A run is persisted as advanced *before* sending, so a crash never double-fires.
-- **listing**: active reminders are appended to each user message in that chat (`[Active reminders in this chat: …]`), so "what reminders do we have?" / "cancel #3" work.
-- Group delivery needs the same robot send permission as DMs, and the bot must still be in the group.
+- **failure**: the dashboard down at create time fails closed — "⚠️ Reminder not saved: …"; nothing is stored silently. One-shots that fail at fire time retry after 5 minutes, up to 3 tries.
+- **listing**: active reminders are fetched from the dashboard per turn and appended to each user message in that chat (`[Active reminders in this chat: …]`), so "what reminders do we have?" / "cancel #3" work; a dashboard outage just skips the block, never the turn.
 
 **Group batching** (same release): rapid messages are merged only when they come
 from the **same sender**; a different member's message closes the batch and gets

@@ -45,6 +45,49 @@
 
 ## Active Projects
 
+### [PROJ-023] Agent unification: dashboard control plane + Go engine
+
+**Status:** In Progress
+**Priority:** P1
+**Start Date:** 2026-11-11
+
+#### Description
+Owner decision 2026-11-11 (full unification): the dashboard becomes the control plane — every schedule/task (including chat-created reminders) is an `AiAgent` row monitored in the existing Filament tabs — and the DingTalk agent becomes the execution engine. New `engine` column: `go` (default; all existing agents flipped by the migration backfill), `php` (pre-unification text-only path, kept as fallback), `static` (no LLM — deliver the text as-is). Dashboard Chat page stays PHP for now. Owner add-on: all failed jobs/requests/responses visible + re-runnable from the dashboard.
+
+#### Architecture
+- `AiAgent::dispatchRun()` stays the single dispatch choke point; the engine branch lives only in `RunAiAgentJob::handle()`.
+- Go/Static engines: `POST http://dingtalk-agent:9091/internal/run` (`X-Agent-Token` shared secret, compose-network only). Timeout ladder: Go ctx 360s < HTTP 420s < job 480s < worker 660s ≤ retry_after 900s; lock TTL 900s.
+- New v1 API (first live v1 writes): `GET/POST/DELETE /api/v1/agent-schedules` (chat-reminder create/list/cancel; ≤20/chat, `short_no` per-chat ids, soft cancel) + `POST /api/v1/agent-runs` (per-turn reporting under the synthetic "DingTalk Bot (chat turns)" agent).
+- Go side: local `schedules.json` store + 30s scheduler loop retired; grammar validation + conversation binding stay Go-owned (ticket/claim pattern unchanged); `RunScheduler`/`fireDue`/`fire` deleted; `deliverMarkdown` kept.
+
+#### Tasks
+- [x] Phase 1 — Laravel foundation: engine/schedule/delivery columns migration (backfill to `go`), `AiAgentEngine`/`Once` frequency enums, Once dispatch + one-shot re-arm (<3 failed runs) / disable, `Retry` action on failed runs, `RunAiAgentJob` engine branch + usage row + delivery columns, `config/ai.php` `go_agent` block, `RunAiAgentGoEngineTest` (10).
+- [x] Phase 2 — API endpoints: `AgentScheduleController`/`AgentRunController` + FormRequests + `agent` rate limiter + `ApiEndpoint` cases, `AgentScheduleApiTest` (10) + `AgentTurnReportApiTest` (6).
+- [x] Phase 3 — Go engine plumbing: LLM usage parsing (stream + non-stream), run-local usage accumulation in the loop, async turn reporting, `/internal/run` listener (token-guarded, panic-safe, deliver-before-respond), main.go wiring + graceful shutdown; `internalapi_test.go` (6) + llm/loop/turnreport tests.
+- [x] Phase 4 — Go schedule tools → dashboard API: `tools/schedules.go` client, `bindSchedule` rewrite (re-parse Go-side, cron passthrough / resolved run_at, fail-closed notes), store/`RunScheduler` retirement, prompt + README wording; `reminders_test.go` rewrite (7) + `tools/schedules_test.go` (5).
+- [x] Phase 5 — Filament UI: engine Select (default `go`) + badge column + filter, `once` schedule type + `run_at` picker, DingTalk delivery fields (required-with when Static), `resolveScheduleData` once-mapping + preset round-trip; `AiAgentScheduleMappingTest` (5).
+- [x] Phase 6 — compose env (`AGENT_INTERNAL_ADDR/TOKEN`, `AGENT_TURN_REPORTS`), README, business-rules + dependency-map rows, this entry, testing-standards baseline.
+- [x] Full-suite runs + Pint + commit (`c9cf367`, 2026-11-12) — baseline 1169/4,592 → 1203/4,744 (+34; Docker down, 7 known reverb env errors excluded); Go suite 11 packages + `-race` green; Pint clean.
+
+#### Dependencies
+- DingTalk agent container (compose network reachability to nginx + shared token in both `.env` keys).
+- API token abilities `agent-schedules` + `agent-runs` ticked on the `dingtalk-agent` token.
+
+#### Blockers
+- None (dev-green; prod steps are owner-only guardrails).
+
+#### Owner actions
+1. Prod `php artisan migrate --force` (engine/run_at/delivery columns + synthetic agent seed).
+2. Prod `.env`: `DINGTALK_INTERNAL_TOKEN` and `GO_AGENT_INTERNAL_TOKEN` set to the same secret; `GO_AGENT_BASE_URL=http://dingtalk-agent:9091`.
+3. Filament → API Tokens → `dingtalk-agent` → tick `agent-schedules` + `agent-runs`.
+4. `docker compose up -d --build dingtalk-agent app worker scheduler`.
+5. Existing `schedules.json` chat reminders do NOT carry over (dev-only, 1 day old) — say the word if an importer is wanted.
+
+#### Progress Updates
+- 2026-11-11: Phases 1–3 landed and green (Laravel 1166 → 1198 tests / 4,726 assertions with the 7 documented reverb env errors excluded; Go suite + `-race` clean).
+- 2026-11-12: Phases 4–6 landed (schedule store retired, Filament engine/once/delivery UI, compose + docs).
+
+
 ### [PROJ-020] Incident list: one Export dropdown
 
 **Status:** Done

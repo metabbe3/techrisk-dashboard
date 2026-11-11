@@ -51,3 +51,12 @@ Live QA (HTTP-submit matrix) found bad data silently persisting; these constrain
 ## Export-specific rules
 
 See `docs/reference/exports.md` — exclusions, `mttr_formatted` rendering, per-instance MTBF caches, `-`/0 conventions.
+
+## Agent engines & chat reminders (unification, 2026-11-12)
+
+- Every `AiAgent` has an `engine`: `go` (default — the DingTalk agent runs it as a tool-loop task via `POST /internal/run`, `X-Agent-Token` shared secret), `php` (single text-only generation, the pre-unification path, kept as fallback), `static` (no LLM — the instructions text is delivered as-is to the DingTalk target). All existing agents were flipped to `go` by the migration backfill (owner decision 2026-11-11); the engine branch lives **only** in `RunAiAgentJob::handle()` — `AiAgent::dispatchRun()` stays the single dispatch choke point.
+- Chat-created reminders are `AiAgent` rows (the dashboard owns storage + dispatch; the Go side owns grammar validation and conversation binding). `mode: message` maps to engine `static`, `mode: task` to engine `go`; cron passes through verbatim, one-shots arrive as a resolved `run_at` (app timezone = WIB). Per-chat cap 20 (`short_no` = per-chat `#id`, unique `(dingtalk_conversation_id, short_no)`); cancel is soft (row kept, disabled, cron/run_at nulled) and only works from the owning conversation.
+- One-shot (`frequency: Once`) lifecycle: fires when `run_at <= now && (last_run_at is null || last_run_at < run_at)`; success disables the agent; failure re-arms `run_at = now + 5min` while total failed runs < 3, else disables. A `Once` agent's `next_run_at` is `run_at` only while enabled + in the future.
+- Failed-run retry: the `Retry` action on Agent Runs re-dispatches `agent->dispatchRun()`; `Run Now` stays the general entry point. Delivery failure (DingTalk push) fills `delivery_status`/`delivery_error` on the run but does **not** fail the run — the LLM output was produced.
+- Turn reporting: every chat turn POSTs to `/api/v1/agent-runs` under the synthetic agent `00000000-0000-0000-0000-000000000001` "DingTalk Bot (chat turns)" (`enabled=false`, never dispatched; `AGENT_TURN_REPORTS=0` silences). The synthetic agent's rows are excluded from Retry.
+- Timeout ladder (all must stay ordered): Go run ctx 360s < HTTP 420s < job 480s < worker 660s ≤ redis `retry_after` 900s; lock TTL 900s.

@@ -76,6 +76,51 @@ class DispatchDueAgentsTest extends TestCase
         Queue::assertNotPushed(RunAiAgentJob::class);
     }
 
+    public function test_dispatches_due_once_agent(): void
+    {
+        Queue::fake();
+        $agent = $this->makeAgent([
+            'frequency' => 'Once',
+            'cron_expression' => null,
+            'run_at' => now()->subMinute(),
+        ]);
+
+        $this->artisan('ai:dispatch-due-agents')->assertSuccessful();
+
+        Queue::assertPushed(RunAiAgentJob::class, fn ($job) => $job->agentId === $agent->id);
+
+        $agent->refresh();
+        $this->assertNotNull($agent->last_run_at);
+    }
+
+    public function test_does_not_dispatch_future_once_agent(): void
+    {
+        Queue::fake();
+        $this->makeAgent(['frequency' => 'Once', 'cron_expression' => null, 'run_at' => now()->addHour()]);
+
+        $this->artisan('ai:dispatch-due-agents')->assertSuccessful();
+
+        Queue::assertNotPushed(RunAiAgentJob::class);
+        $this->assertSame(0, AiAgentRun::count());
+    }
+
+    public function test_does_not_redispatch_already_fired_once_agent(): void
+    {
+        Queue::fake();
+        // Already dispatched for this occurrence (last_run_at > run_at); the
+        // job's failure path re-arms run_at into the future before it can fire.
+        $this->makeAgent([
+            'frequency' => 'Once',
+            'cron_expression' => null,
+            'run_at' => now()->subMinute(),
+            'last_run_at' => now(),
+        ]);
+
+        $this->artisan('ai:dispatch-due-agents')->assertSuccessful();
+
+        Queue::assertNotPushed(RunAiAgentJob::class);
+    }
+
     public function test_stale_running_run_is_marked_failed(): void
     {
         Queue::fake();

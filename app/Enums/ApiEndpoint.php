@@ -16,6 +16,8 @@ enum ApiEndpoint: string
     case CATEGORIES = 'categories';
     case USERS = 'users';
     case NOTION = 'notion';
+    case AGENT_SCHEDULES = 'agent-schedules';
+    case AGENT_RUNS = 'agent-runs';
 
     /**
      * Get all endpoints as an array for select options
@@ -41,6 +43,8 @@ enum ApiEndpoint: string
             self::CATEGORIES => 'Categories (Reference Data)',
             self::USERS => 'Users (Reference Data)',
             self::NOTION => 'Notion (read-only docs)',
+            self::AGENT_SCHEDULES => 'Agent Schedules (DingTalk reminders)',
+            self::AGENT_RUNS => 'Agent Runs (DingTalk turn reports)',
         };
     }
 
@@ -60,6 +64,8 @@ enum ApiEndpoint: string
             self::CATEGORIES => 'api/v1/categories',
             self::USERS => 'api/v1/users',
             self::NOTION => 'api/v1/notion',
+            self::AGENT_SCHEDULES => 'api/v1/agent-schedules',
+            self::AGENT_RUNS => 'api/v1/agent-runs',
         };
     }
 

@@ -1,11 +1,13 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Enums\AiAgentRunStatus;
 use App\Filament\Resources\AiAgentRunResource\Pages;
 use App\Filament\Traits\ReadOnlyResource;
+use App\Models\AiAgent;
 use App\Models\AiAgentRun;
 use App\Services\Ai\AiAgentMemoryService;
 use Filament\Forms;
@@ -70,6 +72,14 @@ class AiAgentRunResource extends Resource
                     ->limit(40)
                     ->placeholder('—')
                     ->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\TextColumn::make('delivery_status')
+                    ->label('Delivery')
+                    ->badge()
+                    ->color(fn ($state): string => match ($state) {
+                        'sent' => 'success', 'failed' => 'danger', default => 'gray'
+                    })
+                    ->placeholder('—')
+                    ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
                 Tables\Filters\SelectFilter::make('agent')
@@ -81,6 +91,24 @@ class AiAgentRunResource extends Resource
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
+                Tables\Actions\Action::make('retry')
+                    ->label('Retry')
+                    ->icon('heroicon-o-arrow-path')
+                    ->color('danger')
+                    ->requiresConfirmation()
+                    ->modalDescription('Queue a fresh run of this agent now. A new run row is created; this failed one is kept for the record.')
+                    ->visible(fn (AiAgentRun $record): bool => $record->status === AiAgentRunStatus::Failed
+                        && $record->agent_id !== AiAgent::CHAT_TURNS_AGENT_ID
+                        && $record->agent !== null)
+                    ->action(function (AiAgentRun $record): void {
+                        $run = $record->agent->dispatchRun();
+
+                        Notification::make()
+                            ->success()
+                            ->title('Retry queued')
+                            ->body('New run queued at the top of this table.')
+                            ->send();
+                    }),
                 Tables\Actions\Action::make('give_feedback')
                     ->label('Give feedback')
                     ->icon('heroicon-o-chat-bubble-left-ellipsis')
@@ -130,6 +158,16 @@ class AiAgentRunResource extends Resource
                         Infolists\Components\TextEntry::make('total_tokens')
                             ->formatStateUsing(fn (AiAgentRun $record): string => ($record->prompt_tokens ?? 0).' in / '.($record->completion_tokens ?? 0).' out / '.($record->total_tokens ?? 0).' total'),
                         Infolists\Components\TextEntry::make('error_message')
+                            ->placeholder('—')
+                            ->columnSpanFull(),
+                        Infolists\Components\TextEntry::make('delivery_status')
+                            ->label('DingTalk delivery')
+                            ->badge()
+                            ->color(fn ($state): string => match ($state) {
+                                'sent' => 'success', 'failed' => 'danger', default => 'gray'
+                            })
+                            ->placeholder('—'),
+                        Infolists\Components\TextEntry::make('delivery_error')
                             ->placeholder('—')
                             ->columnSpanFull(),
                     ])->columns(3),

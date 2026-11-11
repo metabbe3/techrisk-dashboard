@@ -216,5 +216,6 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('reference', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.reference', 30))->by($limitBy($request)));
         RateLimiter::for('actions', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.actions', 60))->by($limitBy($request)));
         RateLimiter::for('ai_export', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.ai_export', 60))->by($limitBy($request)));
+        RateLimiter::for('agent', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.agent', 120))->by($limitBy($request)));
     }
 }
