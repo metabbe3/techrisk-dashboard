@@ -23,6 +23,7 @@ class ListIncidentsRequest extends ApiFormRequest
         return [
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'updated_since' => ['nullable', 'date'],
             'min_fund_loss' => ['nullable', 'numeric', 'min:0'],
             'max_fund_loss' => ['nullable', 'numeric', 'min:0'],
             'min_potential_fund_loss' => ['nullable', 'numeric', 'min:0'],

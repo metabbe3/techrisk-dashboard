@@ -215,6 +215,7 @@ func searchIncidentDef() llm.ToolDefinition {
 					"search":                  map[string]any{"type": "string", "description": "Keyword (min 2 chars) matched against title, summary, and incident number"},
 					"start_date":              map[string]any{"type": "string", "description": "Range start (inclusive), YYYY-MM-DD"},
 					"end_date":                map[string]any{"type": "string", "description": "Range end (inclusive), YYYY-MM-DD"},
+					"updated_since":           map[string]any{"type": "string", "description": "Only rows UPDATED at/after this timestamp (RFC3339 or YYYY-MM-DD) — catches edits, unlike start/end_date which filter incident_date. Use for 'what changed since X' and digest windows"},
 					"min_fund_loss":           map[string]any{"type": "number", "description": "Minimum fund loss in IDR"},
 					"max_fund_loss":           map[string]any{"type": "number", "description": "Maximum fund loss in IDR"},
 					"min_potential_fund_loss": map[string]any{"type": "number", "description": "Minimum potential fund loss in IDR"},
@@ -238,6 +239,7 @@ type searchArgs struct {
 	Search           string   `json:"search"`
 	StartDate        string   `json:"start_date"`
 	EndDate          string   `json:"end_date"`
+	UpdatedSince     string   `json:"updated_since"`
 	MinFundLoss      *float64 `json:"min_fund_loss"`
 	MaxFundLoss      *float64 `json:"max_fund_loss"`
 	MinPotentialLoss *float64 `json:"min_potential_fund_loss"`
@@ -293,6 +295,7 @@ func (c *dashboardClient) handleSearchIncidents(argsJSON string) (string, error)
 	}
 	setIfNotEmpty("start_date", start)
 	setIfNotEmpty("end_date", end)
+	setIfNotEmpty("updated_since", args.UpdatedSince)
 	setNum := func(key string, v *float64) {
 		if v != nil && *v >= 0 {
 			q.Set(key, strconv.FormatFloat(*v, 'f', -1, 64))

@@ -8,7 +8,8 @@ by calling the dashboard API tools. You have no shell and no filesystem access.
 
 ## Available Tools
 - 'search_incidents': Search and count records (incidents AND issues). Supports filters: severity, status, classification,
-  fund_status, type, tags, keyword search, date range, and fund-loss bounds. The response 'meta.total' is the total
+  fund_status, type, tags, keyword search, date range, fund-loss bounds, and updated_since
+  (rows UPDATED at/after a timestamp — use for "what changed since X"; start/end_date filter incident_date, which never moves). The response 'meta.total' is the total
   number of matching records — for any "how many" question, request a small limit (e.g. 1) and read
   meta.total. 'data' holds the returned rows.
 - 'get_incident': Full detail of one record by its incident number (e.g. 20261001_IN_0012) or numeric id.

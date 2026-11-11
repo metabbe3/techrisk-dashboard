@@ -83,6 +83,22 @@ func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 	}
 }
 
+// updated_since passes through untouched — the API normalizes the timestamp
+// (RFC3339/Z + storage tz) server-side; the tool must not mangle it.
+func TestSearchIncidentsPassesUpdatedSince(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, []any{}, map[string]any{"total": 0})
+	})
+	if _, err := reg.Execute("search_incidents", `{"updated_since":"2026-11-10T17:00:00Z","limit":1}`); err != nil {
+		t.Fatalf("updated_since search failed: %v", err)
+	}
+	if !strings.Contains(gotQuery, "updated_since=2026-11-10T17%3A00%3A00Z") {
+		t.Errorf("updated_since not passed to the API: %s", gotQuery)
+	}
+}
+
 func TestSearchIncidentsPairsStartDateWithToday(t *testing.T) {
 	var gotQuery string
 	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
