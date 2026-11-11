@@ -115,6 +115,7 @@ class Incident extends Model implements Auditable
         'failed_control',
         'detection_delay_days',
         'start_time_known',
+        'parent_incident_id',
     ];
 
     protected $casts = [
@@ -173,15 +174,33 @@ class Incident extends Model implements Auditable
     }
 
     /**
+     * Sub-incident roll-up (PROJ-022): sub-incidents never count on any
+     * incident-count surface — their numbers roll up into the super. Compose
+     * this into count/metric queries (or use countEligible()/aiCounts(),
+     * which apply it by default); pass withSubIncidents: true ONLY on money
+     * surfaces, where sub fund loss still counts.
+     */
+    public function scopeWithoutSubIncidents($query): void
+    {
+        $query->whereNull('parent_incident_id');
+    }
+
+    /**
      * Rows that count on ANY incident-count surface: metric-eligible severity
      * (G / Non Incident never count — product rule, 2026-09-17) and not
      * fund-status-excluded. Composed by aiCounts() and by the
-     * all-classification count on the dashboard.
+     * all-classification count on the dashboard. Sub-incidents are excluded
+     * (they roll up into the super) unless withSubIncidents is set — money
+     * surfaces opt back in.
      */
-    public function scopeCountEligible($query): void
+    public function scopeCountEligible($query, bool $withSubIncidents = false): void
     {
         $query->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->excludedFromCounts();
+
+        if (! $withSubIncidents) {
+            $query->withoutSubIncidents();
+        }
     }
 
     /**
@@ -189,12 +208,15 @@ class Incident extends Model implements Auditable
      * (classification = Incident) and countEligible (severity + fund status).
      * Single source of truth for chat context, quick stats, WarRoom tools,
      * and the dashboard's Total Incidents card so every surface reports the
-     * same numbers for the same question.
+     * same numbers for the same question. Sub-incidents are excluded (roll-up
+     * into the super) unless withSubIncidents is set — money surfaces
+     * (FundLossTrendChart, RootCauseFundParetoChart, chat fund sums) opt back
+     * in because sub money still counts.
      */
-    public function scopeAiCounts($query): void
+    public function scopeAiCounts($query, bool $withSubIncidents = false): void
     {
         $query->where('classification', IncidentClassification::Incident->value)
-            ->countEligible();
+            ->countEligible(withSubIncidents: $withSubIncidents);
     }
 
     /**
@@ -366,6 +388,35 @@ class Incident extends Model implements Auditable
     public function incidentType(): BelongsTo
     {
         return $this->belongsTo(IncidentType::class);
+    }
+
+    /**
+     * The super (main) incident this sub-incident is linked to — null on a
+     * standalone or super incident (PROJ-022, one level deep).
+     */
+    public function superIncident(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_incident_id');
+    }
+
+    /**
+     * Sub-incidents linked to this super, oldest incident first. The
+     * ordering lives on the relation so every eager load gets it free.
+     */
+    public function subIncidents(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_incident_id')
+            ->orderBy('incident_date')
+            ->orderBy('id');
+    }
+
+    /**
+     * True when this record participates in a sub-incident hierarchy — it is
+     * a super with children or a sub with a parent.
+     */
+    public function hasIncidentLinks(): bool
+    {
+        return $this->parent_incident_id !== null || $this->subIncidents()->exists();
     }
 
     public function statusUpdates(): HasMany
