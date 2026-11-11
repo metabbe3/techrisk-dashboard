@@ -199,7 +199,10 @@ func TestDashboardErrorSurfacing(t *testing.T) {
 		wantErr string
 	}{
 		{http.StatusUnauthorized, "401"},
-		{http.StatusForbidden, "403"},
+		// 403 must carry the SERVER's message through — the generic wrap alone
+		// sent the agent's LLM chasing Notion integration permissions when the
+		// real cause was a token endpoint-ability gap (prod 2026-11-11).
+		{http.StatusForbidden, "403): boom"},
 		{http.StatusTooManyRequests, "429"},
 		{http.StatusNotFound, "404"},
 		{http.StatusUnprocessableEntity, "422"},

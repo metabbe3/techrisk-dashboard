@@ -105,7 +105,14 @@ func (c *dashboardClient) decode(resp *http.Response) (*apiEnvelope, error) {
 	case resp.StatusCode == http.StatusUnauthorized:
 		return nil, fmt.Errorf("dashboard api rejected the token (HTTP 401) — token missing, invalid or expired")
 	case resp.StatusCode == http.StatusForbidden:
-		return nil, fmt.Errorf("dashboard api forbidden (HTTP 403) — token lacks the required endpoint ability or user lacks api access")
+		// Pass the server's message through — the generic wrap alone made the
+		// LLM blame Notion integration permissions when the token lacked an
+		// endpoint ability (prod 2026-11-11).
+		msg := env.Message
+		if msg == "" {
+			msg = "token lacks the required endpoint ability or user lacks api access"
+		}
+		return nil, fmt.Errorf("dashboard api forbidden (HTTP 403): %s — tick the missing endpoint ability on the API token in Filament → API Tokens, or use an empty allowlist", msg)
 	case resp.StatusCode == http.StatusTooManyRequests:
 		return nil, fmt.Errorf("dashboard api rate limit hit (HTTP 429) — wait and retry later")
 	case resp.StatusCode == http.StatusNotFound:
