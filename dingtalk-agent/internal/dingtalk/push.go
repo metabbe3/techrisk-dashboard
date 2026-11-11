@@ -8,8 +8,10 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 )
@@ -54,10 +56,30 @@ func SendFileDM(ctx context.Context, cfg *config.Config, staffID, mediaID, fileN
 	})
 }
 
-// uploadRobotMedia uploads a file for robot DM delivery via multipart POST
-// /v1.0/robot/messageFiles/upload (fields: robotCode, fileType=file, file).
-// Returns the mediaId. ponytail: contract per DingTalk docs — pinned live
-// 2026-11-10; see README deliverables section before changing.
+// SendFileGroup pushes a robot file message INTO a group conversation
+// (msgKey sampleFile) via POST /v1.0/robot/groupMessages/send. The bot must
+// be in the group; conversationID is the openConversationId (bot callbacks
+// carry it as ConversationId).
+func SendFileGroup(ctx context.Context, cfg *config.Config, conversationID, mediaID, fileName string) error {
+	msgParam, err := json.Marshal(map[string]any{"mediaId": mediaID, "fileName": fileName, "fileDuration": 0})
+	if err != nil {
+		return err
+	}
+	client := newOpenAPIClient(cfg)
+	return client.do(ctx, http.MethodPost, "/v1.0/robot/groupMessages/send", map[string]any{
+		"robotCode":          cfg.DingTalkClientID,
+		"openConversationId": conversationID,
+		"msgKey":             "sampleFile",
+		"msgParam":           string(msgParam),
+	})
+}
+
+// uploadRobotMedia uploads a file for robot message delivery via the LEGACY
+// media upload API — POST https://oapi.dingtalk.com/media/upload
+// (query: access_token, type=file; multipart field: "media" → media_id).
+// ponytail: /v1.0/robot/messageFiles/upload was the documented contract but
+// live-probes 404 (2026-11-11, unauthenticated too — path is dead); oapi
+// media/upload is the endpoint that actually exists and feeds batchSend.
 func (c *openAPIClient) uploadRobotMedia(ctx context.Context, path string) (string, error) {
 	token, err := c.accessToken(ctx)
 	if err != nil {
@@ -72,9 +94,7 @@ func (c *openAPIClient) uploadRobotMedia(ctx context.Context, path string) (stri
 
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
-	_ = w.WriteField("robotCode", c.appKey)
-	_ = w.WriteField("fileType", "file")
-	fw, err := w.CreateFormFile("file", filepath.Base(path))
+	fw, err := w.CreateFormFile("media", filepath.Base(path))
 	if err != nil {
 		return "", err
 	}
@@ -85,12 +105,15 @@ func (c *openAPIClient) uploadRobotMedia(ctx context.Context, path string) (stri
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.host+"/v1.0/robot/messageFiles/upload", &body)
+	// Legacy APIs live on oapi.* and take the (new-style) token as a query param.
+	uploadURL := strings.Replace(c.host, "//api.", "//oapi.", 1) +
+		"/media/upload?" + url.Values{"access_token": {token}, "type": {"file"}}.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, uploadURL, &body)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set("Content-Type", w.FormDataContentType())
-	req.Header.Set("x-acs-dingtalk-access-token", token)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -99,13 +122,15 @@ func (c *openAPIClient) uploadRobotMedia(ctx context.Context, path string) (stri
 	defer resp.Body.Close()
 
 	var out struct {
-		MediaID string `json:"mediaId"`
+		Errcode int    `json:"errcode"`
+		Errmsg  string `json:"errmsg"`
+		MediaID string `json:"media_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		return "", fmt.Errorf("media upload decode failed (HTTP %d): %w", resp.StatusCode, err)
 	}
-	if out.MediaID == "" {
-		return "", fmt.Errorf("no mediaId in upload response (HTTP %d) — endpoint contract may differ, see README", resp.StatusCode)
+	if out.Errcode != 0 || out.MediaID == "" {
+		return "", fmt.Errorf("media upload rejected (HTTP %d): errcode=%d %s", resp.StatusCode, out.Errcode, out.Errmsg)
 	}
 	return out.MediaID, nil
 }

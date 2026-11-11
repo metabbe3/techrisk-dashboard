@@ -458,9 +458,9 @@ func fakeFileAPI(t *testing.T) (*httptest.Server, *[]map[string]any) {
 		case "/v1.0/oauth2/accessToken":
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"accessToken":"tok","expireIn":7200}`)
-		case "/v1.0/robot/messageFiles/upload":
+		case "/media/upload": // legacy oapi contract — errcode/media_id
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"mediaId":"media-1","dunkViewId":"d-1"}`)
+			fmt.Fprint(w, `{"errcode":0,"errmsg":"ok","media_id":"media-1"}`)
 		case "/v1.0/robot/oToMessages/batchSend":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)

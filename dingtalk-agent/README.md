@@ -180,14 +180,19 @@ deps; ≤20 slides, heading + bullets per slide). Files land in
 embeds a ticket `[generated-file: exports/<name>]`.
 
 After a completed turn, `deliverGenerated` scans the final reply for tickets:
-each file is uploaded via **`POST /v1.0/robot/messageFiles/upload`**
-(multipart: `robotCode`, `fileType=file`, `file` → `mediaId`; contract per
-docs, needs live pin like `messageFiles/download` was) and pushed to the
-**sender's DM** via `oToMessages/batchSend` msgKey `sampleFile`
-(`{mediaId, fileName, fileDuration}`). The marker is rewritten to a status
+each file is uploaded via the **legacy media API**
+(`POST https://oapi.dingtalk.com/media/upload?access_token=…&type=file`,
+multipart field `media` → `media_id`) and pushed to the **sender's DM** via
+`oToMessages/batchSend` msgKey `sampleFile`
+(`{mediaId, fileName, fileDuration}`). The documented new-API upload path
+(`/v1.0/robot/messageFiles/upload`) live-probes 404 (2026-11-11,
+unauthenticated too — dead). The marker is rewritten to a status
 note ("sent to your DM ✓" / saved-path fallback). Failure never fails the
 turn; tickets resolving outside `DataDir/exports` are refused (the ticket text
-comes from LLM output).
+comes from LLM output). Group attachment delivery was probed too:
+`/v1.0/robot/groupMessages/send` rejects this robotCode ("robot 不存在") —
+robots need a separate enterprise-group-send capability in the DingTalk
+console, so DM is the only attachment channel for this app.
 
 ## Start
 
