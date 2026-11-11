@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Enums\IncidentClassification;
@@ -62,7 +63,8 @@ class IncidentsBySeverityChart extends Widget
             $query = Incident::select('severity', DB::raw('count(*) as total'))
                 ->where('classification', IncidentClassification::Incident->value)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->excludedFromCounts();
+                ->excludedFromCounts()
+                ->withoutSubIncidents();
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

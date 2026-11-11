@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Enums\IncidentClassification;
@@ -39,7 +40,8 @@ class MonthlyIncidentsChart extends ChartWidget
                 : 'MONTH(incident_date)';
             $query = Incident::selectRaw($monthExpr.' as month, COUNT(*) as count')
                 ->where('classification', IncidentClassification::Incident->value)
-                ->excludedFromCounts();
+                ->excludedFromCounts()
+                ->withoutSubIncidents();
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);
