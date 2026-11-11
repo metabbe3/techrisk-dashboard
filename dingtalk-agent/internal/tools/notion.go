@@ -127,8 +127,36 @@ func (c *notionCatalog) add(name, id string) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	for old, db := range c.dbs { // naming an auto-saved id replaces its db-… entry
+		if db.ID == id && strings.HasPrefix(old, "db-") && old != name {
+			delete(c.dbs, old)
+		}
+	}
 	c.dbs[name] = notionDB{ID: id, AddedAt: time.Now()}
 	return c.saveLocked()
+}
+
+// notionIDInRef finds a Notion id anywhere in a raw ref (bare, dashed, URL, collection://).
+var notionIDInRef = regexp.MustCompile(`[0-9a-fA-F]{8}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{4}-?[0-9a-fA-F]{12}`)
+
+// remember saves a raw ref that just queried successfully as db-<first 8 hex>,
+// unless that ref is already cataloged under any name. Returns true when it saved.
+// ponytail: auto-name only; the LLM renames via notion_add_database when the user names it.
+func (c *notionCatalog) remember(ref string) bool {
+	id := notionIDInRef.FindString(ref)
+	if id == "" {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, db := range c.dbs {
+		if db.ID == ref {
+			return false
+		}
+	}
+	c.dbs["db-"+strings.ToLower(id[:8])] = notionDB{ID: ref, AddedAt: time.Now()}
+	_ = c.saveLocked() // best effort — a failed write only costs the shortcut
+	return true
 }
 
 func (c *notionCatalog) saveLocked() error {
@@ -316,6 +344,10 @@ func (n *notionTools) handleNotionQueryDatabase(argsJSON string) (string, error)
 	if err != nil {
 		return "", err
 	}
+	// A raw id the user shared is kept for later use — only once it is proven queryable.
+	if resolved == ref && n.catalog.remember(ref) {
+		n.registry.Register(n.notionQueryDatabaseDef(), n.handleNotionQueryDatabase)
+	}
 	return string(env.Data), nil // rows as JSON
 }
 
@@ -394,8 +426,9 @@ func notionAddDatabaseDef() llm.ToolDefinition {
 		Type: "function",
 		Function: llm.ToolFunctionDef{
 			Name: "notion_add_database",
-			Description: "Teach the agent a named Notion database so notion_query_database can use it by name. " +
-				"Use only when the user explicitly asks to add/name a database.",
+			Description: "Save a Notion database under a short name so notion_query_database can use it by name. " +
+				"Raw database ids are auto-saved as db-<first 8 hex> after their first successful query; " +
+				"call this when the user gives a database a name (or to rename a db-… entry).",
 			Parameters: schema(
 				map[string]any{
 					"name": map[string]any{"type": "string", "description": "Short name, 1-32 chars of letters/digits/_/- (e.g. PRD)"},

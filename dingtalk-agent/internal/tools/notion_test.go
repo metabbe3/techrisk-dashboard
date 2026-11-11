@@ -123,6 +123,65 @@ func TestNotionQueryUnknownNameListsCatalogWithoutServerCall(t *testing.T) {
 	}
 }
 
+// A raw database id the user shares is saved on its first SUCCESSFUL query
+// (prod 2026-11-11: the agent claimed "sudah saya catat" but only chat history
+// held it). Failed queries save nothing; an already-cataloged id is not duplicated.
+func TestNotionQueryAutoSavesRawIDOnSuccess(t *testing.T) {
+	fail := true
+	reg, dir := newNotionTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		if fail {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"code":403,"status":"Error","message":"nope"}`))
+			return
+		}
+		envelope(w, []any{}, nil)
+	})
+	const raw = "2c72556e-44dd-81cf-8977-000bc43d6f86"
+	query := `{"database":"` + raw + `","query":"SELECT 1"}`
+
+	_, _ = reg.Execute("notion_query_database", query)
+	if data, _ := os.ReadFile(filepath.Join(dir, "notion_catalog.json")); strings.Contains(string(data), raw) {
+		t.Fatalf("failed query must not save to the catalog: %s", data)
+	}
+
+	fail = false
+	for i := 0; i < 2; i++ { // twice: second run must not duplicate
+		if _, err := reg.Execute("notion_query_database", query); err != nil {
+			t.Fatalf("query failed: %v", err)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "notion_catalog.json"))
+	if err != nil {
+		t.Fatalf("catalog not persisted: %v", err)
+	}
+	if !strings.Contains(string(data), `"db-2c72556e":{"id":"`+raw+`"`) {
+		t.Errorf("raw id not auto-saved as db-2c72556e: %s", data)
+	}
+	if strings.Count(string(data), raw) != 1 {
+		t.Errorf("id saved more than once: %s", data)
+	}
+
+	// Naming it replaces the db-… entry rather than duplicating it.
+	if _, err := reg.Execute("notion_add_database", `{"name":"Investigations","id":"`+raw+`"}`); err != nil {
+		t.Fatal(err)
+	}
+	data, _ = os.ReadFile(filepath.Join(dir, "notion_catalog.json"))
+	if strings.Contains(string(data), "db-2c72556e") || !strings.Contains(string(data), `"Investigations"`) {
+		t.Errorf("rename must replace the auto entry: %s", data)
+	}
+
+	// A raw id already under a catalog name is not re-saved under db-<hex>.
+	reg2, dir2 := newNotionTestRegistry(t, func(w http.ResponseWriter, r *http.Request) { envelope(w, []any{}, nil) })
+	if _, err := reg2.Execute("notion_query_database", `{"database":"dbid1","query":"SELECT 1"}`); err != nil {
+		t.Fatal(err)
+	}
+	data2, _ := os.ReadFile(filepath.Join(dir2, "notion_catalog.json"))
+	if strings.Contains(string(data2), `"db-`) {
+		t.Errorf("cataloged id must not be duplicated: %s", data2)
+	}
+}
+
 func TestNotionAddDatabasePersistsAndReRegisters(t *testing.T) {
 	reg, dir := newNotionTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
 		envelope(w, []any{}, nil)

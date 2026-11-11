@@ -123,7 +123,10 @@ dashboard's Notion OAuth — the agent never sees a Notion token. All read-only
 **upsert-only** — env config never deletes a taught name; `notion_add_database`
 adds/updates and persists, surviving restarts. Names match `^[A-Za-z0-9_-]{1,32}$`.
 An unknown name-like reference errors with the current catalog listing (no
-server call) so the LLM self-corrects.
+server call) so the LLM self-corrects. A raw database id/URL is **auto-saved**
+as `db-<first 8 hex>` after its first *successful* query (failed queries save
+nothing; an already-cataloged id is not duplicated); naming it later via
+`notion_add_database` replaces the `db-…` entry.
 
 **Knowledge append:** every `notion_read_page` records a read (title, URL,
 3000-char excerpt); after the turn a background no-tools LLM call summarizes
