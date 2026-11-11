@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
 use App\Filament\Concerns\InteractsWithDashboardFilters;
@@ -39,7 +40,8 @@ class FundLossTrendChart extends ChartWidget
                 DB::raw('SUM(fund_loss) as total_fund_loss'),
                 DB::raw($monthExpr.' as month')
             )
-                ->aiCounts()
+                // Money surface (PROJ-022): sub fund loss still counts.
+                ->aiCounts(withSubIncidents: true)
                 ->groupBy('month');
 
             if ($this->start_date && $this->end_date) {

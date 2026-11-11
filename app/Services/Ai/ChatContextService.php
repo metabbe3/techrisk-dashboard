@@ -2031,8 +2031,10 @@ class ChatContextService
         $lastMonthCount = Incident::aiCounts()->whereBetween('incident_date', [$lastMonth, $thisMonth])->count();
         $change = $lastMonthCount > 0 ? round((($thisMonthCount - $lastMonthCount) / $lastMonthCount) * 100, 1) : ($thisMonthCount > 0 ? 100 : 0);
 
-        $thisMonthLoss = Incident::aiCounts()->whereBetween('incident_date', [$thisMonth, now()])->sum('fund_loss');
-        $lastMonthLoss = Incident::aiCounts()->whereBetween('incident_date', [$lastMonth, $thisMonth])->sum('fund_loss');
+        // Money surfaces keep sub fund loss (PROJ-022) — fresh builders, the
+        // count builders above exclude subs and must not carry the flag.
+        $thisMonthLoss = Incident::aiCounts(withSubIncidents: true)->whereBetween('incident_date', [$thisMonth, now()])->sum('fund_loss');
+        $lastMonthLoss = Incident::aiCounts(withSubIncidents: true)->whereBetween('incident_date', [$lastMonth, $thisMonth])->sum('fund_loss');
         $lossChange = $lastMonthLoss > 0 ? round((($thisMonthLoss - $lastMonthLoss) / $lastMonthLoss) * 100, 1) : 0;
 
         $openP1P2 = Incident::aiCounts()
