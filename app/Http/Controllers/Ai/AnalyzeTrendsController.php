@@ -105,10 +105,11 @@ class AnalyzeTrendsController extends Controller
         $total = (clone $baseQuery)->count();
         // BUG-021: DECIMAL aggregates are strings on MySQL — cast at the producer
         // so every round()/number_format() below is safe under strict_types.
-        $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0);
+        $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '>=', 0)->avg('mttr') ?? 0);
 
         $mtbfAgg = (clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->selectRaw('COUNT(*) as cnt, MIN(incident_date) as min_date, MAX(incident_date) as max_date')
             ->first();
         $avgMtbf = 0;

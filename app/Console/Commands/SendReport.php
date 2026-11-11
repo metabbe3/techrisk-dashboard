@@ -44,7 +44,9 @@ class SendReport extends Command
         }
 
         $data = $template->filters;
-        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value);
+        // Listing mirrors the dashboard (PROJ-022): sub-incidents are hidden.
+        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value)
+            ->withoutSubIncidents();
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));
@@ -80,9 +82,11 @@ class SendReport extends Command
         // Collection severity attributes are enum instances — METRIC_ELIGIBLE
         // holds strings, so whereIn() never matched (BUG-022 trap); and
         // Outlier-tagged rows leave every MTBF/MTTR average (owner rule
-        // 2026-10-01) while staying in total_incidents.
+        // 2026-10-01) while staying in total_incidents. Sub-incidents leave
+        // the averages too (PROJ-022) — the listing already hides them.
         $metricEligible = fn (Incident $i) => in_array($i->severity?->value, Severity::METRIC_ELIGIBLE, true)
-            && ! $i->isOutlier();
+            && ! $i->isOutlier()
+            && $i->parent_incident_id === null;
         if (in_array('avg_mttr', $template->metrics)) {
             $metrics['avg_mttr'] = $incidents->filter($metricEligible)->where('mttr', '>=', 0)->avg('mttr');
         }

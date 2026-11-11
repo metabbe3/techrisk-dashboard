@@ -22,6 +22,7 @@ class WeeklyDataService
         $allIncidents = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutSubIncidents() // weekly counts roll up into the super (PROJ-022)
             ->excludedFromCounts()
             ->with(['pics', 'labels'])
             ->orderBy('incident_date', 'desc')

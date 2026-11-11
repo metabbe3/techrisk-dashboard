@@ -83,6 +83,7 @@ class CalculateIncidentMetrics implements ShouldQueue
             ->where('classification', $incident->classification->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -118,6 +119,7 @@ class CalculateIncidentMetrics implements ShouldQueue
             ->where('classification', $oldClassification)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '>', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {

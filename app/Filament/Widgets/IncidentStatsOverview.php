@@ -56,10 +56,10 @@ class IncidentStatsOverview extends BaseWidget
         // number_format()/abs() under strict_types.
         $fundLossTotal = (float) $query->clone()->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
         $recoveredTotal = (float) $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('recovered_fund', '>', 0)->sum('recovered_fund');
-        $mttrNonFundLoss = (float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->average('mttr') ?? 0);
-        $mttrFundLoss = abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->average('mttr') ?? 0));
+        $mttrNonFundLoss = (float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '>=', 0)->average('mttr') ?? 0);
+        $mttrFundLoss = abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '<', 0)->average('mttr') ?? 0));
 
-        $mtbfNonFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->where('fund_status', 'Non fundLoss');
+        $mtbfNonFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->withoutSubIncidents()->where('fund_status', 'Non fundLoss');
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
         $mtbfNonFundLoss = 0;
         if ($mtbfNonFundLossCount > 1) {
@@ -70,7 +70,7 @@ class IncidentStatsOverview extends BaseWidget
             }
         }
 
-        $mtbfFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->where('fund_status', 'Confirmed loss');
+        $mtbfFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->withoutSubIncidents()->where('fund_status', 'Confirmed loss');
         $mtbfFundLossCount = $mtbfFundLossQuery->count();
         $mtbfFundLoss = 0;
         if ($mtbfFundLossCount > 1) {

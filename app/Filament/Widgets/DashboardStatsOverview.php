@@ -96,6 +96,7 @@ class DashboardStatsOverview extends BaseWidget
         $mttrNonFundLoss = Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutSubIncidents() // subs carry computed mttr (unlike outliers) — they must leave the average
             ->tap($incidentDateFilter)
             ->where('mttr', '>=', 0)
             ->average('mttr');
@@ -105,6 +106,7 @@ class DashboardStatsOverview extends BaseWidget
         $mttrFundLoss = abs((float) (Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutSubIncidents()
             ->tap($incidentDateFilter)
             ->where('mttr', '<', 0)
             ->average('mttr') ?? 0));
@@ -114,6 +116,7 @@ class DashboardStatsOverview extends BaseWidget
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->where('fund_status', 'Non fundLoss');
 
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
@@ -131,6 +134,7 @@ class DashboardStatsOverview extends BaseWidget
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->where('fund_status', 'Confirmed loss');
 
         $mtbfFundLossCount = $mtbfFundLossQuery->count();

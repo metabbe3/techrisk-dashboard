@@ -241,7 +241,10 @@ class Reporting extends Page implements HasForms
             return;
         }
 
-        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value);
+        // Listing mirrors the dashboard (spec decision 9): sub-incidents are
+        // hidden — their numbers roll up into the super (PROJ-022).
+        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value)
+            ->withoutSubIncidents();
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));
@@ -275,7 +278,8 @@ class Reporting extends Page implements HasForms
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
             $mtbfQuery = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->withoutOutliers();
+                ->withoutOutliers()
+                ->withoutSubIncidents();
             $mtbfCount = $mtbfQuery->count();
             $avgMtbf = 0;
             if ($mtbfCount > 1) {

@@ -29,7 +29,8 @@ class IncidentStatsFooterData
         $totalCases = $query->count();
 
         $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers();
+            ->withoutOutliers()
+            ->withoutSubIncidents();
         $mtbfCount = $mtbfQuery->count();
         $avgMtbf = 0;
         if ($mtbfCount > 0) {
@@ -48,8 +49,10 @@ class IncidentStatsFooterData
         // native decimal type) — cast before round/abs or strict_types fatals.
         return [
             'totalCases' => $totalCases,
-            'avgMttrMins' => round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
-            'avgMttrDays' => round(abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->avg('mttr') ?? 0)), 2),
+            // MTTR averages exclude subs too (PROJ-022): subs carry COMPUTED
+            // mttr (outliers carry null, so they never needed the scope).
+            'avgMttrMins' => round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
+            'avgMttrDays' => round(abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '<', 0)->avg('mttr') ?? 0)), 2),
             'avgMtbf' => $avgMtbf,
             'totalPotentialFundLoss' => (float) $query->sum('potential_fund_loss'),
             'totalFundLoss' => (float) $query->sum('fund_loss'),
