@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace App\Filament\Resources\IncidentResource\Pages;
 
 use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Resources\IncidentResource;
+use App\Models\Incident;
 use App\Notifications\IncidentNotDoneReminder;
 use App\Services\Ai\PostMortemService;
 use App\Services\Ai\SimilarIncidentService;
@@ -169,6 +171,40 @@ class ViewIncident extends ViewRecord
                         ->body('The Retrospective section below is updated.')
                         ->send();
                 }),
+            // PROJ-022: same hierarchy actions as the list page's row kebab,
+            // for the record being viewed. Hidden on subs (one level deep).
+            Actions\Action::make('create_sub_incident')
+                ->label('Create sub-incident')
+                ->icon('heroicon-o-plus-circle')
+                ->color('success')
+                ->url(fn (Incident $record): string => IncidentResource::getUrl('create', ['parent' => $record->getKey()]))
+                ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                    && $record->classification === IncidentClassification::Incident
+                    && blank($record->parent_incident_id)),
+            Actions\Action::make('link_sub_incident')
+                ->label('Link sub-incident')
+                ->icon('heroicon-o-link')
+                ->color('info')
+                ->form([
+                    \Filament\Forms\Components\Select::make('sub_incident_id')
+                        ->label('Incident to link as a sub')
+                        ->searchable()
+                        ->required()
+                        ->options(fn (?Incident $record) => \App\Filament\Actions\SubIncidentLinkAction::options($record))
+                        ->rule(fn () => fn (string $attribute, $value, \Closure $fail) => \App\Filament\Actions\SubIncidentLinkAction::validatePick($value, $fail)),
+                ])
+                ->action(function (Incident $record, array $data): void {
+                    \App\Filament\Actions\SubIncidentLinkAction::link($record, (int) $data['sub_incident_id']);
+
+                    Notification::make()
+                        ->success()
+                        ->title('Sub-incident linked')
+                        ->body($this->getRecord()->subIncidents()->count().' sub-incident(s) linked to this record.')
+                        ->send();
+                })
+                ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                    && $record->classification === IncidentClassification::Incident
+                    && blank($record->parent_incident_id)),
             // Owner 2026-11-04: the export pair merged behind one dropdown,
             // the Notion pair behind a kebab — the header was one button sea.
             Actions\ActionGroup::make([

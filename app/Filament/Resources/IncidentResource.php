@@ -11,6 +11,7 @@ use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
+use App\Filament\Actions\SubIncidentLinkAction;
 use App\Filament\Forms\Components\AiTextarea;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
@@ -90,6 +91,17 @@ class IncidentResource extends Resource
         }
 
         $coreDetails = [
+            // PROJ-022: create-as-sub entry — CreateIncident?parent=<id> fills
+            // this from the URL; a normal create leaves it null.
+            Forms\Components\Hidden::make('parent_incident_id')
+                ->dehydrated()
+                ->default(fn () => request()->filled('parent') ? (int) request()->query('parent') : null),
+            Forms\Components\Placeholder::make('sub_incident_hint')
+                ->content(fn ($get) => filled($get('parent_incident_id'))
+                    ? 'Recording as a sub-incident of '.Incident::find($get('parent_incident_id'))?->no
+                    : null)
+                ->visible(fn ($get) => filled($get('parent_incident_id')))
+                ->columnSpanFull(),
             TextInput::make('title')->required()->columnSpanFull(),
             $noField,
             Select::make('severity')->options(Severity::options())->required(),
@@ -663,6 +675,43 @@ class IncidentResource extends Resource
                             ]);
                         })
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
+                    // PROJ-022: sub-incident hierarchy actions. A super's
+                    // family grows (multiple subs); subs themselves cannot
+                    // supers (one level deep), so link/create hide on them.
+                    Tables\Actions\Action::make('create_sub_incident')
+                        ->label('Create sub-incident')
+                        ->icon('heroicon-o-plus-circle')
+                        ->color('success')
+                        ->url(fn (Incident $record): string => IncidentResource::getUrl('create', ['parent' => $record->getKey()]))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && $record->classification === IncidentClassification::Incident
+                            && blank($record->parent_incident_id)),
+                    Tables\Actions\Action::make('link_sub_incident')
+                        ->label('Link sub-incident')
+                        ->icon('heroicon-o-link')
+                        ->color('info')
+                        ->form([
+                            Forms\Components\Select::make('sub_incident_id')
+                                ->label('Incident to link as a sub')
+                                ->searchable()
+                                ->required()
+                                ->options(fn (?Incident $record) => SubIncidentLinkAction::options($record))
+                                ->rule(fn () => fn (string $attribute, $value, \Closure $fail) => SubIncidentLinkAction::validatePick($value, $fail)),
+                        ])
+                        ->action(fn (Incident $record, array $data) => SubIncidentLinkAction::link($record, (int) $data['sub_incident_id']))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && $record->classification === IncidentClassification::Incident
+                            && blank($record->parent_incident_id)),
+                    Tables\Actions\Action::make('unlink_sub_incident')
+                        ->label('Unlink sub-incident')
+                        ->icon('heroicon-o-link-slash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Unlink sub-incident')
+                        ->modalDescription('The sub stays a standalone incident. Neither record is deleted.')
+                        ->action(fn (Incident $record) => $record->update(['parent_incident_id' => null]))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && filled($record->parent_incident_id)),
                     Tables\Actions\Action::make('downgrade_to_issue')
                         ->label('Downgrade to Issue')
                         ->icon('heroicon-o-arrow-down-circle')
