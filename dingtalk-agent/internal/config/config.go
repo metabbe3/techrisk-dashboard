@@ -30,6 +30,22 @@ type Config struct {
 	MaxIterations        int
 	HistoryTTL           time.Duration // per-conversation memory retention
 	DataDir              string        // user registry + persistent history (empty = memory-only)
+
+	// InternalAddr is the listen address of the internal HTTP listener the
+	// dashboard's RunAiAgentJob calls (/internal/run). Empty disables it.
+	InternalAddr string
+	// InternalToken guards /internal/run (X-Agent-Token header). Empty disables
+	// the listener entirely — it must match the dashboard's GO_AGENT_INTERNAL_TOKEN.
+	InternalToken string
+	// AgentTurnReports reports every chat turn to the dashboard as a run row
+	// (POST /api/v1/agent-runs). Default on.
+	AgentTurnReports bool
+	// EmbeddingModel is the embeddings model for the RAG knowledge base
+	// (AI_EMBEDDING_MODEL parity — one source of truth with the dashboard).
+	EmbeddingModel string
+	// KBToolsEnabled registers search_knowledge (the RAG index over files
+	// users upload in chat). Default on.
+	KBToolsEnabled bool
 }
 
 // Default values
@@ -43,7 +59,23 @@ const (
 	DefaultEnvFile          = "dingtalk-agent.env"
 	DefaultHistoryTTL       = 12 * time.Hour
 	DefaultDataDir          = "data"
+	DefaultInternalAddr     = ":9091"
+	DefaultEmbeddingModel   = "text-embedding-3-large" // = config/ai.php default
 )
+
+// loadBool reads a boolean env key ("1"/"true"/"on"/"yes" = on; anything else
+// off) with the given default.
+func loadBool(getVal func(key, defVal string) string, key string, def bool) bool {
+	v := getVal(key, "")
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(v) {
+	case "0", "false", "off", "no":
+		return false
+	}
+	return true
+}
 
 // Load reads configuration from the default env file (if present)
 // and overrides it with current process environment variables.
@@ -238,5 +270,26 @@ func LoadFromFile(envPath string) (*Config, error) {
 		MaxIterations:        maxIter,
 		HistoryTTL:           historyTTL,
 		DataDir:              getVal("DINGTALK_DATA_DIR", DefaultDataDir),
+
+		InternalAddr:     getVal("AGENT_INTERNAL_ADDR", DefaultInternalAddr),
+		InternalToken:    getVal("AGENT_INTERNAL_TOKEN", ""),
+		AgentTurnReports: loadBool(getVal, "AGENT_TURN_REPORTS", true),
+
+		EmbeddingModel: firstNonEmpty(
+			getVal("LLM_EMBEDDING_MODEL", ""),
+			getVal("AI_EMBEDDING_MODEL", ""),
+			DefaultEmbeddingModel, // matches config/ai.php's default
+		),
+		KBToolsEnabled: loadBool(getVal, "AGENT_KB_TOOLS", true),
 	}, nil
+}
+
+// firstNonEmpty returns the first non-empty string.
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

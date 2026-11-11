@@ -296,6 +296,61 @@ func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
 	}
 }
 
+// Usage must be summed across every LLM round of a run (run-local accumulator —
+// the loop is shared across concurrent turns, no shared state).
+func TestRunSumsUsageAcrossIterations(t *testing.T) {
+	step := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step++
+		var resp llm.ChatResponse
+		if step == 1 {
+			resp = llm.ChatResponse{
+				Usage: &llm.Usage{PromptTokens: 100, CompletionTokens: 10, TotalTokens: 110},
+				Choices: []llm.ChatChoice{{
+					Message: llm.ChatMessage{
+						Role: "assistant",
+						ToolCalls: []llm.ToolCall{{
+							ID:       "call_1",
+							Type:     "function",
+							Function: llm.FunctionCall{Name: "stub_lookup", Arguments: `{"path":"."}`},
+						}},
+					},
+					FinishReason: "tool_calls",
+				}},
+			}
+		} else {
+			resp = llm.ChatResponse{
+				Usage: &llm.Usage{PromptTokens: 200, CompletionTokens: 20, TotalTokens: 220},
+				Choices: []llm.ChatChoice{{
+					Message:      llm.ChatMessage{Role: "assistant", Content: "done"},
+					FinishReason: "stop",
+				}},
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	reg := tools.NewRegistry(nil)
+	reg.Register(
+		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "stub_lookup", Description: "test stub"}},
+		func(argsJSON string) (string, error) { return "result", nil },
+	)
+	agentLoop := NewLoop(
+		llm.NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}),
+		reg, 5,
+	)
+
+	_, _, usage, err := agentLoop.Run(context.Background(), "hi", nil, "")
+	if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if usage != (llm.Usage{PromptTokens: 300, CompletionTokens: 30, TotalTokens: 330}) {
+		t.Errorf("usage = %+v, want the sum of both rounds", usage)
+	}
+}
+
 // The clock must ride the system prompt — "since yesterday" and the daily
 // digest's updated_since windows are unreliable without it.
 func TestCurrentDateTimeInSystemPrompt(t *testing.T) {

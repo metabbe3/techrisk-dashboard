@@ -2,12 +2,15 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	dingtalk_stream "github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 
@@ -71,8 +74,28 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	go bot.RunScheduler(ctx)   // chat-created reminders (data/schedules.json)
+	// Chat reminders now live in the dashboard (AiAgent rows) — dispatched by
+	// its scheduler and executed back here via the internal listener.
 	go bot.RunWatchPoller(ctx) // incident status watches (data/watches.json)
+
+	// Internal listener — the dashboard's engine endpoint (RunAiAgentJob POSTs
+	// /internal/run here). Started only when the shared token is configured.
+	var internalSrv *http.Server
+	if cfg.InternalToken != "" {
+		internalSrv = &http.Server{
+			Addr:              cfg.InternalAddr,
+			Handler:           dingtalk.NewInternalMux(bot),
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		go func() {
+			log.Printf("internal listener on %s (dashboard engine endpoint)", cfg.InternalAddr)
+			if err := internalSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Printf("internal listener failed: %v", err)
+			}
+		}()
+	} else {
+		log.Printf("AGENT_INTERNAL_TOKEN empty — internal listener disabled (scheduled agents cannot use the Go engine).")
+	}
 
 	log.Printf("dingtalk-agent online — stream connecting, waiting for messages.")
 	if err := cli.Start(ctx); err != nil {
@@ -80,6 +103,14 @@ func main() {
 	}
 	// Start() only dials and spawns the read loop; block until shutdown.
 	<-ctx.Done()
+
+	if internalSrv != nil {
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := internalSrv.Shutdown(shutdownCtx); err != nil {
+			log.Printf("internal listener shutdown: %v", err)
+		}
+	}
 
 	log.Printf("dingtalk-agent exited cleanly.")
 }

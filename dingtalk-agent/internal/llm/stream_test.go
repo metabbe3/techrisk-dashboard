@@ -37,7 +37,7 @@ func TestChatCompletionStreamContent(t *testing.T) {
 	})
 
 	var got string
-	msg, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, func(d string) { got += d })
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, func(d string) { got += d })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestChatCompletionStreamToolCalls(t *testing.T) {
 		))
 	})
 
-	msg, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestChatCompletionStreamErrorFrame(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(w, sse(`{"error":{"message":"rate limited"}}`))
 	})
-	if _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
+	if _, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
 		t.Fatal("expected error from stream error frame")
 	}
 }
@@ -91,7 +91,42 @@ func TestChatCompletionStreamHTTPError(t *testing.T) {
 	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":{"message":"bad key"}}`, http.StatusUnauthorized)
 	})
-	if _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
+	if _, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
 		t.Fatal("expected error from HTTP 401")
+	}
+}
+
+// Usage arrives on the final SSE frame; absent usage = zero value.
+func TestChatCompletionStreamUsage(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sse(
+			`{"choices":[{"delta":{"content":"Hi"}}]}`,
+			`{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}`,
+		))
+	})
+
+	msg, usage, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg.Content != "Hi" {
+		t.Errorf("content = %q", msg.Content)
+	}
+	if usage != (Usage{PromptTokens: 10, CompletionTokens: 4, TotalTokens: 14}) {
+		t.Errorf("usage = %+v, want the final frame's usage", usage)
+	}
+}
+
+func TestChatCompletionStreamUsageAbsent(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sse(`{"choices":[{"delta":{"content":"Hi"},"finish_reason":"stop"}]}`))
+	})
+
+	if _, usage, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if usage != (Usage{}) {
+		t.Errorf("usage = %+v, want zero when the stream carries none", usage)
 	}
 }

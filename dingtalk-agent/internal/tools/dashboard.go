@@ -68,11 +68,20 @@ func (c *dashboardClient) get(ctx context.Context, path string) (*apiEnvelope, e
 
 // post performs a POST with a JSON payload on path and returns the decoded envelope.
 func (c *dashboardClient) post(ctx context.Context, path string, payload any) (*apiEnvelope, error) {
+	return c.request(ctx, http.MethodPost, path, payload)
+}
+
+// del performs a DELETE with a JSON payload on path (agent-schedules cancel).
+func (c *dashboardClient) del(ctx context.Context, path string, payload any) (*apiEnvelope, error) {
+	return c.request(ctx, http.MethodDelete, path, payload)
+}
+
+func (c *dashboardClient) request(ctx context.Context, method, path string, payload any) (*apiEnvelope, error) {
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}

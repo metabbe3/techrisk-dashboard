@@ -114,7 +114,7 @@ func TestChatCompletionMockServer(t *testing.T) {
 	}
 
 	client := NewClient(cfg)
-	msg, err := client.ChatCompletion(context.Background(), []ChatMessage{
+	msg, _, err := client.ChatCompletion(context.Background(), []ChatMessage{
 		{Role: "user", Content: "Hi"},
 	}, nil)
 	if err != nil {
@@ -123,5 +123,144 @@ func TestChatCompletionMockServer(t *testing.T) {
 
 	if msg.Content != "Hello from mock LLM!" {
 		t.Errorf("unexpected message content: %s", msg.Content)
+	}
+}
+
+// Non-stream usage parsing: present → the value; absent → zero.
+func TestChatCompletionUsage(t *testing.T) {
+	var lastResp *ChatResponse
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(lastResp)
+	}))
+	defer server.Close()
+
+	client := NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"})
+
+	lastResp = &ChatResponse{
+		Usage: &Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10},
+		Choices: []ChatChoice{{
+			Message: ChatMessage{Role: "assistant", Content: "a"}, FinishReason: "stop",
+		}},
+	}
+	if _, usage, err := client.ChatCompletion(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if usage != (Usage{PromptTokens: 7, CompletionTokens: 3, TotalTokens: 10}) {
+		t.Errorf("usage = %+v", usage)
+	}
+
+	lastResp = &ChatResponse{
+		Choices: []ChatChoice{{
+			Message: ChatMessage{Role: "assistant", Content: "b"}, FinishReason: "stop",
+		}},
+	}
+	if _, usage, err := client.ChatCompletion(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if usage != (Usage{}) {
+		t.Errorf("usage = %+v, want zero when the response carries none", usage)
+	}
+}
+
+func TestUsageAdd(t *testing.T) {
+	got := Usage{PromptTokens: 1, CompletionTokens: 2, TotalTokens: 3}.
+		Add(Usage{PromptTokens: 10, CompletionTokens: 20, TotalTokens: 30})
+	if got != (Usage{PromptTokens: 11, CompletionTokens: 22, TotalTokens: 33}) {
+		t.Errorf("Add = %+v", got)
+	}
+}
+
+// Embed sends array input as a JSON array and returns vectors sorted by index.
+func TestEmbedArrayInputSortedByIndex(t *testing.T) {
+	var gotModel string
+	var gotInput any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/embeddings" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		gotModel, _ = body["model"].(string)
+		gotInput = body["input"]
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{
+			{"index": 1, "embedding": []float32{0, 1}},
+			{"index": 0, "embedding": []float32{1, 0}},
+		}})
+	}))
+	defer server.Close()
+
+	client := NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "chat", EmbeddingModel: "embed-model"})
+	vecs, err := client.Embed(context.Background(), []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotModel != "embed-model" {
+		t.Errorf("model = %q, want embed-model", gotModel)
+	}
+	if arr, ok := gotInput.([]any); !ok || len(arr) != 2 {
+		t.Errorf("input = %#v, want a 2-item array", gotInput)
+	}
+	if len(vecs) != 2 || vecs[0][0] != 1 || vecs[1][1] != 1 {
+		t.Errorf("vectors not sorted by index: %v", vecs)
+	}
+}
+
+// A gateway that rejects array input falls back to one request per chunk and
+// stays in single mode afterwards; a single chunk was always sent as a string.
+func TestEmbedFallsBackToPerChunk(t *testing.T) {
+	var arrayCalls, singleCalls int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		w.Header().Set("Content-Type", "application/json")
+		if _, ok := body["input"].([]any); ok {
+			arrayCalls++
+			http.Error(w, `{"error":{"message":"array not supported"}}`, http.StatusForbidden)
+			return
+		}
+		singleCalls++
+		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]any{
+			{"index": 0, "embedding": []float32{1, 2, 3}},
+		}})
+	}))
+	defer server.Close()
+
+	client := NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "chat"})
+	vecs, err := client.Embed(context.Background(), []string{"a", "b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(vecs) != 2 || vecs[1][2] != 3 {
+		t.Fatalf("fallback vectors wrong: %v", vecs)
+	}
+	if arrayCalls != 1 || singleCalls != 2 {
+		t.Fatalf("calls: array=%d single=%d, want 1/2", arrayCalls, singleCalls)
+	}
+
+	// Later calls stay in single mode even for multiple inputs.
+	if _, err := client.Embed(context.Background(), []string{"c", "d", "e"}); err != nil {
+		t.Fatal(err)
+	}
+	if arrayCalls != 1 || singleCalls != 5 {
+		t.Fatalf("single mode not sticky: array=%d single=%d", arrayCalls, singleCalls)
+	}
+}
+
+// Empty input short-circuits; a hard gateway error propagates.
+func TestEmbedEmptyAndError(t *testing.T) {
+	client := NewClient(&config.Config{LLMModel: "chat"})
+	if vecs, err := client.Embed(context.Background(), nil); err != nil || vecs != nil {
+		t.Fatalf("empty input = %v, %v; want nil, nil", vecs, err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "boom", http.StatusInternalServerError)
+	}))
+	defer server.Close()
+	client = NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "chat"})
+	if _, err := client.Embed(context.Background(), []string{"a"}); err == nil {
+		t.Fatal("expected error on gateway failure")
 	}
 }

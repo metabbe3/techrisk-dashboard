@@ -52,6 +52,8 @@ chars.
 | `LLM_API_KEY` | no | `AI_API_KEY` (dashboard .env — compose maps it) |
 | `LLM_MODEL` | no | `AI_API_DEFAULT_MODEL` (placeholder values ignored) → **`glm-5.3-flashx`** |
 | `LLM_MAX_TOKENS` | no | `AI_WAR_ROOM_MAX_OUTPUT_TOKENS` → 16384; `0` omits `max_tokens` (escape hatch if a model rejects it) |
+| `LLM_EMBEDDING_MODEL` | no | `AI_EMBEDDING_MODEL` → **`text-embedding-3-large`** — RAG knowledge-base embeddings (the key needs access to it) |
+| `AGENT_KB_TOOLS` | no | 1 — `search_knowledge` RAG over chat-uploaded documents; `0`/`off` unregisters the tool and the index |
 | `AGENT_MAX_ITER` | no | 60 tool-call iterations (Hermes parity) |
 | `AGENT_WEB_TOOLS` | no | 1 — keyless web research; `0`/`off`/`false`/`no` unregisters both web tools |
 | `AGENT_NOTION_TOOLS` | no | 1 — read-only Notion doc tools (below); `0`/`off`/`false`/`no` unregisters all four |
@@ -104,6 +106,30 @@ deferred remove, success or failure. Only summaries persist, never the file.
 - Caps: 15 MB download, 48,000 chars to the LLM, 2,000-char knowledge summary.
 - Pictures/audio/video are not handled in v1 (they arrive as other msgtypes
   and are ignored).
+
+### Knowledge base (RAG over uploaded documents)
+
+Every ingested document is also embedded into a vector index — so SOP answers
+come from the document text, not from a summary's memory of it. The
+`search_knowledge` tool answers procedure/SOP questions by embedding the query
+and returning the top-6 most similar passages (cosine), each labeled with its
+document and part number; the agent is instructed to quote them.
+
+- Index: `<DataDir>/kb.jsonl` (one JSON chunk per line). Chunks are 900 runes
+  with 100 overlap, ≤150 chunks per document, ≤1000 chunks total (oldest
+  document evicted whole at the cap). Brute-force in-memory scan — fine at
+  this size.
+- Embeddings: gateway `/v1/embeddings`, model from `LLM_EMBEDDING_MODEL` →
+  `AI_EMBEDDING_MODEL` → **`text-embedding-3-large`** (same as the dashboard's
+  `config/ai.php` default; the key must have access to it — the agent's local
+  key does not). Array input is tried first, with automatic fallback to one
+  request per chunk if the gateway rejects arrays.
+- Re-embed: changing the model re-embeds every stored chunk in the background
+  at boot (old vectors serve searches meanwhile).
+- Failure mode: if embedding fails (no key access, gateway down), `Ingest`
+  logs and the doc degrades to summary-only knowledge — uploads and answers
+  never break.
+- `AGENT_KB_TOOLS=0` turns the whole feature off (no index, no tool).
 
 ## Notion (read-only workspace docs)
 
@@ -236,8 +262,39 @@ from the **same sender**; a different member's message closes the batch and gets
 its own turn. Group messages carry a `[From <nick>]` prefix so the shared
 history knows who asked what. DMs are unchanged (parallel, max 4 agent runs).
 
+## Incident status watches
+
+"Alert us when this incident's status changes" — per-incident watches created
+from chat. Uses the same ticket-binding contract as reminders (Go-side only;
+the LLM never sees a conversation ID).
+
+| Piece | Where |
+|---|---|
+| `watch_incident(no)` / `unwatch_incident(id)` | `internal/tools/watch.go` |
+| watch store (`<DataDir>/watches.json`), pending handoff | `internal/watch/` |
+| bind to chat, 60s status sweep, change reports | `internal/dingtalk/watches.go` |
+
+- **Binding**: the tool parks the request under a random `[watch-ticket: …]`
+  token; the bot claims tokens from its own turn's tool results, resolves the
+  incident via `GET /incidents-by-no/{no}` (title + current status), stores the
+  watch, and appends "👁 Watching …" with the confirmed watch ID.
+- **Polling**: one sweep per 60s tick regardless of watch count — a single
+  `GET /incidents?updated_since=<tick+5s slack>&limit=100`; watched numbers
+  whose `incident_status` changed fire one agent task turn each ("report which
+  project and all relevant information"), delivered via the same
+  group-with-DM-fallback path as reminders. The new status is persisted
+  *before* the report fires, so a crash never double-reports.
+  *ponytail:* a status that flips A→B→A within one 60s window is missed.
+- **Limits**: 20 watches per chat, one watch per incident per chat;
+  `unwatch_incident` only works from the chat that created the watch. Active
+  watches are appended to each user message in that chat.
+- Depends on the Laravel `updated_since` filter (row update time) — see
+  `docs/reference/dependency-map.md`.
+
 ## Testing
 
 `go vet ./... && go test ./...` — all tests hermetic (httptest fakes for the
-LLM SSE stream, DingTalk OpenAPI, dashboard API). No Laravel changes; the
-1045-test baseline is untouched.
+LLM SSE stream, DingTalk OpenAPI, dashboard API, embeddings). Laravel side:
+the agent depends on the v1 API's `updated_since` filter, covered by
+`tests/Feature/Api/IncidentUpdatedSinceTest.php` (part of the 1166-test
+baseline in the main repo).

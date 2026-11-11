@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/kb"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/watch"
@@ -31,6 +32,7 @@ type Registry struct {
 	dash         *dashboardClient  // nil without cfg — the watch poller sweeps through it
 	pending      *schedule.Pending // parked reminder requests; nil without cfg
 	watchPending *watch.Pending    // parked watch requests; nil without cfg
+	kbIndex      *kb.Index         // RAG knowledge base; nil until RegisterKnowledgeTools
 }
 
 // NewRegistry initializes the registry with the dashboard API tools, plus the

@@ -18,13 +18,6 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
 )
 
-const (
-	schedulerTick = 30 * time.Second
-	// lateSkip: a RECURRING reminder this overdue (bot was down) is skipped to
-	// its next run instead of firing stale. One-shots always fire, marked late.
-	lateSkip = time.Hour
-)
-
 // applySchedules binds the reminder requests parked by THIS turn's tool calls
 // to the real sender and conversation, then swaps any ticket the LLM echoed
 // for the confirmed outcome. The conversation id comes from the DingTalk
@@ -55,44 +48,49 @@ func (b *Bot) applySchedules(m *chatbot.BotCallbackDataModel, history []llm.Chat
 	return reply + "\n\n" + strings.Join(notes, "\n")
 }
 
+// bindSchedule validates the "when" grammar Go-side (immediate feedback in the
+// chat), then saves/cancels through the dashboard's agent-schedules API. The
+// dashboard owns storage and dispatch; cron passes through verbatim, one-shots
+// arrive as a resolved run_at.
 func (b *Bot) bindSchedule(m *chatbot.BotCallbackDataModel, req schedule.Request) string {
+	if b.schedAPI == nil {
+		return "⚠️ Reminder not saved: the dashboard API is not configured."
+	}
 	if req.CancelID > 0 {
-		it, err := b.sched.Cancel(req.CancelID, m.ConversationId)
-		if err != nil {
+		if err := b.schedAPI.Cancel(context.Background(), m.ConversationId, req.CancelID); err != nil {
 			return "⚠️ " + err.Error()
 		}
-		log.Printf("[schedule] #%d cancelled by %s in %s", it.ID, m.SenderNick, m.ConversationId)
-		return fmt.Sprintf("🗑️ Reminder #%d cancelled.", it.ID)
+		log.Printf("[schedule] #%d cancelled by %s in %s", req.CancelID, m.SenderNick, m.ConversationId)
+		return fmt.Sprintf("🗑️ Reminder #%d cancelled.", req.CancelID)
 	}
 	// The task text runs through the agent later with no human in the loop —
 	// it must pass the same input gate a live message does.
 	if refusal := guardrail.InputGate(req.Text); refusal != "" {
 		return "⚠️ Reminder not saved: " + refusal
 	}
-	it, err := b.sched.Add(schedule.Item{
-		ConversationID: m.ConversationId, ConversationType: m.ConversationType,
-		StaffID: m.SenderStaffId, Nick: m.SenderNick,
-		When: req.When, Mode: req.Mode, Text: req.Text,
-	}, time.Now())
+	now := time.Now()
+	spec, err := schedule.Parse(req.When, now)
+	if err != nil {
+		return "⚠️ Reminder not saved: " + err.Error()
+	}
+	cron := ""
+	var runAt *time.Time
+	if spec.Recurring() {
+		cron = req.When
+	} else {
+		at, ok := spec.Next(now)
+		if !ok {
+			return "⚠️ Reminder not saved: that time never fires."
+		}
+		runAt = &at
+	}
+	it, err := b.schedAPI.Create(context.Background(), m.ConversationId, m.ConversationType,
+		m.SenderStaffId, m.SenderNick, req.Mode, cron, runAt, req.Text)
 	if err != nil {
 		return "⚠️ Reminder not saved: " + err.Error()
 	}
 	log.Printf("[schedule] saved %s by %s in %s", it.Describe(), m.SenderNick, m.ConversationId)
 	return "⏰ Saved reminder " + it.Describe()
-}
-
-// RunScheduler fires due reminders until ctx ends. Start it once from main.
-func (b *Bot) RunScheduler(ctx context.Context) {
-	t := time.NewTicker(schedulerTick)
-	defer t.Stop()
-	for {
-		b.fireDue(ctx, time.Now())
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-		}
-	}
 }
 
 // SendMarkdownGroup pushes a robot markdown message INTO a group conversation
@@ -109,50 +107,6 @@ func SendMarkdownGroup(ctx context.Context, cfg *config.Config, conversationID, 
 		"msgKey":             "sampleMarkdown",
 		"msgParam":           string(msgParam),
 	})
-}
-
-func (b *Bot) fireDue(ctx context.Context, now time.Time) {
-	for _, it := range b.sched.TakeDue(now) {
-		late := now.Sub(it.NextRun)
-		if schedule.IsRecurring(it.When) && late > lateSkip {
-			log.Printf("[schedule] #%d skipped — %v late (bot was down); next run kept", it.ID, late.Round(time.Minute))
-			continue
-		}
-		go b.fire(ctx, it, late > lateSkip)
-	}
-}
-
-// fire delivers one reminder: a message posts its text; a task runs the text
-// through the agent (fresh context, guarded output) and posts the answer.
-func (b *Bot) fire(ctx context.Context, it schedule.Item, late bool) {
-	header := fmt.Sprintf("⏰ **Reminder #%d** (set by %s)", it.ID, it.Nick)
-	if late {
-		header += " — delayed, the bot was offline at the scheduled time"
-	}
-	body := it.Text
-
-	if it.Mode == schedule.ModeTask {
-		b.sem <- struct{}{}
-		reply, _, err := b.loop.Run(ctx,
-			fmt.Sprintf("[Scheduled check #%d set by %s — run it now and report the result. Do not create or cancel reminders.]\n\n%s", it.ID, it.Nick, it.Text),
-			nil, "")
-		b.loop.Registry().TakeNotionReads() // a scheduled run must not leak reads into the next chat turn
-		<-b.sem
-		if err != nil {
-			log.Printf("[schedule] #%d task failed: %v", it.ID, err)
-			body = "The scheduled check failed this time: " + it.Text
-		} else if body = guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars); body == "" {
-			body = "The scheduled check produced no answer: " + it.Text
-		}
-		header = strings.Replace(header, "Reminder", "Scheduled check", 1)
-	}
-
-	text := header + "\n\n" + body
-	if err := b.deliverMarkdown(ctx, it.ConversationID, it.ConversationType, it.StaffID, "Risk Agent reminder", text); err != nil {
-		log.Printf("[schedule] #%d delivery failed: %v", it.ID, err)
-		return
-	}
-	log.Printf("[schedule] #%d fired (%s) to %s", it.ID, it.Mode, it.ConversationID)
 }
 
 // deliverMarkdown routes a proactive markdown push by conversation type:

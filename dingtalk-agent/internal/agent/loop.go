@@ -96,6 +96,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		if l.registry.Has("watch_incident") {
 			sys += "\n\n" + WatchPrompt
 		}
+		if l.registry.Has("search_knowledge") {
+			sys += "\n\n" + KnowledgePrompt
+		}
 		if l.SystemExtras != nil {
 			if extra := l.SystemExtras(); extra != "" {
 				sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra

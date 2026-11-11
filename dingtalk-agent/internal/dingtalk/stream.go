@@ -17,9 +17,9 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/ingest"
+	"techrisk-dashboard/dingtalk-agent/internal/kb"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/memory"
-	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
 	"techrisk-dashboard/dingtalk-agent/internal/watch"
 )
@@ -40,15 +40,16 @@ const (
 
 // Bot bridges DingTalk stream messages to the agent loop.
 type Bot struct {
-	cfg     *config.Config
-	loop    *agent.Loop
-	replier *chatbot.ChatbotReplier
-	allowed map[string]struct{}
-	api     *openAPIClient
-	llm     *llm.Client   // no-tools client for profile extraction
-	store   *memory.Store // nil = memory-only (tests)
-	sched   *schedule.Store
-	watches *watch.Store
+	cfg      *config.Config
+	loop     *agent.Loop
+	replier  *chatbot.ChatbotReplier
+	allowed  map[string]struct{}
+	api      *openAPIClient
+	llm      *llm.Client   // no-tools client for profile extraction
+	store    *memory.Store // nil = memory-only (tests)
+	schedAPI *tools.ScheduleAPI
+	watches  *watch.Store
+	know     *kb.Index // RAG index over uploaded documents; nil when KB tools off
 
 	mu      sync.Mutex
 	history map[string]historyEntry
@@ -81,18 +82,18 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 		allowed[id] = struct{}{}
 	}
 	b := &Bot{
-		cfg:     cfg,
-		loop:    loop,
-		replier: chatbot.NewChatbotReplier(),
-		allowed: allowed,
-		api:     newOpenAPIClient(cfg),
-		llm:     llm.NewClient(cfg),
-		history: make(map[string]historyEntry),
-		seen:    make(map[string]time.Time),
-		inboxes: make(map[string]chan chatTask),
-		sem:     make(chan struct{}, MaxConcurrentAgents),
-		sched:   schedule.NewStore(cfg.DataDir), // "" = memory-only
-		watches: watch.NewStore(cfg.DataDir),    // "" = memory-only
+		cfg:      cfg,
+		loop:     loop,
+		replier:  chatbot.NewChatbotReplier(),
+		allowed:  allowed,
+		api:      newOpenAPIClient(cfg),
+		llm:      llm.NewClient(cfg),
+		history:  make(map[string]historyEntry),
+		seen:     make(map[string]time.Time),
+		inboxes:  make(map[string]chan chatTask),
+		sem:      make(chan struct{}, MaxConcurrentAgents),
+		schedAPI: tools.NewScheduleAPI(cfg),   // dashboard agent-schedules API (10s client)
+		watches:  watch.NewStore(cfg.DataDir), // "" = memory-only
 	}
 	if cfg.DataDir != "" {
 		b.store = memory.NewStore(cfg.DataDir)
@@ -102,6 +103,11 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 		if loop != nil {
 			loop.SystemExtras = b.knowledgePrompt // inject remembered docs
 		}
+	}
+	// RAG knowledge base over chat-uploaded documents (SOPs etc.).
+	if cfg.KBToolsEnabled && loop != nil {
+		b.know = kb.NewIndex(cfg.DataDir, cfg.EmbeddingModel, b.llm)
+		loop.Registry().RegisterKnowledgeTools(b.know)
 	}
 	return b
 }
@@ -258,12 +264,18 @@ func (b *Bot) runBatch(batch []chatTask) {
 	if m.ConversationType == "2" { // group: shared history must say who asked what
 		text = fmt.Sprintf("[From %s]\n%s", m.SenderNick, text)
 	}
-	if items := b.sched.List(m.ConversationId); len(items) > 0 {
-		var rs strings.Builder
-		for _, it := range items {
-			rs.WriteString("\n- " + it.Describe())
+	if b.schedAPI != nil {
+		items, err := b.schedAPI.List(context.Background(), m.ConversationId)
+		switch {
+		case err != nil: // degrade: a dead dashboard must not fail the turn
+			log.Printf("[schedule] list failed for %s (%v) — skipping reminder context", m.ConversationId, err)
+		case len(items) > 0:
+			var rs strings.Builder
+			for _, it := range items {
+				rs.WriteString("\n- " + it.Describe())
+			}
+			text += "\n\n[Active reminders in this chat:" + rs.String() + "]"
 		}
-		text += "\n\n[Active reminders in this chat:" + rs.String() + "]"
 	}
 	if ws := b.watches.List(m.ConversationId); len(ws) > 0 {
 		var rs strings.Builder
@@ -323,6 +335,11 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 		}); err != nil {
 			log.Printf("[dingtalk] persist knowledge failed: %v", err)
 		}
+	}
+	// RAG ingest runs in the background; embedding failures only log — the
+	// summary above still answered the user.
+	if b.know != nil {
+		b.know.Ingest(fm.FileName, text)
 	}
 }
 
