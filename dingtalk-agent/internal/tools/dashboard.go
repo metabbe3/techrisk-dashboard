@@ -183,10 +183,31 @@ func pairDates(start, end string) (string, string, error) {
 
 func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	client := newDashboardClient(cfg)
+	r.dash = client
 
 	r.Register(searchIncidentDef(), client.handleSearchIncidents)
 	r.Register(getIncidentDef(), client.handleGetIncident)
 	r.Register(getIncidentMarkdownDef(), client.handleGetIncidentMarkdown)
+}
+
+// GetIncidentByNo fetches one incident's full JSON by its incident number
+// (the watch binder + poller use it to resolve and diff).
+func (c *dashboardClient) GetIncidentByNo(ctx context.Context, no string) (json.RawMessage, error) {
+	no, err := sanitizeRef(no)
+	if err != nil {
+		return nil, err
+	}
+	env, err := c.get(ctx, "/incidents-by-no/"+url.PathEscape(no))
+	if err != nil {
+		return nil, err
+	}
+	return env.Data, nil
+}
+
+// Search runs a raw GET (path with query string) and returns the envelope —
+// the watch poller's updated_since sweep uses it.
+func (c *dashboardClient) Search(ctx context.Context, path string) (*apiEnvelope, error) {
+	return c.get(ctx, path)
 }
 
 func searchIncidentDef() llm.ToolDefinition {

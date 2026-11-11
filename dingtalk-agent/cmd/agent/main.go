@@ -71,7 +71,8 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	go bot.RunScheduler(ctx) // chat-created reminders (data/schedules.json)
+	go bot.RunScheduler(ctx)   // chat-created reminders (data/schedules.json)
+	go bot.RunWatchPoller(ctx) // incident status watches (data/watches.json)
 
 	log.Printf("dingtalk-agent online — stream connecting, waiting for messages.")
 	if err := cli.Start(ctx); err != nil {

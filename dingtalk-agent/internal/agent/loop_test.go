@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
-		"net/http"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -78,7 +78,7 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, err := agentLoop.Run(context.Background(), "list current directory", nil, "")
+	finalText, messages, _, err := agentLoop.Run(context.Background(), "list current directory", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -177,7 +177,7 @@ func TestParallelToolCallsDeterministicOrder(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil, "")
+	finalText, messages, _, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
 	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
 	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
 
-	if _, _, err := agentLoop.Run(context.Background(), "hi", nil,
+	if _, _, _, err := agentLoop.Run(context.Background(), "hi", nil,
 		"## About the user you are replying to\n- prefers Indonesian\n"); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -330,7 +330,7 @@ func TestCurrentDateTimeInSystemPrompt(t *testing.T) {
 
 	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
 	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
-	if _, _, err := agentLoop.Run(context.Background(), "hi", nil, ""); err != nil {
+	if _, _, _, err := agentLoop.Run(context.Background(), "hi", nil, ""); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 }

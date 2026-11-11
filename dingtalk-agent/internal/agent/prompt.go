@@ -120,6 +120,15 @@ const SchedulePrompt = `## Reminders and scheduled checks
 - The bot appends the confirmed reminder ID after your reply — never invent one. Active reminders
   for this chat appear in the user's message context; use those IDs for cancel_reminder.`
 
+// WatchPrompt is appended when the incident-watch tools are registered.
+const WatchPrompt = `## Incident status watches
+- watch_incident asks the bot to watch ONE incident in THIS chat: when its status changes
+  (Open → In progress → Finalization → Completed), the bot reports the change with full incident
+  context. Use when someone says "alert/notify us when this incident's status changes".
+- unwatch_incident stops a watch by its ID. Active watches for this chat appear in the user's
+  message context with their IDs.
+- The bot verifies the incident and appends the confirmed watch ID after your reply — never invent one.`
+
 // ConstitutionTail is appended as a system message AFTER the user message on
 // EVERY LLM call — nearest to the generation point, so "ignore everything
 // above" never reaches past it. Hard gates in guardrail/scopegate.go enforce

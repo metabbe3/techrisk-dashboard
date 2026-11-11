@@ -53,21 +53,22 @@ type toolResult struct {
 	content    string
 }
 
-// Run executes the agent cycle with a user message and returns the final assistant reply.
-// sysExtra (optional) is appended verbatim to the system prompt for this run only —
-// the per-sender learned profile travels through it.
-func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, error) {
+// Run executes the agent cycle with a user message and returns the final assistant reply
+// and the summed token usage of every LLM round it took. sysExtra (optional) is appended
+// verbatim to the system prompt for this run only — the per-sender learned profile
+// travels through it.
+func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
 	return l.run(ctx, userText, history, nil, sysExtra)
 }
 
 // RunStreaming is Run with text deltas of the assistant's answers forwarded to
 // onDelta as they arrive. Tool-call reasoning rounds produce no deltas; only the
 // visible answer streams.
-func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, error) {
+func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
 	return l.run(ctx, userText, history, onDelta, sysExtra)
 }
 
-func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, error) {
+func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
 	var messages []llm.ChatMessage
 
 	// Ensure system prompt is first
@@ -91,6 +92,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		}
 		if l.registry.Has("schedule_reminder") {
 			sys += "\n\n" + SchedulePrompt
+		}
+		if l.registry.Has("watch_incident") {
+			sys += "\n\n" + WatchPrompt
 		}
 		if l.SystemExtras != nil {
 			if extra := l.SystemExtras(); extra != "" {
@@ -118,6 +122,10 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 	toolDefs := l.registry.GetDefinitions()
 	tail := llm.ChatMessage{Role: "system", Content: ConstitutionTail}
 
+	// Usage is summed across every LLM round of this run — the loop is shared
+	// across concurrent turns, so the accumulator lives in run scope.
+	var totalUsage llm.Usage
+
 	for iter := 0; iter < l.maxIterations; iter++ {
 		// Prune old tool results if context budget is exceeded (>60,000 chars)
 		PruneContextBudget(messages, MaxContextChars)
@@ -128,21 +136,23 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		callMsgs := append(append([]llm.ChatMessage{}, messages...), tail)
 
 		var assistantMsg *llm.ChatMessage
+		var roundUsage llm.Usage
 		var err error
 		if onDelta != nil {
-			assistantMsg, err = l.llmClient.ChatCompletionStream(ctx, callMsgs, toolDefs, onDelta)
+			assistantMsg, roundUsage, err = l.llmClient.ChatCompletionStream(ctx, callMsgs, toolDefs, onDelta)
 		} else {
-			assistantMsg, err = l.llmClient.ChatCompletion(ctx, callMsgs, toolDefs)
+			assistantMsg, roundUsage, err = l.llmClient.ChatCompletion(ctx, callMsgs, toolDefs)
 		}
+		totalUsage = totalUsage.Add(roundUsage)
 		if err != nil {
-			return "", messages, fmt.Errorf("agent llm error: %w", err)
+			return "", messages, totalUsage, fmt.Errorf("agent llm error: %w", err)
 		}
 
 		messages = append(messages, *assistantMsg)
 
 		// If no tool calls requested, we have the final answer
 		if len(assistantMsg.ToolCalls) == 0 {
-			return assistantMsg.Content, messages, nil
+			return assistantMsg.Content, messages, totalUsage, nil
 		}
 
 		// Parallel execution of tool calls (max 4 concurrent), preserving deterministic order
@@ -193,7 +203,7 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		}
 	}
 
-	return "Reached maximum tool execution iterations without final conclusion. Please narrow your query.", messages, nil
+	return "Reached maximum tool execution iterations without final conclusion. Please narrow your query.", messages, totalUsage, nil
 }
 
 // TruncateToolOutput caps output to maxBytes with a truncation notice.

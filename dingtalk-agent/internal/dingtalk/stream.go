@@ -21,6 +21,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/memory"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
+	"techrisk-dashboard/dingtalk-agent/internal/watch"
 )
 
 const (
@@ -47,6 +48,7 @@ type Bot struct {
 	llm     *llm.Client   // no-tools client for profile extraction
 	store   *memory.Store // nil = memory-only (tests)
 	sched   *schedule.Store
+	watches *watch.Store
 
 	mu      sync.Mutex
 	history map[string]historyEntry
@@ -90,6 +92,7 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 		inboxes: make(map[string]chan chatTask),
 		sem:     make(chan struct{}, MaxConcurrentAgents),
 		sched:   schedule.NewStore(cfg.DataDir), // "" = memory-only
+		watches: watch.NewStore(cfg.DataDir),    // "" = memory-only
 	}
 	if cfg.DataDir != "" {
 		b.store = memory.NewStore(cfg.DataDir)
@@ -262,6 +265,13 @@ func (b *Bot) runBatch(batch []chatTask) {
 		}
 		text += "\n\n[Active reminders in this chat:" + rs.String() + "]"
 	}
+	if ws := b.watches.List(m.ConversationId); len(ws) > 0 {
+		var rs strings.Builder
+		for _, it := range ws {
+			rs.WriteString("\n- " + it.Describe())
+		}
+		text += "\n\n" + watchListHeader + rs.String() + "]"
+	}
 
 	ack := "👌 On it — working on that…"
 	if len(batch) > 1 {
@@ -423,7 +433,7 @@ func (b *Bot) learnProfile(ctx context.Context, staffID, nick string, history []
 		{Role: "system", Content: "You maintain a compact preference profile of a DingTalk user for an assistant. Merge what the conversation reveals (preferred language, reply format, seniority, recurring topics, standing instructions like 'always reply in Indonesian') into the existing profile. Output ONLY the updated profile as at most 8 short lines (max 150 chars each), no numbering, no commentary. Drop lines that no longer apply. If nothing new, output the existing lines unchanged."},
 		{Role: "user", Content: "EXISTING PROFILE:\n" + cur.String() + "\nRECENT CONVERSATION with user " + nick + ":\n" + convo.String()},
 	}
-	reply, err := b.llm.ChatCompletion(ctx, msgs, nil)
+	reply, _, err := b.llm.ChatCompletion(ctx, msgs, nil)
 	if err != nil {
 		log.Printf("[dingtalk] profile learning skipped: %v", err)
 		return
@@ -471,7 +481,7 @@ func (b *Bot) summarizeNotionReads(ctx context.Context, nick string, reads []too
 		{Role: "system", Content: "You maintain the assistant's document memory. Summarize the Notion pages below in at most 6 short lines total — per page: name + 1-2 key facts (decisions, risks, requirements). Output ONLY those lines."},
 		{Role: "user", Content: pages.String()},
 	}
-	reply, err := b.llm.ChatCompletion(ctx, msgs, nil)
+	reply, _, err := b.llm.ChatCompletion(ctx, msgs, nil)
 	if err != nil {
 		log.Printf("[dingtalk] notion learning skipped: %v", err)
 		return
@@ -491,8 +501,10 @@ func (b *Bot) summarizeNotionReads(ctx context.Context, nick string, reads []too
 // (throttled — one API push per flushInterval, not one per token).
 func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string, card *aiCard) (string, error) {
 	writer := newCardWriter(card)
-	reply, newHistory, err := b.loop.RunStreaming(ctx, text, b.takeHistory(m.ConversationId), writer.onDelta, sysExtra)
+	started := time.Now()
+	reply, newHistory, usage, err := b.loop.RunStreaming(ctx, text, b.takeHistory(m.ConversationId), writer.onDelta, sysExtra)
 	if err != nil {
+		b.reportTurn(m, text, "", usage, time.Since(started), err.Error())
 		return "", err
 	}
 
@@ -503,24 +515,29 @@ func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataMo
 		filtered = "Sorry, I could not produce an answer for that."
 	}
 	filtered = b.applySchedules(m, newHistory, filtered)
+	filtered = b.applyWatches(m, newHistory, filtered)
 	writer.flush(ctx, filtered) // ensure the visible card matches the guarded final text
+	b.reportTurn(m, text, filtered, usage, time.Since(started), "")
 	return filtered, nil
 }
 
 func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string) string {
+	started := time.Now()
 	defer func() {
 		if r := recover(); r != nil {
 			log.Printf("[dingtalk] panic in agent loop: %v", r)
 			b.reply(ctx, m, "Sorry, something went wrong while processing that request.")
 			b.learnNotion(m) // same leak as the error branch: a panic mid-turn must not strand its reads
+			b.reportTurn(m, text, "", llm.Usage{}, time.Since(started), fmt.Sprintf("panic: %v", r))
 		}
 	}()
 
-	reply, newHistory, err := b.loop.Run(ctx, text, b.takeHistory(m.ConversationId), sysExtra)
+	reply, newHistory, usage, err := b.loop.Run(ctx, text, b.takeHistory(m.ConversationId), sysExtra)
 	if err != nil {
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
 		b.reply(ctx, m, "Sorry, that request failed. Please try again in a moment.")
 		b.learnNotion(m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
+		b.reportTurn(m, text, "", usage, time.Since(started), err.Error())
 		return ""
 	}
 
@@ -531,11 +548,34 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 		filtered = "Sorry, I could not produce an answer for that."
 	}
 	filtered = b.applySchedules(m, newHistory, filtered)
+	filtered = b.applyWatches(m, newHistory, filtered)
 	filtered = b.deliverGenerated(ctx, m, filtered)
 	b.reply(ctx, m, filtered)
+	b.reportTurn(m, text, filtered, usage, time.Since(started), "")
 	b.learnLater(m)
 	b.learnNotion(m)
 	return filtered
+}
+
+// reportTurn fires the async dashboard turn report for a finished chat turn —
+// best-effort, never blocks the reply. Called on both the success and the
+// failure path so Agent Runs shows failures too.
+func (b *Bot) reportTurn(m *chatbot.BotCallbackDataModel, userText, assistantText string, usage llm.Usage, elapsed time.Duration, errMsg string) {
+	if !b.cfg.AgentTurnReports {
+		return
+	}
+	tools.ReportTurnAsync(b.cfg, tools.TurnReport{
+		ConversationID:   m.ConversationId,
+		ConversationType: m.ConversationType,
+		StaffID:          m.SenderStaffId,
+		Nick:             m.SenderNick,
+		UserText:         truncateStr(userText, 2000),
+		AssistantText:    truncateStr(assistantText, 8000),
+		Model:            b.llm.Model(),
+		Usage:            usage,
+		ResponseTimeMs:   elapsed.Milliseconds(),
+		Error:            errMsg,
+	})
 }
 
 // reGeneratedFile matches the deliverable tickets the generate tools embed in

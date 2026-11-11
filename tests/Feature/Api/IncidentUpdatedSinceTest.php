@@ -42,10 +42,13 @@ class IncidentUpdatedSinceTest extends TestCase
             ]));
 
         $response->assertStatus(200);
-        $nos = collect($response->json('data'))->pluck('incident_no')->all();
+        $rows = collect($response->json('data'));
+        $nos = $rows->pluck('incident_no')->all();
 
         $this->assertContains($new->no, $nos);
         $this->assertNotContains($old->no, $nos);
+        // The watch poller diffs status on the sweep — the field must ride along.
+        $this->assertNotSame('', (string) $rows->firstWhere('incident_no', $new->no)['incident_status']);
     }
 
     /** @test */

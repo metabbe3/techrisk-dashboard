@@ -8,6 +8,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
+	"techrisk-dashboard/dingtalk-agent/internal/watch"
 )
 
 // ToolHandler is a function that executes a tool with parsed JSON arguments.
@@ -24,15 +25,18 @@ type Tool struct {
 
 // Registry manages the set of available tools and dispatches execution.
 type Registry struct {
-	mu      sync.RWMutex
-	tools   map[string]Tool
-	notion  *notionTools      // nil when the Notion tools are disabled
-	pending *schedule.Pending // parked reminder requests; nil without cfg
+	mu           sync.RWMutex
+	tools        map[string]Tool
+	notion       *notionTools      // nil when the Notion tools are disabled
+	dash         *dashboardClient  // nil without cfg — the watch poller sweeps through it
+	pending      *schedule.Pending // parked reminder requests; nil without cfg
+	watchPending *watch.Pending    // parked watch requests; nil without cfg
 }
 
 // NewRegistry initializes the registry with the dashboard API tools, plus the
-// web research tools when enabled (AGENT_WEB_TOOLS=0 to revoke) and the
-// read-only Notion doc tools when enabled (AGENT_NOTION_TOOLS=0 to revoke).
+// reminder + incident-watch tools, the web research tools when enabled
+// (AGENT_WEB_TOOLS=0 to revoke) and the read-only Notion doc tools when
+// enabled (AGENT_NOTION_TOOLS=0 to revoke).
 func NewRegistry(cfg *config.Config) *Registry {
 	r := &Registry{
 		tools: make(map[string]Tool),
@@ -41,6 +45,7 @@ func NewRegistry(cfg *config.Config) *Registry {
 		r.registerDashboardTools(cfg)
 		r.registerGenerateTools(cfg)
 		r.registerScheduleTools()
+		r.registerWatchTools()
 		if cfg.WebToolsEnabled {
 			r.registerWebTools()
 		}
