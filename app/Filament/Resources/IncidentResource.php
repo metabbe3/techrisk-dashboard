@@ -27,6 +27,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn;
@@ -105,7 +106,19 @@ class IncidentResource extends Resource
             TextInput::make('title')->required()->columnSpanFull(),
             $noField,
             Select::make('severity')->options(Severity::options())->required(),
-            Select::make('classification')->options(IncidentClassification::options())->required(),
+            Select::make('classification')->options(IncidentClassification::options())->required()
+                // PROJ-022: a record linked in a hierarchy cannot change
+                // classification until unlinked — the guard behind every
+                // metric-scope rule in this feature.
+                ->rules([
+                    fn (?Incident $record): \Closure => function (string $attribute, $value, \Closure $fail) use ($record): void {
+                        if ($record !== null
+                            && $record->hasIncidentLinks()
+                            && $value !== $record->classification?->value) {
+                            $fail('Unlink this incident from its super/sub-incidents before changing classification.');
+                        }
+                    },
+                ]),
             Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
             Select::make('incident_type_id')
                 ->label('Incident Type')
@@ -719,7 +732,21 @@ class IncidentResource extends Resource
                         ->requiresConfirmation()
                         ->modalHeading('Downgrade to Issue')
                         ->modalDescription('This will reclassify this incident as an issue and assign a new Issue ID.')
-                        ->action(fn (Incident $record) => $record->changeClassification('Issue'))
+                        ->action(function (Incident $record): void {
+                            // PROJ-022: linked records keep the metrics honest —
+                            // a mid-hierarchy reclassification would strand counts.
+                            if ($record->hasIncidentLinks()) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Linked in a hierarchy')
+                                    ->body('Unlink this incident from its super/sub-incidents before downgrading.')
+                                    ->send();
+
+                                return;
+                            }
+
+                            $record->changeClassification('Issue');
+                        })
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                     Tables\Actions\DeleteAction::make()
                         ->databaseTransaction()
@@ -738,7 +765,18 @@ class IncidentResource extends Resource
                         ->requiresConfirmation()
                         ->modalHeading('Downgrade selected incidents to issues')
                         ->modalDescription('All selected incidents will be reclassified as issues with new IDs.')
-                        ->action(fn (\Illuminate\Support\Collection $records) => $records->each->changeClassification('Issue'))
+                        ->action(function (\Illuminate\Support\Collection $records): void {
+                            $linked = $records->filter(fn (Incident $record) => $record->hasIncidentLinks());
+                            $records->reject(fn (Incident $record) => $record->hasIncidentLinks())->each->changeClassification('Issue');
+
+                            if ($linked->isNotEmpty()) {
+                                Notification::make()
+                                    ->warning()
+                                    ->title('Skipped linked incidents')
+                                    ->body($linked->count().' selected incident(s) are linked in a hierarchy and were left unchanged — unlink them before downgrading.')
+                                    ->send();
+                            }
+                        })
                         ->visible(fn (): bool => auth()->user()->can('manage incidents'))
                         ->deselectRecordsAfterCompletion(),
                     Tables\Actions\DeleteBulkAction::make()
