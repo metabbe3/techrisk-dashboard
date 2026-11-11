@@ -148,15 +148,25 @@ func (b *Bot) fire(ctx context.Context, it schedule.Item, late bool) {
 	}
 
 	text := header + "\n\n" + body
-	var err error
-	if it.ConversationType == "2" {
-		err = SendMarkdownGroup(ctx, b.cfg, it.ConversationID, "Risk Agent reminder", text)
-	} else {
-		err = SendMarkdownDM(ctx, b.cfg, []string{it.StaffID}, "Risk Agent reminder", text)
-	}
-	if err != nil {
+	if err := b.deliverMarkdown(ctx, it.ConversationID, it.ConversationType, it.StaffID, "Risk Agent reminder", text); err != nil {
 		log.Printf("[schedule] #%d delivery failed: %v", it.ID, err)
 		return
 	}
 	log.Printf("[schedule] #%d fired (%s) to %s", it.ID, it.Mode, it.ConversationID)
+}
+
+// deliverMarkdown routes a proactive markdown push by conversation type:
+// groups go via SendMarkdownGroup, and when that endpoint rejects the robot
+// (missing group-send capability — live-probed "robot 不存在") the message
+// falls back to the creator's DM rather than being lost. Fallback is on ANY
+// error, never on matching the error text.
+func (b *Bot) deliverMarkdown(ctx context.Context, convoID, convoType, staffID, title, text string) error {
+	if convoType != "2" {
+		return SendMarkdownDM(ctx, b.cfg, []string{staffID}, title, text)
+	}
+	if err := SendMarkdownGroup(ctx, b.cfg, convoID, title, text); err != nil {
+		log.Printf("[dingtalk] group send failed (%v) — falling back to DM", err)
+		return SendMarkdownDM(ctx, b.cfg, []string{staffID}, title, text+"\n\n_(group delivery failed — sent here instead)_")
+	}
+	return nil
 }

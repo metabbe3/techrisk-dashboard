@@ -275,6 +275,29 @@ func TestReminderPhrasingPassesInputGate(t *testing.T) {
 	}
 }
 
+// A group reminder when the robot lacks the group-send capability must not be
+// lost — it falls back to the creator's DM (mirror of TestDeliverGeneratedGroup).
+func TestFireGroupErrorFallsBackToDM(t *testing.T) {
+	srv, dmBodies, groupBodies := fakeFileAPI(t, 400)
+	bot := &Bot{cfg: &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv.URL}}
+
+	it := schedule.Item{ID: 7, ConversationID: "cidG", ConversationType: "2",
+		StaffID: "s1", Nick: "Nicholas", Mode: schedule.ModeMessage, Text: "check the P1s"}
+	bot.fire(context.Background(), it, false)
+
+	if len(*groupBodies) != 1 || len(*dmBodies) != 1 {
+		t.Fatalf("fallback calls wrong: group=%d dm=%d", len(*groupBodies), len(*dmBodies))
+	}
+	ids, _ := (*dmBodies)[0]["userIds"].([]any)
+	p, _ := (*dmBodies)[0]["msgParam"].(string)
+	if len(ids) != 1 || ids[0] != "s1" {
+		t.Errorf("fallback must DM the creator: %v", ids)
+	}
+	if !strings.Contains(p, "check the P1s") || !strings.Contains(p, "group delivery failed") {
+		t.Errorf("DM fallback body wrong: %s", p)
+	}
+}
+
 // Task text runs later with no human in the loop — it must pass the input gate.
 func TestBindScheduleAppliesInputGate(t *testing.T) {
 	bot := NewBot(&config.Config{}, nil)
