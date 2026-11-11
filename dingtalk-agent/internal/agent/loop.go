@@ -86,6 +86,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		if l.registry.Has("generate_pdf_report") {
 			sys += "\n\n" + DeliverablesPrompt
 		}
+		if l.registry.Has("schedule_reminder") {
+			sys += "\n\n" + SchedulePrompt
+		}
 		if l.SystemExtras != nil {
 			if extra := l.SystemExtras(); extra != "" {
 				sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra

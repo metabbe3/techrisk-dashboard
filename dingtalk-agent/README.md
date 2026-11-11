@@ -208,6 +208,34 @@ funnel is the single hook point for a DingTalk channel (Laravel calls
 = staffIds, max 20/call; email→staffId map in env). Do **not** re-derive
 "who's due" in Go — one rule, one surface (BUG-005 lesson).
 
+## Chat reminders (ask the bot to schedule something)
+
+Ad-hoc reminders people create by asking — "remind us every Monday 9am to
+review open P1s", "ingatkan saya besok jam 10 cek postmortem QRIS", "tiap hari
+kerja jam 8:30 kirim ringkasan action improvement overdue ke grup ini". These
+are **not** the system reminders above: they never decide who is due; a `task`
+reminder reads the dashboard API like any chat question does.
+
+| Piece | Where |
+|---|---|
+| `schedule_reminder(when, mode, text)` / `cancel_reminder(id)` | `internal/tools/schedule.go` |
+| cron/one-shot parser, store (`<DataDir>/schedules.json`), pending handoff | `internal/schedule/` |
+| bind to chat, 30s scheduler loop, group/DM delivery | `internal/dingtalk/reminders.go` |
+
+- **when** (WIB, fixed UTC+7): 5-field cron (`0 9 * * 1`, `30 8 * * 1-5`), one-shot `YYYY-MM-DD HH:MM`, or `in 30m` / `in 2h`.
+- **mode**: `message` posts the text; `task` runs the text through the agent at fire time (fresh context, same guardrails) and posts the answer.
+- **delivery**: created in a group → `groupMessages/send` into that group; in a DM → `oToMessages/batchSend` to the creator.
+- **binding is Go-side, never LLM-side**: the tool only validates and parks the request under a random token; after the turn the bot claims tokens found in *its own turn's* tool results and binds them to the callback's real conversation + sender. A prompt cannot aim a reminder at another chat, concurrent turns cannot steal each other's requests, and a claimed token never re-applies. Cancel only works from the owning conversation.
+- **limits**: recurring ≥30 min apart, 20 per chat, text ≤1000 chars, task text must pass `InputGate`.
+- **downtime**: a recurring reminder >1h overdue at boot is skipped to its next run; a one-shot still fires, marked delayed. A run is persisted as advanced *before* sending, so a crash never double-fires.
+- **listing**: active reminders are appended to each user message in that chat (`[Active reminders in this chat: …]`), so "what reminders do we have?" / "cancel #3" work.
+- Group delivery needs the same robot send permission as DMs, and the bot must still be in the group.
+
+**Group batching** (same release): rapid messages are merged only when they come
+from the **same sender**; a different member's message closes the batch and gets
+its own turn. Group messages carry a `[From <nick>]` prefix so the shared
+history knows who asked what. DMs are unchanged (parallel, max 4 agent runs).
+
 ## Testing
 
 `go vet ./... && go test ./...` — all tests hermetic (httptest fakes for the

@@ -19,6 +19,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/ingest"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/memory"
+	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
 )
 
@@ -45,6 +46,7 @@ type Bot struct {
 	api     *openAPIClient
 	llm     *llm.Client   // no-tools client for profile extraction
 	store   *memory.Store // nil = memory-only (tests)
+	sched   *schedule.Store
 
 	mu      sync.Mutex
 	history map[string]historyEntry
@@ -87,6 +89,7 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 		seen:    make(map[string]time.Time),
 		inboxes: make(map[string]chan chatTask),
 		sem:     make(chan struct{}, MaxConcurrentAgents),
+		sched:   schedule.NewStore(cfg.DataDir), // "" = memory-only
 	}
 	if cfg.DataDir != "" {
 		b.store = memory.NewStore(cfg.DataDir)
@@ -186,11 +189,22 @@ func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string) {
 }
 
 // conversationWorker is the single consumer for one conversation: it batches
-// rapid messages into one agent turn, answers, then picks up anything that
-// arrived while the LLM was running as the next (follow-up) turn.
+// rapid messages FROM ONE SENDER into one agent turn, answers, then takes the
+// next. In a group, another member's message closes the batch and becomes its
+// own turn — two people's questions are never merged (prod 2026-11-11).
 func (b *Bot) conversationWorker(ch chan chatTask) {
-	followUp := false // true when this batch arrived while a previous run was answering
-	for first := range ch {
+	var carry *chatTask // a different sender's message that closed the last batch
+	for {
+		var first chatTask
+		if carry != nil {
+			first, carry = *carry, nil
+		} else {
+			t, ok := <-ch
+			if !ok {
+				return
+			}
+			first = t
+		}
 		batch := []chatTask{first}
 
 		// Debounce: close the batch after a quiet gap, or a hard deadline.
@@ -201,6 +215,10 @@ func (b *Bot) conversationWorker(ch chan chatTask) {
 			select {
 			case t, ok := <-ch:
 				if !ok {
+					break collect
+				}
+				if t.m.SenderStaffId != first.m.SenderStaffId {
+					carry = &t
 					break collect
 				}
 				batch = append(batch, t)
@@ -214,14 +232,13 @@ func (b *Bot) conversationWorker(ch chan chatTask) {
 		quiet.Stop()
 		hardStop.Stop()
 
-		b.runBatch(batch, followUp)
-		followUp = len(ch) > 0 // messages queued during the run become a follow-up turn
+		b.runBatch(batch)
 	}
 }
 
-// runBatch turns a batch into one agent call. The LAST message's callback model
-// is used for replies (freshest session webhook).
-func (b *Bot) runBatch(batch []chatTask, followUp bool) {
+// runBatch turns a batch (one sender) into one agent call. The LAST message's
+// callback model is used for replies (freshest session webhook).
+func (b *Bot) runBatch(batch []chatTask) {
 	m := batch[len(batch)-1].m
 
 	var sb strings.Builder
@@ -235,11 +252,19 @@ func (b *Bot) runBatch(batch []chatTask, followUp bool) {
 	if len(batch) > 1 {
 		text = fmt.Sprintf("[The user sent %d messages in quick succession — treat them as ONE combined request.]\n\n%s", len(batch), text)
 	}
+	if m.ConversationType == "2" { // group: shared history must say who asked what
+		text = fmt.Sprintf("[From %s]\n%s", m.SenderNick, text)
+	}
+	if items := b.sched.List(m.ConversationId); len(items) > 0 {
+		var rs strings.Builder
+		for _, it := range items {
+			rs.WriteString("\n- " + it.Describe())
+		}
+		text += "\n\n[Active reminders in this chat:" + rs.String() + "]"
+	}
 
 	ack := "👌 On it — working on that…"
-	if followUp {
-		ack = "👌 Got it — added to the current task, continuing…"
-	} else if len(batch) > 1 {
+	if len(batch) > 1 {
 		ack = fmt.Sprintf("👌 Got %d messages — working on them together…", len(batch))
 	}
 
@@ -477,6 +502,7 @@ func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataMo
 	if filtered == "" {
 		filtered = "Sorry, I could not produce an answer for that."
 	}
+	filtered = b.applySchedules(m, newHistory, filtered)
 	writer.flush(ctx, filtered) // ensure the visible card matches the guarded final text
 	return filtered, nil
 }
@@ -504,6 +530,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 	if filtered == "" {
 		filtered = "Sorry, I could not produce an answer for that."
 	}
+	filtered = b.applySchedules(m, newHistory, filtered)
 	filtered = b.deliverGenerated(ctx, m, filtered)
 	b.reply(ctx, m, filtered)
 	b.learnLater(m)

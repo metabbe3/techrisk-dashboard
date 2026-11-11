@@ -7,6 +7,7 @@ import (
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 )
 
 // ToolHandler is a function that executes a tool with parsed JSON arguments.
@@ -23,9 +24,10 @@ type Tool struct {
 
 // Registry manages the set of available tools and dispatches execution.
 type Registry struct {
-	mu     sync.RWMutex
-	tools  map[string]Tool
-	notion *notionTools // nil when the Notion tools are disabled
+	mu      sync.RWMutex
+	tools   map[string]Tool
+	notion  *notionTools      // nil when the Notion tools are disabled
+	pending *schedule.Pending // parked reminder requests; nil without cfg
 }
 
 // NewRegistry initializes the registry with the dashboard API tools, plus the
@@ -38,6 +40,7 @@ func NewRegistry(cfg *config.Config) *Registry {
 	if cfg != nil {
 		r.registerDashboardTools(cfg)
 		r.registerGenerateTools(cfg)
+		r.registerScheduleTools()
 		if cfg.WebToolsEnabled {
 			r.registerWebTools()
 		}
