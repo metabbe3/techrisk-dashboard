@@ -3,10 +3,11 @@ package agent
 import (
 	"context"
 	"encoding/json"
-	"net/http"
+		"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
@@ -292,5 +293,44 @@ func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
 	}
 	if lastMsgRole != "system" || !strings.Contains(lastMsgContent, "Risk Agent") {
 		t.Errorf("constitution tail must be the last message, got %s: %.120s", lastMsgRole, lastMsgContent)
+	}
+}
+
+// The clock must ride the system prompt — "since yesterday" and the daily
+// digest's updated_since windows are unreliable without it.
+func TestCurrentDateTimeInSystemPrompt(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []llm.ChatMessage `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		var sys string
+		for _, m := range req.Messages {
+			if m.Role == "system" && sys == "" {
+				sys = m.Content
+			}
+		}
+		resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
+			Message: llm.ChatMessage{Role: "assistant", Content: "ok"}, FinishReason: "stop",
+		}}}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+
+		if !strings.Contains(sys, "Current date/time: ") {
+			t.Errorf("current date/time missing from system prompt: %.200s", sys)
+		}
+		// WIB fixed zone — format 'Mon 2006-01-02 15:04 MST' must round-trip.
+		idx := strings.Index(sys, "Current date/time: ")
+		line := strings.TrimSpace(sys[idx+len("Current date/time: "):])
+		if _, err := time.Parse("Mon 2006-01-02 15:04 MST", line); err != nil {
+			t.Errorf("date line not parseable: %q", line)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
+	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
+	if _, _, err := agentLoop.Run(context.Background(), "hi", nil, ""); err != nil {
+		t.Fatalf("run failed: %v", err)
 	}
 }

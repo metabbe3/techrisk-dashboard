@@ -9,7 +9,10 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
+
+	"time"
 )
 
 const (
@@ -97,6 +100,9 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		if sysExtra != "" {
 			sys += "\n\n" + sysExtra
 		}
+		// "since yesterday" and friends are unreliable without the clock —
+		// scheduled task-runs especially (they fire at any hour on any day).
+		sys += "\n\nCurrent date/time: " + time.Now().In(schedule.WIB).Format("Mon 2006-01-02 15:04 MST")
 		messages = append(messages, llm.ChatMessage{
 			Role:    "system",
 			Content: sys,
