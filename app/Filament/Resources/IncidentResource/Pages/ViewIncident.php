@@ -8,6 +8,7 @@ use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
+use App\Filament\Actions\SubIncidentLinkAction;
 use App\Filament\Resources\IncidentResource;
 use App\Models\Incident;
 use App\Notifications\IncidentNotDoneReminder;
@@ -16,6 +17,7 @@ use App\Services\Ai\SimilarIncidentService;
 use App\Services\Markdown\IncidentMarkdownExporter;
 use App\Support\ReminderMail;
 use Filament\Actions;
+use Filament\Infolists\Components\Actions\Action as InfolistAction;
 use Filament\Infolists\Components\Grid;
 use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
@@ -239,238 +241,298 @@ class ViewIncident extends ViewRecord
         ];
     }
 
+    /** PROJ-022: wired from the Sub-incidents section rows' Unlink buttons. */
+    public function unlinkSubIncident(int $id): void
+    {
+        abort_unless((bool) auth()->user()?->can('manage incidents'), 403);
+
+        Incident::findOrFail($id)->update(['parent_incident_id' => null]);
+    }
+
     public function infolist(Infolist $infolist): Infolist
     {
-        return $infolist
-            ->schema([
-                ViewEntry::make('incident_hero')
-                    ->view('filament.resources.incident-resource.pages.incident-hero')
-                    ->columnSpanFull(),
+        return $infolist->schema([
+            ViewEntry::make('incident_hero')
+                ->view('filament.resources.incident-resource.pages.incident-hero')
+                ->columnSpanFull(),
 
-                ViewEntry::make('recurrence_data')
-                    ->view('filament.resources.incident-resource.pages.recurrence-alert')
-                    ->visible(fn ($record) => filled($record->recurrence_data) && ($record->recurrence_data['is_recurring'] ?? false))
-                    ->columnSpanFull(),
+            ViewEntry::make('recurrence_data')
+                ->view('filament.resources.incident-resource.pages.recurrence-alert')
+                ->visible(fn ($record) => filled($record->recurrence_data) && ($record->recurrence_data['is_recurring'] ?? false))
+                ->columnSpanFull(),
 
-                Section::make('Summary')
-                    ->icon('heroicon-o-document-text')
-                    ->iconColor('primary')
+            // PROJ-022: the hierarchy on the view page — a sub shows its
+            // super as a "Sub of" chip; a super shows its subs with per-row
+            // unlink. One level deep, so both never render together.
+            Section::make('sub_of')
+                ->heading('Sub of')
+                ->icon('heroicon-o-arrow-up-left')
+                ->iconColor('info')
+                ->schema([
+                    TextEntry::make('super_incident_link')
+                        ->hiddenLabel()
+                        ->badge()
+                        ->color('info')
+                        ->state(fn (Incident $record) => $record->superIncident ? "{$record->superIncident->no} — {$record->superIncident->title}" : null)
+                        ->url(fn (Incident $record): ?string => $record->superIncident ? IncidentResource::getUrl('view', ['record' => $record->superIncident->getKey()]) : null),
+                ])
+                ->visible(fn (Incident $record) => filled($record->parent_incident_id))
+                ->columnSpanFull(),
+
+            Section::make('sub_incidents')
+                ->heading(fn (Incident $record) => 'Sub-incidents ('.$record->subIncidents()->count().')')
+                ->icon('heroicon-o-link')
+                ->iconColor('info')
+                ->schema([
+                    ViewEntry::make('sub_incidents_list')
+                        ->view('filament.resources.incident-resource.sub-incidents-list')
+                        ->hiddenLabel(),
+                ])
+                ->footerActions([
+                    InfolistAction::make('create_sub_incident_footer')
+                        ->label('Create sub-incident')
+                        ->icon('heroicon-o-plus-circle')
+                        ->color('success')
+                        ->url(fn (Incident $record): string => IncidentResource::getUrl('create', ['parent' => $record->getKey()]))
+                        ->visible(fn (Incident $record): bool => (bool) auth()->user()?->can('manage incidents')),
+                    InfolistAction::make('link_sub_incident_footer')
+                        ->label('Link sub-incident')
+                        ->icon('heroicon-o-link')
+                        ->color('info')
+                        ->form([
+                            \Filament\Forms\Components\Select::make('sub_incident_id')
+                                ->label('Incident to link as a sub')
+                                ->searchable()
+                                ->required()
+                                ->options(fn (?Incident $record) => SubIncidentLinkAction::options($record))
+                                ->rule(fn () => fn (string $attribute, $value, \Closure $fail) => SubIncidentLinkAction::validatePick($value, $fail)),
+                        ])
+                        ->action(fn (Incident $record, array $data) => SubIncidentLinkAction::link($record, (int) $data['sub_incident_id']))
+                        ->visible(fn (Incident $record): bool => (bool) auth()->user()?->can('manage incidents')),
+                ])
+                ->collapsible()
+                ->columnSpanFull()
+                ->visible(fn (Incident $record) => $record->subIncidents()->exists()),
+
+            Section::make('Summary')
+                ->icon('heroicon-o-document-text')
+                ->iconColor('primary')
+                ->schema([
+                    TextEntry::make('summary')
+                        ->markdown()
+                        ->hiddenLabel()
+                        ->placeholder('No summary provided'),
+                    $this->aiBadge('summary'),
+                ])
+                ->collapsible()
+                ->columnSpanFull(),
+
+            Section::make('Root Cause Analysis')
+                ->icon('heroicon-o-light-bulb')
+                ->iconColor('warning')
+                ->schema([
+                    TextEntry::make('root_cause')
+                        ->markdown()
+                        ->hiddenLabel()
+                        ->placeholder('No root cause analysis'),
+                    $this->aiBadge('root_cause'),
+                    TextEntry::make('root_cause_category')
+                        ->label('Root Cause Category')
+                        ->badge()
+                        ->color('warning')
+                        ->separator(','),
+                    TextEntry::make('responsible_team')
+                        ->label('Responsible Team')
+                        ->badge()
+                        ->color('violet')
+                        ->separator(','),
+                ])
+                ->collapsible()
+                ->columnSpanFull(),
+
+            ViewEntry::make('similar_incidents')
+                ->view('filament.resources.incident-resource.pages.similar-incidents')
+                ->columnSpanFull(),
+
+            Section::make('Retrospective')
+                ->icon('heroicon-o-document-duplicate')
+                ->iconColor('gray')
+                ->schema([
+                    TextEntry::make('retro_markdown')
+                        ->markdown()
+                        ->hiddenLabel(),
+                    TextEntry::make('retro_generated_at')
+                        ->label('Generated')
+                        ->dateTime('Y-m-d H:i')
+                        ->color('gray')
+                        ->visible(fn ($record) => filled($record->retro_generated_at))
+                        ->formatStateUsing(fn ($state, $record) => $state?->format('Y-m-d H:i').' · '.$record->retro_model),
+                ])
+                ->visible(fn ($record) => filled($record->retro_markdown))
+                ->collapsible()
+                ->columnSpanFull(),
+
+            \App\Filament\Actions\NotionInvestigationAction::section(),
+
+            Section::make('Incident Timeline & Chronology')
+                ->icon('heroicon-o-clock')
+                ->iconColor('info')
+                ->schema([
+                    TextEntry::make('timeline')
+                        ->markdown()
+                        ->hiddenLabel()
+                        ->placeholder('No timeline recorded'),
+                    $this->aiBadge('timeline'),
+                ])
+                ->collapsible()
+                ->columnSpanFull(),
+
+            Section::make('Remark')
+                ->icon('heroicon-o-chat-bubble-bottom-center-text')
+                ->iconColor('violet')
+                ->schema([
+                    TextEntry::make('remark')
+                        ->markdown()
+                        ->hiddenLabel()
+                        ->placeholder('No remarks'),
+                    $this->aiBadge('remark'),
+                ])
+                ->collapsible()
+                ->visible(fn ($record) => filled($record->remark))
+                ->columnSpanFull(),
+
+            Section::make('Labels')
+                ->icon('heroicon-o-tag')
+                ->iconColor('teal')
+                ->schema([
+                    TextEntry::make('labels.name')
+                        ->label('Labels')
+                        ->badge()
+                        ->color('primary')
+                        ->separator(','),
+                ])
+                ->visible(fn ($record) => $record->labels && $record->labels->isNotEmpty())
+                ->columnSpanFull(),
+
+            Grid::make(2)->schema([
+                Section::make('Triage Details')
+                    ->icon('heroicon-o-bolt')
+                    ->iconColor('rose')
                     ->schema([
-                        TextEntry::make('summary')
-                            ->markdown()
-                            ->hiddenLabel()
-                            ->placeholder('No summary provided'),
-                        $this->aiBadge('summary'),
-                    ])
-                    ->collapsible()
-                    ->columnSpanFull(),
-
-                Section::make('Root Cause Analysis')
-                    ->icon('heroicon-o-light-bulb')
-                    ->iconColor('warning')
-                    ->schema([
-                        TextEntry::make('root_cause')
-                            ->markdown()
-                            ->hiddenLabel()
-                            ->placeholder('No root cause analysis'),
-                        $this->aiBadge('root_cause'),
-                        TextEntry::make('root_cause_category')
-                            ->label('Root Cause Category')
+                        TextEntry::make('severity')
                             ->badge()
-                            ->color('warning')
-                            ->separator(','),
-                        TextEntry::make('responsible_team')
-                            ->label('Responsible Team')
+                            ->color(fn (?Severity $state) => $state?->color() ?? 'gray'),
+                        TextEntry::make('incident_status')
+                            ->label('Status')
                             ->badge()
-                            ->color('violet')
-                            ->separator(','),
-                    ])
-                    ->collapsible()
-                    ->columnSpanFull(),
+                            ->color(fn (?IncidentStatus $state) => $state?->color() ?? 'gray'),
+                        TextEntry::make('incident_date')
+                            ->label('Incident Date')
+                            ->dateTime('d M Y, H:i'),
+                        TextEntry::make('discovered_at')
+                            ->dateTime('d M Y, H:i'),
+                        TextEntry::make('stop_bleeding_at')
+                            ->label('Stop Bleeding At')
+                            ->dateTime('d M Y, H:i'),
+                        TextEntry::make('entry_date_tech_risk')
+                            ->label('Entry Date Tech Risk')
+                            ->date('d M Y'),
+                    ])->columns(2)->columnSpan(1),
 
-                ViewEntry::make('similar_incidents')
-                    ->view('filament.resources.incident-resource.pages.similar-incidents')
-                    ->columnSpanFull(),
-
-                Section::make('Retrospective')
-                    ->icon('heroicon-o-document-duplicate')
-                    ->iconColor('gray')
+                Section::make('Financial Impact')
+                    ->icon('heroicon-o-banknotes')
+                    ->iconColor('amber')
                     ->schema([
-                        TextEntry::make('retro_markdown')
-                            ->markdown()
-                            ->hiddenLabel(),
-                        TextEntry::make('retro_generated_at')
-                            ->label('Generated')
-                            ->dateTime('Y-m-d H:i')
-                            ->color('gray')
-                            ->visible(fn ($record) => filled($record->retro_generated_at))
-                            ->formatStateUsing(fn ($state, $record) => $state?->format('Y-m-d H:i').' · '.$record->retro_model),
-                    ])
-                    ->visible(fn ($record) => filled($record->retro_markdown))
-                    ->collapsible()
-                    ->columnSpanFull(),
-
-                \App\Filament\Actions\NotionInvestigationAction::section(),
-
-                Section::make('Incident Timeline & Chronology')
-                    ->icon('heroicon-o-clock')
-                    ->iconColor('info')
-                    ->schema([
-                        TextEntry::make('timeline')
-                            ->markdown()
-                            ->hiddenLabel()
-                            ->placeholder('No timeline recorded'),
-                        $this->aiBadge('timeline'),
-                    ])
-                    ->collapsible()
-                    ->columnSpanFull(),
-
-                Section::make('Remark')
-                    ->icon('heroicon-o-chat-bubble-bottom-center-text')
-                    ->iconColor('violet')
-                    ->schema([
-                        TextEntry::make('remark')
-                            ->markdown()
-                            ->hiddenLabel()
-                            ->placeholder('No remarks'),
-                        $this->aiBadge('remark'),
-                    ])
-                    ->collapsible()
-                    ->visible(fn ($record) => filled($record->remark))
-                    ->columnSpanFull(),
-
-                Section::make('Labels')
-                    ->icon('heroicon-o-tag')
-                    ->iconColor('teal')
-                    ->schema([
-                        TextEntry::make('labels.name')
-                            ->label('Labels')
+                        TextEntry::make('fund_status')
                             ->badge()
-                            ->color('primary')
+                            ->color(fn (?FundStatus $state) => $state?->color() ?? 'gray'),
+                        TextEntry::make('potential_fund_loss')
+                            ->money('IDR')
+                            ->color('warning'),
+                        TextEntry::make('fund_loss')
+                            ->label('Actual Fund Loss')
+                            ->money('IDR')
+                            ->color('danger'),
+                        TextEntry::make('recovered_fund')
+                            ->money('IDR')
+                            ->color('success'),
+                        TextEntry::make('loss_taken_by'),
+                    ])->columns(2)->columnSpan(1),
+            ]),
+
+            Grid::make(2)->schema([
+                Section::make('Source & Assignment')
+                    ->icon('heroicon-o-user-group')
+                    ->iconColor('indigo')
+                    ->schema([
+                        TextEntry::make('incident_source')
+                            ->label('Source')
+                            ->badge(),
+                        TextEntry::make('pic_names')
+                            ->label('PIC'),
+                        TextEntry::make('reported_by'),
+                        TextEntry::make('checker'),
+                        TextEntry::make('maker'),
+                        TextEntry::make('third_party_client')
+                            ->label('3rd Party/Client'),
+                    ])->columns(2)->columnSpan(1),
+
+                Section::make('Categories & Metrics')
+                    ->icon('heroicon-o-chart-bar')
+                    ->iconColor('cyan')
+                    ->schema([
+                        TextEntry::make('business_category')
+                            ->label('Business Category')
+                            ->badge()
+                            ->color('info')
                             ->separator(','),
-                    ])
-                    ->visible(fn ($record) => $record->labels && $record->labels->isNotEmpty())
-                    ->columnSpanFull(),
+                        TextEntry::make('classification')
+                            ->badge()
+                            ->color('gray'),
+                        TextEntry::make('incident_type')
+                            ->label('Area')
+                            ->badge(),
+                        TextEntry::make('incidentType.name')
+                            ->label('Incident Type'),
+                        TextEntry::make('mttr')
+                            ->label('MTTR')
+                            ->suffix(' mins'),
+                        TextEntry::make('mtbf')
+                            ->label('MTBF')
+                            ->suffix(' days'),
+                    ])->columns(2)->columnSpan(1),
+            ]),
 
-                Grid::make(2)->schema([
-                    Section::make('Triage Details')
-                        ->icon('heroicon-o-bolt')
-                        ->iconColor('rose')
-                        ->schema([
-                            TextEntry::make('severity')
-                                ->badge()
-                                ->color(fn (?Severity $state) => $state?->color() ?? 'gray'),
-                            TextEntry::make('incident_status')
-                                ->label('Status')
-                                ->badge()
-                                ->color(fn (?IncidentStatus $state) => $state?->color() ?? 'gray'),
-                            TextEntry::make('incident_date')
-                                ->label('Incident Date')
-                                ->dateTime('d M Y, H:i'),
-                            TextEntry::make('discovered_at')
-                                ->dateTime('d M Y, H:i'),
-                            TextEntry::make('stop_bleeding_at')
-                                ->label('Stop Bleeding At')
-                                ->dateTime('d M Y, H:i'),
-                            TextEntry::make('entry_date_tech_risk')
-                                ->label('Entry Date Tech Risk')
-                                ->date('d M Y'),
-                        ])->columns(2)->columnSpan(1),
+            Section::make('Admin & Flags')
+                ->icon('heroicon-o-clipboard-document-check')
+                ->iconColor('gray')
+                ->schema([
+                    TextEntry::make('goc_upload')->label('GoC Uploaded')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
+                    TextEntry::make('teams_upload')->label('Teams Uploaded')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
+                    TextEntry::make('doc_signed')->label('Doc Signed')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
+                    TextEntry::make('risk_incident_form_cfm')->label('Risk Form CFM')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
+                    TextEntry::make('glitch_flag')->label('Glitch')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'danger' : 'gray'),
+                ])
+                ->columns(5)
+                ->collapsible()
+                ->columnSpanFull(),
 
-                    Section::make('Financial Impact')
-                        ->icon('heroicon-o-banknotes')
-                        ->iconColor('amber')
-                        ->schema([
-                            TextEntry::make('fund_status')
-                                ->badge()
-                                ->color(fn (?FundStatus $state) => $state?->color() ?? 'gray'),
-                            TextEntry::make('potential_fund_loss')
-                                ->money('IDR')
-                                ->color('warning'),
-                            TextEntry::make('fund_loss')
-                                ->label('Actual Fund Loss')
-                                ->money('IDR')
-                                ->color('danger'),
-                            TextEntry::make('recovered_fund')
-                                ->money('IDR')
-                                ->color('success'),
-                            TextEntry::make('loss_taken_by'),
-                        ])->columns(2)->columnSpan(1),
-                ]),
-
-                Grid::make(2)->schema([
-                    Section::make('Source & Assignment')
-                        ->icon('heroicon-o-user-group')
-                        ->iconColor('indigo')
-                        ->schema([
-                            TextEntry::make('incident_source')
-                                ->label('Source')
-                                ->badge(),
-                            TextEntry::make('pic_names')
-                                ->label('PIC'),
-                            TextEntry::make('reported_by'),
-                            TextEntry::make('checker'),
-                            TextEntry::make('maker'),
-                            TextEntry::make('third_party_client')
-                                ->label('3rd Party/Client'),
-                        ])->columns(2)->columnSpan(1),
-
-                    Section::make('Categories & Metrics')
-                        ->icon('heroicon-o-chart-bar')
-                        ->iconColor('cyan')
-                        ->schema([
-                            TextEntry::make('business_category')
-                                ->label('Business Category')
-                                ->badge()
-                                ->color('info')
-                                ->separator(','),
-                            TextEntry::make('classification')
-                                ->badge()
-                                ->color('gray'),
-                            TextEntry::make('incident_type')
-                                ->label('Area')
-                                ->badge(),
-                            TextEntry::make('incidentType.name')
-                                ->label('Incident Type'),
-                            TextEntry::make('mttr')
-                                ->label('MTTR')
-                                ->suffix(' mins'),
-                            TextEntry::make('mtbf')
-                                ->label('MTBF')
-                                ->suffix(' days'),
-                        ])->columns(2)->columnSpan(1),
-                ]),
-
-                Section::make('Admin & Flags')
-                    ->icon('heroicon-o-clipboard-document-check')
-                    ->iconColor('gray')
-                    ->schema([
-                        TextEntry::make('goc_upload')->label('GoC Uploaded')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
-                        TextEntry::make('teams_upload')->label('Teams Uploaded')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
-                        TextEntry::make('doc_signed')->label('Doc Signed')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
-                        TextEntry::make('risk_incident_form_cfm')->label('Risk Form CFM')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'success' : 'gray'),
-                        TextEntry::make('glitch_flag')->label('Glitch')->formatStateUsing(fn ($state) => $state ? 'Yes' : 'No')->badge()->color(fn ($state) => $state ? 'danger' : 'gray'),
-                    ])
-                    ->columns(5)
-                    ->collapsible()
-                    ->columnSpanFull(),
-
-                Section::make('Evidence')
-                    ->icon('heroicon-o-paper-clip')
-                    ->iconColor('yellow')
-                    ->schema([
-                        TextEntry::make('evidence')
-                            ->markdown()
-                            ->hiddenLabel()
-                            ->placeholder('No evidence text'),
-                        TextEntry::make('evidence_link')
-                            ->label('Evidence Link')
-                            ->url(fn ($state) => $state)
-                            ->openUrlInNewTab(),
-                    ])
-                    ->collapsible()
-                    ->visible(fn ($record) => filled($record->evidence) || filled($record->evidence_link))
-                    ->columnSpanFull(),
-            ]);
+            Section::make('Evidence')
+                ->icon('heroicon-o-paper-clip')
+                ->iconColor('yellow')
+                ->schema([
+                    TextEntry::make('evidence')
+                        ->markdown()
+                        ->hiddenLabel()
+                        ->placeholder('No evidence text'),
+                    TextEntry::make('evidence_link')
+                        ->label('Evidence Link')
+                        ->url(fn ($state) => $state)
+                        ->openUrlInNewTab(),
+                ])
+                ->collapsible()
+                ->visible(fn ($record) => filled($record->evidence) || filled($record->evidence_link))
+                ->columnSpanFull(),
+        ]);
     }
 }
