@@ -137,7 +137,10 @@ class ListIncidents extends ListRecords
                     ->modalDescription('One folder per incident: full markdown report plus every convertible investigation document. Incidents only (no Issues), P1–P4/X1–X4.')
                     ->action(function () {
                         $path = app(\App\Services\Markdown\IncidentMarkdownZipService::class)
-                            ->build(ExportActionSchema::baseExportScope($this->getFilteredTableQuery()->clone()));
+                            // Subs never export (PROJ-022) — even from an
+                            // expanded family the table query carries.
+                            ->build(ExportActionSchema::baseExportScope($this->getFilteredTableQuery()->clone())
+                                ->withoutSubIncidents());
 
                         if ($path === null) {
                             \Filament\Notifications\Notification::make()
