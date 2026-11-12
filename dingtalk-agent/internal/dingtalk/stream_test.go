@@ -790,3 +790,101 @@ func TestHandlePictureDispatches(t *testing.T) {
 		t.Errorf("KB-off bot answered a picture: %v", replyBodies[before:])
 	}
 }
+
+// TestHandleEmptyFileFriendlyReply sends an empty .txt through the real Handle
+// path (oauth → messageFiles → https download): the friendly scanned/empty
+// reply fires and NO agent/LLM call is spent.
+func TestHandleEmptyFileFriendlyReply(t *testing.T) {
+	var mu sync.Mutex
+	var replyBodies []string
+	var chatCalls int
+
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		replyBodies = append(replyBodies, string(body))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhook.Close()
+
+	// The file-byte server must be https — fileURLAllowed refuses http.
+	fileSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // zero bytes: an empty/scanned file
+	}))
+	defer fileSrv.Close()
+
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.0/oauth2/accessToken":
+			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":3600}`))
+		case "/v1.0/robot/messageFiles/download":
+			_, _ = w.Write([]byte(`{"downloadUrl":"` + fileSrv.URL + `/blank.txt"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer apiSrv.Close()
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			mu.Lock()
+			chatCalls++
+			mu.Unlock()
+		}
+		http.NotFound(w, r)
+	}))
+	defer llmSrv.Close()
+
+	// downloadTo GETs via http.DefaultClient — point it at the TLS test
+	// server's trusting client for the duration.
+	old := http.DefaultClient
+	http.DefaultClient = fileSrv.Client()
+	defer func() { http.DefaultClient = old }()
+
+	cfg := &config.Config{
+		DingTalkAllowlist:    []string{"staff1"},
+		DingTalkClientID:     "app",
+		DingTalkClientSecret: "s",
+		DingTalkOpenAPIHost:  apiSrv.URL,
+		LLMBaseURL:           llmSrv.URL,
+		KBToolsEnabled:       true,
+	}
+	bot := NewBot(cfg, nil) // no agent loop needed — the empty branch replies before any turn
+
+	fm := &chatbot.BotCallbackDataModel{
+		MsgId:          "m-empty-file",
+		SenderStaffId:  "staff1",
+		SenderNick:     "Tester",
+		ConversationId: "cid-empty-file",
+		SessionWebhook: webhook.URL,
+		Msgtype:        "file",
+		Content:        map[string]any{"downloadCode": "dc-empty", "fileName": "blank.txt", "fileSize": float64(10), "fileType": "txt"},
+	}
+	if _, err := bot.Handle(context.Background(), fm); err != nil {
+		t.Fatalf("handle error: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	gotFriendly := false
+	for !gotFriendly && time.Now().Before(deadline) {
+		mu.Lock()
+		for _, b := range replyBodies {
+			if strings.Contains(b, "couldn't read any text") {
+				gotFriendly = true
+			}
+		}
+		mu.Unlock()
+		if !gotFriendly {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !gotFriendly {
+		t.Fatalf("no friendly empty-file reply: %v", replyBodies)
+	}
+	if chatCalls != 0 {
+		t.Errorf("agent LLM calls spent on an empty file: %d", chatCalls)
+	}
+}

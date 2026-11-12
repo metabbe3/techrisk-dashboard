@@ -87,7 +87,10 @@ func extractPdf(data []byte) (string, error) {
 	}
 	out := strings.TrimSpace(sb.String())
 	if out == "" {
-		return "", fmt.Errorf("no extractable text in pdf (scanned/image pdfs are not supported)")
+		// Scanned/image-only PDF parses but has no text layer — empty text,
+		// not an error; the caller owns the "send pages as pictures" message.
+		// ponytail: scanned PDFs out of scope; OCR or per-page image fallback if this bites.
+		return "", nil
 	}
 	return out, nil
 }

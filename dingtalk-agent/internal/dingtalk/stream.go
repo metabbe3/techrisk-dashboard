@@ -359,6 +359,12 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 		b.reply(ctx, m, fmt.Sprintf("I couldn't process **%s**: %v", fm.FileName, err))
 		return
 	}
+	if strings.TrimSpace(text) == "" {
+		// Empty text also covers empty txt/docx. Scanned PDFs are out of scope
+		// (owner decision) — point the user at the picture path that DOES work.
+		b.reply(ctx, m, fmt.Sprintf("I couldn't read any text from **%s** — it looks like a scanned or image-only file. Send the pages as pictures (🖼️) instead and I'll read those.", fm.FileName))
+		return
+	}
 
 	content := fmt.Sprintf("[The user attached the document %q. Its text follows.]\n\n%s\n\n[End of document. User instruction: %s]",
 		fm.FileName, ingest.Truncate(text), orDefault(caption, "Summarize this document."))
