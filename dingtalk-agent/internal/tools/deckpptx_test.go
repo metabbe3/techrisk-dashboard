@@ -1,9 +1,9 @@
 package tools
 
 import (
-	"encoding/xml"
 	"archive/zip"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"path/filepath"
 	"strings"
