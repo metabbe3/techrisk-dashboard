@@ -858,11 +858,11 @@ func TestHandleEmptyFileFriendlyReply(t *testing.T) {
 	}))
 	defer llmSrv.Close()
 
-	// downloadTo GETs via http.DefaultClient — point it at the TLS test
+	// downloadTo GETs via downloadHTTPClient — point it at the TLS test
 	// server's trusting client for the duration.
-	old := http.DefaultClient
-	http.DefaultClient = fileSrv.Client()
-	defer func() { http.DefaultClient = old }()
+	old := downloadHTTPClient
+	downloadHTTPClient = fileSrv.Client()
+	defer func() { downloadHTTPClient = old }()
 
 	cfg := &config.Config{
 		DingTalkAllowlist:    []string{"staff1"},

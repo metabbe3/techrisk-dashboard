@@ -184,7 +184,10 @@ func (s *Store) All() map[string]HistoryEntry {
 }
 
 // SaveHistory persists a conversation, dropping entries idle beyond ttl so
-// the file stays bounded on long-lived servers.
+// the file stays bounded on long-lived servers. Synchronous write (audit
+// 2026-11-12 considered a debounced async flusher — rejected: restart
+// recall is a hard contract and a deferred write widens the crash-loss
+// window; at this agent's scale the whole-map rewrite is cheap and atomic).
 func (s *Store) SaveHistory(conversationID string, messages []llm.ChatMessage, ttl time.Duration) error {
 	s.hmu.Lock()
 	s.history[conversationID] = HistoryEntry{Messages: messages, LastSeen: time.Now()}
@@ -195,9 +198,12 @@ func (s *Store) SaveHistory(conversationID string, messages []llm.ChatMessage, t
 			}
 		}
 	}
-	snap := historyFile{Conversations: s.history}
+	convs := make(map[string]HistoryEntry, len(s.history))
+	for id, e := range s.history {
+		convs[id] = e
+	}
 	s.hmu.Unlock()
-	return s.writeJSON(s.historyPath, snap)
+	return s.writeJSON(s.historyPath, historyFile{Conversations: convs})
 }
 
 func (s *Store) loadHistory() {

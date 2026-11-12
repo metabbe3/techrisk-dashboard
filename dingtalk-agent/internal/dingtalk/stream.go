@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +41,9 @@ const (
 	batchQuietWait = 800 * time.Millisecond
 	batchMaxWait   = 2500 * time.Millisecond
 	inboxCap       = 64
+	// inboxIdleWait is how long an idle conversation worker lives before
+	// self-retiring (goroutine + channel GC — audit 2026-11-12).
+	inboxIdleWait = 30 * time.Minute
 )
 
 // Bot bridges DingTalk stream messages to the agent loop.
@@ -211,7 +216,7 @@ func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string, file *fileMe
 	if !ok {
 		ch = make(chan chatTask, inboxCap)
 		b.inboxes[m.ConversationId] = ch
-		go b.conversationWorker(ch)
+		go b.conversationWorker(m.ConversationId, ch)
 	}
 	b.inboxMu.Unlock()
 
@@ -226,14 +231,24 @@ func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string, file *fileMe
 // rapid messages FROM ONE SENDER into one agent turn, answers, then takes the
 // next. In a group, another member's message closes the batch and becomes its
 // own turn — two people's questions are never merged (prod 2026-11-11).
-func (b *Bot) conversationWorker(ch chan chatTask) {
+// Idle workers self-retire (audit 2026-11-12): the inboxes map used to grow a
+// live goroutine + channel per conversation FOREVER — every group that ever
+// chatted leaked one. After idleWait with nothing queued, the worker deletes
+// its inbox entry (under the mutex) and exits; a later message just creates a
+// fresh worker via enqueue. A race between retire and enqueue is closed by
+// re-checking channel identity under the lock before deleting.
+func (b *Bot) conversationWorker(convoID string, ch chan chatTask) {
 	var carry *chatTask // a different sender's message that closed the last batch
 	for {
 		var first chatTask
 		if carry != nil {
 			first, carry = *carry, nil
 		} else {
-			first = <-ch // inboxes are never closed
+			var ok bool
+			first, ok = b.nextTask(convoID, ch)
+			if !ok {
+				return // retired
+			}
 		}
 		batch := []chatTask{first}
 
@@ -267,9 +282,46 @@ func (b *Bot) conversationWorker(ch chan chatTask) {
 	}
 }
 
+// nextTask waits for the next task with an idle timeout. On timeout it
+// retires the worker: the inbox entry is removed only if it still maps to
+// THIS channel (enqueue may have replaced it), and a task that raced in is
+// reclaimed and processed rather than dropped.
+func (b *Bot) nextTask(convoID string, ch chan chatTask) (chatTask, bool) {
+	select {
+	case t := <-ch:
+		return t, true
+	case <-time.After(inboxIdleWait):
+		b.inboxMu.Lock()
+		if cur, ok := b.inboxes[convoID]; ok && cur == ch {
+			delete(b.inboxes, convoID)
+			b.inboxMu.Unlock()
+			// Reclaim a racing task instead of dropping it.
+			select {
+			case t := <-ch:
+				return t, true
+			default:
+			}
+			return chatTask{}, false
+		}
+		b.inboxMu.Unlock()
+		return chatTask{}, false
+	}
+}
+
 // runBatch turns a batch (one sender) into one agent call. The LAST message's
 // callback model is used for replies (freshest session webhook).
+// A panic anywhere inside (streaming path included — processPlain had its own
+// recover, the PRIMARY path did not) is converted into a user-visible error;
+// without this a panic in the worker goroutine killed the whole process
+// (audit 2026-11-12).
 func (b *Bot) runBatch(batch []chatTask) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("[dingtalk] panic in conversation worker: %v\n%s", r, debug.Stack())
+			m := batch[len(batch)-1].m
+			b.reply(context.Background(), m, "Sorry, something went wrong while processing that request.")
+		}
+	}()
 	m := batch[len(batch)-1].m
 
 	// A file upload runs alone through the same concurrency gate.
@@ -896,6 +948,25 @@ func (b *Bot) dedup(msgID string) bool {
 		for id, at := range b.seen {
 			if now.Sub(at) > 10*time.Minute {
 				delete(b.seen, id)
+			}
+		}
+		// Flood guard (audit 2026-11-12): a flood faster than the 10-minute
+		// retention grew the map unbounded AND ran an O(n) purge on every
+		// insert. When the purge frees nothing, drop the OLDEST quarter by
+		// timestamp — bounded memory, bounded work, still dedupes redeliveries
+		// (which arrive within seconds).
+		if len(b.seen) > seenCap {
+			type stamped struct {
+				id string
+				at time.Time
+			}
+			all := make([]stamped, 0, len(b.seen))
+			for id, at := range b.seen {
+				all = append(all, stamped{id, at})
+			}
+			sort.Slice(all, func(i, j int) bool { return all[i].at.Before(all[j].at) })
+			for _, s := range all[:len(all)/4] {
+				delete(b.seen, s.id)
 			}
 		}
 	}

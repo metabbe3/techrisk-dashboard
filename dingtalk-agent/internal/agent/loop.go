@@ -124,7 +124,10 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		messages = append(messages, l.execTools(ctx, assistantMsg.ToolCalls)...)
 	}
 
-	return "Reached maximum tool execution iterations without final conclusion. Please narrow your query.", messages[1:], totalUsage, nil
+	// Iteration budget exhausted is an ERROR, not a final answer (audit
+	// 2026-11-12): returning it as a normal reply made callers persist the
+	// placeholder into history and report the turn as a success.
+	return "", messages[1:], totalUsage, fmt.Errorf("agent hit the %d-iteration tool budget without a final answer — narrow the query", l.maxIterations)
 }
 
 // execTools runs one round of tool calls (max 4 concurrent) and returns the

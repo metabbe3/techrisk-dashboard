@@ -156,11 +156,19 @@ func (ix *Index) Ingest(doc, text string) {
 
 // Save ingests one document synchronously on the ingest slot, so callers
 // (LLM tools) can report the outcome to the user. Same slot as Ingest — a
-// concurrent upload waits, never drops.
+// concurrent upload waits, never drops. A 3-minute deadline (audit
+// 2026-11-12) bounds the wait on the ingest slot + embeds so a wedged embed
+// batch cannot stall an agent turn forever.
 func (ix *Index) Save(ctx context.Context, doc, text string) error {
-	ix.ingest <- struct{}{}
-	defer func() { <-ix.ingest }()
-	return ix.ingestNow(ctx, doc, text)
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	select {
+	case ix.ingest <- struct{}{}:
+		defer func() { <-ix.ingest }()
+		return ix.ingestNow(ctx, doc, text)
+	case <-ctx.Done():
+		return fmt.Errorf("knowledge-base busy (timed out waiting for the ingest slot): %w", ctx.Err())
+	}
 }
 
 func (ix *Index) ingestNow(ctx context.Context, doc, text string) error {

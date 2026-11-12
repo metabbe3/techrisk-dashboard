@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"time"
 )
 
 // MaxFileDownloadBytes caps message-file downloads.
@@ -111,16 +112,24 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 	return b.downloadTo(ctx, dlURL, filepath.Base(fm.FileName), dir)
 }
 
+// downloadHTTPClient downloads DingTalk files with a hard timeout. The old
+// http.DefaultClient has NO timeout — a hung download server stuck the
+// goroutine forever while it held one of MaxConcurrentAgents sem slots;
+// four hung downloads deadlocked the whole bot (audit 2026-11-12).
+var downloadHTTPClient = &http.Client{Timeout: 60 * time.Second}
+
 // downloadTo GETs dlURL and saves the bytes into dir under a randomized name
 // carrying name. Callers run fileURLAllowed first and own any declared-size
 // pre-check (picture payloads carry none); downloadTo enforces only the
 // post-download cap.
 func (b *Bot) downloadTo(ctx context.Context, dlURL, name, dir string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second) // belt-and-braces: client + ctx deadline
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
 	if err != nil {
 		return "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := downloadHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("download file: %w", err)
 	}
