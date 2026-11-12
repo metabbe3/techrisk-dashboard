@@ -3,6 +3,7 @@ package kb
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -152,6 +153,102 @@ func TestGlobalCapEvictsOldestDoc(t *testing.T) {
 	}
 	if len(hits) != 2 || hits[0].Doc != "new.pdf" {
 		t.Fatalf("oldest doc not evicted: %+v", hits)
+	}
+}
+
+// Save is synchronous: the doc is searchable as Save returns; ListDocs
+// aggregates per doc (newest first); DeleteDoc removes a whole doc and the
+// deletion persists across reload.
+func TestSaveListDeleteDocs(t *testing.T) {
+	dir := t.TempDir()
+	ix := NewIndex(dir, "m1", &fakeEmb{})
+
+	if err := ix.Save(context.Background(), "Alpha SOP.pdf", "alpha restart procedure"); err != nil {
+		t.Fatal(err)
+	}
+	// Synchronous means searchable NOW — no sleep, no poll.
+	hits, err := ix.Search(context.Background(), "query about alpha restart", 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hits) != 1 || hits[0].Doc != "Alpha SOP.pdf" {
+		t.Fatalf("Save was not synchronous: %+v", hits)
+	}
+
+	if err := ix.Save(context.Background(), "Beta SOP.pdf", "beta shutdown procedure"); err != nil {
+		t.Fatal(err)
+	}
+	if err := ix.Save(context.Background(), "blank.pdf", "   "); err == nil {
+		t.Error("blank text must error")
+	}
+
+	docs := ix.ListDocs()
+	if len(docs) != 2 || docs[0].Doc != "Beta SOP.pdf" || docs[1].Doc != "Alpha SOP.pdf" {
+		t.Fatalf("ListDocs wrong (want Beta newest-first): %+v", docs)
+	}
+	if docs[0].Chunks != 1 || docs[0].Chars != len("beta shutdown procedure") || docs[0].TS == 0 {
+		t.Fatalf("DocStat wrong: %+v", docs[0])
+	}
+
+	n, ok := ix.DeleteDoc("Alpha SOP.pdf")
+	if !ok || n != 1 {
+		t.Fatalf("DeleteDoc = (%d, %v), want (1, true)", n, ok)
+	}
+	if n, ok := ix.DeleteDoc("Alpha SOP.pdf"); ok || n != 0 {
+		t.Fatalf("second DeleteDoc = (%d, %v), want (0, false)", n, ok)
+	}
+	if docs = ix.ListDocs(); len(docs) != 1 || docs[0].Doc != "Beta SOP.pdf" {
+		t.Fatalf("delete left wrong docs: %+v", docs)
+	}
+
+	// The deletion persists: a fresh index over the same dir misses the doc.
+	ix2 := NewIndex(dir, "m1", &fakeEmb{})
+	if docs = ix2.ListDocs(); len(docs) != 1 || docs[0].Doc != "Beta SOP.pdf" {
+		t.Fatalf("deletion did not persist: %+v", docs)
+	}
+}
+
+// DeleteDoc concurrent with async Ingest: no data race, no panic; final state
+// stays internally consistent (run under -race). Same-doc delete vs in-flight
+// ingest is documented last-writer-wins and not asserted.
+func TestDeleteDocConcurrentWithIngest(t *testing.T) {
+	emb := &fakeEmb{}
+	ix := NewIndex(t.TempDir(), "m1", emb)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		doc := fmt.Sprintf("doc%d.pdf", i%4)
+		wg.Add(3)
+		go func(doc string) { defer wg.Done(); ix.Ingest(doc, "alpha text about "+doc) }(doc)
+		go func(doc string) { defer wg.Done(); ix.DeleteDoc(doc) }(doc)
+		go func() { defer wg.Done(); ix.ListDocs() }()
+	}
+	wg.Wait()
+
+	// Quiesce: fakeEmb embeds are instant, so a stable call count for 150ms
+	// means no ingest is queued or in flight.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		c0 := emb.callCount()
+		time.Sleep(150 * time.Millisecond)
+		if emb.callCount() == c0 || !time.Now().Before(deadline) {
+			break
+		}
+	}
+
+	docs := ix.ListDocs()
+	sum := 0
+	for _, d := range docs {
+		sum += d.Chunks
+	}
+	ix.mu.RLock()
+	direct := len(ix.chunks)
+	ix.mu.RUnlock()
+	if sum != direct {
+		t.Fatalf("ListDocs chunks %d != stored %d", sum, direct)
+	}
+	if _, err := ix.Search(context.Background(), "query alpha", 6); err != nil {
+		t.Fatalf("search after concurrent mix: %v", err)
 	}
 }
 
