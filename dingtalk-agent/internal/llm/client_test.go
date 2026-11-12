@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
@@ -262,5 +263,102 @@ func TestEmbedEmptyAndError(t *testing.T) {
 	client = NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "chat"})
 	if _, err := client.Embed(context.Background(), []string{"a"}); err == nil {
 		t.Fatal("expected error on gateway failure")
+	}
+}
+
+// Vision posts an OpenAI content-parts request (text + image_url data URL)
+// under the vision model and returns the transcription.
+func TestVision(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+			http.NotFound(w, r)
+			return
+		}
+		if r.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("expected Bearer test-key")
+		}
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["model"] != "vision-model" {
+			t.Errorf("model = %v, want vision-model", body["model"])
+		}
+		msgs, _ := body["messages"].([]any)
+		if len(msgs) != 1 {
+			t.Fatalf("want 1 message, got %d", len(msgs))
+		}
+		content, _ := msgs[0].(map[string]any)["content"].([]any)
+		if len(content) != 2 {
+			t.Fatalf("want 2 content parts, got %d", len(content))
+		}
+		p0, _ := content[0].(map[string]any)
+		p1, _ := content[1].(map[string]any)
+		if p0["type"] != "text" || p0["text"] != "what is this" {
+			t.Errorf("text part wrong: %v", p0)
+		}
+		if p1["type"] != "image_url" {
+			t.Errorf("image part type wrong: %v", p1)
+		}
+		iu, _ := p1["image_url"].(map[string]any)
+		u, _ := iu["url"].(string)
+		if !strings.HasPrefix(u, "data:image/png;base64,") {
+			t.Errorf("image url = %.40s..., want data:image/png;base64, prefix", u)
+		}
+
+		resp := ChatResponse{
+			ID: "chatcmpl-vis",
+			Choices: []ChatChoice{{
+				Index:        0,
+				Message:      ChatMessage{Role: "assistant", Content: "a red button"},
+				FinishReason: "stop",
+			}},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "test-key", LLMModel: "chat-model", VisionModel: "vision-model"}
+	c := NewClient(cfg)
+	out, err := c.Vision(context.Background(), "what is this", []byte("fakepng"), "image/png")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out != "a red button" {
+		t.Fatalf("Vision = %q, want %q", out, "a red button")
+	}
+}
+
+// No VisionModel configured → the vision call rides the chat model.
+func TestVisionModelDefaultsToChatModel(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["model"] != "chat-model" {
+			t.Errorf("model = %v, want chat-model", body["model"])
+		}
+		resp := ChatResponse{Choices: []ChatChoice{{Message: ChatMessage{Content: "ok"}}}}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	c := NewClient(&config.Config{LLMBaseURL: server.URL, LLMModel: "chat-model"})
+	if _, err := c.Vision(context.Background(), "p", []byte("img"), "image/png"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A gateway rejection surfaces its error message.
+func TestVisionErrorSurfaces(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"message":"model does not support image parts"}}`))
+	}))
+	defer server.Close()
+
+	c := NewClient(&config.Config{LLMBaseURL: server.URL, LLMModel: "m", VisionModel: "m"})
+	_, err := c.Vision(context.Background(), "p", []byte("img"), "image/png")
+	if err == nil || !strings.Contains(err.Error(), "model does not support image parts") {
+		t.Fatalf("err = %v, want gateway message", err)
 	}
 }

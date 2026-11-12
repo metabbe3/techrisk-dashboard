@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -131,6 +132,7 @@ type Client struct {
 	baseURL      string
 	apiKey       string
 	model        string
+	visionModel  string // image transcription; defaults to model
 	maxTokens    int
 	httpClient   *http.Client
 	embedModel   string
@@ -149,12 +151,19 @@ func NewClient(cfg *config.Config) *Client {
 	if model == "" {
 		model = config.DefaultLLMModel
 	}
+	visionModel := cfg.VisionModel
+	if visionModel == "" {
+		visionModel = model // chat model must be multimodal
+	}
 
 	return &Client{
-		baseURL:   baseURL,
-		apiKey:    cfg.LLMAPIKey,
-		model:     model,
-		maxTokens: cfg.LLMMaxTokens,
+		baseURL:      baseURL,
+		apiKey:       cfg.LLMAPIKey,
+		model:        model,
+		visionModel:  visionModel,
+		maxTokens:    cfg.LLMMaxTokens,
+		embedModel:   cfg.EmbeddingModel,
+		embedArrayOK: true, // optimistic — flips off on the first batch failure
 		// No overall Client.Timeout: long streaming answers (big reports
 		// through the tool loop) legitimately exceed any fixed ceiling and
 		// Timeout kills the connection mid-stream. ResponseHeaderTimeout
@@ -163,8 +172,6 @@ func NewClient(cfg *config.Config) *Client {
 		httpClient: &http.Client{
 			Transport: &http.Transport{ResponseHeaderTimeout: 120 * time.Second},
 		},
-		embedModel:   cfg.EmbeddingModel,
-		embedArrayOK: true, // optimistic — flips off on the first batch failure
 	}
 }
 
@@ -330,6 +337,71 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []ChatMessage, too
 	}
 
 	return &chatResp.Choices[0].Message, chatResp.Usage.resolved(), nil
+}
+
+// visionPart is one content part of a multimodal message (OpenAI wire format).
+type visionPart struct {
+	Type     string          `json:"type"` // "text" | "image_url"
+	Text     string          `json:"text,omitempty"`
+	ImageURL *visionImageURL `json:"image_url,omitempty"`
+}
+
+type visionImageURL struct {
+	URL string `json:"url"`
+}
+
+// Vision transcribes/describes one image via a multimodal chat completion
+// (content-parts wire format, one-shot: no tools, no streaming). The caller
+// caps the image size; empty image bytes are the caller's bug, not ours.
+func (c *Client) Vision(ctx context.Context, prompt string, image []byte, mimeType string) (string, error) {
+	payload, err := json.Marshal(map[string]any{
+		"model": c.visionModel,
+		"messages": []any{map[string]any{
+			"role": "user",
+			"content": []visionPart{
+				{Type: "text", Text: prompt},
+				{Type: "image_url", ImageURL: &visionImageURL{URL: "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(image)}},
+			},
+		}},
+		"max_tokens": c.maxTokens, // 0 = omit, same as ChatRequest
+	})
+	if err != nil {
+		return "", err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
+	if err != nil {
+		return "", fmt.Errorf("failed to create http request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var apiErr ChatResponse
+		if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Error != nil {
+			return "", fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
+		}
+		return "", fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, truncate(body, 200))
+	}
+	var chatResp ChatResponse
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return "", fmt.Errorf("failed to decode chat response: %w", err)
+	}
+	if len(chatResp.Choices) == 0 {
+		return "", fmt.Errorf("llm returned no choices in response")
+	}
+	return chatResp.Choices[0].Message.Content, nil
 }
 
 // ChatCompletionStream sends a streaming request and returns the assembled assistant

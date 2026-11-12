@@ -8,7 +8,7 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 	t.Helper()
 	// Neutralize knobs first: t.Setenv restores only at test END, so without this
 	// a value from an earlier sub-test leaks into later ones (empty = unset for getVal).
-	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN"} {
+	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN", "LLM_VISION_MODEL", "AI_VISION_MODEL"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range set {
@@ -143,4 +143,36 @@ func TestAutoLearnKillSwitch(t *testing.T) {
 	if cfg := loadEnv(t, base); !cfg.AutoLearn {
 		t.Error("auto-learning must default on")
 	}
+}
+
+func TestVisionModelSources(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "secret", "DASHBOARD_API_TOKEN": "tok",
+	}
+
+	cfg := loadEnv(t, withBase(base, map[string]string{"LLM_VISION_MODEL": "vision-a", "AI_VISION_MODEL": "vision-b"}))
+	if cfg.VisionModel != "vision-a" {
+		t.Errorf("VisionModel = %q, want vision-a (LLM_ wins)", cfg.VisionModel)
+	}
+
+	cfg = loadEnv(t, withBase(base, map[string]string{"AI_VISION_MODEL": "vision-b"}))
+	if cfg.VisionModel != "vision-b" {
+		t.Errorf("VisionModel = %q, want vision-b (AI_ fallback)", cfg.VisionModel)
+	}
+
+	cfg = loadEnv(t, base)
+	if cfg.VisionModel != "" {
+		t.Errorf("VisionModel = %q, want empty (client falls back to the chat model)", cfg.VisionModel)
+	}
+}
+
+func withBase(base, extra map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }

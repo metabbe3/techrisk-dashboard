@@ -44,6 +44,9 @@ type Config struct {
 	// EmbeddingModel is the embeddings model for the RAG knowledge base
 	// (AI_EMBEDDING_MODEL parity — one source of truth with the dashboard).
 	EmbeddingModel string
+	// VisionModel is the image-reading model for picture uploads (AI_VISION_MODEL
+	// parity). Empty = the chat model must be multimodal.
+	VisionModel string
 	// KBToolsEnabled registers search_knowledge (the RAG index over files
 	// users upload in chat). Default on.
 	KBToolsEnabled bool
@@ -281,6 +284,10 @@ func LoadFromFile(envPath string) (*Config, error) {
 			getVal("AI_EMBEDDING_MODEL", ""),
 			DefaultEmbeddingModel, // matches config/ai.php's default
 		),
+		VisionModel: firstNonEmpty(
+			getVal("LLM_VISION_MODEL", ""),
+			getVal("AI_VISION_MODEL", ""),
+		), // empty = fall back to the chat model, resolved in llm.NewClient
 		KBToolsEnabled: loadBool(getVal, "AGENT_KB_TOOLS", true),
 	}, nil
 }
