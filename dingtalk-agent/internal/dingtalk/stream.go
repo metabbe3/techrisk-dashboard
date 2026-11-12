@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -65,12 +66,14 @@ type Bot struct {
 	sem chan struct{}
 }
 
-// chatTask is one inbound message queued for a conversation worker. file is
-// non-nil for an uploaded document — it runs alone, not batched with text.
+// chatTask is one inbound message queued for a conversation worker. file/pic
+// are non-nil for an uploaded document or picture — they run alone, not
+// batched with text.
 type chatTask struct {
 	m    *chatbot.BotCallbackDataModel
 	text string
 	file *fileMessage
+	pic  *pictureMessage
 }
 
 type historyEntry struct {
@@ -108,10 +111,14 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 			loop.SystemExtras = b.knowledgePrompt // inject remembered docs
 		}
 	}
-	// RAG knowledge base over chat-uploaded documents (SOPs etc.).
-	if cfg.KBToolsEnabled && loop != nil {
+	// RAG knowledge base over chat-uploaded documents (SOPs etc.). The index
+	// also backs picture filing — it exists whenever KB tools are on, loop or
+	// not (a picture turn needs no agent loop).
+	if cfg.KBToolsEnabled {
 		b.know = kb.NewIndex(cfg.DataDir, cfg.EmbeddingModel, b.llm)
-		loop.Registry().RegisterKnowledgeTools(b.know)
+		if loop != nil {
+			loop.Registry().RegisterKnowledgeTools(b.know)
+		}
 	}
 	return b
 }
@@ -165,7 +172,20 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 			log.Printf("[dingtalk] file from %s (%s) in conversation %s: %s",
 				m.SenderNick, m.SenderStaffId, m.ConversationId, fm.FileName)
 			b.reply(ctx, m, fmt.Sprintf("📥 Got **%s** — reading it now…", fm.FileName))
-			b.enqueue(m, text, &fm)
+			b.enqueue(m, text, &fm, nil)
+			return nil, nil
+		}
+	}
+
+	// Pictures: download → vision transcription → filed into the RAG KB under
+	// "Picture from <nick> — <ts>". KB-gated: with AGENT_KB_TOOLS off, pictures
+	// stay ignored exactly as before this feature. Also runs alone (own turn).
+	if m.Msgtype == "picture" && b.know != nil {
+		if pm, ok := parsePictureMessage(m.Content); ok {
+			log.Printf("[dingtalk] picture from %s (%s) in conversation %s",
+				m.SenderNick, m.SenderStaffId, m.ConversationId)
+			b.reply(ctx, m, "🖼️ Got your picture — reading it…")
+			b.enqueue(m, text, nil, &pm)
 			return nil, nil
 		}
 	}
@@ -177,7 +197,7 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	log.Printf("[dingtalk] message from %s (%s) in conversation %s: %s",
 		m.SenderNick, m.SenderStaffId, m.ConversationId, text)
 
-	b.enqueue(m, text, nil)
+	b.enqueue(m, text, nil, nil)
 
 	return nil, nil // ack the frame; the reply travels over the session webhook
 }
@@ -185,7 +205,7 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 // enqueue hands a message to its conversation's batching worker, creating the
 // worker on first contact. Never blocks: an overflowing inbox is refused with
 // a webhook apology instead of stalling the SDK's frame reader.
-func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string, file *fileMessage) {
+func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string, file *fileMessage, pic *pictureMessage) {
 	b.inboxMu.Lock()
 	ch, ok := b.inboxes[m.ConversationId]
 	if !ok {
@@ -196,7 +216,7 @@ func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string, file *fileMe
 	b.inboxMu.Unlock()
 
 	select {
-	case ch <- chatTask{m: m, text: text, file: file}:
+	case ch <- chatTask{m: m, text: text, file: file, pic: pic}:
 	default:
 		b.reply(context.Background(), m, "I'm backed up with queued messages — please retry in a moment.")
 	}
@@ -226,9 +246,9 @@ func (b *Bot) conversationWorker(ch chan chatTask) {
 			case t := <-ch:
 				// Batching is keyed on BOTH sender ids — either differing means
 				// a different person (SenderStaffId is empty for external
-				// users, SenderId for test payloads). A file upload always
-				// runs as its own turn.
-				if t.m.SenderId != first.m.SenderId || t.m.SenderStaffId != first.m.SenderStaffId || t.file != nil || first.file != nil {
+				// users, SenderId for test payloads). A file upload or picture
+				// always runs as its own turn.
+				if t.m.SenderId != first.m.SenderId || t.m.SenderStaffId != first.m.SenderStaffId || t.file != nil || first.file != nil || t.pic != nil || first.pic != nil {
 					carry = &t
 					break collect
 				}
@@ -257,6 +277,14 @@ func (b *Bot) runBatch(batch []chatTask) {
 		b.sem <- struct{}{}
 		defer func() { <-b.sem }()
 		b.processFile(context.Background(), m, *batch[0].file, batch[0].text)
+		return
+	}
+
+	// A picture runs alone through the same gate: transcribe → file into the KB.
+	if len(batch) == 1 && batch[0].pic != nil {
+		b.sem <- struct{}{}
+		defer func() { <-b.sem }()
+		b.processPicture(context.Background(), m, *batch[0].pic, batch[0].text)
 		return
 	}
 
@@ -348,6 +376,67 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 	if b.know != nil {
 		b.know.Ingest(fm.FileName, text)
 	}
+}
+
+// processPicture handles a chat-sent picture: fetch it, transcribe it via the
+// vision model, and file the transcription into the RAG KB under
+// "Picture from <nick> — <ts>". No agent turn — replies are webhook-only.
+func (b *Bot) processPicture(ctx context.Context, m *chatbot.BotCallbackDataModel, pm pictureMessage, caption string) {
+	dlURL, err := b.pictureDownloadURL(ctx, pm)
+	if err != nil {
+		log.Printf("[dingtalk] picture url failed (conversation %s): %v", m.ConversationId, err)
+		b.reply(ctx, m, "Sorry, I couldn't read that picture — I couldn't fetch it from DingTalk.")
+		return
+	}
+	path, err := b.downloadTo(ctx, dlURL, "picture", filepath.Join(b.dataDir(), "tmp"))
+	if err != nil {
+		log.Printf("[dingtalk] picture download failed (conversation %s): %v", m.ConversationId, err)
+		b.reply(ctx, m, "Sorry, I couldn't read that picture — I couldn't fetch it from DingTalk.")
+		return
+	}
+	raw, err := os.ReadFile(path)
+	_ = os.Remove(path)
+	if err != nil {
+		b.reply(ctx, m, "Sorry, I couldn't read that picture.")
+		return
+	}
+	mime := http.DetectContentType(raw)
+	if !strings.HasPrefix(mime, "image/") {
+		b.reply(ctx, m, "That upload isn't a picture I can read — send it as a **file** if it's a document.")
+		return
+	}
+	b.processPictureData(ctx, m, raw, mime, caption)
+}
+
+// processPictureData is the bytes core of processPicture: the test hands bytes
+// in directly; the resolve+download half lives in processPicture.
+func (b *Bot) processPictureData(ctx context.Context, m *chatbot.BotCallbackDataModel, raw []byte, mimeType, caption string) {
+	if b.know == nil {
+		return
+	}
+	transcription, err := b.llm.Vision(ctx, visionPrompt(caption), raw, mimeType)
+	if err != nil || strings.TrimSpace(transcription) == "" {
+		log.Printf("[dingtalk] picture transcription failed (conversation %s): %v", m.ConversationId, err)
+		b.reply(ctx, m, "Sorry, I couldn't read that picture — try a clearer image or paste the text instead.")
+		return
+	}
+	title := fmt.Sprintf("Picture from %s — %s", m.SenderNick, time.Now().In(schedule.WIB).Format("2006-01-02 15:04"))
+	if err := b.know.Save(ctx, title, transcription); err != nil {
+		b.reply(ctx, m, fmt.Sprintf("I read the picture but couldn't file it: %v", err))
+		return
+	}
+	b.reply(ctx, m, fmt.Sprintf("🖼️ Read the picture and filed it in the knowledge base as **%s**.\n\n> %s", title, truncateStr(transcription, 300)))
+}
+
+// visionPrompt builds the image-transcription instruction; the user caption is
+// appended when present ("what's wrong in this screenshot?" works alongside
+// the plain transcription).
+func visionPrompt(caption string) string {
+	p := "Transcribe everything in this image: all visible text (exact wording), table contents, and a one-line description of any diagram. Output only the transcription."
+	if c := strings.TrimSpace(caption); c != "" {
+		p += "\n\nThe user sent it with this message: " + c
+	}
+	return p
 }
 
 // process runs one agent turn and returns the guarded reply text ("" on failure).
