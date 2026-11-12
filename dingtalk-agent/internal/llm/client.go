@@ -185,6 +185,26 @@ func (c *Client) Model() string { return c.model }
 // HeavyModel returns the escalation model ("" when unset).
 func (c *Client) HeavyModel() string { return c.heavyModel }
 
+// Ping verifies connectivity to the LLM endpoint by requesting a minimal completion.
+func (c *Client) Ping(ctx context.Context) error {
+	pingCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	reqBody := ChatRequest{
+		Model: c.model,
+		Messages: []ChatMessage{
+			{Role: "user", Content: "ping"},
+		},
+		MaxTokens: 1,
+	}
+	_, _, err := c.doCompletion(pingCtx, reqBody)
+	if err != nil && (strings.Contains(err.Error(), "max_tokens") || strings.Contains(err.Error(), "400")) {
+		reqBody.MaxTokens = 0
+		_, _, err = c.doCompletion(pingCtx, reqBody)
+	}
+	return err
+}
+
 // ChatCompletionHeavy retries the same completion on the heavy (smarter)
 // model. Returns an error when no heavy model is configured.
 func (c *Client) ChatCompletionHeavy(ctx context.Context, messages []ChatMessage, tools []ToolDefinition) (*ChatMessage, Usage, error) {
@@ -197,27 +217,37 @@ func (c *Client) ChatCompletionHeavy(ctx context.Context, messages []ChatMessage
 		Tools:     tools,
 		MaxTokens: c.maxTokens,
 	}
+	return c.doCompletion(ctx, reqBody)
+}
+
+func (c *Client) doCompletion(ctx context.Context, reqBody ChatRequest) (*ChatMessage, Usage, error) {
 	data, err := json.Marshal(reqBody)
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("failed to marshal chat request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(data))
+
+	url := c.baseURL + "/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("failed to create http request: %w", err)
 	}
+
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
+
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("failed to read response body: %w", err)
 	}
+
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var apiErr ChatResponse
 		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error != nil {
@@ -225,13 +255,16 @@ func (c *Client) ChatCompletionHeavy(ctx context.Context, messages []ChatMessage
 		}
 		return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, string(bodyBytes))
 	}
+
 	var chatResp ChatResponse
 	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
 		return nil, Usage{}, fmt.Errorf("failed to decode chat response: %w", err)
 	}
+
 	if len(chatResp.Choices) == 0 {
 		return nil, Usage{}, fmt.Errorf("llm returned no choices in response")
 	}
+
 	return &chatResp.Choices[0].Message, chatResp.Usage.resolved(), nil
 }
 
@@ -347,52 +380,7 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []ChatMessage, too
 		Tools:     tools,
 		MaxTokens: c.maxTokens,
 	}
-
-	data, err := json.Marshal(reqBody)
-	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to marshal chat request: %w", err)
-	}
-
-	url := c.baseURL + "/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
-	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to create http request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, Usage{}, fmt.Errorf("http request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var apiErr ChatResponse
-		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error != nil {
-			return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
-		}
-		return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, string(bodyBytes))
-	}
-
-	var chatResp ChatResponse
-	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to decode chat response: %w", err)
-	}
-
-	if len(chatResp.Choices) == 0 {
-		return nil, Usage{}, fmt.Errorf("llm returned no choices in response")
-	}
-
-	return &chatResp.Choices[0].Message, chatResp.Usage.resolved(), nil
+	return c.doCompletion(ctx, reqBody)
 }
 
 // visionPart is one content part of a multimodal message (OpenAI wire format).

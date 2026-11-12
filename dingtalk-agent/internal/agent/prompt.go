@@ -131,6 +131,14 @@ const WatchPrompt = `## Incident status watches
   message context with their IDs.
 - The bot verifies the incident and appends the confirmed watch ID after your reply — never invent one.`
 
+// LeaderPrompt guides the agent when operating as a mesh cluster coordinator.
+const LeaderPrompt = `## Mesh Role: Leader
+You are the mesh coordinator. You coordinate distributed workers via delegate_task and synthesize findings via collect_results. Break multi-faceted operations into clear, focused subtasks with appropriate capability requirements, monitor progress, and deliver a comprehensive final synthesis.`
+
+// WorkerPrompt guides the agent when operating as a mesh cluster task executor.
+const WorkerPrompt = `## Mesh Role: Worker
+You are a mesh worker. You execute assigned goals using local tools and return concise, factual summaries of your findings and actions.`
+
 // KnowledgePrompt is appended when the KB tools are registered.
 const KnowledgePrompt = `## Team knowledge base (SOPs and uploaded documents)
 - search_knowledge finds passages in documents users uploaded in chat (SOPs, procedures, reference

@@ -54,21 +54,39 @@ type Config struct {
 	// KBToolsEnabled registers search_knowledge (the RAG index over files
 	// users upload in chat). Default on.
 	KBToolsEnabled bool
+
+	// Mesh orchestration (GoMesh v0.5 parity)
+	MeshRole        string        // "solo", "leader", "worker"
+	MeshListen      string        // leader listen address, e.g. ":7801"
+	MeshToken       string        // shared authentication token
+	LeaderAddr      string        // worker connection to leader
+	WorkerID        string        // worker identity
+	Capabilities    []string      // worker capability tags
+	TaskTimeout     time.Duration // default 300s
+	MissionTimeout  time.Duration // default 1800s
+	SubtaskAttempts int           // default 2, GOAGENT_SUBTASK_ATTEMPTS
+	FanoutMax       int           // default 3, GOAGENT_FANOUT_MAX (0 = off)
 }
 
 // Default values
 const (
-	DefaultLLMBaseURL       = "https://api.openai.com/v1"
-	DefaultLLMModel         = "glm-5.3-flashx"
-	DefaultMaxIterations    = 60    // Hermes parity — owner 2026-11-10
-	DefaultLLMMaxTokens     = 16384 // = War Room's code default (config/ai.php)
-	DefaultMaxReplyChars    = 8000
-	DefaultDashboardAPIBase = "http://nginx/api/v1"
-	DefaultEnvFile          = "dingtalk-agent.env"
-	DefaultHistoryTTL       = 12 * time.Hour
-	DefaultDataDir          = "data"
-	DefaultInternalAddr     = ":9091"
-	DefaultEmbeddingModel   = "text-embedding-3-large" // = config/ai.php default
+	DefaultLLMBaseURL        = "https://api.openai.com/v1"
+	DefaultLLMModel          = "glm-5.3-flashx"
+	DefaultMaxIterations     = 60    // Hermes parity — owner 2026-11-10
+	DefaultLLMMaxTokens      = 16384 // = War Room's code default (config/ai.php)
+	DefaultMaxReplyChars     = 8000
+	DefaultDashboardAPIBase  = "http://nginx/api/v1"
+	DefaultEnvFile           = "dingtalk-agent.env"
+	DefaultHistoryTTL        = 12 * time.Hour
+	DefaultDataDir           = "data"
+	DefaultInternalAddr      = ":9091"
+	DefaultEmbeddingModel    = "text-embedding-3-large" // = config/ai.php default
+	DefaultMeshRole          = "solo"
+	DefaultMeshListen        = ":7801"
+	DefaultTaskTimeoutSec    = 300
+	DefaultMissionTimeoutSec = 1800
+	DefaultSubtaskAttempts   = 2
+	DefaultFanoutMax         = 3
 )
 
 // loadBool reads a boolean env key ("1"/"true"/"on"/"yes" = on; anything else
@@ -143,21 +161,90 @@ func LoadFromFile(envPath string) (*Config, error) {
 		return defVal
 	}
 
+	meshRole := strings.ToLower(strings.TrimSpace(getVal("GOAGENT_ROLE", DefaultMeshRole)))
+	if meshRole == "" {
+		meshRole = DefaultMeshRole
+	}
+	meshListen := getVal("GOAGENT_MESH_LISTEN", DefaultMeshListen)
+	meshToken := getVal("GOAGENT_MESH_TOKEN", "")
+	leaderAddr := getVal("GOAGENT_LEADER_ADDR", "")
+
 	clientID := getVal("DINGTALK_CLIENT_ID", "")
 	clientSecret := getVal("DINGTALK_CLIENT_SECRET", "")
 	apiToken := getVal("DASHBOARD_API_TOKEN", "")
-	missing := []string{}
-	if clientID == "" {
-		missing = append(missing, "DINGTALK_CLIENT_ID")
+
+	if meshRole == "solo" {
+		missing := []string{}
+		if clientID == "" {
+			missing = append(missing, "DINGTALK_CLIENT_ID")
+		}
+		if clientSecret == "" {
+			missing = append(missing, "DINGTALK_CLIENT_SECRET")
+		}
+		if apiToken == "" {
+			missing = append(missing, "DASHBOARD_API_TOKEN")
+		}
+		if len(missing) > 0 {
+			return nil, fmt.Errorf("missing required configuration: %s (see dingtalk-agent/README.md)", strings.Join(missing, ", "))
+		}
 	}
-	if clientSecret == "" {
-		missing = append(missing, "DINGTALK_CLIENT_SECRET")
+	if meshRole == "leader" && meshToken == "" {
+		return nil, fmt.Errorf("GOAGENT_MESH_TOKEN is required for leader")
 	}
-	if apiToken == "" {
-		missing = append(missing, "DASHBOARD_API_TOKEN")
+	if meshRole == "worker" {
+		if meshToken == "" {
+			return nil, fmt.Errorf("GOAGENT_MESH_TOKEN is required for worker")
+		}
+		if leaderAddr == "" {
+			return nil, fmt.Errorf("GOAGENT_LEADER_ADDR is required for worker")
+		}
 	}
-	if len(missing) > 0 {
-		return nil, fmt.Errorf("missing required configuration: %s (see dingtalk-agent/README.md)", strings.Join(missing, ", "))
+
+	workerID := getVal("GOAGENT_WORKER_ID", "")
+	if workerID == "" {
+		hostname, err := os.Hostname()
+		if err != nil || hostname == "" {
+			hostname = "worker"
+		}
+		workerID = fmt.Sprintf("%s-%d", hostname, os.Getpid())
+	}
+
+	var caps []string
+	if capStr := getVal("GOAGENT_CAPABILITIES", ""); capStr != "" {
+		for _, part := range strings.Split(capStr, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				caps = append(caps, part)
+			}
+		}
+	}
+
+	taskTimeout := time.Duration(DefaultTaskTimeoutSec) * time.Second
+	if ttStr := getVal("GOAGENT_TASK_TIMEOUT", ""); ttStr != "" {
+		if s, err := strconv.Atoi(ttStr); err == nil && s > 0 {
+			taskTimeout = time.Duration(s) * time.Second
+		}
+	}
+
+	missionTimeout := time.Duration(DefaultMissionTimeoutSec) * time.Second
+	if mtStr := getVal("GOAGENT_MISSION_TIMEOUT", ""); mtStr != "" {
+		if s, err := strconv.Atoi(mtStr); err == nil && s > 0 {
+			missionTimeout = time.Duration(s) * time.Second
+		}
+	}
+
+	subtaskAttempts := DefaultSubtaskAttempts
+	if saStr := getVal("GOAGENT_SUBTASK_ATTEMPTS", ""); saStr != "" {
+		if s, err := strconv.Atoi(saStr); err == nil && s > 0 {
+			subtaskAttempts = s
+		}
+	}
+
+	fanoutMax := DefaultFanoutMax
+	if fmStr := getVal("GOAGENT_FANOUT_MAX", ""); fmStr != "" {
+		if s, err := strconv.Atoi(fmStr); err == nil && s >= 0 {
+			fanoutMax = s
+		}
 	}
 
 	// LLM_* wins, then the dashboard's own AI_* env keys (injected via the shared
@@ -297,6 +384,17 @@ func LoadFromFile(envPath string) (*Config, error) {
 			getVal("AI_HEAVY_MODEL", ""),
 		), // empty = no heavy escalation; loop retries stay on the chat model
 		KBToolsEnabled: loadBool(getVal, "AGENT_KB_TOOLS", true),
+
+		MeshRole:        meshRole,
+		MeshListen:      meshListen,
+		MeshToken:       meshToken,
+		LeaderAddr:      leaderAddr,
+		WorkerID:        workerID,
+		Capabilities:    caps,
+		TaskTimeout:     taskTimeout,
+		MissionTimeout:  missionTimeout,
+		SubtaskAttempts: subtaskAttempts,
+		FanoutMax:       fanoutMax,
 	}, nil
 }
 

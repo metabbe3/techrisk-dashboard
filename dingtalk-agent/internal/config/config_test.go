@@ -176,3 +176,89 @@ func withBase(base, extra map[string]string) map[string]string {
 	}
 	return out
 }
+
+func TestMeshConfig(t *testing.T) {
+	// 1. Defaults in solo mode
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "secret", "DASHBOARD_API_TOKEN": "tok",
+	}
+	cfg := loadEnv(t, base)
+	if cfg.MeshRole != "solo" {
+		t.Errorf("MeshRole = %q, want solo", cfg.MeshRole)
+	}
+	if cfg.MeshListen != ":7801" {
+		t.Errorf("MeshListen = %q, want :7801", cfg.MeshListen)
+	}
+	if cfg.TaskTimeout.Seconds() != 300 {
+		t.Errorf("TaskTimeout = %v, want 300s", cfg.TaskTimeout)
+	}
+	if cfg.MissionTimeout.Seconds() != 1800 {
+		t.Errorf("MissionTimeout = %v, want 1800s", cfg.MissionTimeout)
+	}
+	if cfg.SubtaskAttempts != 2 {
+		t.Errorf("SubtaskAttempts = %d, want 2", cfg.SubtaskAttempts)
+	}
+	if cfg.FanoutMax != 3 {
+		t.Errorf("FanoutMax = %d, want 3", cfg.FanoutMax)
+	}
+
+	// 2. Leader mode requires token
+	t.Setenv("GOAGENT_ROLE", "leader")
+	t.Setenv("GOAGENT_MESH_TOKEN", "")
+	if _, err := LoadFromFile("no-such.env"); err == nil {
+		t.Error("expected error for leader without GOAGENT_MESH_TOKEN")
+	}
+
+	t.Setenv("GOAGENT_MESH_TOKEN", "mesh-secret")
+	cfgLeader, err := LoadFromFile("no-such.env")
+	if err != nil {
+		t.Fatalf("unexpected error for valid leader: %v", err)
+	}
+	if cfgLeader.MeshRole != "leader" || cfgLeader.MeshToken != "mesh-secret" {
+		t.Errorf("unexpected leader config: %+v", cfgLeader)
+	}
+
+	// 3. Worker mode requires token and leader addr
+	t.Setenv("GOAGENT_ROLE", "worker")
+	t.Setenv("GOAGENT_MESH_TOKEN", "")
+	t.Setenv("GOAGENT_LEADER_ADDR", "")
+	if _, err := LoadFromFile("no-such.env"); err == nil {
+		t.Error("expected error for worker without token and leader addr")
+	}
+
+	t.Setenv("GOAGENT_MESH_TOKEN", "mesh-secret")
+	if _, err := LoadFromFile("no-such.env"); err == nil {
+		t.Error("expected error for worker without leader addr")
+	}
+
+	t.Setenv("GOAGENT_LEADER_ADDR", "http://127.0.0.1:7801")
+	t.Setenv("GOAGENT_WORKER_ID", "w-custom")
+	t.Setenv("GOAGENT_CAPABILITIES", "logs,dingtalk,incidents")
+	t.Setenv("GOAGENT_TASK_TIMEOUT", "120")
+	t.Setenv("GOAGENT_MISSION_TIMEOUT", "600")
+	t.Setenv("GOAGENT_SUBTASK_ATTEMPTS", "3")
+	t.Setenv("GOAGENT_FANOUT_MAX", "4")
+
+	cfgWorker, err := LoadFromFile("no-such.env")
+	if err != nil {
+		t.Fatalf("unexpected error for valid worker: %v", err)
+	}
+	if cfgWorker.MeshRole != "worker" || cfgWorker.WorkerID != "w-custom" {
+		t.Errorf("WorkerID = %q, want w-custom", cfgWorker.WorkerID)
+	}
+	if len(cfgWorker.Capabilities) != 3 || cfgWorker.Capabilities[1] != "dingtalk" {
+		t.Errorf("Capabilities = %v, want [logs, dingtalk, incidents]", cfgWorker.Capabilities)
+	}
+	if cfgWorker.TaskTimeout.Seconds() != 120 {
+		t.Errorf("TaskTimeout = %v, want 120s", cfgWorker.TaskTimeout)
+	}
+	if cfgWorker.MissionTimeout.Seconds() != 600 {
+		t.Errorf("MissionTimeout = %v, want 600s", cfgWorker.MissionTimeout)
+	}
+	if cfgWorker.SubtaskAttempts != 3 {
+		t.Errorf("SubtaskAttempts = %d, want 3", cfgWorker.SubtaskAttempts)
+	}
+	if cfgWorker.FanoutMax != 4 {
+		t.Errorf("FanoutMax = %d, want 4", cfgWorker.FanoutMax)
+	}
+}

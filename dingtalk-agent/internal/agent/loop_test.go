@@ -415,3 +415,109 @@ func TestKnowledgePromptTeachesAllKBTools(t *testing.T) {
 		}
 	}
 }
+
+func TestLoopToolContextTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := llm.ChatResponse{
+			ID: "chatcmpl-slow",
+			Choices: []llm.ChatChoice{
+				{
+					Index: 0,
+					Message: llm.ChatMessage{
+						Role: "assistant",
+						ToolCalls: []llm.ToolCall{
+							{
+								ID:   "call_slow_1",
+								Type: "function",
+								Function: llm.FunctionCall{
+									Name:      "slow_tool",
+									Arguments: "{}",
+								},
+							},
+						},
+					},
+					FinishReason: "tool_calls",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		LLMBaseURL: server.URL,
+		LLMAPIKey:  "key",
+		LLMModel:   "model",
+	}
+	llmClient := llm.NewClient(cfg)
+	reg := tools.NewRegistry(cfg)
+
+	reg.Register(llm.ToolDefinition{
+		Type:     "function",
+		Function: llm.ToolFunctionDef{Name: "slow_tool"},
+	}, func(ctx context.Context, _ string) (string, error) {
+		select {
+		case <-time.After(10 * time.Second):
+			return "done", nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	})
+
+	agentLoop := NewLoop(llmClient, reg, 5)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, _, _, err := agentLoop.Run(ctx, "run slow", nil, "")
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatalf("expected error due to context timeout, got nil")
+	}
+	if elapsed >= 3*time.Second {
+		t.Fatalf("loop should complete in < 3s when ctx times out, took %v", elapsed)
+	}
+}
+
+func TestLogContextCorrelation(t *testing.T) {
+	// 1. Empty context
+	taskID, missionID := FromContext(context.Background())
+	if taskID != "" || missionID != "" {
+		t.Errorf("expected empty taskID and missionID, got: %q, %q", taskID, missionID)
+	}
+	if p := LogPrefix(context.Background()); p != "" {
+		t.Errorf("expected empty log prefix, got: %q", p)
+	}
+
+	// 2. Context with task_id only
+	ctx := context.WithValue(context.Background(), TaskIDKey, "task-999")
+	taskID, missionID = FromContext(ctx)
+	if taskID != "task-999" || missionID != "" {
+		t.Errorf("expected task-999 and empty missionID, got: %q, %q", taskID, missionID)
+	}
+	if p := LogPrefix(ctx); p != "[task task-999] " {
+		t.Errorf("unexpected prefix: %q", p)
+	}
+
+	// 3. Context with both task_id and mission_id
+	ctx = context.WithValue(ctx, MissionIDKey, "mission-111")
+	taskID, missionID = FromContext(ctx)
+	if taskID != "task-999" || missionID != "mission-111" {
+		t.Errorf("expected task-999 and mission-111, got: %q, %q", taskID, missionID)
+	}
+	if p := LogPrefix(ctx); p != "[task task-999] " {
+		t.Errorf("unexpected prefix: %q", p)
+	}
+
+	// 4. Context with mission_id only
+	ctxMissionOnly := context.WithValue(context.Background(), MissionIDKey, "mission-222")
+	taskID, missionID = FromContext(ctxMissionOnly)
+	if taskID != "" || missionID != "mission-222" {
+		t.Errorf("expected empty taskID and mission-222, got: %q, %q", taskID, missionID)
+	}
+	if p := LogPrefix(ctxMissionOnly); p != "[mission mission-222] " {
+		t.Errorf("unexpected prefix: %q", p)
+	}
+}

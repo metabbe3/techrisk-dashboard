@@ -20,6 +20,7 @@ Upstream commit: `b71ae8ee0b3d0874f4e20bead1b30ad8a7793446` (MIT).
 | Kept (module path rewritten) | agent loop (8 iterations, 4-concurrent tool pool, 8 KB tool-result truncation, 60 K token pruning), guardrails (`secretredact`, `replyfilter`), OpenAI-compatible LLM client |
 | Deleted | telegram package, logengine, commandguard, pathguard, all 8 local-machine tools, `AllowShell` plumbing |
 | Added | `internal/dingtalk` (stream handler, @mention strip, allowlist, history+TTL, dedup, AI-card streaming, DM push), `internal/tools/dashboard.go` (3 read-only tools), env config, Dockerfile |
+| Ported (GoMesh v0.5 parity) | `internal/mesh/` (proto, queue, server, client, meshtools), GoMesh/1.1 leader/worker orchestration protocol with Phase 1 reliability/safety and Phase 2 observability (parity with GoAgent 394c3e2) |
 
 The reply guardrail runs on **every** streamed card frame and the final card;
 the fallback webhook reply gets the same filter. Tool errors are returned to
@@ -67,6 +68,16 @@ chars.
 | `DINGTALK_BOT_NAMES` | no | `Risk Agent` — strips whole-name @mentions in groups |
 | `DINGTALK_DATA_DIR` | no | `data` — auto save/auto recall: who chatted (`users.jsonl`) + conversation history (`history.json`) survive restarts |
 | `HISTORY_TTL` | no | 12h per-conversation memory (last 12 messages) |
+| `GOAGENT_ROLE` | no | `solo` — operating mode: `solo` (DingTalk bot only), `leader` (cluster coordinator), or `worker` (cluster task executor) |
+| `GOAGENT_MESH_LISTEN` | no | `:7801` — TCP listen address when running as leader |
+| `GOAGENT_MESH_TOKEN` | yes (leader/worker) | *(empty)* — shared secret token for GoMesh JSON-RPC authentication (`X-Mesh-Token`) |
+| `GOAGENT_LEADER_ADDR` | yes (worker) | *(empty)* — leader base URL for worker connections (e.g. `http://127.0.0.1:7801`) |
+| `GOAGENT_WORKER_ID` | no | `hostname-pid` — unique worker node identifier |
+| `GOAGENT_CAPABILITIES`| no | *(empty)* — comma-separated capability tags (e.g. `dingtalk,incidents,reports`) |
+| `GOAGENT_TASK_TIMEOUT`| no | `300s` — maximum execution duration for a single subtask before sweep/requeue |
+| `GOAGENT_MISSION_TIMEOUT`| no | `1800s` — maximum total lifecycle for a distributed mission before cancellation |
+| `GOAGENT_SUBTASK_ATTEMPTS`| no | `2` — maximum execution attempts per subtask before marking permanent failure |
+| `GOAGENT_FANOUT_MAX` | no | `3` — maximum parallel sub-agents spawned on iteration budget exhaustion (`0` = off) |
 
 Local dev: copy values into `dingtalk-agent.env` (git-ignored; loaded
 automatically). Compose maps root `.env`'s `AI_API_*` → `LLM_*`.
@@ -331,6 +342,61 @@ the LLM never sees a conversation ID).
   watches are appended to each user message in that chat.
 - Depends on the Laravel `updated_since` filter (row update time) — see
   `docs/reference/dependency-map.md`.
+
+## Mesh Mode (GoMesh/1.1)
+
+GoMesh is an HTTP/1.1 JSON-RPC 2.0 distributed orchestration protocol with constant-time token authentication (`X-Mesh-Token`), capability-based task routing, long-poll dispatch, and persistent JSONL event replay.
+
+This fork features complete GoMesh v0.5 parity with [GoAgent](https://github.com/metabbe3/GoAgent) (commit `394c3e2`), sharing identical environment variables and wire protocols for seamless cross-cluster interoperability (e.g. a GoAgent leader node can orchestrate dingtalk-agent worker followers).
+
+```
+ [Leader: GoAgent or dingtalk-agent] (:7801)
+                    │
+   ┌────────────────┴────────────────┐
+   │ long-poll: GET /nexttask?id=... │
+   │ report & heartbeat: POST /rpc   │
+   ▼                                 ▼
+[Worker A: GoAgent]           [Worker B: dingtalk-agent]
+Capabilities: [logs, shell]   Capabilities: [dingtalk, incidents]
+```
+
+### Protocol Summary & Endpoints
+
+- **Authentication**: Constant-time token verification via `X-Mesh-Token`; wire protocol version negotiation via `X-Mesh-Proto: 1` (`GoMesh/1.1`).
+- **Leader JSON-RPC (`POST /rpc`)**:
+  - `mesh.register`: Register worker ID and capabilities (`heartbeat_sec: 30`, poll endpoint `/nexttask`). Re-registering workers send `known_tasks` (task IDs currently executing); the response's `lost_tasks` lists tasks no longer tracked by the leader after a reboot/requeue, ordering local aborts to prevent duplicate runs.
+  - `mesh.heartbeat`: Worker liveness heartbeat; returns `tasks_pending` count and `abort_tasks` list for timed-out or cancelled missions.
+  - `mesh.add_mission`: Direct programmatic mission submission (1..50 subtasks) with capability targeting.
+  - `mesh.report`: Worker reports subtask completion or failure with execution metrics (iterations, elapsed time). All payloads are sanitized via guardrail secret redaction prior to transmission.
+  - `mesh.get_mission_result`: Returns a mission's persisted final answer (`final_result`) and status — used for recovery after leader restarts.
+  - `mesh.list_missions`: Query recent missions with optional `status` filter and `limit` (default 20, max 100); returns mission metadata and aggregate subtask status counters.
+  - `mesh.list_tasks`: Query all subtasks for a specific mission (`mission_id`), returning goal, status, assigned worker, attempt count, assigned timestamp, and result truncated to 200 characters.
+- **Task Dequeue (`GET /nexttask?id=<worker_id>`)**:
+  - Long-poll holding up to 50 seconds. Returns HTTP 200 with task payload when matching task arrives, or HTTP 204 No Content on poll timeout.
+  - Requeue on dispatch failure: if client disconnects while the leader is writing the response, the task is immediately requeued instead of getting stuck in-flight.
+- **Cluster Observability (`GET /statusz`)**:
+  - Protected by `X-Mesh-Token` (HTTP 401 Unauthorized if missing/invalid).
+  - Returns cluster snapshot JSON: leader uptime in seconds, worker counts (`total`, `alive`, `dead`), queue depth (`pending`, `in_flight`, `active_missions`), and detailed per-worker statistics (`in_flight`, `completed`, `failed`, `requeued`, `status`, `last_seen`).
+
+### Leader Orchestration Tools (LLM)
+
+When operating with `GOAGENT_ROLE=leader`, the coordinator exposes distributed orchestration tools directly to the model:
+- `delegate_task`: Decompose a complex objective into independent subtasks with capability requirements.
+- `list_workers`: Query registered cluster nodes, capabilities, in-flight loads, and liveness.
+- `mission_status`: Retrieve full lifecycle state and subtask results for an active mission.
+- `cancel_mission`: Cancel an active or pending mission and signal aborts to assigned workers.
+- `collect_results`: Aggregate and format findings from completed subtasks.
+- `set_mission_result`: Persist the leader's final synthesized answer into the durable event log.
+- `mesh_info`: Thread-safe cluster summary (role, protocol version, listen address, worker count, queue depth).
+
+### Reliability & Safety Guarantees (v0.5 Parity)
+
+- **P0 Race & Ownership Fixes**: Thread-safe queue statistics (`q.Stats()`), strict report ownership checking (`report.WorkerID == task.AssignedTo`), and idempotent client termination (`sync.Once`).
+- **Dead Worker Sweeper & Abort Recording**: Workers missing heartbeats (>90s) are marked dead; their in-flight tasks are requeued, and abort entries are recorded so a resurrected worker cannot poison state with late reports.
+- **Crash Recovery & Compaction**: Append-only event-sourcing (`state.jsonl`) with synchronous flush. Replay uses streaming line processing (`bufio.Reader` with 1 MB line buffer) to eliminate OOM risks. Log compaction triggers automatically when log exceeds 8 MB and ≥1000 events have occurred.
+- **Auto-Fanout**: Workers exhausting iteration budgets decompose goals into up to `GOAGENT_FANOUT_MAX` parallel sub-agents with divided deadlines and recursion protection.
+- **Task-ID Log Correlation**: Execution contexts carry `task_id` and `mission_id`, prepending `[task <id>] ` to all agent logs for distributed traceability.
+- **Defense-in-Depth Safety**: Secrets in error messages are redacted before mesh reporting; task goals are scanned for prompt injections and wrapped with `FrameDocumentContent` untrusted data boundaries.
 
 ## Testing
 

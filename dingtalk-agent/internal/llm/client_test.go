@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 )
@@ -380,5 +381,66 @@ func TestVisionOmitsMaxTokensWhenZero(t *testing.T) {
 	c := NewClient(&config.Config{LLMBaseURL: server.URL, LLMModel: "m", LLMMaxTokens: 0})
 	if _, err := c.Vision(context.Background(), "p", []byte("img"), "image/png"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestPingSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req ChatRequest
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.MaxTokens != 1 {
+			t.Errorf("expected max_tokens 1, got %d", req.MaxTokens)
+		}
+		resp := ChatResponse{
+			ID: "chatcmpl-ping",
+			Choices: []ChatChoice{
+				{
+					Index: 0,
+					Message: ChatMessage{
+						Role:    "assistant",
+						Content: "pong",
+					},
+					FinishReason: "stop",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		LLMBaseURL: server.URL,
+		LLMModel:   "test-model",
+	}
+	client := NewClient(cfg)
+	if err := client.Ping(context.Background()); err != nil {
+		t.Fatalf("expected ping success, got error: %v", err)
+	}
+}
+
+func TestPingTimeout(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Hangs
+		time.Sleep(2 * time.Second)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{
+		LLMBaseURL: server.URL,
+		LLMModel:   "test-model",
+	}
+	client := NewClient(cfg)
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	err := client.Ping(ctx)
+	elapsed := time.Since(start)
+	if err == nil {
+		t.Fatalf("expected ping timeout error, got nil")
+	}
+	if elapsed > 1500*time.Millisecond {
+		t.Errorf("ping did not return promptly on timeout, took %v", elapsed)
 	}
 }
