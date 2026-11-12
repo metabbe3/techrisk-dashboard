@@ -97,7 +97,7 @@ func newWatchBot(t *testing.T, f *fakeWatchAPI, dataDir string) *Bot {
 		DingTalkOpenAPIHost: f.srv.URL, DingTalkClientID: "robot", DataDir: dataDir,
 	}
 	reg := tools.NewRegistry(cfg)
-	return NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), reg, 4))
+	return NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), reg, 4), llm.NewClient(cfg))
 }
 
 func dmMsg(staff, text string) *chatbot.BotCallbackDataModel {

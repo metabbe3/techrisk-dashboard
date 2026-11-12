@@ -22,7 +22,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
 )
 
-func TestStripMention(t *testing.T) {
+func TestStripMentionInternal(t *testing.T) {
 	names := []string{"Risk Agent"}
 	cases := map[string]struct{ in, want string }{
 		"plain":           {"how many P1s this month?", "how many P1s this month?"},
@@ -34,8 +34,8 @@ func TestStripMention(t *testing.T) {
 		"unknown mention": {"@bob hi there", "hi there"},
 	}
 	for name, tc := range cases {
-		if got := StripMention(tc.in, names); got != tc.want {
-			t.Errorf("%s: StripMention(%q) = %q, want %q", name, tc.in, got, tc.want)
+		if got := stripMention(tc.in, names); got != tc.want {
+			t.Errorf("%s: stripMention(%q) = %q, want %q", name, tc.in, got, tc.want)
 		}
 	}
 }
@@ -43,13 +43,13 @@ func TestStripMention(t *testing.T) {
 func TestAllowlist(t *testing.T) {
 	// Empty allowlist = everyone (gated upstream by the DingTalk app visibility range).
 	cfg := &config.Config{}
-	bot := NewBot(cfg, nil)
+	bot := NewBot(cfg, nil, llm.NewClient(cfg))
 	if !bot.isAllowed("anyone") {
 		t.Error("empty allowlist must allow everyone")
 	}
 
 	cfg.DingTalkAllowlist = []string{"staff123"}
-	bot = NewBot(cfg, nil)
+	bot = NewBot(cfg, nil, llm.NewClient(cfg))
 	if !bot.isAllowed("staff123") {
 		t.Error("allowlisted staff should pass")
 	}
@@ -59,7 +59,7 @@ func TestAllowlist(t *testing.T) {
 }
 
 func TestDedupSuppressesRedelivery(t *testing.T) {
-	bot := NewBot(&config.Config{}, nil)
+	bot := NewBot(&config.Config{}, nil, nil)
 	if !bot.dedup("m1") || !bot.dedup("m2") {
 		t.Fatal("first sightings must pass")
 	}
@@ -73,7 +73,7 @@ func TestDedupSuppressesRedelivery(t *testing.T) {
 
 func TestHistoryKeepLastNAndTTL(t *testing.T) {
 	cfg := &config.Config{HistoryTTL: 20 * time.Millisecond}
-	bot := NewBot(cfg, nil)
+	bot := NewBot(cfg, nil, llm.NewClient(cfg))
 
 	var msgs []llm.ChatMessage
 	for i := 0; i < 30; i++ {
@@ -98,7 +98,7 @@ func TestHandleIgnoresDeniedAndEmpty(t *testing.T) {
 	defer sink.Close()
 
 	cfg := &config.Config{DingTalkAllowlist: []string{"staff1"}}
-	bot := NewBot(cfg, nil)
+	bot := NewBot(cfg, nil, llm.NewClient(cfg))
 
 	denied := &chatbot.BotCallbackDataModel{
 		MsgId: "m-deny", SenderStaffId: "stranger",
@@ -162,7 +162,7 @@ func TestHandleEndToEnd(t *testing.T) {
 		DingTalkOpenAPIHost: llmSrv.URL,
 	}
 	loop := agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
-	bot := NewBot(cfg, loop)
+	bot := NewBot(cfg, loop, llm.NewClient(cfg))
 
 	msg := &chatbot.BotCallbackDataModel{
 		MsgId:          "m-e2e",
@@ -264,7 +264,7 @@ func TestBatchingJoinsRapidMessages(t *testing.T) {
 		DingTalkOpenAPIHost: llmSrv.URL, // card fails fast → webhook fallback path
 	}
 	loop := agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
-	bot := NewBot(cfg, loop)
+	bot := NewBot(cfg, loop, llm.NewClient(cfg))
 
 	send := func(id, text string) {
 		_, err := bot.Handle(context.Background(), &chatbot.BotCallbackDataModel{
@@ -353,7 +353,7 @@ func TestAutoLearnPersistsProfile(t *testing.T) {
 		DingTalkOpenAPIHost: llmSrv.URL, // card fails fast → plain path
 		DataDir:             dir, AutoLearn: true,
 	}
-	bot := NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2))
+	bot := NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2), llm.NewClient(cfg))
 
 	if _, err := bot.Handle(context.Background(), &chatbot.BotCallbackDataModel{
 		MsgId: "learn1", SenderStaffId: "staff1", SenderNick: "Tester",
@@ -418,7 +418,7 @@ func TestInputGateRefusesBeforeLLM(t *testing.T) {
 		LLMBaseURL: llmSrv.URL, LLMAPIKey: "k", LLMModel: "m",
 		DingTalkOpenAPIHost: llmSrv.URL,
 	}
-	bot := NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2))
+	bot := NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2), llm.NewClient(cfg))
 
 	if _, err := bot.Handle(context.Background(), &chatbot.BotCallbackDataModel{
 		MsgId: "inj1", SenderStaffId: "staff1", SenderNick: "Tester",

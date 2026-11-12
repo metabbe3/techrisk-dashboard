@@ -67,7 +67,7 @@ func handleGenerateDeck(dir, argsJSON string) (string, error) {
 	}
 	slides := parseDeckSpec(args.Slides)
 	if len(slides) == 0 {
-		return "Error: slides are empty — compose the deck from tool results first.", nil
+		return "", fmt.Errorf("slides are empty — compose the deck from tool results first")
 	}
 	title := orDefaultStr(args.Title, "Technical Risk Deck")
 

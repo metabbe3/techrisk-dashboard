@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"strconv"
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // ScheduleAPI is the dashboard's agent-schedules API client. Chat reminders
@@ -23,11 +23,7 @@ type ScheduleAPI struct {
 // NewScheduleAPI builds the client (10s timeout: a dead dashboard must not
 // hang the chat reply path).
 func NewScheduleAPI(cfg *config.Config) *ScheduleAPI {
-	return &ScheduleAPI{c: &dashboardClient{
-		base:  cfg.DashboardAPIBase,
-		token: cfg.DashboardAPIToken,
-		http:  &http.Client{Timeout: 10 * time.Second},
-	}}
+	return &ScheduleAPI{c: newDashboardClient(cfg, 10*time.Second)}
 }
 
 // ScheduleItem is one active reminder as the dashboard reports it.
@@ -36,7 +32,6 @@ type ScheduleItem struct {
 	Mode    string  `json:"mode"`
 	Text    string  `json:"text"`
 	Cron    *string `json:"cron"`
-	RunAt   *string `json:"run_at"`
 	NextRun string  `json:"next_run_at"`
 }
 
@@ -53,7 +48,7 @@ func (it ScheduleItem) Describe() string {
 	}
 	text := it.Text
 	if len(text) > 80 {
-		text = text[:80] + "…"
+		text = util.Cut(text, 80) + "…"
 	}
 	return fmt.Sprintf("#%d %s (next %s WIB) %s: %s", it.No, kind, next, it.Mode, text)
 }

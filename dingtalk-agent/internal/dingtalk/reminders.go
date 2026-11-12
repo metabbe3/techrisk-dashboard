@@ -2,18 +2,14 @@ package dingtalk
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 
-	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
@@ -103,48 +99,4 @@ func (b *Bot) bindSchedule(m *chatbot.BotCallbackDataModel, req schedule.Request
 	}
 	log.Printf("[schedule] saved %s by %s in %s", it.Describe(), m.SenderNick, m.ConversationId)
 	return "⏰ Saved reminder " + it.Describe()
-}
-
-// SendMarkdownGroup pushes a robot markdown message INTO a group conversation
-// via POST /v1.0/robot/groupMessages/send. The bot must be in the group;
-// conversationID is the openConversationId (callbacks carry it as ConversationId).
-func SendMarkdownGroup(ctx context.Context, cfg *config.Config, conversationID, title, markdown string) error {
-	msgParam, err := json.Marshal(map[string]string{"title": title, "text": markdown})
-	if err != nil {
-		return err
-	}
-	return newOpenAPIClient(cfg).do(ctx, http.MethodPost, "/v1.0/robot/groupMessages/send", map[string]any{
-		"robotCode":          cfg.DingTalkClientID,
-		"openConversationId": conversationID,
-		"msgKey":             "sampleMarkdown",
-		"msgParam":           string(msgParam),
-	})
-}
-
-// deliverMarkdown routes a proactive markdown push by conversation type:
-// groups go via SendMarkdownGroup, and when that endpoint rejects the robot
-// (missing group-send capability — live-probed "robot 不存在") the message
-// falls back to the creator's DM rather than being lost. Fallback is on ANY
-// error, never on matching the error text. The group error is JOINED — it was
-// swallowed before, so a group+DM double failure looked like success. An empty
-// staffID (external/group-only senders) skips the pointless DM attempt.
-func (b *Bot) deliverMarkdown(ctx context.Context, convoID, convoType, staffID, title, text string) error {
-	if convoType != "2" {
-		if staffID == "" {
-			return fmt.Errorf("no staff id to DM %q", title)
-		}
-		return SendMarkdownDM(ctx, b.cfg, []string{staffID}, title, text)
-	}
-	err := SendMarkdownGroup(ctx, b.cfg, convoID, title, text)
-	if err == nil {
-		return nil
-	}
-	log.Printf("[dingtalk] group send failed (%v) — falling back to DM", err)
-	if staffID == "" {
-		return err
-	}
-	if derr := SendMarkdownDM(ctx, b.cfg, []string{staffID}, title, text+"\n\n_(group delivery failed — sent here instead)_"); derr != nil {
-		return errors.Join(err, derr)
-	}
-	return nil
 }

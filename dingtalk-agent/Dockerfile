@@ -7,7 +7,7 @@ COPY . .
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /agent ./cmd/agent
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates tzdata \
+RUN apk add --no-cache ca-certificates \
     && mkdir -p /data && chown 65534:65534 /data
 COPY --from=build /agent /agent
 ENV DINGTALK_DATA_DIR=/data

@@ -118,7 +118,7 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 			return internalRunResult{
 				OK:             false,
 				Error:          err.Error(),
-				Usage:          usagePtr(usage),
+				Usage:          llm.UsagePtr(usage),
 				ResponseTimeMs: time.Since(started).Milliseconds(),
 			}
 		}
@@ -136,7 +136,7 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 			OK:             true,
 			Output:         filtered,
 			Model:          b.llm.Model(),
-			Usage:          usagePtr(usage),
+			Usage:          llm.UsagePtr(usage),
 			ResponseTimeMs: time.Since(started).Milliseconds(),
 			Delivered:      delivered,
 			DeliveryError:  derr,
@@ -172,13 +172,6 @@ func internalCallback(req internalRunRequest) *chatbot.BotCallbackDataModel {
 		ConversationId:   req.ConversationID,
 		SenderStaffId:    req.StaffID,
 	}
-}
-
-func usagePtr(u llm.Usage) *llm.Usage {
-	if u == (llm.Usage{}) {
-		return nil
-	}
-	return &u
 }
 
 func writeInternalJSON(w http.ResponseWriter, code int, v any) {

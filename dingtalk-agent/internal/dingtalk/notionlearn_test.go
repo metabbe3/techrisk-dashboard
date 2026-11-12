@@ -43,7 +43,7 @@ func TestSummarizeNotionReadsPersistsKnowledge(t *testing.T) {
 	defer llmSrv.Close()
 
 	cfg := &config.Config{LLMBaseURL: llmSrv.URL, LLMAPIKey: "k", LLMModel: "m", DataDir: dir}
-	bot := NewBot(cfg, nil)
+	bot := NewBot(cfg, nil, llm.NewClient(cfg))
 
 	reads := []tools.NotionRead{{
 		Title:   "Payments PRD",
@@ -105,7 +105,7 @@ func TestLearnNotionDrainsAndSkips(t *testing.T) {
 		NotionToolsEnabled: true, DataDir: dir,
 		DashboardAPIBase: dashSrv.URL, DashboardAPIToken: "t",
 	})
-	bot := NewBot(llmCfg, agent.NewLoop(llm.NewClient(llmCfg), reg, 2))
+	bot := NewBot(llmCfg, agent.NewLoop(llm.NewClient(llmCfg), reg, 2), llm.NewClient(llmCfg))
 
 	m := &chatbot.BotCallbackDataModel{SenderStaffId: "staff1", SenderNick: "Tester", ConversationId: "cid-n"}
 
@@ -182,7 +182,7 @@ func TestProcessPlainErrorPathDrainsNotionReads(t *testing.T) {
 		NotionToolsEnabled: true, DataDir: dir,
 		DashboardAPIBase: dashSrv.URL, DashboardAPIToken: "t",
 	})
-	bot := NewBot(llmCfg, agent.NewLoop(llm.NewClient(llmCfg), reg, 2))
+	bot := NewBot(llmCfg, agent.NewLoop(llm.NewClient(llmCfg), reg, 2), llm.NewClient(llmCfg))
 
 	// The turn reads a page, then its LLM call fails — seed exactly that state.
 	turnCtx := tools.WithNotionSink(context.Background())

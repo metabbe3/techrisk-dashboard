@@ -258,8 +258,8 @@ internal listener, a `message` reminder is delivered as-is. The local
 |---|---|
 | `schedule_reminder(when, mode, text)` / `cancel_reminder(id)` | `internal/tools/schedule.go` |
 | cron/one-shot parser + pending handoff (grammar stays Go-owned) | `internal/schedule/` |
-| dashboard `agent-schedules` API client (create/list/cancel) | `internal/tools/schedules.go` |
-| bind to chat + group/DM delivery | `internal/dingtalk/reminders.go` |
+| dashboard `agent-schedules` API client (create/list/cancel) | `internal/tools/scheduleapi.go` |
+| bind to chat + group/DM delivery | `internal/dingtalk/reminders.go` (ticket claiming) · `internal/dingtalk/push.go` (all sends) |
 | storage + dispatch (`AiAgent` rows, `run_at`/cron) | dashboard — `AgentScheduleController`, `DispatchDueAiAgentsCommand` |
 
 - **when** (WIB, fixed UTC+7): 5-field cron (`0 9 * * 1`, `30 8 * * 1-5`), one-shot `YYYY-MM-DD HH:MM`, or `in 30m` / `in 2h`. The Go side validates the grammar; a cron passes through verbatim, a one-shot arrives as a resolved `run_at`.
@@ -311,3 +311,26 @@ LLM SSE stream, DingTalk OpenAPI, dashboard API, embeddings). Laravel side:
 the agent depends on the v1 API's `updated_since` filter, covered by
 `tests/Feature/Api/IncidentUpdatedSinceTest.php` (part of the 1166-test
 baseline in the main repo).
+
+## Structure notes (post-sweep 2026-11-12)
+
+- `internal/util` — shared primitives: `Pending[T]` (16-hex ticket tokens —
+  the format `[0-9a-f]{16}` in the tool descriptions requires), `Cut(s, n)`
+  (rune-safe truncation), `LoadJSON`/`AtomicWrite`/`ReadJSONL`.
+- `internal/dingtalk/push.go` owns ALL outbound sends: `robotSend` (one group /
+  DM send, reused client — no per-send token round-trip), `deliverMedia`,
+  `deliverMarkdown`. `SendMarkdownDM` (main.go's digest push) is the only
+  exported entry.
+- `internal/dingtalk/reminders.go` — ticket claiming (`claimTickets[T]`), the
+  generic behind both schedule and watch binding.
+- `internal/tools/scheduleapi.go` — the dashboard `agent-schedules` client
+  (renamed from `schedules.go`; the grammar lives in `internal/schedule`,
+  the tool in `schedule.go`).
+- `internal/dingtalk/stream.go` — `stripMention` is unexported (package API
+  surface only); `maxConcurrentAgents` / `maxFileDownloadBytes` /
+  `defaultOpenAPIHost` likewise.
+- `internal/llm` — `UsagePtr` is the single usage-to-pointer helper;
+  `client.go`'s stream validates the end (EOF before `[DONE]` → error,
+  `finish_reason=length` → error) instead of returning a silent truncation.
+- `internal/guardrail` — `FilterReplyCap` is the reply-filter entry point
+  (`FilterReply` wrapper deleted).

@@ -57,14 +57,6 @@ func Redact(text string) (string, []string) {
 
 	result := text
 
-	// 1. Private key blocks (entire block)
-	if rePrivateKey.MatchString(result) {
-		result = rePrivateKey.ReplaceAllStringFunc(result, func(s string) string {
-			addHit("private_key")
-			return "[REDACTED:private_key]"
-		})
-	}
-
 	// 2. Database Connection Strings: redact password portion
 	if reConnString.MatchString(result) {
 		result = reConnString.ReplaceAllStringFunc(result, func(s string) string {
@@ -89,31 +81,27 @@ func Redact(text string) (string, []string) {
 		})
 	}
 
-	// 4. JWT tokens
-	if reJWT.MatchString(result) {
-		result = reJWT.ReplaceAllStringFunc(result, func(s string) string {
-			addHit("jwt")
-			return "[REDACTED:jwt]"
-		})
-	}
-
-	// 5. Common API Keys
-	apiKeys := []struct {
-		re      *regexp.Regexp
-		hitType string
+	// Fixed-replacement patterns: one regexp each, one template. A hit type
+	// is recorded when the pattern changes the text (MatchString first would
+	// double-scan; ReplaceAllStringFunc is the scan).
+	constants := []struct {
+		re   *regexp.Regexp
+		tag  string
+		repl string
 	}{
-		{reOpenAIKey, "api_key"},
-		{reGitHubKey, "api_key"},
-		{reAWSKey, "api_key"},
-		{reSlackKey, "api_key"},
-		{reGoogleKey, "api_key"},
+		{rePrivateKey, "private_key", "[REDACTED:private_key]"},
+		{reJWT, "jwt", "[REDACTED:jwt]"},
+		{reOpenAIKey, "api_key", "[REDACTED:api_key]"},
+		{reGitHubKey, "api_key", "[REDACTED:api_key]"},
+		{reAWSKey, "api_key", "[REDACTED:api_key]"},
+		{reSlackKey, "api_key", "[REDACTED:api_key]"},
+		{reGoogleKey, "api_key", "[REDACTED:api_key]"},
+		{reEmail, "email", "[REDACTED:email]"},
 	}
-	for _, ak := range apiKeys {
-		if ak.re.MatchString(result) {
-			result = ak.re.ReplaceAllStringFunc(result, func(s string) string {
-				addHit(ak.hitType)
-				return "[REDACTED:api_key]"
-			})
+	for _, c := range constants {
+		if c.re.MatchString(result) {
+			result = c.re.ReplaceAllString(result, c.repl)
+			addHit(c.tag)
 		}
 	}
 
@@ -157,14 +145,6 @@ func Redact(text string) (string, []string) {
 				return "[REDACTED:card]"
 			}
 			return s
-		})
-	}
-
-	// 8. Email addresses
-	if reEmail.MatchString(result) {
-		result = reEmail.ReplaceAllStringFunc(result, func(s string) string {
-			addHit("email")
-			return "[REDACTED:email]"
 		})
 	}
 

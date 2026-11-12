@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -36,7 +35,7 @@ func main() {
 	}
 
 	if *dmTo != "" {
-		staffIDs := strings.Split(*dmTo, ",")
+		staffIDs := config.SplitList(*dmTo)
 		if err := dingtalk.SendMarkdownDM(context.Background(), cfg, staffIDs, *dmTitle, *dmText); err != nil {
 			log.Fatalf("DM send failed: %v", err)
 		}
@@ -56,7 +55,7 @@ func main() {
 	llmClient := llm.NewClient(cfg)
 	toolRegistry := tools.NewRegistry(cfg)
 	agentLoop := agent.NewLoop(llmClient, toolRegistry, cfg.MaxIterations)
-	bot := dingtalk.NewBot(cfg, agentLoop)
+	bot := dingtalk.NewBot(cfg, agentLoop, llmClient)
 
 	options := []dingtalk_stream.ClientOption{
 		dingtalk_stream.WithAppCredential(

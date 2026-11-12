@@ -12,7 +12,7 @@ import (
 )
 
 // MaxFileDownloadBytes caps message-file downloads.
-const MaxFileDownloadBytes = 15 << 20 // 15 MB
+const maxFileDownloadBytes = 15 << 20 // 15 MB
 
 // fileMessage is the Content payload of a msgtype="file" chatbot callback.
 type fileMessage struct {
@@ -84,8 +84,8 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 
 	// Reject oversize UP FRONT: the 15MB LimitReader used to store a silently
 	// truncated document and the agent summarized half a file as if whole.
-	if fm.FileSize > MaxFileDownloadBytes {
-		return "", fmt.Errorf("file too large (%d bytes, max %d) — compress or split it", fm.FileSize, MaxFileDownloadBytes)
+	if fm.FileSize > maxFileDownloadBytes {
+		return "", fmt.Errorf("file too large (%d bytes, max %d) — compress or split it", fm.FileSize, maxFileDownloadBytes)
 	}
 	if fm.FileSize <= 0 {
 		return "", fmt.Errorf("file reports no size — download refused")
@@ -102,7 +102,7 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 		return "", err
 	}
 	path := out.Name()
-	if _, err := io.Copy(out, io.LimitReader(resp.Body, MaxFileDownloadBytes+1)); err != nil {
+	if _, err := io.Copy(out, io.LimitReader(resp.Body, maxFileDownloadBytes+1)); err != nil {
 		out.Close()
 		_ = os.Remove(path)
 		return "", err
@@ -111,9 +111,9 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 		_ = os.Remove(path)
 		return "", err
 	}
-	if fi, err := os.Stat(path); err != nil || fi.Size() > MaxFileDownloadBytes {
+	if fi, err := os.Stat(path); err != nil || fi.Size() > maxFileDownloadBytes {
 		_ = os.Remove(path)
-		return "", fmt.Errorf("file exceeds the %d byte limit", MaxFileDownloadBytes)
+		return "", fmt.Errorf("file exceeds the %d byte limit", maxFileDownloadBytes)
 	}
 	return path, nil
 }

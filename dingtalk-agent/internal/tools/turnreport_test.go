@@ -57,7 +57,7 @@ func TestReportTurnAsyncPostsTheEnvelope(t *testing.T) {
 		UserText:         "how many open P1s?",
 		AssistantText:    "3 open P1 incidents.",
 		Model:            "glm-5.3",
-		Usage:            llm.Usage{PromptTokens: 100, CompletionTokens: 30, TotalTokens: 130},
+		Usage:            &llm.Usage{PromptTokens: 100, CompletionTokens: 30, TotalTokens: 130},
 		ResponseTimeMs:   2400,
 	})
 

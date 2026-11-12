@@ -1,9 +1,9 @@
 package tools
 
 import (
-	"encoding/xml"
 	"archive/zip"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"path/filepath"
 	"strings"
@@ -82,12 +82,9 @@ func TestGenerateDeckTool(t *testing.T) {
 
 func TestGenerateDeckEmpty(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"title": "X", "slides": "   "})
-	out, err := handleGenerateDeck(t.TempDir(), string(args))
-	if err != nil {
-		t.Fatalf("handleGenerateDeck: %v", err)
-	}
-	if !strings.Contains(out, "Error") {
-		t.Errorf("empty slides should return an error note, got: %s", out)
+	_, err := handleGenerateDeck(t.TempDir(), string(args))
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty slides must error, got err=%v", err)
 	}
 }
 

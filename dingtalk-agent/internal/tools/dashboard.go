@@ -26,11 +26,11 @@ type dashboardClient struct {
 	http  *http.Client
 }
 
-func newDashboardClient(cfg *config.Config) *dashboardClient {
+func newDashboardClient(cfg *config.Config, timeout time.Duration) *dashboardClient {
 	return &dashboardClient{
 		base:  cfg.DashboardAPIBase,
 		token: cfg.DashboardAPIToken,
-		http:  &http.Client{Timeout: 30 * time.Second},
+		http:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -51,20 +51,7 @@ type apiEnvelope struct {
 
 // get performs a GET on path (must start with "/") and returns the decoded envelope.
 func (c *dashboardClient) get(ctx context.Context, path string) (*apiEnvelope, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.token)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("dashboard api unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	return c.decode(resp)
+	return c.request(ctx, http.MethodGet, path, nil)
 }
 
 // post performs a POST with a JSON payload on path and returns the decoded envelope.
@@ -78,11 +65,15 @@ func (c *dashboardClient) del(ctx context.Context, path string, payload any) (*a
 }
 
 func (c *dashboardClient) request(ctx context.Context, method, path string, payload any) (*apiEnvelope, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
+	var body io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		body = bytes.NewReader(data)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.base+path, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +183,7 @@ func pairDates(start, end string) (string, string, error) {
 }
 
 func (r *Registry) registerDashboardTools(cfg *config.Config) {
-	client := newDashboardClient(cfg)
+	client := newDashboardClient(cfg, 30*time.Second)
 	r.dash = client
 
 	r.Register(searchIncidentDef(), typed(client.handleSearchIncidents))

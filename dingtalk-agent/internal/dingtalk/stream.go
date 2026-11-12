@@ -28,7 +28,7 @@ import (
 
 const (
 	// MaxConcurrentAgents bounds in-flight agent loops (each holds an LLM conversation).
-	MaxConcurrentAgents = 4
+	maxConcurrentAgents = 4
 	// historyKeepMsgs mirrors upstream: keep the last N messages per conversation.
 	historyKeepMsgs = 12
 	// seenCap bounds the msgId dedup map before a purge pass.
@@ -80,7 +80,7 @@ type historyEntry struct {
 
 // NewBot builds a DingTalk bot around the agent loop. When cfg.DataDir is set
 // the bot auto-recalls persisted history at boot and auto-saves users + history.
-func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
+func NewBot(cfg *config.Config, loop *agent.Loop, llmClient *llm.Client) *Bot {
 	allowed := make(map[string]struct{}, len(cfg.DingTalkAllowlist))
 	for _, id := range cfg.DingTalkAllowlist {
 		allowed[id] = struct{}{}
@@ -91,11 +91,11 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 		replier:  chatbot.NewChatbotReplier(),
 		allowed:  allowed,
 		api:      newOpenAPIClient(cfg),
-		llm:      llm.NewClient(cfg),
+		llm:      llmClient,
 		history:  make(map[string]historyEntry),
 		seen:     make(map[string]time.Time),
 		inboxes:  make(map[string]chan chatTask),
-		sem:      make(chan struct{}, MaxConcurrentAgents),
+		sem:      make(chan struct{}, maxConcurrentAgents),
 		schedAPI: tools.NewScheduleAPI(cfg),   // dashboard agent-schedules API (10s client)
 		watches:  watch.NewStore(cfg.DataDir), // "" = memory-only
 	}
@@ -145,7 +145,7 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 		return nil, nil
 	}
 
-	text := StripMention(strings.TrimSpace(m.Text.Content), b.cfg.DingTalkBotNames)
+	text := stripMention(strings.TrimSpace(m.Text.Content), b.cfg.DingTalkBotNames)
 
 	// Hard input gate: injection / off-topic asks are refused here, in Go,
 	// before any LLM call is spent.
@@ -368,8 +368,7 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 	// Preferred path: a streaming AI card (typewriter). If the card cannot be
 	// created (missing card permission, API hiccup) fall back to a one-shot
 	// webhook reply — the answer still arrives, just without streaming.
-	title := "Risk Agent"
-	card, err := newAICard(ctx, b.api, m, title)
+	card, err := newAICard(ctx, b.api, m)
 	if err != nil {
 		log.Printf("[dingtalk] AI card unavailable, falling back to webhook reply: %v", err)
 		if ack != "" {
@@ -610,7 +609,7 @@ func (b *Bot) reportTurn(m *chatbot.BotCallbackDataModel, userText, assistantTex
 		UserText:         truncateStr(userText, 2000),
 		AssistantText:    truncateStr(assistantText, 8000),
 		Model:            b.llm.Model(),
-		Usage:            usage,
+		Usage:            llm.UsagePtr(usage),
 		ResponseTimeMs:   elapsed.Milliseconds(),
 		Error:            errMsg,
 	})
@@ -634,21 +633,8 @@ func (b *Bot) deliverGenerated(ctx context.Context, m *chatbot.BotCallbackDataMo
 			mediaID, err := b.api.uploadRobotMedia(ctx, path)
 			if err != nil {
 				log.Printf("[dingtalk] media upload failed for %s: %v", rel, err)
-			} else if m.ConversationType != "2" { // p2p chat (or unknown): DM the sender
-				if err := SendFileDM(ctx, b.cfg, m.SenderStaffId, mediaID, filepath.Base(path)); err != nil {
-					log.Printf("[dingtalk] file DM failed for %s: %v", rel, err)
-				} else {
-					note = "📎 **" + filepath.Base(path) + "** — sent to your DM ✓"
-				}
-			} else if err := SendFileGroup(ctx, b.cfg, m.ConversationId, mediaID, filepath.Base(path)); err != nil {
-				log.Printf("[dingtalk] group file send failed for %s: %v — falling back to DM", rel, err)
-				if err := SendFileDM(ctx, b.cfg, m.SenderStaffId, mediaID, filepath.Base(path)); err != nil {
-					log.Printf("[dingtalk] file DM failed for %s: %v", rel, err)
-				} else {
-					note = "📎 **" + filepath.Base(path) + "** — group send failed, sent to your DM ✓"
-				}
 			} else {
-				note = "📎 **" + filepath.Base(path) + "** — sent to the group ✓"
+				note = b.deliverMedia(ctx, m, mediaID, filepath.Base(path))
 			}
 		} else {
 			log.Printf("[dingtalk] generated-file ticket rejected (missing or outside exports): %q", rel)
@@ -746,7 +732,7 @@ func (w *cardWriter) flush(ctx context.Context, content string) {
 		_ = w.card.stream(ctx, bad)
 		return
 	}
-	w.dirty = push != ""
+	w.dirty = false // pushed everything there was — empty flushes must not re-send
 	w.lastFlush = time.Now()
 	w.mu.Unlock()
 
@@ -849,10 +835,10 @@ func (b *Bot) purgeExpiredLocked() {
 	}
 }
 
-// StripMention removes leading @mention tokens from a group message. A mention is
+// stripMention removes leading @mention tokens from a group message. A mention is
 // matched against the robot's display names first ("@Risk Agent hello" → "hello");
 // anything else @-prefixed loses just its first token ("@bob hi there" → "hi there").
-func StripMention(text string, botNames []string) string {
+func stripMention(text string, botNames []string) string {
 	for {
 		trimmed := strings.TrimSpace(text)
 		if !strings.HasPrefix(trimmed, "@") {

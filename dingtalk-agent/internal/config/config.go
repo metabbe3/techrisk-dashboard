@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"cmp"
 	"errors"
 	"fmt"
 	"os"
@@ -171,21 +172,12 @@ func LoadFromFile(envPath string) (*Config, error) {
 
 	var allowlist []string
 	if raw := getVal("DINGTALK_ALLOWLIST", ""); raw != "" {
-		for _, part := range strings.Split(raw, ",") {
-			if part = strings.TrimSpace(part); part != "" {
-				allowlist = append(allowlist, part)
-			}
-		}
+		allowlist = SplitList(raw)
 	}
 
 	botNames := []string{"Risk Agent"}
 	if raw := getVal("DINGTALK_BOT_NAMES", ""); raw != "" {
-		botNames = nil
-		for _, part := range strings.Split(raw, ",") {
-			if part = strings.TrimSpace(part); part != "" {
-				botNames = append(botNames, part)
-			}
-		}
+		botNames = SplitList(raw)
 	}
 
 	maxIter := DefaultMaxIterations
@@ -211,17 +203,8 @@ func LoadFromFile(envPath string) (*Config, error) {
 		webTools = false
 	}
 
-	autoLearn := true
-	switch strings.ToLower(getVal("AGENT_AUTO_LEARN", "1")) {
-	case "0", "false", "off", "no":
-		autoLearn = false
-	}
-
-	notionTools := true
-	switch strings.ToLower(getVal("AGENT_NOTION_TOOLS", "1")) {
-	case "0", "false", "off", "no":
-		notionTools = false
-	}
+	autoLearn := loadBool(getVal, "AGENT_AUTO_LEARN", true)
+	notionTools := loadBool(getVal, "AGENT_NOTION_TOOLS", true)
 
 	// NOTION_DATABASES="PRD=<id>,TA=<id>" — comma split, first '=' split,
 	// trim; malformed entries are skipped.
@@ -276,7 +259,8 @@ func LoadFromFile(envPath string) (*Config, error) {
 		InternalToken:    getVal("AGENT_INTERNAL_TOKEN", ""),
 		AgentTurnReports: loadBool(getVal, "AGENT_TURN_REPORTS", true),
 
-		EmbeddingModel: firstNonEmpty(
+		// cmp.Or: first non-zero (= non-empty) argument wins.
+		EmbeddingModel: cmp.Or(
 			getVal("LLM_EMBEDDING_MODEL", ""),
 			getVal("AI_EMBEDDING_MODEL", ""),
 			DefaultEmbeddingModel, // matches config/ai.php's default
@@ -285,12 +269,14 @@ func LoadFromFile(envPath string) (*Config, error) {
 	}, nil
 }
 
-// firstNonEmpty returns the first non-empty string.
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
+// SplitList splits a comma-separated env value, trimming blanks (shared with
+// the -dm flag).
+func SplitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
 		}
 	}
-	return ""
+	return out
 }

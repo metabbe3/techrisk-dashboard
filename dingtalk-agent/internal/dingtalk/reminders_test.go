@@ -200,7 +200,7 @@ func newReminderBot(t *testing.T, f *fakeReminderAPI, dataDir string) *Bot {
 		DashboardAPIBase: f.srv.URL + "/api/v1", DashboardAPIToken: "tok",
 	}
 	reg := tools.NewRegistry(&config.Config{}) // schedule tools on; nothing else reaches out
-	return NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), reg, 4))
+	return NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), reg, 4), llm.NewClient(cfg))
 }
 
 func groupMsg(f *fakeReminderAPI, id, staff, nick, text string) *chatbot.BotCallbackDataModel {
@@ -388,7 +388,8 @@ func TestBindScheduleAppliesInputGate(t *testing.T) {
 // — it falls back to the creator's DM (mirror of TestDeliverGeneratedGroup).
 func TestDeliverMarkdownGroupErrorFallsBackToDM(t *testing.T) {
 	srv, dmBodies, groupBodies := fakeFileAPI(t, 400)
-	bot := &Bot{cfg: &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv.URL}}
+	cfg := &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv.URL}
+	bot := &Bot{cfg: cfg, api: newOpenAPIClient(cfg)}
 
 	err := bot.deliverMarkdown(context.Background(), "cidG", "2", "s1", "Risk Agent reminder", "check the P1s")
 	if err != nil {

@@ -90,7 +90,7 @@ func TestNewAICardGroup(t *testing.T) {
 		MsgId: "mid", SenderStaffId: "staff1", SenderCorpId: "corp1",
 		ConversationId: "cid1", ConversationType: "2",
 	}
-	card, err := newAICard(context.Background(), f.client(), m, "Risk Agent")
+	card, err := newAICard(context.Background(), f.client(), m)
 	if err != nil {
 		t.Fatalf("newAICard: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestNewAICardGroup(t *testing.T) {
 func TestNewAICardDM(t *testing.T) {
 	f := newFakeDingTalk(t)
 	m := &chatbot.BotCallbackDataModel{MsgId: "m", SenderStaffId: "s", ConversationType: "1"}
-	if _, err := newAICard(context.Background(), f.client(), m, "Risk Agent"); err != nil {
+	if _, err := newAICard(context.Background(), f.client(), m); err != nil {
 		t.Fatalf("newAICard: %v", err)
 	}
 	if !strings.Contains(fmt.Sprint(f.body(2)["openSpaceId"]), "IM_ROBOT.s") {
@@ -159,5 +159,41 @@ func TestOpenAPIClientAPIError(t *testing.T) {
 	err := newOpenAPIClient(cfg).do(context.Background(), http.MethodPost, "/v1.0/card/instances", map[string]any{})
 	if err == nil || !strings.Contains(err.Error(), "403") {
 		t.Fatalf("want 403 error, got %v", err)
+	}
+}
+
+// TestCardWriterStreamsDeltas pins #12: onDelta must mark the writer dirty so
+// flush("") pushes intermediate frames — the original code checked !dirty
+// before ever setting it, so only the final frame ever reached the card.
+func TestCardWriterStreamsDeltas(t *testing.T) {
+	f := newFakeDingTalk(t)
+	card, err := newAICard(context.Background(), f.client(), &chatbot.BotCallbackDataModel{MsgId: "m"})
+	if err != nil {
+		t.Fatalf("newAICard: %v", err)
+	}
+	w := newCardWriter(card)
+
+	// Zero lastFlush makes the FIRST delta flush immediately; the second one
+	// only buffers (inside the 400ms interval) — this is the frame the old
+	// code dropped.
+	w.onDelta("hel")
+	w.onDelta("lo ")
+	if f.call(3) != "PUT /v1.0/card/streaming" || f.body(3)["content"] != "hel" {
+		t.Fatalf("first delta should stream immediately, got call %q body %v", f.call(3), f.body(3))
+	}
+
+	// flush("") must push the buffered delta — dirty was set in onDelta.
+	w.flush(context.Background(), "")
+	if f.call(4) != "PUT /v1.0/card/streaming" {
+		t.Fatalf("flush after buffered delta = %q, want the streaming endpoint", f.call(4))
+	}
+	if content := f.body(4)["content"]; content != "hello " {
+		t.Errorf("streamed content = %v, want %q", content, "hello ")
+	}
+
+	// Not dirty any more: an empty flush must NOT send a second frame.
+	w.flush(context.Background(), "")
+	if len(f.calls) != 5 {
+		t.Errorf("empty flush after a sent frame sent extra calls: %v", f.calls[5:])
 	}
 }

@@ -168,6 +168,14 @@ func NewClient(cfg *config.Config) *Client {
 	}
 }
 
+// UsagePtr returns a pointer for JSON omitempty, or nil when zero.
+func UsagePtr(u Usage) *Usage {
+	if u == (Usage{}) {
+		return nil
+	}
+	return &u
+}
+
 // Model returns the model every completion from this client uses (resolved
 // default included) — e.g. for turn reports.
 func (c *Client) Model() string { return c.model }

@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -246,11 +245,7 @@ func (r *Registry) registerNotionTools(cfg *config.Config) {
 	catalog := loadNotionCatalog(cfg.DataDir)
 	catalog.seedFromEnv(cfg.NotionDatabases)
 	n := &notionTools{
-		client: &dashboardClient{
-			base:  cfg.DashboardAPIBase,
-			token: cfg.DashboardAPIToken,
-			http:  &http.Client{Timeout: 90 * time.Second},
-		},
+		client:   newDashboardClient(cfg, 90*time.Second),
 		catalog:  catalog,
 		registry: r,
 	}

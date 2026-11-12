@@ -73,7 +73,7 @@ func newInternalBot(t *testing.T, f *fakeInternalAPI) *Bot {
 		DingTalkOpenAPIHost: f.srv.URL, DingTalkClientID: "robot",
 		InternalToken: "shared-secret",
 	}
-	return NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(&config.Config{}), 4))
+	return NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(&config.Config{}), 4), llm.NewClient(cfg))
 }
 
 func postInternal(t *testing.T, url, token string, body any) (int, map[string]any) {

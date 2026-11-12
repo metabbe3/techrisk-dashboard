@@ -3,6 +3,7 @@ package guardrail
 import (
 	"regexp"
 	"strings"
+	"unicode/utf8"
 )
 
 const (
@@ -31,17 +32,12 @@ var (
 	}
 )
 
-// FilterReply applies post-processing to assistant replies before transmitting them to Telegram:
+// FilterReplyCap applies post-processing to a reply before it reaches the
+// user:
 // 1. Redacts sensitive secrets, keys, and tokens.
 // 2. Strips internal reasoning markup, HTML comments, <s> tags, and raw tool call fences.
 // 3. Sanitizes accidental quotations of system instructions.
-// 4. Caps reply length to MaxReplyLength (8000 chars, configurable via
-// FilterReplyCap) with a friendly truncation footer.
-func FilterReply(reply string) string {
-	return FilterReplyCap(reply, MaxReplyLength)
-}
-
-// FilterReplyCap is FilterReply with an explicit reply cap (cfg.MaxReplyChars).
+// 4. Caps reply length to maxLen with a friendly truncation footer.
 func FilterReplyCap(reply string, maxLen int) string {
 	if maxLen <= 0 {
 		maxLen = MaxReplyLength
@@ -79,8 +75,16 @@ func FilterReplyCap(reply string, maxLen int) string {
 			if lastNL > cutIndex-200 && lastNL > 0 {
 				cutIndex = lastNL
 			}
+			// Never split a multi-byte rune at the cut.
+			for cutIndex > 0 && !utf8.RuneStart(filtered[cutIndex]) {
+				cutIndex--
+			}
 			filtered = strings.TrimRight(filtered[:cutIndex], "\r\n ") + TruncationFooter
 		} else {
+			filtered = filtered[:maxLen]
+			for maxLen > 0 && !utf8.RuneStart(filtered[maxLen]) {
+				maxLen--
+			}
 			filtered = filtered[:maxLen]
 		}
 	}

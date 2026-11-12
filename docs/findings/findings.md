@@ -388,3 +388,45 @@ The "Root cause — register design works against reliability" block in `detecti
 - RD-1 unchanged (API/import validation bypass remains latent — no imports in active use).
 
 **KPI conflict:** `techops-pdr-action-plan-2026-v1.pdf` Panel 5 sets "Negative MTTR: green=0 / red=>0" — unachievable as written while negative = days encoding (it tracks Confirmed-loss count, not data quality). **Resolved 2026-10-13:** the Governance page implements the replacement KPI — "FL usable timing %" (share of Confirmed-loss rows with real timing), plus "FL Unknown Channel %" (PDR red >5%) once `detected_via` is backfilled.
+
+---
+
+## FD: DingTalk agent — deferred Wave-1 crash hardening (owner decision 2026-11-11)
+
+The 2026-11-12 audit of `dingtalk-agent/` (BUG-029 in lesson-learned covers the
+Wave-2 fixes actually shipped) also produced a **crash** list the owner chose to
+DEFER. Recorded here so the next sweep starts from it, not from zero:
+
+1. **Tool panic kills the bot** — `tools/registry.go` `Execute` has no recover;
+   each tool runs on its own goroutine so no caller-side recover can catch it.
+   Fix when picked up: named returns + `defer recover()` → error string. Covers
+   fpdf internals + every future tool.
+2. **Agent panic on the card path kills the bot** — the only `recover` in
+   `stream.go` lives in `processPlain`; `processStreaming` (card path),
+   `processFile` goroutine and `go b.fireWatch` have none.
+3. **`memory.Store` marshals the live map after unlocking** — `SaveHistory` /
+   `LearnProfile` snapshot aliasing; two concurrent turns → fatal concurrent-map
+   iteration (unrecoverable; nothing to catch).
+4. **Malformed PDF panics** — `ingest/extract.go` calls `NewReader`/`NumPage`
+   outside ledongthuc/pdf's internal recover.
+5. **`embedArrayOK` data race** — plain bool shared between kb-ingest and
+   `search_knowledge` goroutines (`llm/client.go`).
+6. **Semaphore leak + missing turn timeout** — `watches.go` `<-b.sem` skipped on
+   the early-return path; chat turns run on bare `context.Background()`.
+7. **File branch blocks the SDK handler goroutine**; `file.go` download uses
+   `http.DefaultClient` (no timeout).
+8. **`stripMention` byte slicing** — `ToLower` length-change + `0xA0` byte edge
+   (fixed as part of Wave 2's rune-safe `util.Cut` work — re-check remaining
+   raw-slice sites).
+9. **kb nil-interface** — `stream.go` passes `b.llm` (typed-nil) where an
+   interface is checked with `== nil`.
+10. **Unbounded body reads** — `llm/client.go` `io.ReadAll` without limit on the
+    two non-stream paths (stream path has 64 KiB).
+
+**Consciously skipped in Wave 3:** the `DINGTALK_DATA_DIR=""` dead branches
+(`config.go`, `stream.go`, `watch.go`) — the empty-dir branch is what the
+DATA_DIR tests pin against; deleting it costs test coverage for zero runtime
+gain. Revisit only if the env var is retired.
+
+**Ship guardrail reminder:** stash@{0} holds PROJ-022 (OPA/guardrails, 2026-11-11)
+— recover there before touching the reply-filter/guardrail stack again.
