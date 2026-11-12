@@ -362,3 +362,23 @@ func TestVisionErrorSurfaces(t *testing.T) {
 		t.Fatalf("err = %v, want gateway message", err)
 	}
 }
+
+// LLM_MAX_TOKENS=0 is the documented "model rejects max_tokens" escape hatch —
+// the vision call must honor it too (0 = omit), or every picture 400s.
+func TestVisionOmitsMaxTokensWhenZero(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if _, present := body["max_tokens"]; present {
+			t.Errorf("max_tokens sent on the wire despite LLMMaxTokens=0: %v", body["max_tokens"])
+		}
+		resp := ChatResponse{Choices: []ChatChoice{{Message: ChatMessage{Content: "ok"}}}}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	c := NewClient(&config.Config{LLMBaseURL: server.URL, LLMModel: "m", LLMMaxTokens: 0})
+	if _, err := c.Vision(context.Background(), "p", []byte("img"), "image/png"); err != nil {
+		t.Fatal(err)
+	}
+}

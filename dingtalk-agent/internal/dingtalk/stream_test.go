@@ -670,14 +670,16 @@ func TestProcessPictureFilesKB(t *testing.T) {
 		}
 	}
 	mu.Lock()
-	defer mu.Unlock()
 	if !gotReceipt {
+		mu.Unlock()
 		t.Fatalf("no filing receipt delivered: %v", replyBodies)
 	}
-	if len(visionBody) == 0 || !strings.Contains(string(visionBody), "image_url") {
+	vision := string(visionBody)
+	mu.Unlock() // not held across the second bot call below — its reply needs the handler's mu
+	if vision == "" || !strings.Contains(vision, "image_url") {
 		t.Error("vision call missing the image_url part")
 	}
-	if visionBody != nil && strings.Contains(string(visionBody), "the deploy checklist") == false {
+	if !strings.Contains(vision, "the deploy checklist") {
 		t.Error("vision prompt missing the user caption")
 	}
 
@@ -687,6 +689,16 @@ func TestProcessPictureFilesKB(t *testing.T) {
 	}
 	if !strings.Contains(docs[0].Doc, "2026-") {
 		t.Errorf("title missing the timestamp: %q", docs[0].Doc)
+	}
+
+	// A second picture the same minute from the same sender must NOT overwrite
+	// the first (Save replaces by title hash) — the title must be unique.
+	m2 := *m
+	m2.MsgId = "m-pic-2"
+	bot.processPictureData(context.Background(), &m2, []byte("fake-png-bytes"), "image/png", "")
+	docs = bot.know.ListDocs()
+	if len(docs) != 2 {
+		t.Fatalf("two same-minute pictures = %d docs (%+v), want 2 — titles must be unique", len(docs), docs)
 	}
 }
 
@@ -759,15 +771,23 @@ func TestHandlePictureDispatches(t *testing.T) {
 		}
 	}
 	mu.Lock()
-	defer mu.Unlock()
-	if !gotAck || !gotErr {
-		t.Fatalf("ack=%v err-reply=%v; replies: %v", gotAck, gotErr, replyBodies)
+	noAck := !gotAck || !gotErr
+	badPaths := len(llmPaths) != 0
+	paths := append([]string(nil), llmPaths...)
+	replies := append([]string(nil), replyBodies...)
+	mu.Unlock()
+	if noAck {
+		t.Fatalf("ack=%v err-reply=%v; replies: %v", gotAck, gotErr, replies)
 	}
-	if len(llmPaths) != 0 {
-		t.Errorf("LLM calls spent on a failed download: %v", llmPaths)
+	if badPaths {
+		t.Errorf("LLM calls spent on a failed download: %v", paths)
 	}
 
-	// KB off → pictures are ignored exactly as before this feature.
+	// KB off → pictures are ignored exactly as before this feature. The mutex
+	// must be FREE here: the webhook handler takes it to append — the old
+	// lock-for-the-rest-of-the-test made this assertion vacuous (a blocked
+	// handler could never make len(replyBodies) move, so the regression it
+	// guards could not fail the test).
 	botNoKB := NewBot(&config.Config{
 		DingTalkAllowlist:   []string{"staff1"},
 		KBToolsEnabled:      false,
@@ -786,9 +806,11 @@ func TestHandlePictureDispatches(t *testing.T) {
 		t.Fatalf("handle error: %v", err)
 	}
 	time.Sleep(150 * time.Millisecond)
+	mu.Lock()
 	if len(replyBodies) != before {
 		t.Errorf("KB-off bot answered a picture: %v", replyBodies[before:])
 	}
+	mu.Unlock()
 }
 
 // TestHandleEmptyFileFriendlyReply sends an empty .txt through the real Handle

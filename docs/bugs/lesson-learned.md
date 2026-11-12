@@ -1851,3 +1851,16 @@ from an empty result set.
       env-drift bugs like this one
 
 ---
+
+## 2026-11-12 — New agent tools shipped untaught: prompt/constitution not in the plan's task list (KB file ingest)
+
+**Finding (whole-branch review, PROJ-019 KB ingest):** the feature registered `save_knowledge` / `list_knowledge` / `delete_knowledge`, but the plan never listed `internal/agent/prompt.go` as a touched file — `KnowledgePrompt` still taught only `search_knowledge`, and `ConstitutionTail`'s scope line said the only KB interaction is "answered via search_knowledge. Nothing else." The model would have refused (or never chosen) the headline "remember this" flow the feature exists for. Nothing hermetic catches this: the tools work, the tests pass, and the refusal only appears live.
+
+**Root cause:** plans enumerate code seams (registry, index, client, stream) but not prompt surfaces. A tool the system prompt doesn't mention and the constitution forbids is dead code with a passing suite.
+
+**Prevention:**
+- [x] Any task adding an agent tool MUST also touch (or explicitly rule out) `KnowledgePrompt`/domain-prompt bullets AND the `ConstitutionTail` scope line — same-day precedent: the reminders feature had to widen this exact clause "so the model doesn't refuse scheduling".
+- [x] Plan template: add "prompt surfaces" to the pre-flight interface scan alongside "consumed by" files.
+- [x] Pin it: `TestKnowledgePromptTeachesAllKBTools` asserts every registered KB tool appears in BOTH prompts (a new tool that skips the prompt now fails a test, not a live chat).
+
+---

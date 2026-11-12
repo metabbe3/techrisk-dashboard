@@ -399,3 +399,18 @@ func TestCurrentDateTimeInSystemPrompt(t *testing.T) {
 		t.Fatalf("run failed: %v", err)
 	}
 }
+
+// The KB is writable from chat (save/list/delete beside search) — the model
+// must be TAUGHT that, and the constitution must not forbid it: its scope line
+// used to say the only KB interaction is search_knowledge, "Nothing else",
+// which would make the model refuse the very tools that are registered.
+func TestKnowledgePromptTeachesAllKBTools(t *testing.T) {
+	for _, tool := range []string{"search_knowledge", "save_knowledge", "list_knowledge", "delete_knowledge"} {
+		if !strings.Contains(KnowledgePrompt, tool) {
+			t.Errorf("KnowledgePrompt does not mention %s — the model will never use it", tool)
+		}
+		if !strings.Contains(ConstitutionTail, tool) {
+			t.Errorf("ConstitutionTail scope does not name %s — the constitution forbids what the tool does", tool)
+		}
+	}
+}

@@ -426,7 +426,10 @@ func (b *Bot) processPictureData(ctx context.Context, m *chatbot.BotCallbackData
 		b.reply(ctx, m, "Sorry, I couldn't read that picture — try a clearer image or paste the text instead.")
 		return
 	}
-	title := fmt.Sprintf("Picture from %s — %s", m.SenderNick, time.Now().In(schedule.WIB).Format("2006-01-02 15:04"))
+	// Unique title: Save replaces by title hash, so two same-minute pictures
+	// from one sender would silently overwrite each other without the seconds
+	// + msgId tail.
+	title := fmt.Sprintf("Picture from %s — %s (%s)", m.SenderNick, time.Now().In(schedule.WIB).Format("2006-01-02 15:04:05"), util.Cut(m.MsgId, 8))
 	if err := b.know.Save(ctx, title, transcription); err != nil {
 		b.reply(ctx, m, fmt.Sprintf("I read the picture but couldn't file it: %v", err))
 		return

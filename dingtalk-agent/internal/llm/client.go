@@ -354,7 +354,7 @@ type visionImageURL struct {
 // (content-parts wire format, one-shot: no tools, no streaming). The caller
 // caps the image size; empty image bytes are the caller's bug, not ours.
 func (c *Client) Vision(ctx context.Context, prompt string, image []byte, mimeType string) (string, error) {
-	payload, err := json.Marshal(map[string]any{
+	reqBody := map[string]any{
 		"model": c.visionModel,
 		"messages": []any{map[string]any{
 			"role": "user",
@@ -363,8 +363,11 @@ func (c *Client) Vision(ctx context.Context, prompt string, image []byte, mimeTy
 				{Type: "image_url", ImageURL: &visionImageURL{URL: "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(image)}},
 			},
 		}},
-		"max_tokens": c.maxTokens, // 0 = omit, same as ChatRequest
-	})
+	}
+	if c.maxTokens > 0 { // 0 = omit — real parity with ChatRequest's omitempty (LLM_MAX_TOKENS=0 escape hatch)
+		reqBody["max_tokens"] = c.maxTokens
+	}
+	payload, err := json.Marshal(reqBody)
 	if err != nil {
 		return "", err
 	}

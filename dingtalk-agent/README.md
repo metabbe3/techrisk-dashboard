@@ -107,19 +107,46 @@ docs, summary clamped) → **the downloaded file is deleted from disk** in a
 deferred remove, success or failure. Only summaries persist, never the file.
 
 - Formats: txt, md, csv, json, log, xml (plain); docx (zip → document.xml →
-  tag-strip); pdf (`ledongthuc/pdf`, pure Go — scanned/image PDFs yield "no
-  extractable text").
+  tag-strip); pdf (`ledongthuc/pdf`, pure Go). A scanned/image-only PDF has no
+  text layer — the bot replies asking for the pages as pictures instead of
+  erroring.
 - Caps: 15 MB download, 48,000 chars to the LLM, 2,000-char knowledge summary.
-- Pictures/audio/video are not handled in v1 (they arrive as other msgtypes
-  and are ignored).
+- Pictures are handled (msgtype `picture`): downloaded, transcribed by the
+  vision model, and filed into the RAG KB with a chat receipt (next section).
+  Audio/video remain ignored.
 
 ### Knowledge base (RAG over uploaded documents)
 
 Every ingested document is also embedded into a vector index — so SOP answers
-come from the document text, not from a summary's memory of it. The
-`search_knowledge` tool answers procedure/SOP questions by embedding the query
-and returning the top-6 most similar passages (cosine), each labeled with its
-document and part number; the agent is instructed to quote them.
+come from the document text, not from a summary's memory of it. Four chat
+tools ride the same index (`AGENT_KB_TOOLS`):
+
+- `search_knowledge` answers procedure/SOP questions by embedding the query
+  and returning the top-6 most similar passages (cosine), each labeled with
+  its document and part number; the agent is instructed to quote them.
+- `save_knowledge` files text from chat ("remember this…") under a title —
+  synchronous: the receipt means it is already searchable. Filing under an
+  existing title replaces it.
+- `list_knowledge` lists every document (title, parts, ~chars, last update).
+- `delete_knowledge` removes one document by its exact title (the agent is
+  instructed to confirm the title first). Anyone in the chat may file/delete
+  — the KB is a team surface.
+
+### Pictures → knowledge base (vision)
+
+Send the bot a picture (DM or group @mention) and it replies
+"🖼️ Read the picture and filed it…" with a preview: the image is downloaded
+(direct https URL from the payload when present, else downloadCode →
+`messageFiles/download` exchange; https-only, 15 MB cap), sniffed `image/*`
+via `http.DetectContentType`, transcribed by the vision model (content-parts
+wire format), and saved into the KB. A caption sent with the picture rides
+the transcription prompt ("what's wrong in this screenshot?"). Titles are
+`Picture from <nick> — <ts> (<msgId>)` — unique per message.
+`AI_VISION_MODEL`/`LLM_VISION_MODEL` set the image-reading model; empty falls
+back to the chat model. Two live risks, both degrading to readable chat
+errors: an unrecognized picture payload spelling (fix = add the field name in
+`file.go` after a live capture) and a chat model that cannot see images
+(fix = set `AI_VISION_MODEL`).
 
 - Index: `<DataDir>/kb.jsonl` (one JSON chunk per line). Chunks are 900 runes
   with 100 overlap, ≤150 chunks per document, ≤1000 chunks total (oldest
