@@ -66,3 +66,28 @@ func TestPDFRendersMarkdownConstructs(t *testing.T) {
 		t.Errorf("suspiciously small PDF (%d bytes) — content likely dropped", info.Size())
 	}
 }
+
+func TestRenderMarkdownPDFWithTable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "t.pdf")
+	md := "# Report\n\n| Col A | Col B |\n|---|---|\n| **INC-1** | High |\n| INC-2 | Low |\n\nBody after table."
+	if err := renderMarkdownPDF(path, "Table Test", md); err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || len(b) < 1000 {
+		t.Fatalf("pdf too small: %d bytes, err=%v", len(b), err)
+	}
+	if string(b[:5]) != "%PDF-" {
+		t.Fatalf("not a PDF: %q", string(b[:10]))
+	}
+}
+
+func TestEnsureRenderableRejectsCJK(t *testing.T) {
+	if err := ensureRenderable("plain english"); err != nil {
+		t.Errorf("latin text should pass: %v", err)
+	}
+	if err := ensureRenderable("\u98ce\u9669\u62a5\u544a"); err == nil {
+		t.Errorf("CJK text must be rejected, got nil")
+	}
+}

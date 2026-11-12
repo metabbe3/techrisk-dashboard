@@ -231,3 +231,17 @@ func TestDeckSlideCap(t *testing.T) {
 		t.Errorf("cap should keep 20 slides, slide20 missing")
 	}
 }
+
+func TestParseDeckSpecHashHeading(t *testing.T) {
+	slides := parseDeckSpec("#1 Priority\n- fix now")
+	if len(slides) != 1 || slides[0].Heading != "1 Priority" {
+		t.Errorf("heading mangled: %+v", slides)
+	}
+}
+
+func TestParseDeckSpecTrimmedHashHeading(t *testing.T) {
+	slides := parseDeckSpec("## Section Two\n- a")
+	if slides[0].Heading != "Section Two" {
+		t.Errorf("heading = %q", slides[0].Heading)
+	}
+}

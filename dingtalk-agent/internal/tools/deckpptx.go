@@ -38,7 +38,12 @@ func parseDeckSpec(spec string) []deckSlide {
 			case ln == "":
 			case strings.HasPrefix(ln, "#"):
 				if s.Heading == "" {
-					s.Heading = strings.TrimLeft(ln, "# ")
+					// Strip only the leading marker run ("## " / "# "),
+					// then ONE space — TrimLeft(ln,"# ") used to eat
+					// interior '#' ("#1 Priority" → "1 Priority").
+					h := strings.TrimLeft(ln, "#")
+					h = strings.TrimPrefix(h, " ")
+					s.Heading = h
 				}
 			case strings.HasPrefix(ln, "- ") || strings.HasPrefix(ln, "* "):
 				s.Bullets = append(s.Bullets, strings.TrimSpace(ln[2:]))
@@ -272,7 +277,7 @@ func slideXML(s deckSlide) string {
 	// Heading
 	fmt.Fprintf(&b, `<p:sp><p:nvSpPr><p:cNvPr id="2" name="Heading"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`)
 	b.WriteString(`<p:spPr><a:xfrm><a:off x="685800" y="457200"/><a:ext cx="10820400" cy="1371600"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>`)
-	b.WriteString(`<p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:pPr algn="l"/><a:r><a:rPr lang="en-US" sz="3200" b="1"><a:solidFill><a:srgbClr val="1E293B"/></a:solidFill><a:latin typeface="Calibri Light"/></a:rPr><a:t>`)
+	b.WriteString(`<p:txBody><a:bodyPr><a:normAutofit fontScale="92500" lnSpcReduction="10000"/></a:bodyPr><a:lstStyle/><a:p><a:pPr algn="l"/><a:r><a:rPr lang="en-US" sz="3200" b="1"><a:solidFill><a:srgbClr val="1E293B"/></a:solidFill><a:latin typeface="Calibri Light"/></a:rPr><a:t>`)
 	b.WriteString(xmlEsc(s.Heading))
 	b.WriteString(`</a:t></a:r></a:p></p:txBody></p:sp>`)
 
@@ -288,7 +293,10 @@ func slideXML(s deckSlide) string {
 	if len(s.Bullets) > 0 {
 		b.WriteString(`<p:sp><p:nvSpPr><p:cNvPr id="4" name="Body"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>`)
 		b.WriteString(`<p:spPr><a:xfrm><a:off x="685800" y="2057400"/><a:ext cx="10820400" cy="4114800"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>`)
-		b.WriteString(`<p:txBody><a:bodyPr/><a:lstStyle/>`)
+		// normAutofit: PowerPoint shrinks text to fit the fixed-height box —
+		// without it long bullet lists silently overflowed past the slide
+		// edge (audit 2026-11-12).
+		b.WriteString(`<p:txBody><a:bodyPr><a:normAutofit fontScale="92500" lnSpcReduction="10000"/></a:bodyPr><a:lstStyle/>`)
 		for _, pt := range s.Bullets {
 			b.WriteString(`<a:p><a:pPr marL="285750" indent="-285750"><a:buClr><a:srgbClr val="4F46E5"/></a:buClr><a:buFont typeface="Arial"/><a:buChar char="•"/></a:pPr>`)
 			b.WriteString(`<a:r><a:rPr lang="en-US" sz="1600"><a:solidFill><a:srgbClr val="334155"/></a:solidFill></a:rPr><a:t>`)

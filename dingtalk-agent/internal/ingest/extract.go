@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	pdf "github.com/ledongthuc/pdf"
+	"github.com/xuri/excelize/v2"
 
 	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
@@ -23,19 +24,64 @@ const MaxExtractChars = 48_000
 
 var tagRe = regexp.MustCompile(`<[^>]*>`)
 
+// tableCellBreaks: a newline directly followed by the next cell's tab —
+// i.e. the last paragraph break inside a cell — becomes a space.
+// (Go regexp has no lookahead; implemented in collapseCellBreaks instead.)
+func collapseCellBreaks(s string) string {
+	for strings.Contains(s, "\n\t") {
+		s = strings.ReplaceAll(s, "\n\t", " \t")
+	}
+	return s
+}
+
 // ExtractText returns the textual content of a document by filename
-// extension. Supported: .txt .md .csv .json .log .xml (plain), .docx, .pdf.
+// extension. Supported: .txt .md .csv .json .log .xml (plain), .docx, .xlsx, .pdf.
 func ExtractText(filename string, data []byte) (string, error) {
 	switch strings.ToLower(path.Ext(filename)) {
 	case ".txt", ".md", ".csv", ".json", ".log", ".xml", "":
 		return string(data), nil
 	case ".docx":
 		return extractDocx(data)
+	case ".xlsx":
+		return extractXlsx(data)
 	case ".pdf":
 		return extractPdf(data)
 	default:
-		return "", fmt.Errorf("unsupported file type %q (supported: txt, md, csv, json, log, xml, docx, pdf)", path.Ext(filename))
+		return "", fmt.Errorf("unsupported file type %q (supported: txt, md, csv, json, log, xml, docx, xlsx, pdf)", path.Ext(filename))
 	}
+}
+
+// extractXlsx reads every sheet row-by-row ("Sheet: name" headers, tab-separated
+// cells, empty rows dropped). Excel is the most common incident attachment in
+// risk ops and used to hard-fail as "unsupported" (audit 2026-11-12).
+func extractXlsx(data []byte) (string, error) {
+	f, err := excelize.OpenReader(bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("open xlsx: %w", err)
+	}
+	defer f.Close()
+	var sb strings.Builder
+	for _, sheet := range f.GetSheetList() {
+		rows, err := f.GetRows(sheet)
+		if err != nil {
+			continue // unreadable sheet: keep the rest
+		}
+		fmt.Fprintf(&sb, "Sheet: %s\n", sheet)
+		for _, row := range rows {
+			joined := strings.TrimRight(strings.Join(row, "	"), "	")
+			if strings.TrimSpace(joined) == "" {
+				continue
+			}
+			sb.WriteString(joined)
+			sb.WriteByte('\n')
+		}
+		sb.WriteByte('\n')
+	}
+	out := strings.TrimSpace(sb.String())
+	if out == "" {
+		return "", fmt.Errorf("xlsx has no readable cells (sheet may be charts-only)")
+	}
+	return out, nil
 }
 
 // extractDocx pulls word/document.xml out of the OOXML zip and strips tags.
@@ -58,10 +104,17 @@ func extractDocx(data []byte) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		// Paragraph boundaries become newlines, then drop every tag and
-		// resolve XML entities — "&amp;" used to land in the prompt raw.
+		// Paragraph boundaries become newlines, table cells become tab-
+		// separated rows (a raw cell strip used to glue "Cell1Cell2" together),
+		// then drop every tag and resolve XML entities — "&amp;" used to land
+		// in the prompt raw.
 		withBreaks := strings.ReplaceAll(string(xml), "</w:p>", "\n")
+		withBreaks = strings.ReplaceAll(withBreaks, "</w:tc>", "	")
+		withBreaks = strings.ReplaceAll(withBreaks, "</w:tr>", "\n")
 		text := tagRe.ReplaceAllString(withBreaks, "")
+		// Inside a table cell, paragraph breaks collapse to a space so the
+		// row stays one tab-separated line ("Alpha\n	Beta" → "Alpha Beta	").
+		text = collapseCellBreaks(text)
 		return strings.TrimSpace(html.UnescapeString(text)), nil
 	}
 	return "", fmt.Errorf("docx has no word/document.xml")
