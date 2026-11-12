@@ -124,6 +124,11 @@ func (b *Bot) sweepWatches(ctx context.Context, watermark time.Time) bool {
 				log.Printf("[watch] #%d status persist failed: %v", it.ID, err)
 				continue
 			}
+			// Acquire the agent slot BEFORE spawning (watch fires used to
+			// release b.sem without ever acquiring it: the release either
+			// hung forever on an empty sem or STOLE a live turn's slot —
+			// audit round 4).
+			b.sem <- struct{}{}
 			go b.fireWatch(ctx, it, old, row.Status)
 		}
 	}

@@ -96,6 +96,12 @@ func (b *Bot) bindSchedule(m *chatbot.BotCallbackDataModel, req schedule.Request
 		}
 		runAt = &at
 	}
+	// Per-chat quota: a looping query could mint unlimited cron jobs, each
+	// burning an LLM turn on fire — cap matches watch.MaxPerConversation
+	// (audit round 4).
+	if existing, err := b.schedAPI.List(context.Background(), m.ConversationId); err == nil && len(existing) >= 20 {
+		return "⚠️ Reminder not saved: this chat already has 20 active reminders (the maximum). Cancel one first with cancel_reminder."
+	}
 	it, err := b.schedAPI.Create(context.Background(), m.ConversationId, m.ConversationType,
 		m.SenderStaffId, m.SenderNick, req.Mode, cron, runAt, req.Text)
 	if err != nil {

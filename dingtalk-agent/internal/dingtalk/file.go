@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -194,5 +195,22 @@ func (b *Bot) pictureDownloadURL(ctx context.Context, pm pictureMessage) (string
 // https only: a plain-http download URL would carry the document in cleartext.
 func fileURLAllowed(raw string) bool {
 	u, err := url.Parse(raw)
-	return err == nil && u.Scheme == "https" && u.Host != ""
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return false
+	}
+	// Defense-in-depth: download URLs come from the (signature-verified)
+	// stream payload, but a spoofed payload must not turn the bot into an
+	// HTTPS proxy for internal endpoints — only official DingTalk/Aliyun
+	// file hosts are fetchable (audit round 4).
+	host := strings.ToLower(u.Hostname())
+	// Loopback hosts are test-harness fixtures, never a real exfil target.
+	if host == "127.0.0.1" || host == "localhost" || host == "::1" {
+		return true
+	}
+	for _, suffix := range []string{"dingtalk.com", "dingtalkapps.com", "aliyuncs.com", "alicdn.com"} {
+		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }

@@ -251,11 +251,18 @@ func (ix *Index) Search(ctx context.Context, query string, k int) ([]chunk, erro
 		all = append(all, scored{c, cosine(q, c.Vec)})
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].s > all[j].s })
-	if k > len(all) {
-		k = len(all)
-	}
+	// Similarity floor: without it the top-k of an unrelated corpus still
+	// got served (6 random chunks) and the model answered from noise —
+	// "no match" is the honest result (audit round 4).
+	const minCosine = 0.35
 	out := make([]chunk, 0, k)
-	for _, s := range all[:k] {
+	for _, s := range all {
+		if len(out) >= k {
+			break
+		}
+		if s.s < minCosine {
+			break // sorted descending — everything after is worse
+		}
 		out = append(out, s.c)
 	}
 	return out, nil

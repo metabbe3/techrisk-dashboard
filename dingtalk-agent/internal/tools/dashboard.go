@@ -197,7 +197,9 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 
 	r.Register(searchIncidentDef(), typed(client.handleSearchIncidents))
 	r.Register(getIncidentDef(), typed(client.handleGetIncident))
-	r.Register(getIncidentMarkdownDef(), typed(client.handleGetIncidentMarkdown))
+	// Post-mortems run 15-30KB; the 8KB default cap cut them mid-root-cause
+	// (audit round 4). 48k matches notion_read_page's large-doc allowance.
+	r.RegisterCapped(getIncidentMarkdownDef(), typed(client.handleGetIncidentMarkdown), 48<<10)
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number
@@ -332,17 +334,48 @@ func (c *dashboardClient) handleSearchIncidents(ctx context.Context, args search
 	setNum("min_potential_fund_loss", args.MinPotentialLoss)
 	setNum("max_potential_fund_loss", args.MaxPotentialLoss)
 
-	env, err := c.get(context.Background(), "/incidents?"+q.Encode())
+	env, err := c.get(ctx, "/incidents?"+q.Encode())
 	if err != nil {
 		return "", err
 	}
 
-	out := map[string]any{"meta": env.Meta, "data": json.RawMessage(env.Data)}
-	encoded, err := json.Marshal(out)
+	// Project list rows to the identity columns the model needs to PICK an
+	// incident — the raw Laravel payload (nested relations, audit timelines)
+	// was 25KB+ for 20 incidents and got shredded by the 8KB truncator
+	// mid-JSON (audit round 4). Full detail stays available via
+	// get_incident / get_incident_markdown once an incident is chosen.
+	trimmed, perr := projectIncidentList(env)
+	if perr != nil {
+		return "", perr
+	}
+	encoded, err := json.Marshal(trimmed)
 	if err != nil {
 		return "", err
 	}
 	return string(encoded), nil
+}
+
+// projectIncidentList reduces the raw /incidents envelope to meta + one
+// compact record per incident (no, title, severity, status, dates, losses).
+func projectIncidentList(env *apiEnvelope) (map[string]any, error) {
+	var rows []map[string]any
+	if err := json.Unmarshal(env.Data, &rows); err != nil {
+		// Not a list shape (unexpected API change): fall back to raw passthrough
+		// rather than failing the turn.
+		return map[string]any{"meta": env.Meta, "data": json.RawMessage(env.Data)}, nil
+	}
+	keep := []string{"no", "title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id"}
+	out := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		m := map[string]any{}
+		for _, k := range keep {
+			if v, ok := r[k]; ok && v != nil {
+				m[k] = v
+			}
+		}
+		out = append(out, m)
+	}
+	return map[string]any{"meta": env.Meta, "data": out}, nil
 }
 
 func getIncidentDef() llm.ToolDefinition {

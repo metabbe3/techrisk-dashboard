@@ -85,7 +85,9 @@ func TestSearchRanksAndReingestReplaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hits) != 2 || hits[0].Doc != "Alpha SOP.pdf" {
+	// beta's cosine vs the query (0.11) sits BELOW the similarity floor, so
+	// only alpha survives — the floor is the point (audit round 4).
+	if len(hits) != 1 || hits[0].Doc != "Alpha SOP.pdf" {
 		t.Fatalf("ranking wrong: %+v", hits)
 	}
 
@@ -97,7 +99,7 @@ func TestSearchRanksAndReingestReplaces(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(hits) != 2 {
+	if len(hits) != 1 {
 		t.Fatalf("re-ingest duplicated the doc: %+v", hits)
 	}
 	if hits[0].Text != "alpha v2 text" {
@@ -147,12 +149,12 @@ func TestGlobalCapEvictsOldestDoc(t *testing.T) {
 	if err := ix.ingestNow(context.Background(), "new.pdf", strings.Repeat("beta y", 400)); err != nil {
 		t.Fatal(err) // 2 chunks → 4 > 3 → evict old.pdf
 	}
-	hits, err := ix.Search(context.Background(), "query alpha", 6)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(hits) != 2 || hits[0].Doc != "new.pdf" {
-		t.Fatalf("oldest doc not evicted: %+v", hits)
+	// The query ("query alpha" → vec [0.9 0.1]) is orthogonal to beta's
+	// vectors, so Search proves nothing here post-floor — prove eviction via
+	// ListDocs instead (audit round 4).
+	docs := ix.ListDocs()
+	if len(docs) != 1 || docs[0].Doc != "new.pdf" {
+		t.Fatalf("oldest doc not evicted: %+v", docs)
 	}
 }
 

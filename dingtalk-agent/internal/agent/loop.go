@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"runtime/debug"
 	"sync"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
@@ -68,7 +69,7 @@ func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.
 	return l.runWithEscalation(ctx, userText, history, onDelta, sysExtra)
 }
 
-func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
+func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string, heavy bool) (string, []llm.ChatMessage, llm.Usage, error) {
 	// The system prompt is rebuilt fresh EVERY turn and stripped from history —
 	// a persisted system message would pin a stale clock/sender profile/knowledge
 	// set into every later turn until the trim drops it.
@@ -104,7 +105,10 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		var assistantMsg *llm.ChatMessage
 		var roundUsage llm.Usage
 		var err error
-		if onDelta != nil {
+		if heavy {
+			// Escalation retry: same tools/context on the smarter model.
+			assistantMsg, roundUsage, err = l.llmClient.ChatCompletionHeavy(ctx, callMsgs, toolDefs)
+		} else if onDelta != nil {
 			assistantMsg, roundUsage, err = l.llmClient.ChatCompletionStream(ctx, callMsgs, toolDefs, onDelta)
 		} else {
 			assistantMsg, roundUsage, err = l.llmClient.ChatCompletion(ctx, callMsgs, toolDefs)
@@ -138,15 +142,17 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 // capped to half the normal iteration budget so a bad night cannot burn
 // unlimited tokens.
 func (l *Loop) runWithEscalation(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
-	reply, msgs, usage, err := l.run(ctx, userText, history, onDelta, sysExtra)
+	reply, msgs, usage, err := l.run(ctx, userText, history, onDelta, sysExtra, false)
 	if err == nil || l.llmClient.HeavyModel() == "" || ctx.Err() != nil {
 		return reply, msgs, usage, err
 	}
-	log.Printf("[agent] escalating to heavy model after error: %v", err)
-	saved := l.maxIterations
-	l.maxIterations = max(saved/2, 2)
-	defer func() { l.maxIterations = saved }()
-	reply2, msgs2, usage2, err2 := l.run(ctx, userText, history, onDelta, sysExtra+"\n[Retry on the primary model failed to converge within its tool budget. Be DECISIVE: gather at most the few facts you still need, then commit to a final answer.]")
+	log.Printf("[agent] escalating to heavy model %q after error: %v", l.llmClient.HeavyModel(), err)
+	// No shared-state mutation: the retry runs on a shallow copy with half
+	// the iteration budget (audit round 4 — mutating l.maxIterations raced
+	// concurrent turns sharing this loop).
+	retry := *l
+	retry.maxIterations = max(l.maxIterations/2, 2)
+	reply2, msgs2, usage2, err2 := retry.run(ctx, userText, history, onDelta, sysExtra+"\n[Retry on the primary model failed to converge within its tool budget. Be DECISIVE: gather at most the few facts you still need, then commit to a final answer.]", true)
 	usage.PromptTokens += usage2.PromptTokens
 	usage.CompletionTokens += usage2.CompletionTokens
 	if err2 != nil {
@@ -166,6 +172,15 @@ func (l *Loop) execTools(ctx context.Context, toolCalls []llm.ToolCall) []llm.Ch
 		wg.Add(1)
 		go func(idx int, call llm.ToolCall) {
 			defer wg.Done()
+			// A panic in ANY child goroutine kills the whole process — the
+			// parent's recover cannot cross goroutine boundaries (audit
+			// round 4). Contain it here and surface it as a tool error.
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[agent] PANIC in tool %s: %v\n%s", call.Function.Name, r, debug.Stack())
+					results[idx] = toolResult{toolCallID: call.ID, name: call.Function.Name, content: fmt.Sprintf("Error: internal tool failure (%s)", call.Function.Name)}
+				}
+			}()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -237,7 +252,9 @@ func (l *Loop) buildSystemPrompt(sysExtra string) string {
 	}
 	// "since yesterday" and friends are unreliable without the clock —
 	// scheduled task-runs especially (they fire at any hour on any day).
-	sys += "\n\nCurrent date/time: " + time.Now().In(schedule.WIB).Format("Mon 2006-01-02 15:04 MST")
+	// Hour granularity: a per-minute clock made the system prompt string
+	// unique every turn, defeating provider prompt caching (audit round 4).
+	sys += "\n\nCurrent date/time (hour precision): " + time.Now().In(schedule.WIB).Format("Mon 2006-01-02 15h MST")
 	return sys
 }
 

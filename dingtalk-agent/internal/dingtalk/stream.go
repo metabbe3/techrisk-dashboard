@@ -12,6 +12,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
@@ -109,7 +110,8 @@ func NewBot(cfg *config.Config, loop *agent.Loop) *Bot {
 	}
 	if cfg.DataDir != "" {
 		b.store = memory.NewStore(cfg.DataDir)
-		for id, e := range b.store.All() { // auto recall
+		b.store.SetHistoryTTL(cfg.HistoryTTL) // load-time expiry filter (audit round 4)
+		for id, e := range b.store.All() {    // auto recall
 			b.history[id] = historyEntry{messages: e.Messages, lastSeen: e.LastSeen}
 		}
 		if loop != nil {
@@ -144,6 +146,28 @@ func (b *Bot) knowledgePrompt() string {
 		fmt.Fprintf(&sb, "- [%s] %s — %s\n", e.Time.In(schedule.WIB).Format("2006-01-02"), e.File, summary)
 	}
 	return sb.String()
+}
+
+// Drain waits for in-flight agent turns to finish (up to timeout) so a
+// SIGTERM does not sever a multi-tool turn mid-answer. Returns false on
+// timeout (turns still running).
+func (b *Bot) Drain(timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		for i := 0; i < MaxConcurrentAgents; i++ {
+			b.sem <- struct{}{} // acquire every slot; blocks while turns run
+		}
+		for i := 0; i < MaxConcurrentAgents; i++ {
+			<-b.sem // give them back
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false // turns still running; caller decides to exit anyway
+	}
 }
 
 // Handle implements chatbot.IChatBotMessageHandler: it acks every frame and
@@ -201,8 +225,12 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 		return nil, nil
 	}
 
+	// Redact before logging: ops questions often carry account numbers,
+	// phones or debug tokens — raw text used to flow straight into the
+	// centralized container logs (audit round 4).
+	safeText, _ := guardrail.Redact(text)
 	log.Printf("[dingtalk] message from %s (%s) in conversation %s: %s",
-		m.SenderNick, m.SenderStaffId, m.ConversationId, text)
+		m.SenderNick, m.SenderStaffId, m.ConversationId, util.Cut(safeText, 200))
 
 	b.enqueue(m, text, nil, nil)
 
@@ -745,6 +773,12 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 // finalize is the shared tail of a successful turn: persist history, guard the
 // reply, bind parked reminder/watch tickets, report the turn.
 func (b *Bot) finalize(m *chatbot.BotCallbackDataModel, text, reply string, newHistory []llm.ChatMessage, usage llm.Usage, started time.Time) string {
+	// Redact secrets in BOTH directions before persisting: history used to be
+	// saved raw (before FilterReplyCap ran) and replayed to the model every
+	// later turn (audit round 4).
+	for i := range newHistory {
+		newHistory[i].Content, _ = guardrail.Redact(newHistory[i].Content)
+	}
 	b.saveHistory(m.ConversationId, newHistory)
 	filtered := guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars)
 	if filtered == "" {
@@ -787,7 +821,34 @@ var reGeneratedFile = regexp.MustCompile(`\[generated-file: ([^\]\n]+)\]`)
 // to the sender's DM when the robot lacks the group-send capability; a DM ask
 // delivers to the DM. Upload/DM failure downgrades the note to a saved-path
 // line — it never fails the turn.
+// lastExportsGC spaces out the exports garbage collection (best-effort,
+// once per hour — files are tiny but never deleted otherwise; audit round 4).
+var lastExportsGC int64
+
+func gcExports(dir string) {
+	now := time.Now().Unix()
+	if atomic.SwapInt64(&lastExportsGC, now) == now || atomic.LoadInt64(&lastExportsGC)+3600 > now {
+		return // someone else just ran it / ran recently
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().AddDate(0, 0, -7)
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.ModTime().Before(cutoff) {
+			_ = os.Remove(filepath.Join(dir, e.Name()))
+		}
+	}
+}
+
 func (b *Bot) deliverGenerated(ctx context.Context, m *chatbot.BotCallbackDataModel, reply string) string {
+	if dir := b.dataDir(); dir != "" {
+		gcExports(filepath.Join(dir, "exports"))
+	}
 	for _, mm := range reGeneratedFile.FindAllStringSubmatch(reply, -1) {
 		rel := strings.TrimSpace(mm[1])
 		note := "📎 " + filepath.Base(rel) + " — saved at `" + rel + "` (DM delivery failed, see server log)"

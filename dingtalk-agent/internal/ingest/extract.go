@@ -61,19 +61,34 @@ func extractXlsx(data []byte) (string, error) {
 	}
 	defer f.Close()
 	var sb strings.Builder
+	// Streaming row iterator with hard caps: GetRows materialized the WHOLE
+	// sheet into memory — a sparse sheet with millions of empty rows could
+	// exhaust the heap (audit round 4).
+	const maxRowsPerSheet = 5000
 	for _, sheet := range f.GetSheetList() {
-		rows, err := f.GetRows(sheet)
+		iter, err := f.Rows(sheet)
 		if err != nil {
 			continue // unreadable sheet: keep the rest
 		}
 		fmt.Fprintf(&sb, "Sheet: %s\n", sheet)
-		for _, row := range rows {
+		n := 0
+		for iter.Next() {
+			if n >= maxRowsPerSheet {
+				fmt.Fprintf(&sb, "...[sheet truncated at %d rows]\n", maxRowsPerSheet)
+				break
+			}
+			row, _ := iter.Columns()
 			joined := strings.TrimRight(strings.Join(row, "	"), "	")
 			if strings.TrimSpace(joined) == "" {
 				continue
 			}
 			sb.WriteString(joined)
 			sb.WriteByte('\n')
+			if sb.Len() > MaxExtractChars {
+				fmt.Fprintf(&sb, "...[extraction capped at %d chars]\n", MaxExtractChars)
+				return strings.TrimSpace(sb.String()), nil
+			}
+			n++
 		}
 		sb.WriteByte('\n')
 	}

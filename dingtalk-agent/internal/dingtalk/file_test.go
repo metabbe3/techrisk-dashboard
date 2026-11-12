@@ -62,7 +62,7 @@ func TestMessageFileDownloadURL(t *testing.T) {
 }
 
 func TestFileURLAllowed(t *testing.T) {
-	for _, ok := range []string{"https://a.com/x"} { // http is cleartext — rejected
+	for _, ok := range []string{"https://a.dingtalk.com/x", "https://files.aliyuncs.com/y"} { // official hosts; http is cleartext — rejected
 		if !fileURLAllowed(ok) {
 			t.Errorf("%q should be allowed", ok)
 		}
@@ -106,10 +106,10 @@ func TestParsePictureMessage(t *testing.T) {
 func TestPictureDownloadURL(t *testing.T) {
 	b := &Bot{}
 	u, err := b.pictureDownloadURL(context.Background(), pictureMessage{DownloadURL: "https://files.example/x.png"})
-	if err != nil || u != "https://files.example/x.png" {
+	if err == nil || u != "" { // non-DingTalk host: refused since the allowlist (audit round 4)
 		t.Fatalf("direct url: %q, %v", u, err)
 	}
-	if _, err := b.pictureDownloadURL(context.Background(), pictureMessage{DownloadURL: "http://files.example/x.png", DownloadCode: ""}); err == nil {
+	if _, err := b.pictureDownloadURL(context.Background(), pictureMessage{DownloadURL: "https://static.dingtalk.com/x.png", DownloadCode: ""}); err != nil {
 		t.Fatal("plain-http direct url accepted")
 	}
 
@@ -126,12 +126,12 @@ func TestPictureDownloadURL(t *testing.T) {
 		if body["downloadCode"] != "pc9" {
 			t.Errorf("body = %v", body)
 		}
-		_, _ = w.Write([]byte(`{"downloadUrl":"https://files.example/y.png"}`))
+		_, _ = w.Write([]byte(`{"downloadUrl":"https://files.dingtalk.com/y.png"}`))
 	}))
 	defer srv.Close()
 	b = &Bot{api: &openAPIClient{appKey: "appkey", host: srv.URL, httpClient: srv.Client()}}
 	u, err = b.pictureDownloadURL(context.Background(), pictureMessage{PictureDownloadCode: "pc9"})
-	if err != nil || u != "https://files.example/y.png" {
+	if err != nil || u != "https://files.dingtalk.com/y.png" {
 		t.Fatalf("code branch: %q, %v", u, err)
 	}
 }

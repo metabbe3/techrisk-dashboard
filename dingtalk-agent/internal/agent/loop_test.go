@@ -381,13 +381,14 @@ func TestCurrentDateTimeInSystemPrompt(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(resp)
 
-		if !strings.Contains(sys, "Current date/time: ") {
+		if !strings.Contains(sys, "Current date/time (hour precision): ") {
 			t.Errorf("current date/time missing from system prompt: %.200s", sys)
 		}
-		// WIB fixed zone — format 'Mon 2006-01-02 15:04 MST' must round-trip.
-		idx := strings.Index(sys, "Current date/time: ")
-		line := strings.TrimSpace(sys[idx+len("Current date/time: "):])
-		if _, err := time.Parse("Mon 2006-01-02 15:04 MST", line); err != nil {
+		// WIB fixed zone — hour-granularity format must round-trip
+		// (minute precision defeated provider prompt caching; audit round 4).
+		idx := strings.Index(sys, "Current date/time (hour precision): ")
+		line := strings.TrimSpace(sys[idx+len("Current date/time (hour precision): "):])
+		if _, err := time.Parse("Mon 2006-01-02 15h MST", line); err != nil {
 			t.Errorf("date line not parseable: %q", line)
 		}
 	}))

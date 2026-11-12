@@ -104,6 +104,16 @@ func main() {
 	// Start() only dials and spawns the read loop; block until shutdown.
 	<-ctx.Done()
 
+	// Graceful drain: let in-flight multi-tool turns finish (bounded) so a
+	// restart does not sever answers mid-generation (audit round 4).
+	if bot != nil {
+		if bot.Drain(15 * time.Second) {
+			log.Printf("drain complete — no agent turns in flight")
+		} else {
+			log.Printf("drain timed out after 15s — exiting with turns still running")
+		}
+	}
+
 	if internalSrv != nil {
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer shutdownCancel()
