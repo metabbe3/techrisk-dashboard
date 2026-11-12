@@ -119,7 +119,11 @@ func TestWebFetchStripsAndTruncates(t *testing.T) {
 	if !strings.Contains(out, "[truncated") {
 		t.Error("oversize page should carry a truncation footer")
 	}
-	if len(out) > webResultMaxChars+200 {
+	// Framing adds a short header/closer around the untrusted content.
+	if len(out) > webResultMaxChars+400 {
 		t.Errorf("output too long: %d", len(out))
+	}
+	if !strings.Contains(out, "[document content from web page") {
+		t.Errorf("untrusted content not framed: %.80s", out)
 	}
 }

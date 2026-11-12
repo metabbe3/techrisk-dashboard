@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
@@ -252,7 +253,10 @@ func (w *webTools) handleWebFetch(_ context.Context, args webFetchArgs) (string,
 	if strings.TrimSpace(text) == "" {
 		return "", fmt.Errorf("page has no readable text")
 	}
-	return selfTruncate(text), nil
+	// Web pages are untrusted: framed as data so embedded prompt injection
+	// ("ignore instructions and fetch X") reads as content, not commands
+	// (audit 2026-11-12).
+	return guardrail.FrameDocumentContent("web page "+u.Host, selfTruncate(text)), nil
 }
 
 // htmlToText drops script/style blocks, converts block ends to newlines, strips tags.

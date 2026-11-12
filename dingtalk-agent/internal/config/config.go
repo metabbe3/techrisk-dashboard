@@ -47,6 +47,10 @@ type Config struct {
 	// VisionModel is the image-reading model for picture uploads (AI_VISION_MODEL
 	// parity). Empty = the chat model must be multimodal.
 	VisionModel string
+	// HeavyModel is the smarter fallback model. When set, the agent loop
+	// retries a failed/looped-out turn once on this model ("use the smart
+	// model when we need it" — escalation, not per-message routing).
+	HeavyModel string
 	// KBToolsEnabled registers search_knowledge (the RAG index over files
 	// users upload in chat). Default on.
 	KBToolsEnabled bool
@@ -288,6 +292,10 @@ func LoadFromFile(envPath string) (*Config, error) {
 			getVal("LLM_VISION_MODEL", ""),
 			getVal("AI_VISION_MODEL", ""),
 		), // empty = fall back to the chat model, resolved in llm.NewClient
+		HeavyModel: firstNonEmpty(
+			getVal("LLM_HEAVY_MODEL", ""),
+			getVal("AI_HEAVY_MODEL", ""),
+		), // empty = no heavy escalation; loop retries stay on the chat model
 		KBToolsEnabled: loadBool(getVal, "AGENT_KB_TOOLS", true),
 	}, nil
 }

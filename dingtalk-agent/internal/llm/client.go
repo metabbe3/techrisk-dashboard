@@ -132,6 +132,7 @@ type Client struct {
 	baseURL      string
 	apiKey       string
 	model        string
+	heavyModel   string // smarter escalation model; empty = none
 	visionModel  string // image transcription; defaults to model
 	maxTokens    int
 	httpClient   *http.Client
@@ -155,11 +156,13 @@ func NewClient(cfg *config.Config) *Client {
 	if visionModel == "" {
 		visionModel = model // chat model must be multimodal
 	}
+	heavyModel := cfg.HeavyModel // empty = escalation disabled
 
 	return &Client{
 		baseURL:      baseURL,
 		apiKey:       cfg.LLMAPIKey,
 		model:        model,
+		heavyModel:   heavyModel,
 		visionModel:  visionModel,
 		maxTokens:    cfg.LLMMaxTokens,
 		embedModel:   cfg.EmbeddingModel,
@@ -178,6 +181,59 @@ func NewClient(cfg *config.Config) *Client {
 // Model returns the model every completion from this client uses (resolved
 // default included) — e.g. for turn reports.
 func (c *Client) Model() string { return c.model }
+
+// HeavyModel returns the escalation model ("" when unset).
+func (c *Client) HeavyModel() string { return c.heavyModel }
+
+// ChatCompletionHeavy retries the same completion on the heavy (smarter)
+// model. Returns an error when no heavy model is configured.
+func (c *Client) ChatCompletionHeavy(ctx context.Context, messages []ChatMessage, tools []ToolDefinition) (*ChatMessage, Usage, error) {
+	if c.heavyModel == "" {
+		return nil, Usage{}, fmt.Errorf("no heavy model configured")
+	}
+	reqBody := ChatRequest{
+		Model:     c.heavyModel,
+		Messages:  messages,
+		Tools:     tools,
+		MaxTokens: c.maxTokens,
+	}
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to marshal chat request: %w", err)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(data))
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to create http request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to read response body: %w", err)
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var apiErr ChatResponse
+		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error != nil {
+			return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
+		}
+		return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+	var chatResp ChatResponse
+	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to decode chat response: %w", err)
+	}
+	if len(chatResp.Choices) == 0 {
+		return nil, Usage{}, fmt.Errorf("llm returned no choices in response")
+	}
+	return &chatResp.Choices[0].Message, chatResp.Usage.resolved(), nil
+}
 
 // embeddingResult is one row of the /embeddings response.
 type embeddingResult struct {

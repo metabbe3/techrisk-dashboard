@@ -58,14 +58,14 @@ type toolResult struct {
 // verbatim to the system prompt for this run only — the per-sender learned profile
 // travels through it.
 func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
-	return l.run(ctx, userText, history, nil, sysExtra)
+	return l.runWithEscalation(ctx, userText, history, nil, sysExtra)
 }
 
 // RunStreaming is Run with text deltas of the assistant's answers forwarded to
 // onDelta as they arrive. Tool-call reasoning rounds produce no deltas; only the
 // visible answer streams.
 func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
-	return l.run(ctx, userText, history, onDelta, sysExtra)
+	return l.runWithEscalation(ctx, userText, history, onDelta, sysExtra)
 }
 
 func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
@@ -128,6 +128,31 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 	// 2026-11-12): returning it as a normal reply made callers persist the
 	// placeholder into history and report the turn as a success.
 	return "", messages[1:], totalUsage, fmt.Errorf("agent hit the %d-iteration tool budget without a final answer — narrow the query", l.maxIterations)
+}
+
+// runWithEscalation runs the loop; when the chat model burns its tool
+// iteration budget without a final answer AND a heavy model is configured,
+// the whole turn is retried ONCE on the heavy model with a slimmer task
+// framing ("extract everything, then answer") — the smarter model tends to
+// converge where the fast one loops (audit 2026-11-12). The heavy retry is
+// capped to half the normal iteration budget so a bad night cannot burn
+// unlimited tokens.
+func (l *Loop) runWithEscalation(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
+	reply, msgs, usage, err := l.run(ctx, userText, history, onDelta, sysExtra)
+	if err == nil || l.llmClient.HeavyModel() == "" || ctx.Err() != nil {
+		return reply, msgs, usage, err
+	}
+	log.Printf("[agent] escalating to heavy model after error: %v", err)
+	saved := l.maxIterations
+	l.maxIterations = max(saved/2, 2)
+	defer func() { l.maxIterations = saved }()
+	reply2, msgs2, usage2, err2 := l.run(ctx, userText, history, onDelta, sysExtra+"\n[Retry on the primary model failed to converge within its tool budget. Be DECISIVE: gather at most the few facts you still need, then commit to a final answer.]")
+	usage.PromptTokens += usage2.PromptTokens
+	usage.CompletionTokens += usage2.CompletionTokens
+	if err2 != nil {
+		return reply, msgs, usage, err // original error is the true story
+	}
+	return reply2, msgs2, usage, nil
 }
 
 // execTools runs one round of tool calls (max 4 concurrent) and returns the
