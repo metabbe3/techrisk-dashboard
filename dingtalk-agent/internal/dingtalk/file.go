@@ -59,8 +59,37 @@ func (c *openAPIClient) messageFileDownloadURL(ctx context.Context, downloadCode
 	return out.DownloadURL, nil
 }
 
-// downloadMessageFile saves the upload into dir (caller deletes it when done)
-// and returns its local path.
+// pictureMessage is the Content payload of a msgtype="picture" callback. The
+// exact field spelling varies across DingTalk app versions and cannot be
+// verified offline (the SDK leaves Content raw) — accept every known one.
+type pictureMessage struct {
+	DownloadCode        string `json:"downloadCode"`
+	PictureDownloadCode string `json:"pictureDownloadCode"`
+	PictureDownloadURL  string `json:"pictureDownloadUrl"`
+	DownloadURL         string `json:"downloadUrl"`
+}
+
+func parsePictureMessage(raw any) (pictureMessage, bool) {
+	if raw == nil {
+		return pictureMessage{}, false
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return pictureMessage{}, false
+	}
+	var pm pictureMessage
+	if err := json.Unmarshal(data, &pm); err != nil {
+		return pictureMessage{}, false
+	}
+	ok := pm.DownloadCode != "" || pm.PictureDownloadCode != "" || pm.PictureDownloadURL != "" || pm.DownloadURL != ""
+	if !ok {
+		return pictureMessage{}, false
+	}
+	return pm, true
+}
+
+// downloadMessageFile exchanges a downloadCode and saves the upload into dir
+// (caller deletes it when done); returns its local path.
 func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir string) (string, error) {
 	dlURL, err := b.api.messageFileDownloadURL(ctx, fm.DownloadCode)
 	if err != nil {
@@ -69,6 +98,24 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 	if !fileURLAllowed(dlURL) {
 		return "", fmt.Errorf("download url rejected: %q", dlURL)
 	}
+
+	// Reject oversize UP FRONT: the 15MB LimitReader used to store a silently
+	// truncated document and the agent summarized half a file as if whole.
+	if fm.FileSize > MaxFileDownloadBytes {
+		return "", fmt.Errorf("file too large (%d bytes, max %d) — compress or split it", fm.FileSize, MaxFileDownloadBytes)
+	}
+	if fm.FileSize <= 0 {
+		return "", fmt.Errorf("file reports no size — download refused")
+	}
+
+	return b.downloadTo(ctx, dlURL, filepath.Base(fm.FileName), dir)
+}
+
+// downloadTo GETs dlURL and saves the bytes into dir under a randomized name
+// carrying name. Callers run fileURLAllowed first and own any declared-size
+// pre-check (picture payloads carry none); downloadTo enforces only the
+// post-download cap.
+func (b *Bot) downloadTo(ctx context.Context, dlURL, name, dir string) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
 	if err != nil {
 		return "", err
@@ -81,23 +128,12 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("download file: HTTP %d", resp.StatusCode)
 	}
-
-	// Reject oversize UP FRONT: the 15MB LimitReader used to store a silently
-	// truncated document and the agent summarized half a file as if whole.
-	if fm.FileSize > MaxFileDownloadBytes {
-		return "", fmt.Errorf("file too large (%d bytes, max %d) — compress or split it", fm.FileSize, MaxFileDownloadBytes)
-	}
-	if fm.FileSize <= 0 {
-		return "", fmt.Errorf("file reports no size — download refused")
-	}
-
-	name := filepath.Base(fm.FileName) // never trust a client path
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
 	// os.CreateTemp: two uploads named report.docx in one chat overwrote each
 	// other mid-read.
-	out, err := os.CreateTemp(dir, "up-*-"+name)
+	out, err := os.CreateTemp(dir, "up-*-"+filepath.Base(name)) // never trust a client path
 	if err != nil {
 		return "", err
 	}
@@ -116,6 +152,33 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 		return "", fmt.Errorf("file exceeds the %d byte limit", MaxFileDownloadBytes)
 	}
 	return path, nil
+}
+
+// pictureDownloadURL resolves a picture's download URL: a direct https URL
+// from the payload when present (allowlist-checked like every download), else
+// the downloadCode exchange (picture codes ride the same messageFiles API;
+// if DingTalk ever refuses them, the direct-URL spelling covers the rest).
+func (b *Bot) pictureDownloadURL(ctx context.Context, pm pictureMessage) (string, error) {
+	for _, u := range []string{pm.PictureDownloadURL, pm.DownloadURL} {
+		if u != "" && fileURLAllowed(u) {
+			return u, nil
+		}
+	}
+	code := pm.PictureDownloadCode
+	if code == "" {
+		code = pm.DownloadCode
+	}
+	if code == "" {
+		return "", fmt.Errorf("picture message carries neither a download url nor a code")
+	}
+	dlURL, err := b.api.messageFileDownloadURL(ctx, code)
+	if err != nil {
+		return "", fmt.Errorf("get download url: %w", err)
+	}
+	if !fileURLAllowed(dlURL) {
+		return "", fmt.Errorf("download url rejected: %q", dlURL)
+	}
+	return dlURL, nil
 }
 
 // fileURLAllowed guards against the API returning an unexpected host —
