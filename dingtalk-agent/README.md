@@ -421,8 +421,16 @@ baseline in the main repo).
   (renamed from `schedules.go`; the grammar lives in `internal/schedule`,
   the tool in `schedule.go`).
 - `internal/dingtalk/stream.go` — `stripMention` is unexported (package API
-  surface only); `maxConcurrentAgents` / `maxFileDownloadBytes` /
-  `defaultOpenAPIHost` likewise.
+  surface only); `defaultOpenAPIHost` likewise. `MaxConcurrentAgents` /
+  `MaxFileDownloadBytes` are exported (GoMesh v0.5 interop).
+
+## Skills convention
+
+- `skills/<family>/SKILL.md` documents every tool family — registration,
+  prompt surface, constitution, gates, tests, gotchas. **Adding a new tool
+  family: follow the 9-step checklist in
+  [`skills/README.md`](skills/README.md)**; `TestSkillDocsCoverRegistry`
+  fails until the new tool is documented there.
 - `internal/llm` — `UsagePtr` is the single usage-to-pointer helper;
   `client.go`'s stream validates the end (EOF before `[DONE]` → error,
   `finish_reason=length` → error) instead of returning a silent truncation.

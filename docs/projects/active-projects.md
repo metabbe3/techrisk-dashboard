@@ -225,6 +225,7 @@ Interactive Q&A bot in DingTalk answering from dashboard data: @mention in a gro
 - [ ] Live smoke test (dev app creds; owner DMs bot, staffId captured) — In Progress
 - [ ] Owner: mint API token, grant `qyapi_robot_sendmsg` + card perms — Pending
 - [x] Group batching per sender + chat-created reminders (`schedule_reminder` / `cancel_reminder`, group or DM, message or task mode) — Done 2026-11-11
+- [x] Skills convention: per-family `skills/<name>/SKILL.md` (checklist + index in `dingtalk-agent/skills/README.md`, enforced by `TestSkillDocsCoverRegistry`) — Done 2026-11-16; the "auto-create skills" backlog item above = auto-GENERATING new skills, distinct from this docs convention
 - [ ] (Follow-up scope) DingTalk channel on `reminders:send-*`; auto-create skills; org directory sync (staffId ↔ dashboard user email) — Backlog
 
 #### Blockers
