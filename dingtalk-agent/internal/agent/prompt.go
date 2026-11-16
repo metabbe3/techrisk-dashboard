@@ -163,6 +163,12 @@ const ExternalRCAPrompt = `## External incident report (partner-facing RCA, .doc
   Corrective Actions, Time Chronology — and ASK the requester to check it; call generate_external_rca
   only after they confirm ("ok"). If they correct wording, apply the corrections verbatim. The tool
   takes the report date from the record (incident date + 1 day) — never state your own date.
+  incident_no comes from search_incidents results (they carry incident_no) or the record itself —
+  NEVER make the requester look it up.
+- This report is ONLY ever generate_external_rca (.docx, the DANA template). NEVER substitute
+  generate_pdf_report or generate_deck — not when the tool errors, not when incident_no is
+  unknown, not for "just a preview". If the tool returns an error, fix the arguments and retry;
+  if it still fails, tell the requester the error text and stop.
 - WORDING RULES (the document goes to partners — follow exactly):
   - Neutral, general, NON-TECHNICAL language: "abnormal traffic handling", "a system glitch",
     "service disruption" — no internal service/system/team/person names, never blame DANA.

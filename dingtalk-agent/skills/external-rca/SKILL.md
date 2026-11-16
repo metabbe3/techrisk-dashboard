@@ -19,7 +19,7 @@ embedded template and the bot ships the .docx to whoever asked.
 ## Contract
 | Tool | Params | Returns |
 |---|---|---|
-| `generate_external_rca` | `incident_no` (required), `summary`, `problem`, `root_cause`, `actions` (one per line, ≤10), `chronology` (one per line `YYYY-MM-DD HH:MM \| event`, ≤30) | `[generated-file: exports/…docx]` marker |
+| `generate_external_rca` | `incident_no` (required — comes from `search_incidents` rows, which carry `incident_no`; never ask the requester), `summary`, `problem`, `root_cause`, `actions` (one per line, ≤10), `chronology` (one per line `YYYY-MM-DD HH:MM \| event`, ≤30) | `[generated-file: exports/…docx]` marker |
 
 - Header date = record's `incident_date` **+1 day** (`02 Jan 2006`) — computed
   in code from the dashboard record, never from the model.

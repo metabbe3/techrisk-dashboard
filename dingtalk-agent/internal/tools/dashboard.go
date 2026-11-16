@@ -347,7 +347,11 @@ func (c *dashboardClient) handleSearchIncidents(ctx context.Context, args search
 }
 
 // projectIncidentList reduces the raw /incidents envelope to meta + one
-// compact record per incident (no, title, severity, status, dates, losses).
+// compact record per incident (incident_no, title, severity, status, dates,
+// losses). Keys MUST match IncidentListApiResource's emitted names — the 2026
+// keep-list drift (`no`/`title` vs the resource's `incident_no`/
+// `incident_title`) silently stripped the number from every search row and
+// left the external-RCA flow blocked asking the human for it (2026-11-16).
 func projectIncidentList(env *apiEnvelope) (map[string]any, error) {
 	var rows []map[string]any
 	if err := json.Unmarshal(env.Data, &rows); err != nil {
@@ -355,7 +359,7 @@ func projectIncidentList(env *apiEnvelope) (map[string]any, error) {
 		// rather than failing the turn.
 		return map[string]any{"meta": env.Meta, "data": json.RawMessage(env.Data)}, nil
 	}
-	keep := []string{"no", "title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id"}
+	keep := []string{"incident_no", "incident_title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id"}
 	out := make([]map[string]any, 0, len(rows))
 	for _, r := range rows {
 		m := map[string]any{}

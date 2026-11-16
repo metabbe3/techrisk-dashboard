@@ -94,7 +94,13 @@ func (r *Registry) handleExternalRCA(ctx context.Context, dir string, args exter
 	if err := json.Unmarshal(raw, &rec); err != nil || rec.IncidentDate == "" {
 		return "", fmt.Errorf("incident %s has no incident_date in the dashboard record", args.IncidentNo)
 	}
-	incidentDate, err := time.Parse("2006-01-02", rec.IncidentDate)
+	// The detail API serializes incident_date as ISO-8601 (Carbon toJSON,
+	// e.g. "2026-11-06T00:00:00.000000Z"); plain "2006-01-02" appears in
+	// fixtures and hand-built rows. Accept both — Format() keeps the parsed
+	// zone, so the calendar date stays exactly as recorded. (The strict
+	// Y-m-d parse errored on every REAL record; a model that sees the error
+	// improvises with generate_pdf_report — the "why is this a PDF" symptom.)
+	incidentDate, err := parseRCADate(rec.IncidentDate)
 	if err != nil {
 		return "", fmt.Errorf("incident %s: unreadable incident_date %q", args.IncidentNo, rec.IncidentDate)
 	}
@@ -156,6 +162,19 @@ func parseRCAActions(raw string) ([]string, error) {
 }
 
 type rcaRow struct{ date, time, event string }
+
+// parseRCADate parses the record's incident_date in either serialization the
+// dashboard emits: plain "2006-01-02" or Carbon's ISO-8601 toJSON (RFC3339
+// with fractional seconds). Format() keeps the parsed zone, so the calendar
+// date stays exactly as recorded.
+func parseRCADate(s string) (time.Time, error) {
+	for _, layout := range []string{"2006-01-02", time.RFC3339Nano} {
+		if t, err := time.Parse(layout, s); err == nil {
+			return t, nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("unparseable incident_date %q", s)
+}
 
 func parseRCAChronology(raw string) ([]rcaRow, error) {
 	var out []rcaRow

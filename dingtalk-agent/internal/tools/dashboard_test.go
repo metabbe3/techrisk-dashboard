@@ -39,6 +39,44 @@ func envelope(w http.ResponseWriter, data any, meta any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+// TestSearchIncidentsKeepsIdentityFields pins the projection against the exact
+// row shape IncidentListApiResource emits. The 2026-11-16 drift: the keep-list
+// expected `no`/`title` while the resource renamed to `incident_no`/
+// `incident_title` — every search row silently lost its number and the
+// external-RCA flow got blocked asking the human for it.
+func TestSearchIncidentsKeepsIdentityFields(t *testing.T) {
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		envelope(w, []any{map[string]any{
+			"id":              42,
+			"incident_no":     "20261106_IN_0042",
+			"incident_title":  "dana.id inaccessible via several ISPs",
+			"summary":         "Domain access blocked.",
+			"severity":        "X1",
+			"incident_date":   "2026-11-06",
+			"incident_status": "Open",
+			"created_at":      "2026-11-06T10:00:00.000000Z",
+			"updated_at":      "2026-11-06T12:00:00.000000Z",
+		}}, map[string]any{"total": 1})
+	})
+
+	out, err := reg.Execute(context.Background(), "search_incidents", `{"limit":1}`)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	for _, want := range []string{
+		`"incident_no":"20261106_IN_0042"`, `"incident_title":"dana.id inaccessible via several ISPs"`,
+		`"id":42`, `"severity":"X1"`, `"incident_date":"2026-11-06"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("projected row missing %s (got: %s)", want, out)
+		}
+	}
+	// non-identity payload (summary, audit noise) must NOT survive the projection
+	if strings.Contains(out, `"summary"`) {
+		t.Errorf("summary leaked into the projected search row: %s", out)
+	}
+}
+
 func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 	var gotQuery string
 	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {

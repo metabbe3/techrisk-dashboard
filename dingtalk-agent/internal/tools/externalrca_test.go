@@ -212,6 +212,38 @@ func TestExternalRCAUnknownIncident(t *testing.T) {
 	}
 }
 
+// The REAL dashboard serializes incident_date as ISO-8601 (Carbon toJSON:
+// "2026-11-06T00:00:00.000000Z", verified via tinker). The strict Y-m-d parse
+// errored on every real record and the model then improvised a generic PDF
+// via generate_pdf_report — the "why is this a PDF" symptom.
+func TestExternalRCAISODateAccepted(t *testing.T) {
+	reg, dir := rcaTestRegistry(t, "2026-11-06T00:00:00.000000Z")
+	doc := rcaText(t, generatedRCADoc(t, reg, dir, rcaSample))
+	if !strings.Contains(doc, "07 Nov 2026") || !strings.Contains(doc, "Incident Report for 06 Nov 2026 Incident") {
+		t.Error("ISO-8601 incident_date not parsed — header/title dates wrong")
+	}
+}
+
+func TestExternalRCAParseRCADate(t *testing.T) {
+	for good, want := range map[string]string{
+		"2026-11-06":                  "06 Nov 2026",
+		"2026-11-06T00:00:00.000000Z": "06 Nov 2026",
+		"2026-12-31T17:00:00.000000Z": "31 Dec 2026",
+	} {
+		got, err := parseRCADate(good)
+		if err != nil {
+			t.Errorf("parseRCADate(%q): %v", good, err)
+			continue
+		}
+		if f := got.Format("02 Jan 2006"); f != want {
+			t.Errorf("parseRCADate(%q) = %s, want %s", good, f, want)
+		}
+	}
+	if _, err := parseRCADate("garbage"); err == nil {
+		t.Error("garbage date must error")
+	}
+}
+
 func TestExternalRCAOtherPartsByteIdentical(t *testing.T) {
 	tpl := readRCAZip(t, externalRCATemplate)
 	reg, dir := rcaTestRegistry(t, "2026-11-05")
