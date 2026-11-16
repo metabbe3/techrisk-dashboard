@@ -347,6 +347,13 @@ class IncidentResource extends Resource
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'superIncident:id,no,title']))
             ->modifyQueryUsing(fn (Builder $query) => $query->withCount('subIncidents')) // PROJ-022 chevron/badge visibility
+            // PROJ-022 (owner 2026-11-16): the super's money display is the
+            // family total — carry the sub sums in one query so the money
+            // columns never per-row query (familyMoney() reads them).
+            ->modifyQueryUsing(fn (Builder $query) => $query
+                ->withSum('subIncidents', 'potential_fund_loss')
+                ->withSum('subIncidents', 'recovered_fund')
+                ->withSum('subIncidents', 'fund_loss'))
             ->defaultSort('incident_date', 'desc')
             ->columns([
                 // PROJ-022: expand/collapse. Row-conditional ->hidden() is not
@@ -440,17 +447,18 @@ class IncidentResource extends Resource
                 TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
                 TextColumn::make('pics.name')->label('PIC')->badge()->toggleable()->width('100px'),
                 TextColumn::make('incident_date')->dateTime()->sortable()->width('100px'),
-                TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->width('110px')->summarize(Sum::make()->money('IDR')->label('Total Potential')),
-                TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->width('100px')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
-                TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->width('100px')->summarize(Sum::make()->money('IDR')->label('Total Loss')),
+                // PROJ-022 (owner 2026-11-16): a super's money columns show
+                // the FAMILY total (itself + subs); subs and standalones keep
+                // their own values. Display-only — the sort/summary bases
+                // stay on the stored columns.
+                TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->width('110px')->state(fn (Incident $record): float => $record->familyMoney()['potential'])->summarize(Sum::make()->money('IDR')->label('Total Potential')),
+                TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->width('100px')->state(fn (Incident $record): float => $record->familyMoney()['recovered'])->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
+                TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->width('100px')->state(fn (Incident $record): float => $record->familyMoney()['actual'])->summarize(Sum::make()->money('IDR')->label('Total Loss')),
                 TextColumn::make('recovery_rate')->label('Recovery %')->state(function (Incident $record): string {
-                    if ($record->potential_fund_loss && $record->potential_fund_loss > 0) {
-                        $rate = ($record->recovered_fund / $record->potential_fund_loss) * 100;
+                    // Family base too — same roll-up as the money columns.
+                    $rate = $record->familyRecoveryRate();
 
-                        return number_format($rate, 1).'%';
-                    }
-
-                    return '0%';
+                    return $rate > 0 ? number_format($rate, 1).'%' : '0%';
                 })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray'))->width('80px'),
 
                 TextColumn::make('classification')->sortable()->toggleable(isToggledHiddenByDefault: true),

@@ -446,16 +446,22 @@ class ViewIncident extends ViewRecord
                         TextEntry::make('fund_status')
                             ->badge()
                             ->color(fn (?FundStatus $state) => $state?->color() ?? 'gray'),
+                        // PROJ-022 (owner 2026-11-16): family totals on a
+                        // super — same display roll-up as the list money
+                        // columns (stored values untouched).
                         TextEntry::make('potential_fund_loss')
                             ->money('IDR')
-                            ->color('warning'),
+                            ->color('warning')
+                            ->state(fn (Incident $record): float => $record->familyMoney()['potential']),
                         TextEntry::make('fund_loss')
                             ->label('Actual Fund Loss')
                             ->money('IDR')
-                            ->color('danger'),
+                            ->color('danger')
+                            ->state(fn (Incident $record): float => $record->familyMoney()['actual']),
                         TextEntry::make('recovered_fund')
                             ->money('IDR')
-                            ->color('success'),
+                            ->color('success')
+                            ->state(fn (Incident $record): float => $record->familyMoney()['recovered']),
                         TextEntry::make('loss_taken_by'),
                     ])->columns(2)->columnSpan(1),
             ]),

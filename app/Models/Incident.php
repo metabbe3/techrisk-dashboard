@@ -419,6 +419,52 @@ class Incident extends Model implements Auditable
         return $this->parent_incident_id !== null || $this->subIncidents()->exists();
     }
 
+    /**
+     * PROJ-022 (owner 2026-11-16): a super-incident's money DISPLAY is the
+     * family total — its own values plus its subs' (money is booked on subs;
+     * the super's own fields usually stay 0). Display-time only: storage,
+     * exports and metric queries are untouched. A sub or standalone gets its
+     * own values back (one level deep — a sub has no children).
+     *
+     * @return array{potential: float, recovered: float, actual: float}
+     */
+    public function familyMoney(): array
+    {
+        return [
+            'potential' => (float) $this->potential_fund_loss + $this->subMoneySum('potential_fund_loss'),
+            'recovered' => (float) $this->recovered_fund + $this->subMoneySum('recovered_fund'),
+            'actual' => (float) $this->fund_loss + $this->subMoneySum('fund_loss'),
+        ];
+    }
+
+    /**
+     * The family's recovery rate: family recovered over family potential,
+     * 0 when there is no potential to recover against.
+     */
+    public function familyRecoveryRate(): float
+    {
+        $money = $this->familyMoney();
+
+        return $money['potential'] > 0
+            ? ($money['recovered'] / $money['potential']) * 100
+            : 0.0;
+    }
+
+    /**
+     * Sum of one money column over the subs, without extra queries when the
+     * list query already carried it in via withSum('subIncidents', ...).
+     */
+    private function subMoneySum(string $column): float
+    {
+        $aggregate = "sub_incidents_sum_{$column}";
+
+        if (array_key_exists($aggregate, $this->attributes)) {
+            return (float) ($this->attributes[$aggregate] ?? 0);
+        }
+
+        return (float) $this->subIncidents()->sum($column);
+    }
+
     public function statusUpdates(): HasMany
     {
         return $this->hasMany(StatusUpdate::class)->latest();
