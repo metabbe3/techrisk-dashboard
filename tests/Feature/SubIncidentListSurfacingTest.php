@@ -81,6 +81,20 @@ class SubIncidentListSurfacingTest extends TestCase
             ->assertSee('Sub ZX7 hidden child');
     }
 
+    public function test_sub_rows_carry_a_row_class_for_family_styling(): void
+    {
+        [$super, $sub] = $this->seedFamily();
+
+        // The sub row must be MARKED so CSS can indent it under its super
+        // (owner 2026-11-16: the family should read as one unit) — before
+        // expansion no sub rows render, so the marker appears only after.
+        Livewire::actingAs($this->viewer())
+            ->test(ListIncidents::class)
+            ->assertDontSee('sub-incident-row')
+            ->call('toggleExpandedSubIncidents', $super->id)
+            ->assertSee('sub-incident-row');
+    }
+
     public function test_search_surfaces_sub_rows(): void
     {
         [, $sub] = $this->seedFamily();
