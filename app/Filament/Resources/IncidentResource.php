@@ -677,8 +677,13 @@ class IncidentResource extends Resource
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 ]),
             ])
-            ->contentFooter(fn () => view('livewire.incident-stats-footer', [
-                'stats' => app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build(),
+            ->contentFooter(fn ($livewire) => view('livewire.incident-stats-footer', [
+                // BUG-022: the footer must read the SAME rows the table under
+                // it shows — tab + filters + search. The old no-arg build()
+                // re-derived only the date filters, so every fund/status tab
+                // showed All Cases numbers.
+                'stats' => app(\App\Filament\Statistics\IncidentStatsFooterData::class)
+                    ->build($livewire->getFilteredTableQuery()->clone()),
             ]));
     }
 

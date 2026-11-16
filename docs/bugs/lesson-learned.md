@@ -1920,3 +1920,34 @@ bound.
 - [x] Pin it: `TestKnowledgePromptTeachesAllKBTools` asserts every registered KB tool appears in BOTH prompts (a new tool that skips the prompt now fails a test, not a live chat).
 
 ---
+
+---
+
+### [BUG-032] - Incidents Summary footer ignored the active tab (fund tabs showed All Cases MTTR/MTBF/totals) + Quarterly fund tabs sequenced MTBF off the baseline chain
+
+**Date:** 2026-11-16
+**Discovered By:** Owner ("in report MTBF and MTTR is wrong for fundloss / non fundloss, for all incident already correct")
+**Severity:** Medium (wrong management numbers, no crash)
+**Status:** Resolved
+
+### Description
+Two surfaces showed All Cases numbers where the owner expected each surface's own rows:
+
+1. **The Incidents table's Summary footer** (contentFooter on `IncidentResource::table()`) called `IncidentStatsFooterData::build()` with NO query. `baseQuery()` re-derives only the request's date filters (`quick_period` + `custom_date_range` — BUG-018's deliberate fallback), so on the Fund Loss / Non Fund Loss tabs (and any other tab / SelectFilter / search), Total Cases, Avg MTTR (mins/days) and Avg MTBF were the All Cases values.
+2. **The Quarterly Report's Fund Loss / Non Fund Loss tabs** passed the baseline query as `mtbfScope`, so their MTBF column and Avg MTBF read gaps against incidents of EVERY fund status. (Quarterly MTTR was already per-tab; the All Tabs export already sequences per-tab — the two surfaces the owner flagged.)
+
+Regression path: the pre-f6779e2 footer used `$this->getFilteredTableQuery()->clone()`; the move to the declarative `->contentFooter()` dropped it, and the BUG-018 rebuild (2026-10-03) intentionally re-derived only date filters — which fixed "footer vs date filter" parity while silently leaving "footer vs tab" broken. The Quarterly baseline-scope behavior was a deliberate 2026-10-23 rule the owner reversed on 2026-11-16.
+
+### Root Cause
+A stats builder whose input scope is *re-derived* instead of *received* can only be right for the surface that last wrote the derivation. Every new scope dimension (tab, search, SelectFilter) added to the table after the builder was written silently desyncs it — exactly the BUG-005/006/007 one-surface-drift family, fixed here by passing the table's own filtered query instead of fixing one call site.
+
+### Fix
+- `IncidentResource.php`: `->contentFooter(fn ($livewire) => ...build($livewire->getFilteredTableQuery()->clone()))` — Filament injects `$livewire` into table closures; `getFilteredTableQuery()` = table query (tab applied) + filters + search.
+- `QuarterlyReportExport.php`: Fund Loss / Non Fund Loss tabs pass their own query clone as `mtbfScope`. All Cases / Recovered Cases / quarter tabs unchanged (baseline chain).
+- `IncidentStatsFooterData::build()` doc: preferred input is the table's filtered query; `baseQuery()` stays as the no-table-context fallback (ExecutiveCalcSheet passes its own query).
+
+### Prevention Checklist
+- [x] Tab parity pinned: `IncidentStatsFooterTabParityTest` — Fund Loss / Non Fund Loss footers must equal their own rows' stats and differ from All Cases (the exact user-visible symptom).
+- [x] Rule for stats builders: take the surface's query as a parameter; re-deriving filters from `request()` is only for callers with no surface (documented on `build()`).
+- [x] Quarterly per-tab semantics pinned in `QuarterlyReportExportTest` (Fund Loss C reads its own chain 5, Non Fund Loss first row '-') and `SeverityFooterTest` (Fund Loss banner Avg MTBF = tab's own 41/2).
+- [x] Lesson family: when moving logic into a declarative/config form (`contentFooter` etc.), diff the closure's old body — the move itself dropped the query argument, and the regression shipped green because no test rendered the footer per tab.

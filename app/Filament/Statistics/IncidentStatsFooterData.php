@@ -18,6 +18,13 @@ use Illuminate\Support\Facades\App;
 class IncidentStatsFooterData
 {
     /**
+     * Preferred input: the table's own filtered query
+     * (`$livewire->getFilteredTableQuery()` — tab + filters + search), so the
+     * footer can never contradict the table it sits under (BUG-022). Without
+     * one, falls back to baseQuery() (request-derived date filters only) for
+     * callers with no table context — e.g. ExecutiveCalcSheet passes its own
+     * query, tests exercise baseQuery() directly.
+     *
      * @param  Builder<\App\Models\Incident>  $query
      */
     public function build(?Builder $query = null): array
@@ -58,9 +65,11 @@ class IncidentStatsFooterData
     }
 
     /**
-     * Default query mirrors ListIncidents table scope when no filtered
-     * query is supplied: incidents (non-Issue) with user year access,
-     * scoped by the SAME date filters the table applies.
+     * No-table-context fallback: incidents (non-Issue) with user year access,
+     * scoped by the request's date filters ONLY — no tab, no other filters
+     * (they are unknowable from the request here). The Incidents footer no
+     * longer lands here (BUG-022 fix passes the table's filtered query); the
+     * parity tests pin this fallback because BUG-018 built it deliberately.
      */
     private function baseQuery(): Builder
     {

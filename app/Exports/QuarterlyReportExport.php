@@ -19,7 +19,9 @@ use Maatwebsite\Excel\Concerns\WithMultipleSheets;
  * baseline set (widget-aligned: Confirmed loss + Non fundLoss, owner
  * rule 2026-10-23); the dedicated membership tabs (Recovered / Fund
  * Loss / Non Fund Loss) keep every fund status via $dedicatedQuery.
- * Every tab's MTBF sequence = the baseline set.
+ * MTBF sequences (owner 2026-11-16): Fund Loss / Non Fund Loss tabs run
+ * their OWN rows' chain; All Cases, Recovered Cases and the quarter tabs
+ * keep the baseline-set sequence (the report reads as one table there).
  */
 class QuarterlyReportExport implements WithMultipleSheets
 {
@@ -45,11 +47,16 @@ class QuarterlyReportExport implements WithMultipleSheets
             ))
             ->all();
 
+        // Fund tabs sequence their OWN rows (owner 2026-11-16 — the old
+        // baseline-scope gaps mixed in other fund statuses' dates).
+        $fundLoss = $this->dedicatedIncidentQuery()->where('fund_status', FundStatus::ConfirmedLoss->value);
+        $nonFundLoss = $this->dedicatedIncidentQuery()->where('fund_status', FundStatus::NonFundLoss->value);
+
         return [
             new QuarterlyCaseSheet($this->incidentQuery(), 'All Cases', $this->query),
             new QuarterlyCaseSheet($this->dedicatedIncidentQuery()->where('recovered_fund', '>', 0), 'Recovered Cases', $this->query),
-            new QuarterlyCaseSheet($this->dedicatedIncidentQuery()->where('fund_status', FundStatus::ConfirmedLoss->value), 'Fund Loss', $this->query),
-            new QuarterlyCaseSheet($this->dedicatedIncidentQuery()->where('fund_status', FundStatus::NonFundLoss->value), 'Non Fund Loss', $this->query),
+            new QuarterlyCaseSheet($fundLoss, 'Fund Loss', $fundLoss->clone()),
+            new QuarterlyCaseSheet($nonFundLoss, 'Non Fund Loss', $nonFundLoss->clone()),
             ...$quarterSheets,
         ];
     }
