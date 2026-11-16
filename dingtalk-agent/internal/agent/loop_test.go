@@ -416,6 +416,23 @@ func TestKnowledgePromptTeachesAllKBTools(t *testing.T) {
 	}
 }
 
+// The external RCA is a partner-facing document — the prompt must teach both
+// the confirm-first flow and the neutral-wording rules, and the constitution
+// must allow the tool (it is the third allowed document type, beside PDF/deck).
+func TestExternalRCAPromptAndConstitution(t *testing.T) {
+	for _, want := range []string{"generate_external_rca", "generate_pdf_report", "generate_deck"} {
+		if !strings.Contains(ConstitutionTail, want) {
+			t.Errorf("ConstitutionTail does not name %s — the constitution forbids what the tool does", want)
+		}
+	}
+	for _, want := range []string{"generate_external_rca", "get_incident", "confirm", "neutral",
+		"NEVER invent a cause", "30 minutes apart"} {
+		if !strings.Contains(ExternalRCAPrompt, want) {
+			t.Errorf("ExternalRCAPrompt does not teach %q", want)
+		}
+	}
+}
+
 func TestLoopToolContextTimeout(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := llm.ChatResponse{

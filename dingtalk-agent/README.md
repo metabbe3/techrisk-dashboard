@@ -249,6 +249,14 @@ deps; ≤20 slides, heading + bullets per slide). Files land in
 `<DataDir>/exports/<yyyymmdd-hhmmss>-<slug>.{pdf,pptx}` and the tool result
 embeds a ticket `[generated-file: exports/<name>]`.
 
+Third generative tool: `generate_external_rca(incident_no, summary, problem,
+root_cause, actions, chronology)` fills the **partner-facing external RCA
+Word template** (`internal/tools/templates/external-rca.docx`, the approved
+05 Nov 2026 format) — report date = record's incident_date + 1 day; the model
+must show the draft and get the requester's CONFIRMATION first; wording rules
+(neutral, non-technical, no blame) live in `ExternalRCAPrompt`. Full doc:
+[skills/external-rca/SKILL.md](skills/external-rca/SKILL.md).
+
 After a completed turn, `deliverGenerated` scans the final reply for tickets:
 each file is uploaded via the **legacy media API**
 (`POST https://oapi.dingtalk.com/media/upload?access_token=…&type=file`,

@@ -72,6 +72,13 @@ func (r *Registry) registerGenerateTools(cfg *config.Config) {
 	}, func(ctx context.Context, argsJSON string) (string, error) {
 		return handleGenerateDeck(dir, argsJSON)
 	})
+
+	// Partner-facing external RCA — the model MUST present a draft and get the
+	// requester's confirmation first; the tool refuses nothing there (the prompt
+	// owns the flow), but the template is the owner's official format.
+	r.Register(externalRCADef(), typed(func(ctx context.Context, args externalRCAArgs) (string, error) {
+		return r.handleExternalRCA(ctx, dir, args)
+	}))
 }
 
 // exportPath builds <dir>/exports/<stamp>-<slug>.<ext> under a safe name.

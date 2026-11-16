@@ -105,6 +105,7 @@ regex and asserts coverage of the registry (no YAML lib involved).
 | Notion technical docs | notion_search, notion_query_database, notion_read_page, notion_add_database | [notion/](notion/SKILL.md) |
 | Web research | web_search, web_fetch | [web/](web/SKILL.md) |
 | Deliverables | generate_pdf_report, generate_deck | [deliverables/](deliverables/SKILL.md) |
+| External RCA (partner report) | generate_external_rca | [external-rca/](external-rca/SKILL.md) |
 | Reminders & scheduled checks | schedule_reminder, cancel_reminder | [schedule/](schedule/SKILL.md) |
 | Incident status watches | watch_incident, unwatch_incident | [watch/](watch/SKILL.md) |
 | Mesh leader orchestration | delegate_task, list_workers, mission_status, cancel_mission, collect_results, set_mission_result, mesh_info | [mesh-leader/](mesh-leader/SKILL.md) |

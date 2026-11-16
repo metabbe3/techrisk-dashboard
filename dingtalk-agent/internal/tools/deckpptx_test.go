@@ -154,7 +154,7 @@ func TestAllToolSchemasFlat(t *testing.T) {
 	// upstream request (2026-11-10 outage); they shipped outside this net once.
 	reg.RegisterKnowledgeTools(kb.NewIndex(t.TempDir(), "m", sameEmb{}))
 	defs := reg.GetDefinitions()
-	if len(defs) < 15 { // 3 dashboard + 2 web + 2 generate + 4 notion + 4 kb
+	if len(defs) < 16 { // 3 dashboard + 2 web + 2 generate + 1 external RCA + 4 notion + 4 kb
 		t.Fatalf("expected the full fleet, got %d defs", len(defs))
 	}
 	for _, def := range defs {

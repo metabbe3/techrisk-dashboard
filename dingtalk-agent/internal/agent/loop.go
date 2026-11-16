@@ -329,6 +329,9 @@ func (l *Loop) buildSystemPrompt(sysExtra string) string {
 	if l.registry.Has("search_knowledge") {
 		sys += "\n\n" + KnowledgePrompt
 	}
+	if l.registry.Has("generate_external_rca") {
+		sys += "\n\n" + ExternalRCAPrompt
+	}
 	if l.SystemExtras != nil {
 		if extra := l.SystemExtras(); extra != "" {
 			sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
