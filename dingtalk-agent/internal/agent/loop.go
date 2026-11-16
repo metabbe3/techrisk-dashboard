@@ -341,6 +341,9 @@ func (l *Loop) buildSystemPrompt(sysExtra string) string {
 	if l.registry.Has("generate_external_rca") {
 		sys += "\n\n" + ExternalRCAPrompt
 	}
+	if l.registry.Has("get_dashboard_stats") {
+		sys += "\n\n" + StatsPrompt
+	}
 	if l.SystemExtras != nil {
 		if extra := l.SystemExtras(); extra != "" {
 			sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra

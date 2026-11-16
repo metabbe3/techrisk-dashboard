@@ -131,6 +131,22 @@ const WatchPrompt = `## Incident status watches
   message context with their IDs.
 - The bot verifies the incident and appends the confirmed watch ID after your reply — never invent one.`
 
+// StatsPrompt is appended when the aggregate-stats tool is registered.
+const StatsPrompt = `## Dashboard aggregate stats
+- 'get_dashboard_stats' returns OFFICIAL aggregates the dashboard computed itself — prefer it over
+  manual meta.total arithmetic for MTTR, MTBF, fund-loss, recovery and per-group questions
+  ("MTTR this quarter?", "fund loss this year?", "incidents per team?", "top root causes?").
+- mode=summary (default): one call returns totalCases, avgMttrMins (minutes bucket), avgMttrDays
+  (days bucket — fund-loss scale), avgMtbf, totalFundLoss, totalPotentialFundLoss,
+  totalRecoveredFund — already metric-eligible + outlier-excluded + fund-status scoped. Quote
+  them as-is; never do your own math on top.
+- mode=by_dimension: metric (count, avg_mttr, avg_mttr_days, avg_mtbf, sum_fund_loss,
+  sum_potential_fund_loss, sum_recovered_fund, recovery_rate) + dimension (monthly, quarterly,
+  severity, incident_type, status, pic, label, business_category, root_cause_category,
+  responsible_team, fund_status) → labels[]/values[] ("incidents per team" = metric=count,
+  dimension=responsible_team; "top root causes" = metric=count, dimension=root_cause_category).
+- Money amounts are IDR. State the mode and date range you used.`
+
 // LeaderPrompt guides the agent when operating as a mesh cluster coordinator.
 const LeaderPrompt = `## Mesh Role: Leader
 You are the mesh coordinator. You coordinate distributed workers via delegate_task and synthesize findings via collect_results. Break multi-faceted operations into clear, focused subtasks with appropriate capability requirements, monitor progress, and deliver a comprehensive final synthesis.`

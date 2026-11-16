@@ -299,3 +299,98 @@ func TestRegistrySubset(t *testing.T) {
 		t.Errorf("subset size %d not smaller than %d", len(sub.GetDefinitions()), len(r.GetDefinitions()))
 	}
 }
+
+func TestStatsDefaultsToSummaryMode(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, map[string]any{"totalCases": 42, "avgMtbf": 12.4}, nil)
+	})
+
+	out, err := reg.Execute(context.Background(), "get_dashboard_stats", `{}`)
+	if err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	if !strings.Contains(gotQuery, "mode=summary") {
+		t.Errorf("empty args must default to mode=summary, got %q", gotQuery)
+	}
+	if strings.Contains(gotQuery, "metric=") || strings.Contains(gotQuery, "dimension=") {
+		t.Errorf("summary mode must not send metric/dimension, got %q", gotQuery)
+	}
+	if !strings.Contains(out, `"totalCases":42`) {
+		t.Errorf("summary data passthrough broken, got %s", out)
+	}
+}
+
+func TestStatsByDimensionSendsMetricAndDimension(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, map[string]any{"labels": []string{"Network"}, "values": []int{3}}, nil)
+	})
+
+	out, err := reg.Execute(context.Background(), "get_dashboard_stats",
+		`{"mode":"by_dimension","metric":"count","dimension":"responsible_team"}`)
+	if err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	for _, want := range []string{"mode=by_dimension", "metric=count", "dimension=responsible_team"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query missing %s (got: %s)", want, gotQuery)
+		}
+	}
+	if !strings.Contains(out, `"labels":["Network"]`) {
+		t.Errorf("by_dimension data passthrough broken, got %s", out)
+	}
+}
+
+func TestStatsByDimensionRequiresMetricAndDimension(t *testing.T) {
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("server must not be called when by_dimension is missing metric")
+	})
+
+	// Registry.Execute converts handler errors into returned strings.
+	out, err := reg.Execute(context.Background(), "get_dashboard_stats", `{"mode":"by_dimension"}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "requires metric and dimension") {
+		t.Errorf("error text missing from output: %s", out)
+	}
+}
+
+func TestStatsListFiltersEncodeAsBracketArrays(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("missing bearer token")
+		}
+		envelope(w, map[string]any{}, nil)
+	})
+
+	if _, err := reg.Execute(context.Background(), "get_dashboard_stats",
+		`{"severities":"P1,P2","fund_statuses":"Confirmed loss"}`); err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	for _, want := range []string{"severities%5B%5D=P1", "severities%5B%5D=P2", "fund_statuses%5B%5D=Confirmed+loss"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query missing %s (got: %s)", want, gotQuery)
+		}
+	}
+}
+
+func TestStatsPairsLoneStartDate(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, map[string]any{}, nil)
+	})
+
+	if _, err := reg.Execute(context.Background(), "get_dashboard_stats", `{"start_date":"2026-10-01"}`); err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	if !strings.Contains(gotQuery, "start_date=2026-10-01") || !strings.Contains(gotQuery, "end_date=") {
+		t.Errorf("lone start_date must be paired with an end_date, got %q", gotQuery)
+	}
+}

@@ -18,6 +18,7 @@ enum ApiEndpoint: string
     case NOTION = 'notion';
     case AGENT_SCHEDULES = 'agent-schedules';
     case AGENT_RUNS = 'agent-runs';
+    case STATS = 'stats';
 
     /**
      * Get all endpoints as an array for select options
@@ -45,6 +46,7 @@ enum ApiEndpoint: string
             self::NOTION => 'Notion (read-only docs)',
             self::AGENT_SCHEDULES => 'Agent Schedules (DingTalk reminders)',
             self::AGENT_RUNS => 'Agent Runs (DingTalk turn reports)',
+            self::STATS => 'Stats (Aggregated Metrics)',
         };
     }
 
@@ -66,6 +68,7 @@ enum ApiEndpoint: string
             self::NOTION => 'api/v1/notion',
             self::AGENT_SCHEDULES => 'api/v1/agent-schedules',
             self::AGENT_RUNS => 'api/v1/agent-runs',
+            self::STATS => 'api/v1/stats',
         };
     }
 

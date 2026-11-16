@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\AgentScheduleController;
 use App\Http\Controllers\Api\Ai\ExportController;
 use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\NotionController;
+use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TokenController;
 use Illuminate\Support\Facades\Route;
 
@@ -86,5 +87,12 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
         Route::post('agent-schedules', [AgentScheduleController::class, 'store']);
         Route::delete('agent-schedules/{no}', [AgentScheduleController::class, 'destroy']);
         Route::post('agent-runs', [AgentRunController::class, 'store']);
+    });
+
+    // Dashboard aggregate stats for the DingTalk agent — both modes delegate
+    // verbatim to the shared metric builders (one-logic rule, zero new math).
+    // Rate limit editable in Admin → API Settings.
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('stats', [StatsController::class, 'index']);
     });
 });

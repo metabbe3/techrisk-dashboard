@@ -19,7 +19,7 @@ type Config struct {
 	DingTalkAllowlist    []string // sender staffIds; empty = everyone in the app visibility range
 	DingTalkBotNames     []string // robot display name(s) used to strip @mentions; default "Risk Agent"
 	DashboardAPIBase     string   // read-only Laravel API base, e.g. http://nginx/api/v1
-	DashboardAPIToken    string   // Sanctum bearer token (abilities: incidents, incidents-by-no, incidents-markdown)
+	DashboardAPIToken    string   // Sanctum bearer token (abilities: incidents, incidents-by-no, incidents-markdown, stats)
 	LLMBaseURL           string   // OpenAI-compatible gateway (maps to the app's AI_API_BASE_URL)
 	LLMAPIKey            string
 	LLMModel             string

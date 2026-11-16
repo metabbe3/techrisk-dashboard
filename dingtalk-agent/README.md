@@ -19,7 +19,7 @@ Upstream commit: `b71ae8ee0b3d0874f4e20bead1b30ad8a7793446` (MIT).
 |---|---|
 | Kept (module path rewritten) | agent loop (8 iterations, 4-concurrent tool pool, 8 KB tool-result truncation, 60 K token pruning), guardrails (`secretredact`, `replyfilter`), OpenAI-compatible LLM client |
 | Deleted | telegram package, logengine, commandguard, pathguard, all 8 local-machine tools, `AllowShell` plumbing |
-| Added | `internal/dingtalk` (stream handler, @mention strip, allowlist, history+TTL, dedup, AI-card streaming, DM push), `internal/tools/dashboard.go` (3 read-only tools), env config, Dockerfile |
+| Added | `internal/dingtalk` (stream handler, @mention strip, allowlist, history+TTL, dedup, AI-card streaming, DM push), `internal/tools/dashboard.go` (4 read-only tools), env config, Dockerfile |
 | Ported (GoMesh v0.5 parity) | `internal/mesh/` (proto, queue, server, client, meshtools), GoMesh/1.1 leader/worker orchestration protocol with Phase 1 reliability/safety and Phase 2 observability (parity with GoAgent 394c3e2) |
 
 The reply guardrail runs on **every** streamed card frame and the final card;
@@ -34,6 +34,7 @@ design, kept.
 | `search_incidents` | `GET /incidents` | counts via `limit=1` + `meta.total`; single-sided dates auto-paired; limit capped at 100 |
 | `get_incident` | `GET /incidents-by-no/{no}` or `/incidents/{id}` | path segment sanitized to `[A-Za-z0-9_-]` |
 | `get_incident_markdown` | `GET /incidents-by-no/{no}/markdown` | base64-decoded for AI ingestion |
+| `get_dashboard_stats` | `GET /stats` | dashboard's own aggregates (one-logic rule): `mode=summary` → totalCases / avgMttrMins / avgMttrDays / avgMtbf / fund totals; `mode=by_dimension` → metric × dimension `labels[]/values[]`; list params comma-separated |
 | `web_search` | DuckDuckGo HTML (keyless) | top 6 results, title + snippet + link |
 | `web_fetch` | any public http(s) page | **SSRF-guarded** (dialer blocks loopback/private/link-local post-DNS), 256 KiB cap, tags stripped, ~7k chars |
 
@@ -47,7 +48,7 @@ chars.
 |---|---|---|
 | `DINGTALK_CLIENT_ID` / `DINGTALK_CLIENT_SECRET` | yes | DingTalk Open Platform app |
 | `DINGTALK_ALLOWLIST` | no | **empty = everyone** (access gated by the DingTalk app's visibility range); comma staffIds to narrow further |
-| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `agent-schedules`, `agent-runs` |
+| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `stats`, `agent-schedules`, `agent-runs` |
 | `DASHBOARD_API_BASE` | no | `http://nginx/api/v1` (compose) |
 | `AGENT_INTERNAL_ADDR` | no | `:9091` — internal listener (the dashboard's Go engine POSTs `/internal/run` here); compose-network only |
 | `AGENT_INTERNAL_TOKEN` | no | shared secret — **must equal** the dashboard `.env`'s `GO_AGENT_INTERNAL_TOKEN`; empty = listener disabled |

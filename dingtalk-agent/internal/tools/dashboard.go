@@ -191,6 +191,7 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	// Post-mortems run 15-30KB; the 8KB default cap cut them mid-root-cause
 	// (audit round 4). 48k matches notion_read_page's large-doc allowance.
 	r.RegisterCapped(getIncidentMarkdownDef(), typed(client.handleGetIncidentMarkdown), 48<<10)
+	r.Register(statsDef(), typed(client.handleGetDashboardStats))
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number
@@ -456,4 +457,99 @@ func (c *dashboardClient) handleGetIncidentMarkdown(ctx context.Context, args ge
 		return "", fmt.Errorf("failed to base64-decode incident markdown: %w", err)
 	}
 	return string(markdown), nil
+}
+
+// statsDef: aggregate dashboard metrics in one call — the tool the bot uses for
+// MTTR/MTBF/fund-loss/per-team questions instead of meta.total arithmetic.
+// List params are comma-separated strings (the `tags` pattern; nested JSON
+// array types 400 the upstream request).
+func statsDef() llm.ToolDefinition {
+	return llm.ToolDefinition{
+		Type: "function",
+		Function: llm.ToolFunctionDef{
+			Name: "get_dashboard_stats",
+			Description: "Official dashboard aggregate metrics in ONE call — no manual meta.total arithmetic. " +
+				"mode=summary (default) returns totalCases, avgMttrMins, avgMttrDays, avgMtbf, totalFundLoss, " +
+				"totalPotentialFundLoss, totalRecoveredFund for the filtered scope (already metric-eligible + " +
+				"outlier-excluded; the MTTR sign splits minutes vs days buckets; totalCases counts non-Issue rows " +
+				"including G/Non Incident — the dashboard footer's number). " +
+				"mode=by_dimension returns labels[]/values[] for metric x dimension. " +
+				"Use for MTTR this quarter, fund loss this year, incidents per team, top root causes, recovery rate.",
+			Parameters: schema(
+				map[string]any{
+					"mode":           map[string]any{"type": "string", "description": "summary (default) or by_dimension"},
+					"metric":         map[string]any{"type": "string", "description": "by_dimension metric: count, avg_mttr, avg_mttr_days, avg_mtbf, sum_fund_loss, sum_potential_fund_loss, sum_recovered_fund, recovery_rate"},
+					"dimension":      map[string]any{"type": "string", "description": "by_dimension dimension: monthly, quarterly, severity, incident_type, status, pic, label, business_category, root_cause_category, responsible_team, fund_status"},
+					"start_date":     map[string]any{"type": "string", "description": "Range start (inclusive), YYYY-MM-DD; a lone start means 'until today'"},
+					"end_date":       map[string]any{"type": "string", "description": "Range end (inclusive), YYYY-MM-DD"},
+					"severities":     map[string]any{"type": "string", "description": "Comma-separated severities: P1-P4, X1-X4, G, Non Incident"},
+					"incident_types": map[string]any{"type": "string", "description": "Comma-separated: Tech, Non-tech"},
+					"statuses":       map[string]any{"type": "string", "description": "Comma-separated: Open, In progress, Finalization, Completed"},
+					"fund_statuses":  map[string]any{"type": "string", "description": "Comma-separated: Non fundLoss, Confirmed loss, Potential recovery, Fully recovered, Non Tech Loss"},
+				},
+				nil,
+			),
+		},
+	}
+}
+
+type statsArgs struct {
+	Mode          string `json:"mode"`
+	Metric        string `json:"metric"`
+	Dimension     string `json:"dimension"`
+	StartDate     string `json:"start_date"`
+	EndDate       string `json:"end_date"`
+	Severities    string `json:"severities"`
+	IncidentTypes string `json:"incident_types"`
+	Statuses      string `json:"statuses"`
+	FundStatuses  string `json:"fund_statuses"`
+}
+
+func (c *dashboardClient) handleGetDashboardStats(ctx context.Context, args statsArgs) (string, error) {
+	start, end, err := pairDates(args.StartDate, args.EndDate)
+	if err != nil {
+		return "", err
+	}
+
+	mode := strings.TrimSpace(args.Mode)
+	if mode == "" {
+		mode = "summary"
+	}
+	if mode != "summary" && mode != "by_dimension" {
+		return "", fmt.Errorf("mode must be summary or by_dimension, got %q", mode)
+	}
+	if mode == "by_dimension" && (strings.TrimSpace(args.Metric) == "" || strings.TrimSpace(args.Dimension) == "") {
+		return "", fmt.Errorf("mode=by_dimension requires metric and dimension")
+	}
+
+	q := url.Values{}
+	q.Set("mode", mode)
+	if mode == "by_dimension" {
+		q.Set("metric", strings.TrimSpace(args.Metric))
+		q.Set("dimension", strings.TrimSpace(args.Dimension))
+	}
+	if start != "" {
+		q.Set("start_date", start)
+	}
+	if end != "" {
+		q.Set("end_date", end)
+	}
+	// Laravel array syntax: severities[]=P1&severities[]=P2
+	setList := func(key, val string) {
+		for _, v := range strings.Split(val, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				q.Add(key+"[]", v)
+			}
+		}
+	}
+	setList("severities", args.Severities)
+	setList("incident_types", args.IncidentTypes)
+	setList("statuses", args.Statuses)
+	setList("fund_statuses", args.FundStatuses)
+
+	env, err := c.get(ctx, "/stats?"+q.Encode())
+	if err != nil {
+		return "", err
+	}
+	return string(env.Data), nil
 }
