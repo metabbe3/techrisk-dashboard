@@ -112,6 +112,9 @@ func handleGeneratePDF(dir, argsJSON string) (string, error) {
 		return "", fmt.Errorf("markdown body is empty — compose the report from tool results first")
 	}
 	args.Markdown = util.Cut(args.Markdown, maxReportMarkdown)
+	if err := ensureRenderable(args.Markdown); err != nil {
+		return "", err
+	}
 	title := orDefaultStr(args.Title, "Technical Risk Report")
 
 	path, err := exportPath(dir, title, "pdf")
@@ -140,6 +143,14 @@ func renderMarkdownPDF(path, title, markdown string) error {
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(18, reportTopMargin, 18)
 	pdf.SetAutoPageBreak(true, 18)
+	// Page numbers bottom-center — multi-page incident reports used to ship
+	// with no way to reference "page 3" (audit 2026-11-12).
+	pdf.SetFooterFunc(func() {
+		pdf.SetY(-12)
+		pdf.SetFont("Arial", "", 8)
+		pdf.SetTextColor(148, 163, 184)
+		pdf.CellFormat(0, 8, fmt.Sprintf("Page %d", pdf.PageNo()), "", 0, "C", false, 0, "")
+	})
 	pdf.AddPage()
 
 	// Map the remaining UTF-8 (— • …) onto cp1252 — the core Arial is Latin-1
@@ -163,6 +174,8 @@ func renderMarkdownPDF(path, title, markdown string) error {
 		switch {
 		case trimmed == "":
 			pdf.Ln(2)
+		case isMarkdownTableRow(trimmed):
+			renderTableRow(pdf, tr, trimmed)
 		case strings.HasPrefix(trimmed, "### "):
 			pdf.SetFont("Arial", "B", 11)
 			pdf.MultiCell(0, 5.5, tr(sanitizePDF(trimmed[4:])), "", "L", false)
@@ -243,4 +256,65 @@ func sanitizePDF(s string) string {
 		return r
 	}, s)
 	return pdfUnsupported.ReplaceAllString(s, "")
+}
+
+// cjkRe matches script ranges the core (Latin-1) PDF fonts cannot render at
+// all. Dropping them silently used to turn a whole CJK paragraph into an
+// EMPTY line in the shipped PDF with no warning (audit 2026-11-12) — now the
+// generator refuses and says why instead of producing a hollow document.
+var cjkRe = regexp.MustCompile(`[\p{Han}\p{Hangul}\p{Hiragana}\p{Katakana}]`)
+
+// ensureRenderable reports whether the report text survives sanitization
+// with meaning intact: any CJK content means the core fonts cannot carry it.
+func ensureRenderable(markdown string) error {
+	if cjkRe.MatchString(markdown) {
+		return fmt.Errorf("report contains Chinese/Japanese/Korean text, which this PDF generator's core fonts cannot render — send the summary as a chat message instead")
+	}
+	return nil
+}
+
+// isMarkdownTableRow: | cell | cell | (≥2 pipes). Separator rows
+// (|---|---|) render as a rule line, header rows render bold.
+func isMarkdownTableRow(ln string) bool {
+	return strings.HasPrefix(ln, "|") && strings.Count(ln, "|") >= 2
+}
+
+func renderTableRow(pdf *fpdf.Fpdf, tr func(string) string, ln string) {
+	ln = strings.TrimSpace(strings.Trim(ln, "|"))
+	cells := strings.Split(ln, "|")
+	// separator row |---|---| → thin rule
+	sep := true
+	for _, c := range cells {
+		c = strings.TrimSpace(c)
+		if c != "" && strings.Trim(c, ":- ") != "" {
+			sep = false
+			break
+		}
+	}
+	if sep {
+		pdf.SetFont("Arial", "", 10)
+		pdf.SetDrawColor(203, 213, 225)
+		y := pdf.GetY()
+		pdf.Line(18, y, 192, y)
+		pdf.Ln(3)
+		return
+	}
+	width := 174.0 / float64(len(cells))
+	pdf.SetFont("Arial", "", 9)
+	for _, c := range cells {
+		c = strings.TrimSpace(c)
+		if strings.HasPrefix(c, "**") && strings.HasSuffix(c, "**") && len(c) > 4 {
+			c = c[2 : len(c)-2]
+			pdf.SetFont("Arial", "B", 9)
+		} else {
+			pdf.SetFont("Arial", "", 9)
+		}
+		pdf.MultiCell(width, 4.5, tr(sanitizePDF(c)), "", "L", false)
+		pdf.SetX(pdf.GetX() + width)
+		if pdf.GetX() >= 192 {
+			pdf.SetX(18)
+		}
+	}
+	pdf.Ln(4.5)
+	pdf.SetX(18)
 }

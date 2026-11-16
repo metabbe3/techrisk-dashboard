@@ -154,6 +154,23 @@ func (ix *Index) Ingest(doc, text string) {
 	}()
 }
 
+// Save ingests one document synchronously on the ingest slot, so callers
+// (LLM tools) can report the outcome to the user. Same slot as Ingest — a
+// concurrent upload waits, never drops. A 3-minute deadline (audit
+// 2026-11-12) bounds the wait on the ingest slot + embeds so a wedged embed
+// batch cannot stall an agent turn forever.
+func (ix *Index) Save(ctx context.Context, doc, text string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+	select {
+	case ix.ingest <- struct{}{}:
+		defer func() { <-ix.ingest }()
+		return ix.ingestNow(ctx, doc, text)
+	case <-ctx.Done():
+		return fmt.Errorf("knowledge-base busy (timed out waiting for the ingest slot): %w", ctx.Err())
+	}
+}
+
 func (ix *Index) ingestNow(ctx context.Context, doc, text string) error {
 	chunks := chunkText(doc, text)
 	if len(chunks) == 0 {
@@ -234,14 +251,85 @@ func (ix *Index) Search(ctx context.Context, query string, k int) ([]chunk, erro
 		all = append(all, scored{c, cosine(q, c.Vec)})
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].s > all[j].s })
-	if k > len(all) {
-		k = len(all)
-	}
+	// Similarity floor: without it the top-k of an unrelated corpus still
+	// got served (6 random chunks) and the model answered from noise —
+	// "no match" is the honest result (audit round 4).
+	const minCosine = 0.35
 	out := make([]chunk, 0, k)
-	for _, s := range all[:k] {
+	for _, s := range all {
+		if len(out) >= k {
+			break
+		}
+		if s.s < minCosine {
+			break // sorted descending — everything after is worse
+		}
 		out = append(out, s.c)
 	}
 	return out, nil
+}
+
+// DocStat is one document's footprint in the index.
+type DocStat struct {
+	Doc    string
+	Chunks int
+	Chars  int
+	TS     int64
+}
+
+// ListDocs aggregates chunks per document, newest first.
+func (ix *Index) ListDocs() []DocStat {
+	ix.mu.RLock()
+	defer ix.mu.RUnlock()
+	byDoc := make(map[string]*DocStat)
+	for _, c := range ix.chunks {
+		d, ok := byDoc[c.Doc]
+		if !ok {
+			d = &DocStat{Doc: c.Doc, TS: c.TS}
+			byDoc[c.Doc] = d
+		}
+		d.Chunks++
+		d.Chars += len(c.Text)
+		if c.TS > d.TS {
+			d.TS = c.TS
+		}
+	}
+	out := make([]DocStat, 0, len(byDoc))
+	for _, d := range byDoc {
+		out = append(out, *d)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].TS > out[j].TS })
+	return out
+}
+
+// DeleteDoc removes every chunk of doc; reports chunks removed and found.
+// Serialized against ingest's chunk swap by ix.mu (embeds happen outside the
+// lock, so a delete never waits on the network). A same-doc ingest already
+// past its embed may re-add the doc after this returns — last writer wins,
+// the same rename-collision exposure as ingest's replace.
+// ponytail: Sum is a uint32 doc-name hash, same collision exposure as
+// ingestNow's replace; widen to the full sha if it ever matters.
+func (ix *Index) DeleteDoc(doc string) (int, bool) {
+	sum := docSum(doc)
+	ix.mu.Lock()
+	defer ix.mu.Unlock()
+	kept := ix.chunks[:0]
+	n := 0
+	for _, c := range ix.chunks {
+		if c.Sum == sum {
+			n++
+			continue
+		}
+		kept = append(kept, c)
+	}
+	if n == 0 {
+		return 0, false
+	}
+	ix.chunks = kept
+	// In-memory state is authoritative for this process; the next write re-persists.
+	if err := ix.save(); err != nil {
+		log.Printf("[kb] delete %s persist failed: %v", doc, err)
+	}
+	return n, true
 }
 
 // embedAll embeds texts in batches of embedBatchSize.

@@ -55,6 +55,12 @@ func (s *Store) AppendKnowledge(e KnowledgeEntry) error {
 		return err
 	}
 	s.knowledge = append(s.knowledge, e)
+	// In-memory cap (disk file is append-only history): the knowledge list
+	// is rendered into the system prompt EVERY turn — unbounded growth
+	// bloats every call (audit round 4). Keep the newest 200.
+	if len(s.knowledge) > 200 {
+		s.knowledge = s.knowledge[len(s.knowledge)-200:]
+	}
 	return nil
 }
 
@@ -84,6 +90,8 @@ type HistoryEntry struct {
 type Store struct {
 	knownUsers map[string]bool  // staff ids already in users.jsonl (dedupe per person, S9)
 	knowledge  []KnowledgeEntry // parsed mirror of knowledge.jsonl (was re-read every turn)
+
+	historyTTL time.Duration // 0 = no load-time TTL filtering
 
 	dir string
 
@@ -184,7 +192,10 @@ func (s *Store) All() map[string]HistoryEntry {
 }
 
 // SaveHistory persists a conversation, dropping entries idle beyond ttl so
-// the file stays bounded on long-lived servers.
+// the file stays bounded on long-lived servers. Synchronous write (audit
+// 2026-11-12 considered a debounced async flusher — rejected: restart
+// recall is a hard contract and a deferred write widens the crash-loss
+// window; at this agent's scale the whole-map rewrite is cheap and atomic).
 func (s *Store) SaveHistory(conversationID string, messages []llm.ChatMessage, ttl time.Duration) error {
 	s.hmu.Lock()
 	s.history[conversationID] = HistoryEntry{Messages: messages, LastSeen: time.Now()}
@@ -195,9 +206,12 @@ func (s *Store) SaveHistory(conversationID string, messages []llm.ChatMessage, t
 			}
 		}
 	}
-	snap := historyFile{Conversations: s.history}
+	convs := make(map[string]HistoryEntry, len(s.history))
+	for id, e := range s.history {
+		convs[id] = e
+	}
 	s.hmu.Unlock()
-	return s.writeJSON(s.historyPath, snap)
+	return s.writeJSON(s.historyPath, historyFile{Conversations: convs})
 }
 
 func (s *Store) loadHistory() {
@@ -205,8 +219,21 @@ func (s *Store) loadHistory() {
 	if err := util.LoadJSON(s.historyPath, &hf); err != nil || hf.Conversations == nil {
 		return // no file yet (nil), or corrupt already renamed away
 	}
+	// Hydration used to reload EVERY conversation, including ones whose TTL
+	// had expired while the bot was down — stale context came back until the
+	// next save purged it (audit round 4).
+	if s.historyTTL > 0 {
+		for id, e := range hf.Conversations {
+			if time.Since(e.LastSeen) > s.historyTTL {
+				delete(hf.Conversations, id)
+			}
+		}
+	}
 	s.history = hf.Conversations
 }
+
+// SetHistoryTTL arms the load-time TTL filter; call before first read.
+func (s *Store) SetHistoryTTL(ttl time.Duration) { s.historyTTL = ttl }
 
 // writeJSON atomically replaces path (tmp+rename).
 func (s *Store) writeJSON(path string, v any) error {

@@ -585,3 +585,328 @@ func TestDeliverGeneratedGroup(t *testing.T) {
 		t.Errorf("fallback calls wrong: group=%d dm=%d", len(*groupBodies2), len(*dmBodies2))
 	}
 }
+
+// TestProcessPictureFilesKB wires the whole picture path minus the network
+// download (bytes are handed in directly): vision transcription via the
+// gateway, then a synchronous KB filing, then the receipt reply. The
+// resolve+download half is covered by TestPictureDownloadURL/TestDownloadTo.
+func TestProcessPictureFilesKB(t *testing.T) {
+	var mu sync.Mutex
+	var replyBodies []string
+	var llmPaths []string
+	var visionBody []byte
+
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		replyBodies = append(replyBodies, string(body))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhook.Close()
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		llmPaths = append(llmPaths, r.URL.Path)
+		if r.URL.Path == "/chat/completions" {
+			visionBody = body
+		}
+		mu.Unlock()
+		switch {
+		case r.URL.Path == "/chat/completions": // the vision call
+			resp := llm.ChatResponse{
+				Choices: []llm.ChatChoice{{
+					Message:      llm.ChatMessage{Content: "Restart steps: 1. drain 2. deploy 3. verify"},
+					FinishReason: "stop",
+				}},
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		case r.URL.Path == "/v1/embeddings":
+			resp := map[string]any{"data": []map[string]any{
+				{"index": 0, "embedding": []float32{1, 0}},
+			}}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(resp)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer llmSrv.Close()
+
+	cfg := &config.Config{
+		DingTalkAllowlist:   []string{"staff1"},
+		LLMBaseURL:          llmSrv.URL,
+		LLMAPIKey:           "k",
+		LLMModel:            "m",
+		DingTalkOpenAPIHost: llmSrv.URL,
+		KBToolsEnabled:      true,
+	}
+	loop := agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
+	bot := NewBot(cfg, loop, llm.NewClient(cfg))
+
+	m := &chatbot.BotCallbackDataModel{
+		MsgId:          "m-pic",
+		SenderStaffId:  "staff1",
+		SenderNick:     "Tester",
+		ConversationId: "cid-pic",
+		SessionWebhook: webhook.URL,
+	}
+	bot.processPictureData(context.Background(), m, []byte("fake-png-bytes"), "image/png", "the deploy checklist")
+
+	deadline := time.Now().Add(5 * time.Second)
+	gotReceipt := false
+	for !gotReceipt && time.Now().Before(deadline) {
+		mu.Lock()
+		for _, b := range replyBodies {
+			if strings.Contains(b, "filed it in the knowledge base") {
+				gotReceipt = true
+			}
+		}
+		mu.Unlock()
+		if !gotReceipt {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	mu.Lock()
+	if !gotReceipt {
+		mu.Unlock()
+		t.Fatalf("no filing receipt delivered: %v", replyBodies)
+	}
+	vision := string(visionBody)
+	mu.Unlock() // not held across the second bot call below — its reply needs the handler's mu
+	if vision == "" || !strings.Contains(vision, "image_url") {
+		t.Error("vision call missing the image_url part")
+	}
+	if !strings.Contains(vision, "the deploy checklist") {
+		t.Error("vision prompt missing the user caption")
+	}
+
+	docs := bot.know.ListDocs()
+	if len(docs) != 1 || !strings.HasPrefix(docs[0].Doc, "Picture from Tester — ") {
+		t.Fatalf("KB docs = %+v, want one Picture-from-Tester title", docs)
+	}
+	if !strings.Contains(docs[0].Doc, "2026-") {
+		t.Errorf("title missing the timestamp: %q", docs[0].Doc)
+	}
+
+	// A second picture the same minute from the same sender must NOT overwrite
+	// the first (Save replaces by title hash) — the title must be unique.
+	m2 := *m
+	m2.MsgId = "m-pic-2"
+	bot.processPictureData(context.Background(), &m2, []byte("fake-png-bytes"), "image/png", "")
+	docs = bot.know.ListDocs()
+	if len(docs) != 2 {
+		t.Fatalf("two same-minute pictures = %d docs (%+v), want 2 — titles must be unique", len(docs), docs)
+	}
+}
+
+// TestHandlePictureDispatches pins the Handle branch: a KB-enabled bot acks
+// and runs the picture as its own turn; a download failure answers with a
+// readable error and spends NO LLM call.
+func TestHandlePictureDispatches(t *testing.T) {
+	var mu sync.Mutex
+	var replyBodies []string
+	var llmPaths []string
+
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		replyBodies = append(replyBodies, string(body))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhook.Close()
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Count only real LLM paths — this server also plays the DingTalk
+		// open API host (the oauth/download exchange 404s here, as intended).
+		switch r.URL.Path {
+		case "/chat/completions", "/v1/embeddings":
+			mu.Lock()
+			llmPaths = append(llmPaths, r.URL.Path)
+			mu.Unlock()
+		}
+		http.NotFound(w, r)
+	}))
+	defer llmSrv.Close()
+
+	cfg := &config.Config{
+		DingTalkAllowlist:   []string{"staff1"},
+		LLMBaseURL:          llmSrv.URL,
+		DingTalkOpenAPIHost: llmSrv.URL,
+		KBToolsEnabled:      true,
+	}
+	bot := NewBot(cfg, nil, llm.NewClient(cfg)) // no agent loop — a picture turn must not need it
+
+	msg := &chatbot.BotCallbackDataModel{
+		MsgId:          "m-pic-handle",
+		SenderStaffId:  "staff1",
+		SenderNick:     "Tester",
+		ConversationId: "cid-pic-handle",
+		SessionWebhook: webhook.URL,
+		Msgtype:        "picture",
+		Content:        map[string]any{"downloadCode": "dc-picture"},
+	}
+	if _, err := bot.Handle(context.Background(), msg); err != nil {
+		t.Fatalf("handle error: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	gotAck, gotErr := false, false
+	for !(gotAck && gotErr) && time.Now().Before(deadline) {
+		mu.Lock()
+		for _, b := range replyBodies {
+			if strings.Contains(b, "Got your picture") {
+				gotAck = true
+			}
+			if strings.Contains(b, "couldn't read that picture") {
+				gotErr = true
+			}
+		}
+		mu.Unlock()
+		if !(gotAck && gotErr) {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	mu.Lock()
+	noAck := !gotAck || !gotErr
+	badPaths := len(llmPaths) != 0
+	paths := append([]string(nil), llmPaths...)
+	replies := append([]string(nil), replyBodies...)
+	mu.Unlock()
+	if noAck {
+		t.Fatalf("ack=%v err-reply=%v; replies: %v", gotAck, gotErr, replies)
+	}
+	if badPaths {
+		t.Errorf("LLM calls spent on a failed download: %v", paths)
+	}
+
+	// KB off → pictures are ignored exactly as before this feature. The mutex
+	// must be FREE here: the webhook handler takes it to append — the old
+	// lock-for-the-rest-of-the-test made this assertion vacuous (a blocked
+	// handler could never make len(replyBodies) move, so the regression it
+	// guards could not fail the test).
+	botNoKB := NewBot(&config.Config{
+		DingTalkAllowlist:   []string{"staff1"},
+		KBToolsEnabled:      false,
+		DingTalkOpenAPIHost: llmSrv.URL,
+	}, nil, llm.NewClient(cfg))
+	before := len(replyBodies)
+	msg2 := &chatbot.BotCallbackDataModel{
+		MsgId:          "m-pic-nokb",
+		SenderStaffId:  "staff1",
+		ConversationId: "cid-pic-nokb",
+		SessionWebhook: webhook.URL,
+		Msgtype:        "picture",
+		Content:        map[string]any{"downloadCode": "dc2"},
+	}
+	if _, err := botNoKB.Handle(context.Background(), msg2); err != nil {
+		t.Fatalf("handle error: %v", err)
+	}
+	time.Sleep(150 * time.Millisecond)
+	mu.Lock()
+	if len(replyBodies) != before {
+		t.Errorf("KB-off bot answered a picture: %v", replyBodies[before:])
+	}
+	mu.Unlock()
+}
+
+// TestHandleEmptyFileFriendlyReply sends an empty .txt through the real Handle
+// path (oauth → messageFiles → https download): the friendly scanned/empty
+// reply fires and NO agent/LLM call is spent.
+func TestHandleEmptyFileFriendlyReply(t *testing.T) {
+	var mu sync.Mutex
+	var replyBodies []string
+	var chatCalls int
+
+	webhook := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		replyBodies = append(replyBodies, string(body))
+		mu.Unlock()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer webhook.Close()
+
+	// The file-byte server must be https — fileURLAllowed refuses http.
+	fileSrv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK) // zero bytes: an empty/scanned file
+	}))
+	defer fileSrv.Close()
+
+	apiSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1.0/oauth2/accessToken":
+			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":3600}`))
+		case "/v1.0/robot/messageFiles/download":
+			_, _ = w.Write([]byte(`{"downloadUrl":"` + fileSrv.URL + `/blank.txt"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer apiSrv.Close()
+
+	llmSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/chat/completions" {
+			mu.Lock()
+			chatCalls++
+			mu.Unlock()
+		}
+		http.NotFound(w, r)
+	}))
+	defer llmSrv.Close()
+
+	// downloadTo GETs via downloadHTTPClient — point it at the TLS test
+	// server's trusting client for the duration.
+	old := downloadHTTPClient
+	downloadHTTPClient = fileSrv.Client()
+	defer func() { downloadHTTPClient = old }()
+
+	cfg := &config.Config{
+		DingTalkAllowlist:    []string{"staff1"},
+		DingTalkClientID:     "app",
+		DingTalkClientSecret: "s",
+		DingTalkOpenAPIHost:  apiSrv.URL,
+		LLMBaseURL:           llmSrv.URL,
+		KBToolsEnabled:       true,
+	}
+	bot := NewBot(cfg, nil, llm.NewClient(cfg)) // no agent loop needed — the empty branch replies before any turn
+
+	fm := &chatbot.BotCallbackDataModel{
+		MsgId:          "m-empty-file",
+		SenderStaffId:  "staff1",
+		SenderNick:     "Tester",
+		ConversationId: "cid-empty-file",
+		SessionWebhook: webhook.URL,
+		Msgtype:        "file",
+		Content:        map[string]any{"downloadCode": "dc-empty", "fileName": "blank.txt", "fileSize": float64(10), "fileType": "txt"},
+	}
+	if _, err := bot.Handle(context.Background(), fm); err != nil {
+		t.Fatalf("handle error: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	gotFriendly := false
+	for !gotFriendly && time.Now().Before(deadline) {
+		mu.Lock()
+		for _, b := range replyBodies {
+			if strings.Contains(b, "couldn't read any text") {
+				gotFriendly = true
+			}
+		}
+		mu.Unlock()
+		if !gotFriendly {
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if !gotFriendly {
+		t.Fatalf("no friendly empty-file reply: %v", replyBodies)
+	}
+	if chatCalls != 0 {
+		t.Errorf("agent LLM calls spent on an empty file: %d", chatCalls)
+	}
+}

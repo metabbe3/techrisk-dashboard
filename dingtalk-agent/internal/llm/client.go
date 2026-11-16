@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -131,6 +132,8 @@ type Client struct {
 	baseURL      string
 	apiKey       string
 	model        string
+	heavyModel   string // smarter escalation model; empty = none
+	visionModel  string // image transcription; defaults to model
 	maxTokens    int
 	httpClient   *http.Client
 	embedModel   string
@@ -149,12 +152,21 @@ func NewClient(cfg *config.Config) *Client {
 	if model == "" {
 		model = config.DefaultLLMModel
 	}
+	visionModel := cfg.VisionModel
+	if visionModel == "" {
+		visionModel = model // chat model must be multimodal
+	}
+	heavyModel := cfg.HeavyModel // empty = escalation disabled
 
 	return &Client{
-		baseURL:   baseURL,
-		apiKey:    cfg.LLMAPIKey,
-		model:     model,
-		maxTokens: cfg.LLMMaxTokens,
+		baseURL:      baseURL,
+		apiKey:       cfg.LLMAPIKey,
+		model:        model,
+		heavyModel:   heavyModel,
+		visionModel:  visionModel,
+		maxTokens:    cfg.LLMMaxTokens,
+		embedModel:   cfg.EmbeddingModel,
+		embedArrayOK: true, // optimistic — flips off on the first batch failure
 		// No overall Client.Timeout: long streaming answers (big reports
 		// through the tool loop) legitimately exceed any fixed ceiling and
 		// Timeout kills the connection mid-stream. ResponseHeaderTimeout
@@ -163,8 +175,6 @@ func NewClient(cfg *config.Config) *Client {
 		httpClient: &http.Client{
 			Transport: &http.Transport{ResponseHeaderTimeout: 120 * time.Second},
 		},
-		embedModel:   cfg.EmbeddingModel,
-		embedArrayOK: true, // optimistic — flips off on the first batch failure
 	}
 }
 
@@ -179,6 +189,92 @@ func UsagePtr(u Usage) *Usage {
 // Model returns the model every completion from this client uses (resolved
 // default included) — e.g. for turn reports.
 func (c *Client) Model() string { return c.model }
+
+// HeavyModel returns the escalation model ("" when unset).
+func (c *Client) HeavyModel() string { return c.heavyModel }
+
+// Ping verifies connectivity to the LLM endpoint by requesting a minimal completion.
+func (c *Client) Ping(ctx context.Context) error {
+	pingCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	reqBody := ChatRequest{
+		Model: c.model,
+		Messages: []ChatMessage{
+			{Role: "user", Content: "ping"},
+		},
+		MaxTokens: 1,
+	}
+	_, _, err := c.doCompletion(pingCtx, reqBody)
+	if err != nil && (strings.Contains(err.Error(), "max_tokens") || strings.Contains(err.Error(), "400")) {
+		reqBody.MaxTokens = 0
+		_, _, err = c.doCompletion(pingCtx, reqBody)
+	}
+	return err
+}
+
+// ChatCompletionHeavy retries the same completion on the heavy (smarter)
+// model. Returns an error when no heavy model is configured.
+func (c *Client) ChatCompletionHeavy(ctx context.Context, messages []ChatMessage, tools []ToolDefinition) (*ChatMessage, Usage, error) {
+	if c.heavyModel == "" {
+		return nil, Usage{}, fmt.Errorf("no heavy model configured")
+	}
+	reqBody := ChatRequest{
+		Model:     c.heavyModel,
+		Messages:  messages,
+		Tools:     tools,
+		MaxTokens: c.maxTokens,
+	}
+	return c.doCompletion(ctx, reqBody)
+}
+
+func (c *Client) doCompletion(ctx context.Context, reqBody ChatRequest) (*ChatMessage, Usage, error) {
+	data, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to marshal chat request: %w", err)
+	}
+
+	url := c.baseURL + "/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to create http request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("http request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		var apiErr ChatResponse
+		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error != nil {
+			return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
+		}
+		return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	var chatResp ChatResponse
+	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
+		return nil, Usage{}, fmt.Errorf("failed to decode chat response: %w", err)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, Usage{}, fmt.Errorf("llm returned no choices in response")
+	}
+
+	return &chatResp.Choices[0].Message, chatResp.Usage.resolved(), nil
+}
 
 // embeddingResult is one row of the /embeddings response.
 type embeddingResult struct {
@@ -292,52 +388,75 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []ChatMessage, too
 		Tools:     tools,
 		MaxTokens: c.maxTokens,
 	}
+	return c.doCompletion(ctx, reqBody)
+}
 
-	data, err := json.Marshal(reqBody)
+// visionPart is one content part of a multimodal message (OpenAI wire format).
+type visionPart struct {
+	Type     string          `json:"type"` // "text" | "image_url"
+	Text     string          `json:"text,omitempty"`
+	ImageURL *visionImageURL `json:"image_url,omitempty"`
+}
+
+type visionImageURL struct {
+	URL string `json:"url"`
+}
+
+// Vision transcribes/describes one image via a multimodal chat completion
+// (content-parts wire format, one-shot: no tools, no streaming). The caller
+// caps the image size; empty image bytes are the caller's bug, not ours.
+func (c *Client) Vision(ctx context.Context, prompt string, image []byte, mimeType string) (string, error) {
+	reqBody := map[string]any{
+		"model": c.visionModel,
+		"messages": []any{map[string]any{
+			"role": "user",
+			"content": []visionPart{
+				{Type: "text", Text: prompt},
+				{Type: "image_url", ImageURL: &visionImageURL{URL: "data:" + mimeType + ";base64," + base64.StdEncoding.EncodeToString(image)}},
+			},
+		}},
+	}
+	if c.maxTokens > 0 { // 0 = omit — real parity with ChatRequest's omitempty (LLM_MAX_TOKENS=0 escape hatch)
+		reqBody["max_tokens"] = c.maxTokens
+	}
+	payload, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to marshal chat request: %w", err)
+		return "", err
 	}
 
-	url := c.baseURL + "/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to create http request: %w", err)
+		return "", fmt.Errorf("failed to create http request: %w", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
-
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("http request failed: %w", err)
+		return "", fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to read response body: %w", err)
+		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
-
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		var apiErr ChatResponse
-		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error != nil {
-			return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
+		if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Error != nil {
+			return "", fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
 		}
-		return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, string(bodyBytes))
+		return "", fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, truncate(body, 200))
 	}
-
 	var chatResp ChatResponse
-	if err := json.Unmarshal(bodyBytes, &chatResp); err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to decode chat response: %w", err)
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return "", fmt.Errorf("failed to decode chat response: %w", err)
 	}
-
 	if len(chatResp.Choices) == 0 {
-		return nil, Usage{}, fmt.Errorf("llm returned no choices in response")
+		return "", fmt.Errorf("llm returned no choices in response")
 	}
-
-	return &chatResp.Choices[0].Message, chatResp.Usage.resolved(), nil
+	return chatResp.Choices[0].Message.Content, nil
 }
 
 // ChatCompletionStream sends a streaming request and returns the assembled assistant

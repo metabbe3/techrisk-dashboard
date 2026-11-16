@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/kb"
 )
 
 func readZip(t *testing.T, path string) map[string]string {
@@ -149,8 +150,11 @@ func TestParseDeckSpec(t *testing.T) {
 // "parameters":"{…}" and the upstream 400s the WHOLE chat request.
 func TestAllToolSchemasFlat(t *testing.T) {
 	reg := NewRegistry(&config.Config{WebToolsEnabled: true, NotionToolsEnabled: true})
+	// The four KB tools ride the same guard — a nested schema 400s the WHOLE
+	// upstream request (2026-11-10 outage); they shipped outside this net once.
+	reg.RegisterKnowledgeTools(kb.NewIndex(t.TempDir(), "m", sameEmb{}))
 	defs := reg.GetDefinitions()
-	if len(defs) < 11 { // 3 dashboard + 2 web + 2 generate + 4 notion
+	if len(defs) < 15 { // 3 dashboard + 2 web + 2 generate + 4 notion + 4 kb
 		t.Fatalf("expected the full fleet, got %d defs", len(defs))
 	}
 	for _, def := range defs {
@@ -222,5 +226,19 @@ func TestDeckSlideCap(t *testing.T) {
 	}
 	if _, ok := z["ppt/slides/slide20.xml"]; !ok {
 		t.Errorf("cap should keep 20 slides, slide20 missing")
+	}
+}
+
+func TestParseDeckSpecHashHeading(t *testing.T) {
+	slides := parseDeckSpec("#1 Priority\n- fix now")
+	if len(slides) != 1 || slides[0].Heading != "1 Priority" {
+		t.Errorf("heading mangled: %+v", slides)
+	}
+}
+
+func TestParseDeckSpecTrimmedHashHeading(t *testing.T) {
+	slides := parseDeckSpec("## Section Two\n- a")
+	if slides[0].Heading != "Section Two" {
+		t.Errorf("heading = %q", slides[0].Heading)
 	}
 }
