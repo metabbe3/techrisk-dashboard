@@ -60,6 +60,30 @@ func NewRegistry(cfg *config.Config) *Registry {
 	return r
 }
 
+// Subset returns a copy of the registry holding only the tools whose name
+// satisfies keep. Shared clients (dash/notion/pending/watchPending/kbIndex)
+// are carried over, so handlers keep working on the subset. Used by the
+// internal API to offer each caller only the tools whose side effects that
+// path actually honours.
+func (r *Registry) Subset(keep func(name string) bool) *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	sub := &Registry{
+		tools:        make(map[string]Tool, len(r.tools)),
+		notion:       r.notion,
+		dash:         r.dash,
+		pending:      r.pending,
+		watchPending: r.watchPending,
+		kbIndex:      r.kbIndex,
+	}
+	for name, t := range r.tools {
+		if keep(name) {
+			sub.tools[name] = t
+		}
+	}
+	return sub
+}
+
 // Has reports whether a tool with that name is registered.
 func (r *Registry) Has(name string) bool {
 	r.mu.RLock()

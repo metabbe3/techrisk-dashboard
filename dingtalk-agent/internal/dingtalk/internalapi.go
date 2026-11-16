@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
@@ -109,10 +110,26 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 		runCtx, cancel := context.WithTimeout(ctx, 360*time.Second)
 		defer func() { <-b.sem; cancel() }()
 
+		// Offer only the tools whose side effects this path honours:
+		// reminder/watch tickets are claimed in the chat turn handler only
+		// (stream.go applySchedules/applyWatches), so offering them here would
+		// park requests that nothing ever claims; generated files are only
+		// delivered when a conversation is bound. The family prompts drop
+		// automatically with the tools (buildSystemPrompt's registry.Has gates).
+		runLoop := b.loop.With(b.loop.Registry().Subset(func(name string) bool {
+			if name == "schedule_reminder" || name == "watch_incident" {
+				return false
+			}
+			if req.ConversationID == "" && strings.HasPrefix(name, "generate_") {
+				return false
+			}
+			return true
+		}))
+
 		// The dashboard's System prompt rides as sysExtra (appended to the
 		// loop's own system prompt) — history is never trusted to carry one.
 		turnCtx := tools.WithNotionSink(runCtx)
-		reply, _, usage, err := b.loop.Run(turnCtx, req.Text, nil, req.System)
+		reply, _, usage, err := runLoop.Run(turnCtx, req.Text, nil, req.System)
 		tools.TakeNotionReads(turnCtx) // a scheduled run must not leak reads into the next chat turn
 		if err != nil {
 			return internalRunResult{

@@ -240,3 +240,24 @@ func TestDashboardErrorSurfacing(t *testing.T) {
 		}
 	}
 }
+
+// Subset must keep only the allowed tools and share the client pointers, so a
+// subset registry behaves like the full one for the tools it kept.
+func TestRegistrySubset(t *testing.T) {
+	r := NewRegistry(&config.Config{})
+	sub := r.Subset(func(name string) bool {
+		return name != "schedule_reminder" && name != "watch_incident"
+	})
+	if sub.Has("schedule_reminder") || sub.Has("watch_incident") {
+		t.Error("subset kept ticket tools")
+	}
+	if !sub.Has("search_incidents") {
+		t.Error("subset lost search_incidents")
+	}
+	if sub.dash != r.dash || sub.pending != r.pending || sub.kbIndex != r.kbIndex {
+		t.Error("subset must share the client pointers")
+	}
+	if len(sub.GetDefinitions()) >= len(r.GetDefinitions()) {
+		t.Errorf("subset size %d not smaller than %d", len(sub.GetDefinitions()), len(r.GetDefinitions()))
+	}
+}

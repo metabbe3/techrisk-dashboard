@@ -302,3 +302,74 @@ func TestInternalRunUnknownMode(t *testing.T) {
 		t.Errorf("error = %v", out["error"])
 	}
 }
+
+// offeredTools collects the tool names the loop showed the LLM on the first call.
+func offeredTools(t *testing.T, f *fakeInternalAPI) []string {
+	t.Helper()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.llmReqs) == 0 {
+		t.Fatal("no LLM call captured")
+	}
+	names := make([]string, 0, len(f.llmReqs[0].Tools))
+	for _, td := range f.llmReqs[0].Tools {
+		names = append(names, td.Function.Name)
+	}
+	return names
+}
+
+func contains(list []string, want string) bool {
+	for _, s := range list {
+		if s == want {
+			return true
+		}
+	}
+	return false
+}
+
+// The internal path never claims reminder/watch tickets (only the chat turn
+// handler does), so offering them would park requests nothing ever claims —
+// the tools must be absent from the LLM's tool list.
+func TestInternalRunTaskOmitsTicketTools(t *testing.T) {
+	f := newFakeInternalAPI(t)
+	bot := newInternalBot(t, f)
+	srv := httptest.NewServer(NewInternalMux(bot))
+	defer srv.Close()
+
+	code, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{
+		Mode: "task", Text: "remind me daily",
+		ConversationType: "1", ConversationID: "cid-dm", StaffID: "staff-9",
+	})
+	if code != http.StatusOK || out["ok"] != true {
+		t.Fatalf("status=%d out=%v", code, out)
+	}
+	names := offeredTools(t, f)
+	if contains(names, "schedule_reminder") || contains(names, "watch_incident") {
+		t.Errorf("ticket tools offered on the internal path: %v", names)
+	}
+	if !contains(names, "search_incidents") {
+		t.Errorf("core dashboard tool missing: %v", names)
+	}
+}
+
+// Without a bound conversation there is nowhere to deliver generated files —
+// generate_* must be absent so the model cannot create files that go nowhere.
+func TestInternalRunUnboundOmitsGenerateTools(t *testing.T) {
+	f := newFakeInternalAPI(t)
+	bot := newInternalBot(t, f)
+	srv := httptest.NewServer(NewInternalMux(bot))
+	defer srv.Close()
+
+	code, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{
+		Mode: "task", Text: "make a report",
+	})
+	if code != http.StatusOK || out["ok"] != true {
+		t.Fatalf("status=%d out=%v", code, out)
+	}
+	names := offeredTools(t, f)
+	for _, n := range names {
+		if strings.HasPrefix(n, "generate_") {
+			t.Errorf("generate tool %q offered on an unbound internal run", n)
+		}
+	}
+}

@@ -93,6 +93,15 @@ func (l *Loop) Role() string {
 // Registry exposes the tool registry (e.g. the bot drains Notion reads from it).
 func (l *Loop) Registry() *tools.Registry { return l.registry }
 
+// With returns a copy of the loop running on a different registry (the
+// internal API subsets the shared registry per request). The receiver is
+// never mutated — copies are the pattern here (see runWithEscalation's retry).
+func (l *Loop) With(reg *tools.Registry) *Loop {
+	c := *l
+	c.registry = reg
+	return &c
+}
+
 type toolResult struct {
 	toolCallID string
 	name       string
