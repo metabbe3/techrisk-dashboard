@@ -1951,3 +1951,33 @@ A stats builder whose input scope is *re-derived* instead of *received* can only
 - [x] Rule for stats builders: take the surface's query as a parameter; re-deriving filters from `request()` is only for callers with no surface (documented on `build()`).
 - [x] Quarterly per-tab semantics pinned in `QuarterlyReportExportTest` (Fund Loss C reads its own chain 5, Non Fund Loss first row '-') and `SeverityFooterTest` (Fund Loss banner Avg MTBF = tab's own 41/2).
 - [x] Lesson family: when moving logic into a declarative/config form (`contentFooter` etc.), diff the closure's old body — the move itself dropped the query argument, and the regression shipped green because no test rendered the footer per tab.
+
+### [BUG-033] - Widget MTTR tiles/series scoped by MTTR sign instead of fund status + export MTBF chain had three private copies + analytics bucket means diluted by the group total
+
+**Date:** 2026-11-16
+**Discovered By:** Owner directive ("check widgets also fix the calculation so report / export and widgets match . also all other export … like 1 logic for all export") during the hand-workbook reconciliation
+**Severity:** Medium (wrong management numbers; one latent prod TypeError)
+**Status:** Resolved
+
+### Description
+The owner asked for ONE metric logic across widgets, report footers and every export. The audit found four divergence families:
+
+1. **Sign was used as a scope.** `IncidentMetricsCalculator::computeMttr()` stores days-scale NEGATIVE mttr for every `shouldCalculateMttrByDays()` status — Confirmed loss AND Potential recovery / Fully recovered / Non Tech Loss. The dashboard's MTTR tiles (`DashboardStatsOverview`, `IncidentStatsOverview`) and the trend chart's two MTTR series split by sign and labeled the buckets "Fund Loss (days)" / "Non Fund Loss (mins)": a Potential recovery row's −20d landed in the "Fund Loss" tile, a null-fund row's 30 min landed in the "Non Fund Loss" tile — neither row belongs to any tab of those names. The export tabs scope by `fund_status` and only use the sign to pick the unit bucket.
+2. **IncidentStatsOverview's Fund Loss money card missed `excludedFromCounts()`** (Completed alone) — Fully recovered / Potential recovery money counted, contradicting the Fund Loss card rule (AiTrendInsights + AnalyzeTrendsController fund totals had the same gap).
+3. **AnalyticsQueryService's JSON-dimension MTTR means divided each bucket's sum by the GROUP total** (`$stats['count']`), diluting mins by days-bucket rows and vice versa. The days branch also called `abs($incident->mttr)` on the raw attribute — a MySQL DECIMAL string (BUG-021 trap): a latent TypeError that no test had ever hit because no test exercised negative mttr through this path.
+4. **The export MTBF gap sequence existed three times** — `ComputesMtbfSequence` (Custom + Quarterly), `SingleIncidentSheetExport::computeMtbfForIncident()` (All-Tabs, per-tab), `IssuesMetricSheetExport::computeIssueMtbf()` (Issues, global) — the 2026-10-23 docs even said "two semantics, do not merge".
+
+### Root Cause
+The tile/series code was written when "fund loss ⇒ negative mttr" happened to hold, and the label froze the coincidence into UI copy; the calculator's status set later widened without the tiles following. The sequence triplication was 2026-09-30/2026-10-23 fixes landing in separate files instead of one trait. The diluted denominator came from a shared accumulator keyed by group, not bucket.
+
+### Fix
+- Tiles/series scope `fund_status` (enum cases) with the sign kept as the unit bucket; cache keys bumped `dashboard_stats_v7` / `incident_stats_v6` / `mttr_mtbf_trend_v6`.
+- IncidentStatsOverview + AiTrendInsights + AnalyzeTrendsController fund totals gain `excludedFromCounts()` (DashboardStatsOverview already had it).
+- AnalyticsQueryService: per-bucket `mttr_cnt` / `mttr_days_cnt` denominators + `(float)` cast before the sign test/abs.
+- ONE sequence: `ComputesMtbfSequence` with a scope-TRUSTED `$mtbfScope` (only metric hygiene — METRIC_ELIGIBLE + outliers + year + ordering — is added). All-Tabs sheets pass their sheet query (per-tab sequencing preserved); IssuesMetricSheetExport passes a FRESH classification=Issue query — NOT its own row query, whose `whereNotNull('mttr'/'mtbf')` membership clauses would shrink the chain (a stored-metric-less intermediate row must keep telescoping). The live table's `mtbf_display` column joined the same semantics (METRIC_ELIGIBLE, first-of-year `-`, key `mtbf_{tab}_{year}_v2_*`).
+
+### Prevention Checklist
+- [x] Rule written down (dependency-map "one-logic rule" + business-rules): a Fund Loss / Non Fund Loss LABEL scopes by `fund_status`; the MTTR sign only picks the unit bucket.
+- [x] `WidgetMetricUnificationTest` (6 tests): sign-vs-scope quadruple pinned on both stat widgets + the trend chart; fund card excludedFromCounts; per-bucket denominators; live-table chain cache map (first `-`, gap telescopes over a G row, G id absent).
+- [x] The live TypeError was caught by adding the missing days-branch test — coverage gap let a prod-only string cast survive three rounds of BUG-021 fixes elsewhere.
+- [x] "Do not merge" doc notes are a smell, not a design: when a second implementation appears for scope reasons, make scope a PARAMETER of the first instead (the trait now trusts `$mtbfScope`), and delete the copies in the same commit.

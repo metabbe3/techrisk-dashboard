@@ -370,7 +370,9 @@ class AnalyticsQueryService
                     $grouped[$val] = [
                         'count' => 0,
                         'mttr_sum' => 0,
+                        'mttr_cnt' => 0,
                         'mttr_days_sum' => 0,
+                        'mttr_days_cnt' => 0,
                         'fund_loss_sum' => 0,
                         'potential_sum' => 0,
                         'recovered_sum' => 0,
@@ -381,10 +383,16 @@ class AnalyticsQueryService
                 $grouped[$val]['count']++;
 
                 if ($incident->mttr !== null) {
-                    if ($incident->mttr >= 0) {
-                        $grouped[$val]['mttr_sum'] += $incident->mttr;
+                    // BUG-021: DECIMAL columns return strings on MySQL — cast
+                    // before the numeric compare/abs (the days branch was
+                    // never hit in tests until the one-logic fix).
+                    $mttr = (float) $incident->mttr;
+                    if ($mttr >= 0) {
+                        $grouped[$val]['mttr_sum'] += $mttr;
+                        $grouped[$val]['mttr_cnt']++;
                     } else {
-                        $grouped[$val]['mttr_days_sum'] += abs($incident->mttr);
+                        $grouped[$val]['mttr_days_sum'] += abs($mttr);
+                        $grouped[$val]['mttr_days_cnt']++;
                     }
                 }
 
@@ -404,8 +412,11 @@ class AnalyticsQueryService
         foreach ($grouped as $label => $stats) {
             $result[$label] = match ($metric) {
                 'count' => $stats['count'],
-                'avg_mttr' => $stats['count'] > 0 ? round($stats['mttr_sum'] / $stats['count'], 2) : 0,
-                'avg_mttr_days' => $stats['count'] > 0 ? round($stats['mttr_days_sum'] / $stats['count'], 2) : 0,
+                // Each bucket divides by its OWN row count — the group's
+                // total count dilutes the mean (fund-status rows live in
+                // the days bucket and would drag the mins average down).
+                'avg_mttr' => $stats['mttr_cnt'] > 0 ? round($stats['mttr_sum'] / $stats['mttr_cnt'], 2) : 0,
+                'avg_mttr_days' => $stats['mttr_days_cnt'] > 0 ? round($stats['mttr_days_sum'] / $stats['mttr_days_cnt'], 2) : 0,
                 'avg_mtbf' => $this->computeMtbf($stats['mtbf_dates']),
                 'sum_fund_loss' => round($stats['fund_loss_sum'], 2),
                 'sum_potential_fund_loss' => round($stats['potential_sum'], 2),

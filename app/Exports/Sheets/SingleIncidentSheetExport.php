@@ -4,11 +4,8 @@ declare(strict_types=1);
 
 namespace App\Exports\Sheets;
 
-use App\Enums\FundStatus;
-use App\Enums\IncidentClassification;
-use App\Enums\IncidentStatus;
-use App\Enums\IncidentType;
 use App\Enums\Severity;
+use App\Exports\Concerns\ComputesMtbfSequence;
 use App\Exports\Concerns\IdrFormat;
 use App\Exports\Concerns\WritesSeverityFooter;
 use Maatwebsite\Excel\Concerns\FromQuery;
@@ -24,6 +21,7 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents, WithHeadings, WithMapping, WithTitle
 {
+    use ComputesMtbfSequence;
     use WritesSeverityFooter;
 
     private $query;
@@ -36,15 +34,17 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
 
     private $columnNames;
 
-    /** Per-instance (NOT static): a static cache survived the request in long-lived FPM workers and froze the year's sequence — incidents created later dashed out mid-year (prod bug 2026-09-30). */
-    private array $mtbfCache = [];
-
     public function __construct($query, string $title, array $headings, array $columnNames)
     {
         $this->query = $query;
         $this->title = $title;
         $this->headings = $headings;
         $this->columnNames = $columnNames;
+        // The sheet's own (already export-filtered) query scopes the gap
+        // sequence — one implementation for every export (owner one-logic
+        // rule 2026-11-16). The trait trusts it for classification/fund
+        // scope and adds only METRIC_ELIGIBLE + outliers + year + ordering.
+        $this->mtbfScope = $query;
     }
 
     public function query()
@@ -102,61 +102,16 @@ class SingleIncidentSheetExport implements FromQuery, ShouldAutoSize, WithEvents
     }
 
     /**
-     * Gap sequence over the sheet's row set. First of the year has no
-     * predecessor → null (renders '-'), so the column's average equals
-     * span/(n-1) — the dashboard widgets' Avg MTBF. The old Jan-1
-     * dayOfYear anchor made the column mean ≠ every span-based number
-     * next to it (owner report 2026-09-30).
-     *
-     * Based on the sheet's own (already export-filtered) query, so f_*
-     * filters scope the gaps too — excluded rows telescope over (owner
-     * report 2026-10-23). The classification/match() constraints below
-     * are idempotent re-applies of what the orchestrator already added.
+     * Gap sequence over the sheet's row set, via the shared
+     * ComputesMtbfSequence implementation with the sheet's query as scope —
+     * first of the year null → '-' (renders like the Custom preset), so the
+     * column's average equals span/(n-1) — the dashboard widgets' Avg MTBF.
+     * f_* filters scope the gaps too — excluded rows telescope over (owner
+     * report 2026-10-23).
      */
     private function computeMtbfForIncident($incident): ?int
     {
-        $year = $incident->incident_date->year;
-        $key = "export_{$this->title}_{$year}";
-
-        if (! isset($this->mtbfCache[$key])) {
-            $query = $this->query->clone()
-                ->whereYear('incident_date', $year)
-                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->withoutOutliers()
-                ->orderBy('incident_date')->orderBy('id');
-
-            // Issues tab uses Issue classification; all others exclude Issues
-            if ($this->title === 'All Issues') {
-                $query->where('classification', IncidentClassification::Issue->value);
-            } else {
-                $query->where('classification', '!=', IncidentClassification::Issue->value);
-            }
-
-            match ($this->title) {
-                'On Going' => $query->where('incident_status', '!=', IncidentStatus::Completed->value),
-                'Completed Cases' => $query->where('incident_status', IncidentStatus::Completed->value),
-                'Recovered Cases' => $query->where('recovered_fund', '>', 0),
-                'P4 Incidents' => $query->where('severity', Severity::P4->value),
-                'Non-Tech Incidents' => $query->where('incident_type', IncidentType::NonTech->value),
-                'Fund Loss' => $query->where('fund_status', FundStatus::ConfirmedLoss->value),
-                'Potential Recovery' => $query->where('fund_status', FundStatus::PotentialRecovery->value),
-                'Fully Recovered' => $query->where('fund_status', FundStatus::FullyRecovered->value),
-                'Non Tech Loss' => $query->where('fund_status', FundStatus::NonTechLoss->value),
-                'Non Fund Loss' => $query->where('fund_status', FundStatus::NonFundLoss->value),
-                default => null,
-            };
-
-            $incidents = $query->get(['id', 'incident_date']);
-            $this->mtbfCache[$key] = [];
-            foreach ($incidents as $i => $inc) {
-                $this->mtbfCache[$key][$inc->id] = $i === 0
-                    ? null
-                    : (int) $incidents[$i - 1]->incident_date->startOfDay()
-                        ->diffInDays($inc->incident_date->startOfDay());
-            }
-        }
-
-        return $this->mtbfCache[$key][$incident->id] ?? null;
+        return $this->mtbfSequenceValue($incident);
     }
 
     public function registerEvents(): array

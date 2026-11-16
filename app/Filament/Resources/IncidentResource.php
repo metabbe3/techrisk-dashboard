@@ -320,13 +320,16 @@ class IncidentResource extends Resource
 
                         $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
                         $year = $record->incident_date->year;
-                        // Version in the key: a dashboard_cache_version bump (metrics
-                        // recalculation) invalidates this 1-hour cache for free.
-                        $cacheKey = "mtbf_{$tab}_{$year}_v".Cache::get('dashboard_cache_version', 0);
+                        // v2 in the key: the chain now drops non-metric rows
+                        // (METRIC_ELIGIBLE) and renders '-' on the year's
+                        // first row — old cached maps served dayOfYear.
+                        // A dashboard_cache_version bump invalidates for free.
+                        $cacheKey = "mtbf_{$tab}_{$year}_v2_".Cache::get('dashboard_cache_version', 0);
 
                         $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($tab, $year) {
                             $query = Incident::whereYear('incident_date', $year)
                                 ->where('classification', '!=', IncidentClassification::Issue->value)
+                                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                                 ->withoutOutliers()
                                 ->orderBy('incident_date')->orderBy('id');
 
@@ -346,10 +349,15 @@ class IncidentResource extends Resource
                             };
 
                             $incidents = $query->get(['id', 'incident_date']);
+                            // Export chain semantics (one logic, owner
+                            // 2026-11-16): first of the year renders '-', so
+                            // the column's mean = span/(n-1) like every
+                            // footer. G/Non Incident rows are not in the
+                            // chain (METRIC_ELIGIBLE) and render '-' too.
                             $result = [];
                             foreach ($incidents as $i => $inc) {
                                 $result[$inc->id] = $i === 0
-                                    ? $inc->incident_date->dayOfYear
+                                    ? '-'
                                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                                         ->diffInDays($inc->incident_date->startOfDay());
                             }
@@ -357,7 +365,7 @@ class IncidentResource extends Resource
                             return $result;
                         });
 
-                        return $mtbf[$record->id] ?? 0;
+                        return $mtbf[$record->id] ?? '-';
                     })
                     ->formatStateUsing(fn (int|string $state): string => is_int($state) ? number_format($state) : $state)
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),

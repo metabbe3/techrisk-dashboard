@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
@@ -26,7 +27,10 @@ class DashboardStatsOverview extends BaseWidget
     {
         // v6: counting rule changed (severity G / Non Incident excluded) —
         // bump so pre-change cached numbers are never served.
-        $cacheKey = 'dashboard_stats_v6_'.md5(json_encode([
+        // v7: MTTR tiles now scope by fund_status (matching the Fund Loss /
+        // Non Fund Loss export tabs), not by MTTR sign — a Potential recovery
+        // row also stores days-scale negative MTTR but is neither tab.
+        $cacheKey = 'dashboard_stats_v7_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -93,10 +97,20 @@ class DashboardStatsOverview extends BaseWidget
 
         $lastIncidentLabel = $days === 0 ? 'No recent incident' : $days.' days ago';
 
+        // MTTR tiles follow the export tabs (one logic rule, owner
+        // 2026-11-16): "Non Fund Loss (mins)" = Non fundLoss rows' positive
+        // (minutes) values; "Fund Loss (days)" = Confirmed loss rows'
+        // negative (days) values. Sign alone is NOT the scope — the metric
+        // calculator stores days-scale negative MTTR for every
+        // shouldCalculateMttrByDays() status (also Potential recovery /
+        // Fully recovered / Non Tech Loss), which are no tab's rows. The
+        // sign filters stay as the unit bucket inside each scope. Outliers
+        // store null MTTR, so the sign filters drop them for free.
         $mttrNonFundLoss = Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->tap($incidentDateFilter)
+            ->where('fund_status', FundStatus::NonFundLoss->value)
             ->where('mttr', '>=', 0)
             ->average('mttr');
 
@@ -106,6 +120,7 @@ class DashboardStatsOverview extends BaseWidget
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->tap($incidentDateFilter)
+            ->where('fund_status', FundStatus::ConfirmedLoss->value)
             ->where('mttr', '<', 0)
             ->average('mttr') ?? 0));
 
@@ -114,7 +129,7 @@ class DashboardStatsOverview extends BaseWidget
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
-            ->where('fund_status', 'Non fundLoss');
+            ->where('fund_status', FundStatus::NonFundLoss->value);
 
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
         $mtbfNonFundLoss = 0;
@@ -131,7 +146,7 @@ class DashboardStatsOverview extends BaseWidget
             ->tap($incidentDateFilter)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
-            ->where('fund_status', 'Confirmed loss');
+            ->where('fund_status', FundStatus::ConfirmedLoss->value);
 
         $mtbfFundLossCount = $mtbfFundLossQuery->count();
         $mtbfFundLoss = 0;

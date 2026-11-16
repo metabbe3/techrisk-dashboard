@@ -202,7 +202,9 @@ class AiTrendInsights extends Widget
             );
         }
 
-        $fundLoss = (float) (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
+        // Fund Loss card rule: Incident + Completed + excludedFromCounts
+        // (matches DashboardStatsOverview).
+        $fundLoss = (float) (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->excludedFromCounts()->sum('fund_loss');
 
         $result = app(AiTextService::class)->analyzeTrends(
             monthlyData: $monthlyData,
