@@ -51,6 +51,24 @@ class SubIncidentListSurfacingTest extends TestCase
         return $user;
     }
 
+    public function test_expand_chevron_renders_and_the_column_action_expands_the_family(): void
+    {
+        [$super, $sub] = $this->seedFamily();
+
+        $component = Livewire::actingAs($this->viewer())
+            ->test(ListIncidents::class);
+
+        // Review C1: the chevron must actually resolve an icon — the expand
+        // cell was an empty invisible button before (null state never called
+        // the icon closure).
+        $component->assertSee('M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25'); // heroicon chevron path data
+
+        // Review C1: the real click path — the column action behind the
+        // chevron's wire:click, not the backing method directly.
+        $component->call('callTableColumnAction', 'expand_sub_incidents', (string) $super->id)
+            ->assertSee('Sub ZX7 hidden child');
+    }
+
     public function test_default_view_hides_sub_rows_and_expansion_reveals_them(): void
     {
         [$super, $sub] = $this->seedFamily();

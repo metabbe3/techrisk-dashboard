@@ -26,7 +26,10 @@ class IncidentStatsFooterData
 
         $query = $query->clone();
 
-        $totalCases = $query->count();
+        // Review I3 (PROJ-022): a count — subs roll up into their super, so
+        // "Total Cases" counts families, matching every other count surface
+        // (money columns below keep the sub's fund loss).
+        $totalCases = $query->clone()->withoutSubIncidents()->count();
 
         $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()

@@ -87,4 +87,23 @@ class SubIncidentHierarchyTest extends TestCase
         // Exactly one dispatch — the link change (seeds were quiet).
         Bus::assertDispatchedTimes(CalculateIncidentMetrics::class, 1);
     }
+
+    public function test_deleting_a_super_recalculates_the_orphaned_subs(): void
+    {
+        Bus::fake([CalculateIncidentMetrics::class]);
+
+        $super = Incident::factory()->createQuietly();
+        $sub = Incident::factory()->createQuietly();
+        $sub->update(['parent_incident_id' => $super->id]);
+        Bus::assertDispatchedTimes(CalculateIncidentMetrics::class, 1); // the link change
+
+        // Review I1: the FK nullOnDelete happens at the database — no Eloquent
+        // events fire on the orphaned subs, so the observer must handle the
+        // delete itself: each orphan rejoins the count surfaces and its MTBF
+        // chain (spec: delete-super bumps dashboard_cache_version).
+        $super->delete();
+
+        Bus::assertDispatchedTimes(CalculateIncidentMetrics::class, 2);
+        $this->assertNull($sub->fresh()->parent_incident_id);
+    }
 }

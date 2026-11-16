@@ -520,7 +520,9 @@ class ChatContextService
                 ->whereNotIn('incident_status', [IncidentStatus::Completed->value])
                 ->count();
 
-            $totalFundLoss = Incident::aiCounts()
+            // Review I2 (PROJ-022): money stays with subs — the sum rides the
+            // money scope, not the count scope.
+            $totalFundLoss = Incident::aiCounts(withSubIncidents: true)
                 ->whereYear('incident_date', $year)
                 ->sum('fund_loss');
 

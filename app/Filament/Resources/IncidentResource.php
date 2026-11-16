@@ -94,8 +94,32 @@ class IncidentResource extends Resource
         $coreDetails = [
             // PROJ-022: create-as-sub entry — CreateIncident?parent=<id> fills
             // this from the URL; a normal create leaves it null.
+            // Review I4: the URL is craftable — validate the candidate (exists,
+            // a super-grade Incident, not itself linked) or a crafted
+            // ?parent=<sub|issue|garbage> chains depth-2 hierarchies, hangs a
+            // family off an Issue, or 500s on the FK.
             Forms\Components\Hidden::make('parent_incident_id')
                 ->dehydrated()
+                // Hidden fields are EXCLUDED from validation unless this flag
+                // is set (HasState defaults isDehydratedWhenHidden false) —
+                // without it the rules below never ran.
+                ->dehydratedWhenHidden()
+                ->rules([
+                    fn (): \Closure => function (string $attribute, $value, \Closure $fail): void {
+                        if (blank($value)) {
+                            return;
+                        }
+
+                        $parent = Incident::find($value);
+
+                        if ($parent === null
+                            || $parent->classification !== IncidentClassification::Incident
+                            || filled($parent->parent_incident_id)
+                            || $parent->subIncidents()->exists()) {
+                            $fail('The selected parent is not a valid super-incident: it must exist, be an Incident (not an Issue), and sit at the top of its hierarchy.');
+                        }
+                    },
+                ])
                 ->default(fn () => request()->filled('parent') ? (int) request()->query('parent') : null),
             Forms\Components\Placeholder::make('sub_incident_hint')
                 ->content(fn ($get) => filled($get('parent_incident_id'))
@@ -332,11 +356,16 @@ class IncidentResource extends Resource
                 IconColumn::make('expand_sub_incidents')
                     ->label('')
                     ->width('20px')
-                    ->icon(fn (Incident $record) => $record->sub_incidents_count === 0
+                    // Review C1: the column needs a non-null state or the icon
+                    // blade never evaluates the icon closure (empty invisible
+                    // button); closures in this static table() can NOT capture
+                    // $this — the component arrives by injection as $livewire.
+                    ->state(fn (Incident $record) => $record->sub_incidents_count)
+                    ->icon(fn (Incident $record, $livewire) => $record->sub_incidents_count === 0
                         ? null
-                        : (in_array($record->getKey(), $this->expandedSubIncidents) ? 'heroicon-m-chevron-down' : 'heroicon-m-chevron-right'))
-                    ->action(fn (Incident $record) => $record->sub_incidents_count > 0
-                        ? $this->toggleExpandedSubIncidents((int) $record->getKey())
+                        : (in_array($record->getKey(), $livewire->expandedSubIncidents) ? 'heroicon-m-chevron-down' : 'heroicon-m-chevron-right'))
+                    ->action(fn (Incident $record, $livewire) => $record->sub_incidents_count > 0
+                        ? $livewire->toggleExpandedSubIncidents((int) $record->getKey())
                         : null),
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases')),
                 TextColumn::make('title')

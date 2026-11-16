@@ -80,6 +80,24 @@ class IncidentObserver
     }
 
     /**
+     * Handle the Incident "deleting" event (BEFORE the DB delete — the FK
+     * nullOnDelete nulls the subs as part of the DELETE statement, so by
+     * "deleted" no rows point at the super any more).
+     */
+    public function deleting(Incident $incident): void
+    {
+        // Review I1 (PROJ-022): the FK nullOnDelete happens at the database —
+        // no Eloquent events fire on the orphaned subs, so this handler is
+        // the ONLY chance to recalc them (each rejoins the count surfaces and
+        // its MTBF chain) and bump dashboard_cache_version (via the job).
+        // Deleting a record without subs changes nothing structural — the
+        // 15-min TTL covers the plain count drop (pre-existing behavior).
+        Incident::where('parent_incident_id', $incident->getKey())
+            ->get()
+            ->each(fn (Incident $sub) => dispatch(new CalculateIncidentMetrics($sub)));
+    }
+
+    /**
      * Handle the Incident "updated" event.
      */
     public function updated(Incident $incident): void

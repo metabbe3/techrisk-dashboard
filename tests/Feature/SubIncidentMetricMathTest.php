@@ -80,7 +80,22 @@ class SubIncidentMetricMathTest extends TestCase
         $this->assertSame(10.0, (float) $stats['avgMttrMins']);
         $this->assertSame(0.0, (float) $stats['avgMtbf']); // one eligible row left — no span
         $this->assertSame(50.0, (float) $stats['totalFundLoss']);
-        $this->assertSame(2, $stats['totalCases']);
+        // Review I3 (PROJ-022): totalCases is a COUNT — subs roll up into
+        // their super everywhere. Money columns keep the sub's fund loss.
+        $this->assertSame(1, $stats['totalCases']);
+    }
+
+    public function test_footer_total_cases_excludes_subs_on_the_default_base_query(): void
+    {
+        // No query argument — the table footer's real path (baseQuery()).
+        // Review I3: baseQuery() never excluded subs, so the footer's
+        // "Total Cases" counted rows the default table view hides.
+        $this->seedSuperAndSub(now()->year);
+
+        $stats = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build();
+
+        $this->assertSame(1, $stats['totalCases']);
+        $this->assertSame(50.0, (float) $stats['totalFundLoss']); // money keeps the sub
     }
 
     public function test_footer_average_excludes_a_sub_even_when_it_is_an_outlier(): void
