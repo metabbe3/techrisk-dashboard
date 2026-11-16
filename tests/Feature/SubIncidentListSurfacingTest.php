@@ -81,15 +81,17 @@ class SubIncidentListSurfacingTest extends TestCase
             ->assertSee('Sub ZX7 hidden child');
     }
 
-    public function test_sub_rows_carry_a_row_class_for_family_styling(): void
+    public function test_family_rows_carry_marker_classes_for_group_styling(): void
     {
         [$super, $sub] = $this->seedFamily();
 
-        // The sub row must be MARKED so CSS can indent it under its super
-        // (owner 2026-11-16: the family should read as one unit) — before
-        // expansion no sub rows render, so the marker appears only after.
+        // Owner 2026-11-16: super + subs render as ONE highlighted group —
+        // the head is marked even collapsed (the band signals a family), the
+        // subs' marker appears with expansion. CSS merges both into a single
+        // continuous band (app.css).
         Livewire::actingAs($this->viewer())
             ->test(ListIncidents::class)
+            ->assertSee('sub-incident-family-head')
             ->assertDontSee('sub-incident-row')
             ->call('toggleExpandedSubIncidents', $super->id)
             ->assertSee('sub-incident-row');

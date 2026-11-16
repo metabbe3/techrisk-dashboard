@@ -2820,13 +2820,26 @@
     padding: 0.1rem 0.4rem !important;
 }
 
-/* --- PROJ-022: sub-incident rows nest under their super (incidents list) ---
-   The row carries .sub-incident-row via ->recordClasses() — indent it to the
-   right with a vertical indigo guide line + a faint band so the family reads
-   as one unit (owner 2026-11-16). Unlayered rules beat Filament's layered
-   cell padding utilities, so no !important here. */
+/* --- PROJ-022: a super and its subs render as ONE highlighted group ---
+   (owner 2026-11-16: "satu row dengan super incident", shared highlighted
+   background). The head carries .sub-incident-family-head, each sub
+   .sub-incident-row, both via ->recordClasses(). The tbody's divide-y draws
+   separators as border-TOP on the lower row, so zeroing it on sub rows
+   merges the family into one continuous band while the borders above the
+   head and below the last sub stay. Subs indent 3rem with a vertical indigo
+   guide line. Unlayered rules beat Filament's layered utilities. */
+tr.fi-ta-row.sub-incident-family-head > td,
 tr.fi-ta-row.sub-incident-row > td {
-    background-color: #f8fafc;
+    background-color: #eef2ff; /* indigo-50 — the family band */
+}
+
+:root.dark tr.fi-ta-row.sub-incident-family-head > td,
+:root.dark tr.fi-ta-row.sub-incident-row > td {
+    background-color: rgb(99 102 241 / 0.08);
+}
+
+tr.fi-ta-row.sub-incident-row {
+    border-top-width: 0; /* no separator inside the family */
 }
 
 tr.fi-ta-row.sub-incident-row > td:first-of-type {
@@ -2843,8 +2856,4 @@ tr.fi-ta-row.sub-incident-row > td:first-of-type::before {
     width: 2px;
     border-radius: 2px;
     background: #6366f1;
-}
-
-:root.dark tr.fi-ta-row.sub-incident-row > td {
-    background-color: rgb(255 255 255 / 0.04);
 }

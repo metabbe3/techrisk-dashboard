@@ -813,10 +813,18 @@ class IncidentResource extends Resource
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 ]),
             ])
-            // PROJ-022 (owner 2026-11-16): a sub's row must READ as part of
-            // its super's family — the marker class lets the theme indent the
-            // row and draw the family guide line (app.css .sub-incident-row).
-            ->recordClasses(fn (Incident $record): array => filled($record->parent_incident_id) ? ['sub-incident-row'] : [])
+            // PROJ-022 (owner 2026-11-16): super + subs render as ONE
+            // highlighted group — the head carries its marker even collapsed
+            // (the band signals a family), each sub carries its own; app.css
+            // merges both into one continuous band (.sub-incident-family-head
+            // / .sub-incident-row).
+            ->recordClasses(function (Incident $record): array {
+                if (filled($record->parent_incident_id)) {
+                    return ['sub-incident-row'];
+                }
+
+                return $record->sub_incidents_count > 0 ? ['sub-incident-family-head'] : [];
+            })
             ->contentFooter(fn () => view('livewire.incident-stats-footer', [
                 'stats' => app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build(),
             ]));
