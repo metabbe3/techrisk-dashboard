@@ -166,26 +166,47 @@ const ExternalRCAPrompt = `## External incident report (partner-facing RCA, .doc
 - WORDING RULES (the document goes to partners — follow exactly):
   - Neutral, general, NON-TECHNICAL language: "abnormal traffic handling", "a system glitch",
     "service disruption" — no internal service/system/team/person names, never blame DANA.
+    Mechanism vocabulary is general classes only (traffic handling, service degradation, overload,
+    provider outage, domain access block) — never DNS, latency, database or any internal names.
   - Voice: "DANA Team found/investigated/fixed…". Partner teams are named by their company name
     and only as participants ("investigated together with the X Team").
   - Name a third party as the CAUSE only when the record supports it (third_party field or
-    incident_source = External). If the record gives no cause, write generic phrasing
-    ("an issue affecting transaction processing") — NEVER invent a cause.
-  - Chronology: anchors are the timestamps present in the record (timeline, status updates,
-    discovered_at, resolved/stop-bleeding times), formatted '<date> HH:MM GMT+7', one short
-    sentence per event, same neutral voice. Keep consecutive events ≤ 30 minutes apart: when the
-    record only has wide gaps, add the in-between steps that necessarily happened (noticed →
-    investigated together → escalated → root cause found → fix implemented → fix completed →
-    informed partner → monitored → recovered → stable) and give them sensible interpolated times
-    between the real anchors. The anchors themselves and the event ORDER must stay exactly as the
-    record states — the filler events only smooth the pacing, and every sentence stays neutral
-    and non-technical.
-  - Corrective actions: past tense for what was done ("Implemented a fix…", "Monitored…") plus a
-    final forward-looking item ("Review … to prevent similar issues in the future.").
-  - Style example (from the approved 05 Nov 2026 report): Summary "On 05 Nov 2026, DANA Team found
-    an anomaly in QRIS transactions from Tokopedia. DANA Team immediately investigated together
-    with Tokopedia Team and found an issue in our system's traffic handling. DANA Team implemented
-    a fix, and transactions soon recovered."
+    incident_source = External). Otherwise phrase the cause on our side, still specifically.
+  - PROBLEM STATEMENT and ROOT CAUSE must name the concrete mechanism — NEVER generic filler.
+    ONE sentence each. When the record has no cause, infer the most plausible one from the
+    timeline and chronology — what necessarily happened for these symptoms at these times —
+    hedged if uncertain ("an apparent block of the domain by the national domain registry",
+    "an issue affecting transaction processing that was resolved after a traffic adjustment").
+    A specific hedged inference beats a vague sentence. Mark inferred parts in your draft
+    reply ("Root cause inferred from the timeline — correct me if it's wrong") so the requester
+    can correct them before generation.
+  - HOUSE PATTERN (the owner's approved reports):
+    - Executive Summary: 3–4 sentences — "On <date>[ at HH:MM], DANA Team found <symptom>."
+      → "DANA Team immediately investigated [together with <Partner> Team] and found
+      <mechanism>." → mitigation sentence(s) → "Transactions/services soon/gradually recovered."
+    - Problem Statement: one cause→effect sentence naming the mechanism class — e.g. "Abnormal
+      traffic handling in our services caused part of the QRIS generation requests from Tokopedia
+      to fail, and Tokopedia QRIS transactions dropped." / "Third-party service provider instability
+      causing transaction rate to drop."
+    - Root Cause: one sentence naming the concrete mechanism — e.g. "Massive traffic increase
+      during peak hour causing services to be overloaded." / "Third-party service provider
+      experienced an outage causing instability."
+    - Corrective actions: 2–4 SHORT verb-first items ("Scale up the services.", "Implemented a
+      fix on our traffic handling so Tokopedia transactions can be processed normally."), plus a
+      final forward-looking item ("Review … to prevent similar issues in the future.").
+  - Chronology: tool arg format is 'YYYY-MM-DD HH:MM | event' in WIB (no GMT+7 in the args —
+    the template renders it). Anchors are the timestamps present in the record (timeline, status
+    updates, discovered_at, resolved/stop-bleeding times), one short sentence per event, same
+    neutral voice. Keep consecutive events ≤ 30 minutes apart: when the record only has wide
+    gaps, add the in-between steps that necessarily happened (noticed → investigated together →
+    escalated → root cause found → fix implemented → fix completed → informed partner →
+    monitored → recovered → stable) and give them sensible interpolated times between the real
+    anchors. The anchors themselves and the event ORDER must stay exactly as the record states —
+    the filler events only smooth the pacing, and every sentence stays neutral and non-technical.
+  - You MAY research real published statements about this incident (web_search / web_fetch —
+    vendor outage notices, provider/registry announcements) and match their level of detail in
+    your own words. Never copy another company's statement verbatim; the dashboard record stays
+    the source of truth for facts, times and order.
 - You MAY also consult Notion to enrich the report: notion_search / notion_query_database can hold
   postmortems and investigation docs. Use only a document you have VERIFIED is about the same
   incident (matching incident number, date, or title) — if you cannot verify the match, ignore it.

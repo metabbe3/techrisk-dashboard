@@ -426,7 +426,7 @@ func TestExternalRCAPromptAndConstitution(t *testing.T) {
 		}
 	}
 	for _, want := range []string{"generate_external_rca", "get_incident", "confirm", "neutral",
-		"NEVER invent a cause", "30 minutes apart"} {
+		"inferred from the timeline", "hedged", "30 minutes apart"} {
 		if !strings.Contains(ExternalRCAPrompt, want) {
 			t.Errorf("ExternalRCAPrompt does not teach %q", want)
 		}

@@ -157,6 +157,11 @@ func TestExternalRCAHappyPathMatchesSampleFormat(t *testing.T) {
 	if n := strings.Count(rows[1], "<w:tr"); n != 9 {
 		t.Errorf("chronology rows = %d, want 9", n)
 	}
+	// the real reports render times as "12:36 GMT+7" — the template carries the
+	// static suffix after {{ROW_TIME}} (2026-11-16 template patch)
+	if !strings.Contains(rows[1], ">12:36 GMT+7<") {
+		t.Error("chronology time cell does not render '12:36 GMT+7' — template lost the static GMT+7 suffix")
+	}
 	if strings.Contains(doc, "{{") {
 		t.Error("placeholders left in the filled document")
 	}

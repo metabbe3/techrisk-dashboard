@@ -26,6 +26,10 @@ embedded template and the bot ships the .docx to whoever asked.
 - Title = `Incident Report for <incident_date> Incident` — fixed in the template.
 - Actions/chronology may be numbered by the model; the tool strips prefixes and
   Word numbers the list 1..N via the shared numId.
+- Chronology tool args carry NO timezone suffix (`YYYY-MM-DD HH:MM | event`,
+  times in WIB) — the template renders a static ` GMT+7` after `{{ROW_TIME}}`
+  (patched 2026-11-16; the real reports show `12:36 GMT+7`). When rebuilding
+  the template from a fresh sample, re-add that suffix.
 
 ## Guardrails & caps
 - CONFIRM-FIRST flow is taught in the prompt and echoed in the constitution's
@@ -33,8 +37,15 @@ embedded template and the bot ships the .docx to whoever asked.
 - Wording rules (prompt): neutral, general, NON-technical; "DANA Team …"
   voice; no internal service/system/team/person names; never blame DANA;
   third party as CAUSE only when the record supports it (`third_party` /
-  `incident_source=External`); no cause in record → generic phrasing, never
-  invented.
+  `incident_source=External`).
+- Cause detail (owner directive 2026-11-16, supersedes the old "never invent"
+  fallback): Problem Statement and Root Cause each name the CONCRETE mechanism
+  in ONE sentence — the owner's five approved reports (20 Mar / 19 Sep / 30 Sep /
+  05 Nov 2026) are the house pattern. No cause in the record → infer the most
+  plausible one from the timeline/chronology, hedged ("an apparent block …"),
+  and flag the inferred parts in the draft so the requester corrects them
+  before generation. Web grounding allowed: real published statements about the
+  incident via web_search/web_fetch, own words, record wins on facts.
 - Chronology pacing (owner directive 2026-11-16): consecutive events ≤ 30
   minutes apart. Anchor times come from the record; when the record/Notion
   only has wide gaps, the model adds the necessary in-between steps with

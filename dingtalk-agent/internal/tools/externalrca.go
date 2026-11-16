@@ -55,9 +55,9 @@ func externalRCADef() llm.ToolDefinition {
 			Parameters: schema(
 				map[string]any{
 					"incident_no": map[string]any{"type": "string", "description": "Incident number, e.g. 20250115_IN_1234"},
-					"summary":     map[string]any{"type": "string", "description": "Executive Summary paragraph (neutral, non-technical)"},
-					"problem":     map[string]any{"type": "string", "description": "Problem Statement paragraph"},
-					"root_cause":  map[string]any{"type": "string", "description": "Root cause paragraph — general wording, no blame, no internal system/team names"},
+					"summary":     map[string]any{"type": "string", "description": "Executive Summary paragraph (3-4 sentences: found -> investigated -> mitigation -> recovery; neutral, non-technical)"},
+					"problem":     map[string]any{"type": "string", "description": "Problem Statement paragraph — ONE cause->effect sentence naming the mechanism class (detailed, never generic)"},
+					"root_cause":  map[string]any{"type": "string", "description": "Root cause paragraph — ONE sentence naming the concrete mechanism, neutral non-technical; when the record lacks the cause, infer the most plausible one from the chronology with hedged wording; no blame, no internal system/team names"},
 					"actions":     map[string]any{"type": "string", "description": "Corrective actions, one per line (max 10)"},
 					"chronology":  map[string]any{"type": "string", "description": "Time chronology events, one per line: 'YYYY-MM-DD HH:MM | event' (max 30)"},
 				},

@@ -56,7 +56,7 @@ func TestSkillDocsCoverRegistry(t *testing.T) {
 		}
 		doc := string(raw)
 		for _, key := range []string{"name", "status", "tools", "gate", "prompt", "files"} {
-			if !regexp.MustCompile(`(?m)^`+key+`:`).MatchString(doc) {
+			if !regexp.MustCompile(`(?m)^` + key + `:`).MatchString(doc) {
 				t.Errorf("skills/%s/SKILL.md: frontmatter missing %q key (template in skills/README.md)", e.Name(), key)
 			}
 		}
