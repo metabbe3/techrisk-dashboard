@@ -129,7 +129,15 @@ func (b *Bot) sweepWatches(ctx context.Context, watermark time.Time) bool {
 			// hung forever on an empty sem or STOLE a live turn's slot —
 			// audit round 4).
 			b.sem <- struct{}{}
-			go b.fireWatch(ctx, it, old, row.Status)
+			go func(it watch.Item, old, new string) {
+				// A watch that just fired reports on a DETACHED ctx: the
+				// status is already persisted, and a deploy's SIGTERM used
+				// to cancel the turn mid-answer — notification lost. The
+				// timeout bounds a hung loop.
+				fireCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 360*time.Second)
+				defer cancel()
+				b.fireWatch(fireCtx, it, old, new)
+			}(it, old, row.Status)
 		}
 	}
 	return len(rows) < sweepLimit // a full page may have been truncated

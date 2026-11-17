@@ -148,6 +148,18 @@ func (b *Bot) knowledgePrompt() string {
 	return sb.String()
 }
 
+// acquire takes a concurrency slot or gives up when ctx ends — handlers
+// queued behind a full semaphore during a client disconnect / poller exit
+// used to block forever on `b.sem <- struct{}{}`.
+func (b *Bot) acquire(ctx context.Context) bool {
+	select {
+	case b.sem <- struct{}{}:
+		return true
+	case <-ctx.Done():
+		return false
+	}
+}
+
 // Drain waits for in-flight agent turns to finish (up to timeout) so a
 // SIGTERM does not sever a multi-tool turn mid-answer. Returns false on
 // timeout (turns still running).

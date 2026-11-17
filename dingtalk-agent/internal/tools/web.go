@@ -112,13 +112,13 @@ type webSearchArgs struct {
 	Query string `json:"query"`
 }
 
-func (w *webTools) handleWebSearch(_ context.Context, args webSearchArgs) (string, error) {
+func (w *webTools) handleWebSearch(ctx context.Context, args webSearchArgs) (string, error) {
 	q := strings.TrimSpace(args.Query)
 	if q == "" {
 		return "", fmt.Errorf("query is required")
 	}
 
-	req, err := http.NewRequest(http.MethodGet, ddgEndpoint+"?q="+url.QueryEscape(q), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ddgEndpoint+"?q="+url.QueryEscape(q), nil)
 	if err != nil {
 		return "", err
 	}
@@ -224,14 +224,14 @@ var (
 	blockElRe     = regexp.MustCompile(`(?is)</(p|div|br|li|tr|h[1-6])>`)
 )
 
-func (w *webTools) handleWebFetch(_ context.Context, args webFetchArgs) (string, error) {
+func (w *webTools) handleWebFetch(ctx context.Context, args webFetchArgs) (string, error) {
 	raw := strings.TrimSpace(args.URL)
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", fmt.Errorf("url must be absolute http(s), got %q", raw)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return "", err
 	}

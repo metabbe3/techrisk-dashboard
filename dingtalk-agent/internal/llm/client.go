@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
@@ -137,7 +138,7 @@ type Client struct {
 	maxTokens    int
 	httpClient   *http.Client
 	embedModel   string
-	embedArrayOK bool // array input accepted by /embeddings (probed lazily)
+	embedArrayOK atomic.Bool // array input accepted by /embeddings (probed lazily)
 }
 
 // NewClient initializes a new LLM client.
@@ -158,7 +159,7 @@ func NewClient(cfg *config.Config) *Client {
 	}
 	heavyModel := cfg.HeavyModel // empty = escalation disabled
 
-	return &Client{
+	c := &Client{
 		baseURL:      baseURL,
 		apiKey:       cfg.LLMAPIKey,
 		model:        model,
@@ -166,7 +167,7 @@ func NewClient(cfg *config.Config) *Client {
 		visionModel:  visionModel,
 		maxTokens:    cfg.LLMMaxTokens,
 		embedModel:   cfg.EmbeddingModel,
-		embedArrayOK: true, // optimistic — flips off on the first batch failure
+
 		// No overall Client.Timeout: long streaming answers (big reports
 		// through the tool loop) legitimately exceed any fixed ceiling and
 		// Timeout kills the connection mid-stream. ResponseHeaderTimeout
@@ -176,6 +177,9 @@ func NewClient(cfg *config.Config) *Client {
 			Transport: &http.Transport{ResponseHeaderTimeout: 120 * time.Second},
 		},
 	}
+	c.embedArrayOK.Store(true) // optimistic — flips off on a definitive 4xx/count mismatch
+
+	return c
 }
 
 // UsagePtr returns a pointer for JSON omitempty, or nil when zero.
@@ -290,15 +294,32 @@ func (c *Client) Embed(ctx context.Context, inputs []string) ([][]float32, error
 	if len(inputs) == 0 {
 		return nil, nil
 	}
-	if !c.embedArrayOK {
+	if !c.embedArrayOK.Load() {
 		return c.embedOneByOne(ctx, inputs)
 	}
 	out, err := c.embedBatch(ctx, inputs)
 	if err == nil {
 		return out, nil
 	}
-	c.embedArrayOK = false // gateway rejected the array — remember
+	// Downgrade on a definitive rejection only (4xx = the gateway did not
+	// understand array input; count mismatch = it processed it wrong). A
+	// transport error or 5xx is transient — a single blip used to disable
+	// batch embeds for the process lifetime. Written from concurrent
+	// goroutines → atomic.Bool.
+	if isEmbedRejection(err) {
+		c.embedArrayOK.Store(false)
+	}
 	return c.embedOneByOne(ctx, inputs)
+}
+
+// A 4xx status or a wrong vector count is proof array input is not honoured;
+// anything else (timeout, 5xx, parse flake) is not.
+func isEmbedRejection(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "embeddings: 4") || strings.Contains(msg, "want %d vectors") || strings.Contains(msg, "embeddings: empty data")
 }
 
 func (c *Client) embedBatch(ctx context.Context, inputs []string) ([][]float32, error) {

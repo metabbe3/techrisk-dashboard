@@ -435,7 +435,11 @@ func (q *Queue) GetNextTaskContext(ctx context.Context, workerID string, maxWait
 			return task, nil
 		default:
 		}
-		delete(q.waiters, workerID)
+		// A re-poll (same workerID) replaced our registration — deleting by
+		// key alone unregistered the NEW waiter and its long-poll went deaf.
+		if cur := q.waiters[workerID]; cur == nil || cur.ch == waitCh {
+			delete(q.waiters, workerID)
+		}
 		q.mu.Unlock()
 		return nil, ctx.Err()
 	case <-time.After(maxWait):
@@ -446,7 +450,10 @@ func (q *Queue) GetNextTaskContext(ctx context.Context, workerID string, maxWait
 			return task, nil
 		default:
 		}
-		delete(q.waiters, workerID)
+		// Same guard as the ctx path: only remove our own registration.
+		if cur := q.waiters[workerID]; cur == nil || cur.ch == waitCh {
+			delete(q.waiters, workerID)
+		}
 		q.mu.Unlock()
 		return nil, nil
 	}

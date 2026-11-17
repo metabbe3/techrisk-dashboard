@@ -106,8 +106,11 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 		}
 
 	case "task":
-		// Shares the 4-slot concurrency ceiling with chat turns.
-		b.sem <- struct{}{}
+		// Shares the 4-slot concurrency ceiling with chat turns. A
+		// disconnected caller must not keep its goroutine parked on b.sem.
+		if !b.acquire(ctx) {
+			return internalRunResult{OK: false, Error: "request cancelled while waiting for an agent slot"}
+		}
 		runCtx, cancel := context.WithTimeout(ctx, 360*time.Second)
 		defer func() { <-b.sem; cancel() }()
 
