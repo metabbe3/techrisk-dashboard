@@ -1981,3 +1981,27 @@ The tile/series code was written when "fund loss ⇒ negative mttr" happened to 
 - [x] `WidgetMetricUnificationTest` (6 tests): sign-vs-scope quadruple pinned on both stat widgets + the trend chart; fund card excludedFromCounts; per-bucket denominators; live-table chain cache map (first `-`, gap telescopes over a G row, G id absent).
 - [x] The live TypeError was caught by adding the missing days-branch test — coverage gap let a prod-only string cast survive three rounds of BUG-021 fixes elsewhere.
 - [x] "Do not merge" doc notes are a smell, not a design: when a second implementation appears for scope reasons, make scope a PARAMETER of the first instead (the trait now trusts `$mtbfScope`), and delete the copies in the same commit.
+
+---
+
+### [BUG-034] - Investigation form intake sent a shifted Notion page id (slug letters glued onto the id)
+
+**Date:** 2026-11-17
+**Discovered By:** Owner, first field test of PROJ-024 ("already provide url but … error"; "even dingtalk agent can read it")
+**Severity:** Medium (Notion source unusable for every link whose title ends in a hex character)
+**Status:** Resolved
+
+### Description
+Every pasted Notion link failed with "could not be read". Diagnostic surfacing of Notion's own reply showed `validation_error 400 "URL type webpage not currently supported"` — Notion answered (connection + access fine) and rejected the INPUT. The same page read fine through the DingTalk agent.
+
+### Root Cause
+`InvestigationFormIntake::collectSource()` stripped every dash from the whole URL, then took the FIRST 32-hex run. Notion links are `<title-slug>-<32hex id>`; removing dashes glues trailing hex letters/digits of the slug onto the id — `RootCaus[e]-1022…` → `e1022…`, `v[1-0]-d352…` → `10d352…` — and the first-32 match returns a shifted, nonexistent id. The agent path never had the bug because it passes the URL verbatim to `notion-fetch`. My first two "fixes" misdiagnosed it as page-sharing and only reworded the error.
+
+### Fix
+`notionPageId()`: the LAST 32-hex (or dashed UUID) in the URL **path** (query/fragment dropped), hex-bounded on both sides, dashes never stripped. Error copy no longer claims a sharing problem; Notion's own refusal stays in the message.
+
+### Prevention Checklist
+- [x] `test_notion_link_sends_the_real_page_id_and_surfaces_notions_refusal` pins the exact id sent for both field URLs + dashed UUID + bare id; verified to FAIL on the old parser (`fetch('e1022556…')`).
+- [x] When one consumer of a shared service works and another fails on the same input, diff the INPUTS the two send before theorizing about permissions.
+- [x] Never normalize (strip separators) before extracting a token from a structured string — extract first, with boundaries.
+- [x] Swallowed upstream errors hide the cause: surfacing Notion's reply is what turned this from "sharing?" guesswork into a one-line diagnosis.

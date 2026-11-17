@@ -165,7 +165,7 @@ class InvestigationFormIntake extends Component implements HasForms
             throw ValidationException::withMessages(['notionUrl' => trim($this->notionUrl) !== ''
                 ? 'This Notion page could not be read'
                     .($this->notionError !== '' ? ' — Notion said: '.$this->notionError : '')
-                    .' — share it with the dashboard Notion integration in Notion (••• → Connections), or paste/upload the content instead.'
+                    .' — check the link (Share → Copy link), or paste/upload the content instead.'
                 : 'Provide a Notion URL, a file, or paste your material first.']);
         }
 
@@ -473,14 +473,32 @@ class InvestigationFormIntake extends Component implements HasForms
         return $missing;
     }
 
+    /**
+     * The page id in a Notion link: the LAST 32-hex (or dashed UUID) in the
+     * URL path, hex-bounded. Never strip dashes first — that glues slug
+     * letters onto the id ("RootCaus[e]-1022…", "v[1-0]-d352…") and sends a
+     * shifted, nonexistent id.
+     * ponytail: peek links (?p=<id>) resolve to their database; paste the page's own link.
+     */
+    private static function notionPageId(string $url): ?string
+    {
+        preg_match_all(
+            '/(?<![0-9a-f])(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![0-9a-f])/i',
+            (string) strtok(trim($url), '?#'),
+            $m,
+        );
+
+        return $m[0] === [] ? null : end($m[0]);
+    }
+
     private function collectSource(): string
     {
         $parts = [];
 
-        // Notion URL → 32-hex page id → NotionReadService (only pages shared
-        // with our integration resolve; the page says so, never an error).
-        if (preg_match('/[0-9a-fA-F]{32}/', str_replace('-', '', $this->notionUrl), $m)) {
-            $fetched = app(NotionReadService::class)->fetch($m[0]);
+        // Notion URL → page id → NotionReadService (same connection the
+        // DingTalk agent reads through; no settings needed).
+        if (($pageId = self::notionPageId($this->notionUrl)) !== null) {
+            $fetched = app(NotionReadService::class)->fetch($pageId);
 
             if ($fetched !== null && ! $fetched['isError'] && ($body = app(NotionReadService::class)->extractPageBody($fetched['text'])) !== null) {
                 [$clamped] = app(NotionReadService::class)->clamp($body);

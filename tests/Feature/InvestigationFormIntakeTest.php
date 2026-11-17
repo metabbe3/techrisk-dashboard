@@ -12,6 +12,7 @@ use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
 use App\Models\User;
 use App\Services\InvestigationForm\InvestigationFormSchema;
+use App\Services\Notion\NotionReadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
@@ -210,6 +211,35 @@ class InvestigationFormIntakeTest extends TestCase
 
         // Unknown keys from the AI never land.
         $component->assertSet('answers.unknown_key', null);
+    }
+
+    public function test_notion_link_sends_the_real_page_id_and_surfaces_notions_refusal(): void
+    {
+        [, , $plain] = $this->makeLink();
+
+        // Real links from the field: slug hex letters ("RootCaus-e-", "v1-0-")
+        // must never glue onto the id.
+        $cases = [
+            'https://www.notion.so/dana-id/MOTO-3DS-VM-Flow-RootCause-1022556e44dd824cb10e0174d0ed17e8?source=copy_link' => '1022556e44dd824cb10e0174d0ed17e8',
+            'https://www.notion.so/dana-id/ID-TRI-PRO-01-System-and-Infrastructure-Drilling-Procedure-v1-0-d352556e44dd82739f5f813575cb86ed?source=copy_link' => 'd352556e44dd82739f5f813575cb86ed',
+            'd352556e-44dd-8273-9f5f-813575cb86ed' => 'd352556e-44dd-8273-9f5f-813575cb86ed',
+            'd352556e44dd82739f5f813575cb86ed' => 'd352556e44dd82739f5f813575cb86ed',
+        ];
+
+        $notion = $this->mock(NotionReadService::class);
+        foreach ($cases as $id) {
+            $notion->shouldReceive('fetch')->once()->with($id)
+                ->andReturn(['structured' => null, 'text' => 'object_not_found', 'isError' => true]);
+        }
+
+        foreach (array_keys($cases) as $url) {
+            $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+                ->set('notionUrl', $url)
+                ->call('extractFromSource')
+                ->assertHasErrors(['notionUrl']);
+
+            $this->assertStringContainsString('Notion said: object_not_found', $component->errors()->first('notionUrl'));
+        }
     }
 
     public function test_ai_call_cap_is_enforced(): void
