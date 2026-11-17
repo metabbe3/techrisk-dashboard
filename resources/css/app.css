@@ -440,6 +440,11 @@
 .fi-tabs {
     border-bottom: 1px solid #eef0f4;
     position: relative;
+    /* Filament's overflow-x-auto computes overflow-y to auto on the nav, so
+       the ::after gradient line at bottom:-1px and the items' -1px
+       margin-bottom poke 1px below the padding box — vertical scrollbar.
+       Owner 2026-11-17: no vertical scroll on the incident tabs. */
+    overflow-y: hidden;
 }
 .fi-tabs::after {
     content: '';
