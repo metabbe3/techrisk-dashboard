@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\ActionImprovementController;
 use App\Http\Controllers\Api\AgentRunController;
 use App\Http\Controllers\Api\AgentScheduleController;
 use App\Http\Controllers\Api\Ai\ExportController;
+use App\Http\Controllers\Api\CorpusController;
 use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\NotionController;
 use App\Http\Controllers\Api\StatsController;
@@ -94,5 +95,11 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     // Rate limit editable in Admin → API Settings.
     Route::prefix('v1')->middleware('throttle:agent')->group(function () {
         Route::get('stats', [StatsController::class, 'index']);
+    });
+
+    // Incident memory corpus pages (index.md → one page per incident/topic).
+    // Relative paths INSIDE markdown/corpus only — traversal rejected below.
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('corpus', [CorpusController::class, 'index']);
     });
 });

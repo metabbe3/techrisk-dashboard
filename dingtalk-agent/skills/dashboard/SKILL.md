@@ -1,7 +1,7 @@
 ---
 name: dashboard-incidents
 status: shipped
-tools: [search_incidents, get_incident, get_incident_markdown, get_dashboard_stats]
+tools: [search_incidents, get_incident, get_incident_markdown, get_dashboard_stats, read_corpus_page]
 gate: always-on (core family)
 prompt: SystemPrompt "Available Tools" section (prompt.go:9) — taught in the BASE prompt, not a gated family; get_dashboard_stats adds a StatsPrompt section (prompt.go, registry.Has-gated)
 files: [internal/tools/dashboard.go]
@@ -24,14 +24,15 @@ prefer it for any MTTR/MTBF/fund-loss/per-group question.
 | `get_incident` | `no` (e.g. 20250115_IN_1234, preferred) or `id` | full record incl. action improvements, fund loss |
 | `get_incident_markdown` | `no` (required) | complete report as Markdown (base64-decoded server-side) |
 | `get_dashboard_stats` | mode (summary default / by_dimension), metric, dimension, start_date, end_date, severities, incident_types, statuses, fund_statuses (lists comma-separated) | summary: `totalCases, avgMttrMins, avgMttrDays, avgMtbf, totalFundLoss, totalPotentialFundLoss, totalRecoveredFund`; by_dimension: `labels[]/values[]/raw_data[]` |
+| `read_corpus_page` | `path` (required, relative e.g. `topics/index.md`) | one corpus page as Markdown: index → per-incident folders + compiled topic pattern pages (`topics/*.md`, LLM-written, cite incident numbers) |
 
 ## Guardrails & caps
-- Plain `Register` — default 8000-byte loop cap; `get_incident_markdown` rides
-  `RegisterCapped` at 48 KiB (dashboard.go:193).
-- All four are GET-only reads through the dashboard API (`DASHBOARD_API_BASE`
+- Plain `Register` — default 8000-byte loop cap; `get_incident_markdown` and
+  `read_corpus_page` ride `RegisterCapped` at 48 KiB (dashboard.go:193-196).
+- All five are GET-only reads through the dashboard API (`DASHBOARD_API_BASE`
   + bearer token). No ticket claiming needed. The agent token needs the
-  `stats` endpoint in its `allowed_endpoints` (Filament → API Tokens) unless
-  unrestricted.
+  `stats` / `agent-corpus` endpoints in its `allowed_endpoints`
+  (Filament → API Tokens) unless unrestricted.
 - `meta.total` is a RAW count (includes G / Non Incident / Issue rows) — the
   subtraction recipe lives in the system prompt; don't "fix" it here. For
   official numbers `get_dashboard_stats` is the source: the Laravel endpoint

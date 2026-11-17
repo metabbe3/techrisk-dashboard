@@ -19,6 +19,7 @@ enum ApiEndpoint: string
     case AGENT_SCHEDULES = 'agent-schedules';
     case AGENT_RUNS = 'agent-runs';
     case STATS = 'stats';
+    case AGENT_CORPUS = 'agent-corpus';
 
     /**
      * Get all endpoints as an array for select options
@@ -47,6 +48,7 @@ enum ApiEndpoint: string
             self::AGENT_SCHEDULES => 'Agent Schedules (DingTalk reminders)',
             self::AGENT_RUNS => 'Agent Runs (DingTalk turn reports)',
             self::STATS => 'Stats (Aggregated Metrics)',
+            self::AGENT_CORPUS => 'Corpus pages (incident memory + topic patterns)',
         };
     }
 
@@ -69,6 +71,7 @@ enum ApiEndpoint: string
             self::AGENT_SCHEDULES => 'api/v1/agent-schedules',
             self::AGENT_RUNS => 'api/v1/agent-runs',
             self::STATS => 'api/v1/stats',
+            self::AGENT_CORPUS => 'api/v1/corpus',
         };
     }
 
