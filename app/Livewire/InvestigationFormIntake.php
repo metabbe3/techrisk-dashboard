@@ -96,6 +96,9 @@ class InvestigationFormIntake extends Component implements HasForms
 
     public string $extractError = '';
 
+    /** Step-2 notices: unreadable images on the page, truncated Notion source. */
+    public array $sourceNotes = [];
+
     private ?AiTextResult $lastResult = null;
 
     public function mount(string $token): void
@@ -174,10 +177,28 @@ class InvestigationFormIntake extends Component implements HasForms
 
         /** @var InvestigationFormExtractor $extractor */
         $extractor = app(InvestigationFormExtractor::class);
-        $out = $extractor->extract($source, $this->draftArray());
+        $incident = $this->formRequest->incident;
+        $out = $extractor->extract(
+            $source,
+            $this->draftArray(),
+            $incident === null ? null : [
+                'no' => (string) $incident->incident_no,
+                'title' => (string) $incident->title,
+                'date' => (string) $incident->incident_date,
+            ],
+            InvestigationFormSettings::requiredFields(),
+        );
 
         if (! $out['result']->success) {
             $this->extractError = (string) $out['result']->error;
+
+            return;
+        }
+
+        if (! $out['ok']) {
+            // The reply never parsed as JSON, even after the repair re-POST
+            // — a silent empty step 2 is worse than a retry.
+            $this->extractError = 'The AI reply could not be read — try again.';
 
             return;
         }
@@ -194,20 +215,15 @@ class InvestigationFormIntake extends Component implements HasForms
             }
         }
 
-        foreach ($out['chronology'] as $i => $row) {
-            if (empty($this->chronology[$i]['event'])) {
-                $this->chronology[$i] = $row;
-            }
-        }
-
-        foreach ($out['action_items'] as $i => $row) {
-            if (empty($this->actionItems[$i]['item'])) {
-                $this->actionItems[$i] = $row;
-            }
-        }
+        // Rows are matched by their text, not by position — a re-extract
+        // whose rows shifted must not duplicate or overwrite the draft's.
+        $this->mergeListRows($this->chronology, $out['chronology'], 'event');
+        $this->mergeListRows($this->actionItems, $out['action_items'], 'item');
 
         $this->missing = $out['missing'];
         $this->step = 2;
+
+        $this->persistDraft();
     }
 
     public function goToReview(): void
@@ -491,9 +507,15 @@ class InvestigationFormIntake extends Component implements HasForms
     {
         $draft = $this->draftArray();
 
-        // Identity fields ride the form's own header.
-        $draft['header']['name'] = trim($this->name);
-        $draft['header']['job_role'] = trim($this->jobRole);
+        // Identity fields ride the form's own header — but step 2 renders
+        // them editable (the AI may have filled them from the source), so a
+        // non-blank answer wins over the step-1 input, not the other way.
+        $draft['header']['name'] = trim((string) ($draft['header']['name'] ?? '')) !== ''
+            ? trim((string) $draft['header']['name'])
+            : trim($this->name);
+        $draft['header']['job_role'] = trim((string) ($draft['header']['job_role'] ?? '')) !== ''
+            ? trim((string) $draft['header']['job_role'])
+            : trim($this->jobRole);
         $draft['submitter_name'] = trim($this->name);
 
         return $draft;
@@ -548,29 +570,33 @@ class InvestigationFormIntake extends Component implements HasForms
     {
         $parts = [];
 
-        // Notion URL → page id → NotionReadService (same connection the
-        // DingTalk agent reads through; no settings needed).
-        if (($pageId = self::notionPageId($this->notionUrl)) !== null) {
-            $fetched = app(NotionReadService::class)->fetch($pageId);
-
-            if ($fetched !== null && ! $fetched['isError'] && ($body = app(NotionReadService::class)->extractPageBody($fetched['text'])) !== null) {
-                [$clamped] = app(NotionReadService::class)->clamp($body);
-                $parts[] = "## Notion page\n".$clamped;
-            } else {
-                // Keep Notion's own refusal — "could not be read" alone hides
-                // whether it's page-sharing, a dead token or a deleted page.
-                $this->notionError = Str::limit(trim((string) ($fetched['text'] ?? 'connection failed')), 200);
-            }
+        // User-typed material first (paste/upload): it's the authoritative
+        // intent, and under the combined budget the linked page — the bulk
+        // reference — is the part that may lose its tail (the notice says so).
+        if (trim($this->pasteText) !== '') {
+            $parts[] = "## Pasted text\n".mb_substr($this->pasteText, 0, 48000);
         }
 
         // Upload → DocumentConverterService (pdf/docx) or plain text (md/txt).
         if ($this->sourceFile instanceof TemporaryUploadedFile) {
-            $bytes = $this->sourceFile->get();
             $ext = strtolower($this->sourceFile->getClientOriginalExtension());
 
-            $converted = in_array($ext, ['pdf', 'docx', 'doc'], true)
-                ? app(DocumentConverterService::class)->convertRaw($bytes, $ext)
-                : null;
+            try {
+                $bytes = $this->sourceFile->get();
+
+                $converted = in_array($ext, ['pdf', 'docx', 'doc'], true)
+                    ? app(DocumentConverterService::class)->convertRaw($bytes, $ext)
+                    : null;
+            } catch (\Throwable $e) {
+                // A corrupted .docx / legacy .doc throws deep inside the
+                // converter — a message beats a 500 (blade no longer offers
+                // .doc, but an old upload may still carry it). The other
+                // sources still go through.
+                $this->sourceNotes[] = 'The uploaded file could not be read'
+                    .($ext === 'doc' ? ' — please convert it to .docx or .pdf first.' : ' — try exporting it to .pdf or paste the text.');
+
+                $converted = null;
+            }
 
             if ($converted !== null) {
                 $parts[] = "## Uploaded file ({$ext})\n".$converted;
@@ -579,11 +605,59 @@ class InvestigationFormIntake extends Component implements HasForms
             }
         }
 
-        if (trim($this->pasteText) !== '') {
-            $parts[] = "## Pasted text\n".mb_substr($this->pasteText, 0, 48000);
+        // Notion URL → page id → NotionReadService (same connection the
+        // DingTalk agent reads through; no settings needed).
+        if (($pageId = self::notionPageId($this->notionUrl)) !== null) {
+            /** @var NotionReadService $notion */
+            $notion = app(NotionReadService::class);
+            $page = $notion->readFullPage($pageId);
+
+            if ($page['body'] !== null) {
+                $parts[] = "## Notion page\n".$page['body'];
+
+                if ($page['images'] > 0) {
+                    $this->sourceNotes[] = $page['images'].' image(s) on the Notion page could not be read'
+                        .' — upload them as files on step 1 and extract again.';
+                }
+
+                if ($page['truncated']) {
+                    $this->sourceNotes[] = 'The Notion page was longer than what the AI read ('
+                        .number_format(NotionReadService::MAX_CONTENT_CHARS).' characters) — paste any missing sections into step 1.';
+                }
+            } else {
+                // Keep Notion's own refusal — "could not be read" alone hides
+                // whether it's page-sharing, a dead token or a deleted page.
+                $this->notionError = Str::limit($page['error'] !== '' ? $page['error'] : 'connection failed', 200);
+            }
         }
 
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * Draft rows stay; extracted rows whose identifying text isn't already
+     * present are appended (position-based matching duplicated rows and lost
+     * shifted ones on a re-extract).
+     *
+     * @param  array<int, array<string, string>>  $rows
+     * @param  array<int, array<string, string>>  $incoming
+     */
+    private function mergeListRows(array &$rows, array $incoming, string $key): void
+    {
+        if ($rows === []) {
+            $rows = $incoming;
+
+            return;
+        }
+
+        $existing = array_map(fn (array $row): string => mb_strtolower(trim((string) ($row[$key] ?? ''))), $rows);
+
+        foreach ($incoming as $row) {
+            if (! in_array(mb_strtolower(trim((string) ($row[$key] ?? ''))), $existing, true)) {
+                $rows[] = $row;
+                $existing[] = mb_strtolower(trim((string) ($row[$key] ?? '')));
+            }
+        }
     }
 
     public function getLastResultProperty(): ?AiTextResult

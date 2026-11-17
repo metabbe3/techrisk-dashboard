@@ -6,6 +6,7 @@ namespace Tests\Feature\Api;
 
 use App\Models\User;
 use App\Services\Notion\NotionMcpClient;
+use App\Services\Notion\NotionReadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\PersonalAccessToken;
 use Mockery;
@@ -85,9 +86,9 @@ class NotionReadApiTest extends TestCase
             ->assertJsonPath('data.truncated', false);
     }
 
-    public function test_oversized_page_body_is_clamped_to_48k_and_flagged(): void
+    public function test_oversized_page_body_is_clamped_to_the_cap_and_flagged(): void
     {
-        $body = str_repeat('a', 60000);
+        $body = str_repeat('a', 100000);
         $toolText = json_encode(['text' => '<content>'.$body.'</content>']);
 
         $this->mock(NotionMcpClient::class)
@@ -100,7 +101,7 @@ class NotionReadApiTest extends TestCase
 
         $response->assertStatus(200)
             ->assertJsonPath('data.truncated', true);
-        $this->assertSame(48000, mb_strlen((string) $response->json('data.content')));
+        $this->assertSame(NotionReadService::MAX_CONTENT_CHARS, mb_strlen((string) $response->json('data.content')));
     }
 
     public function test_a_notion_tool_error_maps_to_502(): void

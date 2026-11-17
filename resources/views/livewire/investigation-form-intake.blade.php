@@ -102,7 +102,7 @@
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Upload a file (pdf, docx, md, txt — max 10 MB)</label>
-                            <input type="file" wire:model="sourceFile" accept=".pdf,.docx,.doc,.md,.txt" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-white file:text-sm hover:file:bg-indigo-700" />
+                            <input type="file" wire:model="sourceFile" accept=".pdf,.docx,.md,.txt" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-white file:text-sm hover:file:bg-indigo-700" />
                             @error('sourceFile')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                             <div wire:loading wire:target="sourceFile" class="mt-1 text-xs text-indigo-500">Uploading…</div>
                         </div>
@@ -126,6 +126,16 @@
 
                 {{-- Step 2: fill & review --}}
                 @if ($step === 2 || $step === 3)
+                    @if ($sourceNotes)
+                        <div class="mb-4 rounded-xl bg-sky-50 dark:bg-sky-900/20 p-4 text-sm text-sky-800 dark:text-sky-200">
+                            <ul class="list-disc list-inside">
+                                @foreach ($sourceNotes as $note)
+                                    <li>{{ $note }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
+
                     @if ($missing)
                         <div class="mb-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 p-4 text-sm text-amber-800 dark:text-amber-200">
                             <p class="font-semibold mb-1">The AI could not find these — please fill them in:</p>
@@ -231,7 +241,8 @@
                                     <p class="font-semibold text-amber-800 dark:text-amber-200 mb-1">The AI found these issues (you may still submit):</p>
                                     <ul class="list-disc list-inside text-amber-800 dark:text-amber-200">
                                         @foreach ($verifyIssues as $issue)
-                                            <li>{{ $issue }}</li>
+                                            {{-- verify() returns {field, issue} arrays — echoing the array itself is a TypeError --}}
+                                            <li>{{ trim((string) ($issue['field'] ?? '')) !== '' ? $issue['field'].' — ' : '' }}{{ $issue['issue'] }}</li>
                                         @endforeach
                                     </ul>
                                 @else
