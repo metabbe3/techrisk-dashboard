@@ -2005,3 +2005,26 @@ Every pasted Notion link failed with "could not be read". Diagnostic surfacing o
 - [x] When one consumer of a shared service works and another fails on the same input, diff the INPUTS the two send before theorizing about permissions.
 - [x] Never normalize (strip separators) before extracting a token from a structured string — extract first, with boundaries.
 - [x] Swallowed upstream errors hide the cause: surfacing Notion's reply is what turned this from "sharing?" guesswork into a one-line diagnosis.
+
+---
+
+### [BUG-035] - Open → Completed save silently did nothing (closure-gate error never rendered)
+
+**Date:** 2026-11-17
+**Discovered By:** Owner ("when i update status / save … it failed / not saved"; "when i changed from open to completed")
+**Severity:** Medium (no data loss — the save rolled back — but users could not tell why Completed would not stick)
+**Status:** Resolved
+
+### Description
+Setting an incident from Open to Completed, from either the Edit page or the list's "Update Status" modal, did nothing: no error and no change.
+
+### Root Cause
+The closure gate (`IncidentObserver::saving()`, RD-2) worked correctly. It threw `ValidationException::withMessages(['incident_status' => …])` because the record had no stop-bleed time or root cause. Filament rolls back and rethrows, so Livewire stores the error under the **bare** key `incident_status`. Filament fields render errors by **state path** (`data.incident_status`, `mountedTableActionsData.0.incident_status`), so no field displayed the message. `IncidentClosureGateTest` only covered the model, so it never checked what the UI showed.
+
+### Fix
+`Incident::closureGateError()` is now the one rule. The observer (backstop for API/imports) and two new Filament field rules (the Edit-form Status select reads `$get()` values; the Update Status modal reads the record) all call it. Second trap: in the record-bound modal the Select state arrives as the `IncidentStatus` **enum**, not a string, so the rule normalizes with `tryFrom` before comparing.
+
+### Prevention Checklist
+- [x] Livewire tests `assertHasFormErrors` / `assertHasTableActionErrors(['incident_status'])`. Verified failing before the fix.
+- [x] A `ValidationException` thrown below Filament (observer/model/service) never reaches a field. Mirror the rule as a field `->rule()` and keep the low-level throw only as a backstop.
+- [x] Filament rule closures: compare enum-cast fields as enums (`tryFrom`), not string `->value`.

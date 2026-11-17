@@ -379,6 +379,25 @@ class Incident extends Model implements Auditable
         return $this->hasOne(StatusUpdate::class)->latestOfMany();
     }
 
+    /**
+     * Closure gate rule (PROJ-011 Wave 2, RD-2): the error for moving INTO
+     * Completed, or null when allowed. ONE source for the observer backstop
+     * and the Filament field rules — BUG-035: the observer's exception alone
+     * never renders in Filament (bare key vs the field's state path).
+     */
+    public static function closureGateError(mixed $rootCause, mixed $rootCauseCategory, mixed $stopBleedingAt): ?string
+    {
+        if (blank($stopBleedingAt)) {
+            return 'Cannot complete: stop bleeding time is still missing. Fill it in before completing.';
+        }
+
+        if (blank($rootCause) && empty($rootCauseCategory)) {
+            return 'Cannot complete: root cause is still missing. Fill it in before completing.';
+        }
+
+        return null;
+    }
+
     public function investigationDocuments(): HasMany
     {
         return $this->hasMany(InvestigationDocument::class);

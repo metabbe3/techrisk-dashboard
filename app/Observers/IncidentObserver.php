@@ -38,14 +38,14 @@ class IncidentObserver
             return;
         }
 
-        $hasRca = ! blank($incident->root_cause) || ! empty($incident->root_cause_category);
+        $error = Incident::closureGateError(
+            $incident->root_cause,
+            $incident->root_cause_category,
+            $incident->stop_bleeding_at,
+        );
 
-        if (! $hasRca || $incident->stop_bleeding_at === null) {
-            throw ValidationException::withMessages([
-                'incident_status' => 'Cannot complete: '
-                    .($incident->stop_bleeding_at === null ? 'stop bleeding time' : 'root cause')
-                    .' is still missing. Fill it in before completing.',
-            ]);
+        if ($error !== null) {
+            throw ValidationException::withMessages(['incident_status' => $error]);
         }
     }
 
