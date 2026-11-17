@@ -6,6 +6,7 @@ namespace App\Support;
 
 use App\Mail\InvestigationFormRequestMail;
 use App\Models\InvestigationFormRecipient;
+use App\Models\InvestigationFormRequest;
 use App\Services\InvestigationForm\InvestigationFormSettings;
 
 /**
@@ -44,6 +45,39 @@ class InvestigationFormMailFactory
             InvestigationFormSettings::reminderBody(),
             true,
         );
+    }
+
+    /**
+     * The "your AI extraction finished" note. No token here — plain tokens
+     * are never stored, and rotating the recipient's link would kill the
+     * session of anyone still watching the page; the invitation link from
+     * the original email stays valid, this mail just points back to it.
+     */
+    public static function readyMail(InvestigationFormRequest $request): InvestigationFormRequestMail
+    {
+        $incident = $request->incident;
+
+        $data = [
+            'incident_no' => (string) $incident?->no,
+            'incident_title' => (string) $incident?->title,
+            'team' => $request->team,
+        ];
+
+        $subject = InvestigationFormSettings::render(
+            'Investigation form ready — {incident_no} ({team})',
+            $data,
+        );
+
+        $body = InvestigationFormSettings::render(
+            "Hi,\n\n"
+            ."The AI extraction for incident {incident_no} — {incident_title} finished.\n\n"
+            ."Your investigation form draft has been filled from the source you provided.\n"
+            ."Open your form link (from the invitation email) to review, edit and submit.\n\n"
+            ."Team: {team}\n",
+            $data,
+        );
+
+        return new InvestigationFormRequestMail($subject, $body);
     }
 
     /**

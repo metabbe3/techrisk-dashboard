@@ -438,7 +438,7 @@ gain. Revisit only if the env var is retired.
 **Date:** 2026-11-17
 **Category:** Architecture
 **Severity:** Medium
-**Status:** Open (mitigated 2026-11-17)
+**Status:** Resolved (mitigated, then async shipped — 2026-11-17)
 
 #### Description
 `InvestigationFormIntake::extractFromSource()` runs the whole intake — Notion
@@ -455,9 +455,28 @@ above the documented ladder (Go ctx 360 < Http 420 < nginx 600); `connectTimeout
 added to the Go call (`GoAgentBrain.php`, per the lesson-learned connect_timeout checklist).
 If an edge proxy sits in front of prod nginx, its read timeout must be raised separately.
 
-#### Recommended Action (eventual fix)
-Move extraction to a queued job and poll from the Livewire page (`wire:poll` on the
-draft status). Survives any gateway/edge timeout and fixes the UX (user waits on a
-progress state, not a held request). Deferred per owner decision 2026-11-17 —
-a real refactor: new job, draft status flow, polling UI, test churn on a
-heavily-pinned flow (45+ intake tests).
+#### Status update (2026-11-17, later same day): RESOLVED — async shipped
+The pasted prod 504 page proved the emitter is Dana's PaaS edge proxy
+(`Server: opsproxy-1-1`, `Powered by Tengine/2.2.3`) — a proxy we don't own, so no
+repo-side timeout can fix it. The recommended action was implemented the same day:
+
+- **`app/Jobs/ExtractInvestigationFormSource.php`** — the slow half off the HTTP
+  request: collect source (the component's `collectSource()` moved verbatim: paste
+  cap 48000, upload conversion, Notion `readFullPage` with its ~30-call fan-out)
+  → AI extract → merge into the shared draft. `$tries=1` (a retry would double AI
+  spend; the user re-clicks), `$timeout=600` < worker `--timeout=660`.
+- **Status lives on the request record** (`extraction_status`/`extraction_started_at`/
+  `extraction_result`, migration `2026_11_17_000001`) — a public no-login page can't
+  hold state in the session, and a reload mid-extraction resumes polling.
+- **Component** dispatches in milliseconds and `pollExtraction()` applies the outcome
+  on `wire:poll.3s`; a stale `running` (>15 min) is treated as failed (dead-worker
+  guard). Page copy: "you can close this page — we'll email you when it's ready".
+- **Ready-email on success only** (`InvestigationFormMailFactory::readyMail()`) —
+  no token in it (plain tokens are never stored; rotating would kill a polling
+  session), points back to the invitation link.
+- **`InvestigationFormDraftMerge`** is the one-logic merge service (prefill +
+  applyExtraction) shared by component and job — BUG-005/006/007 drift culture.
+- **96k cap stays** (owner's read-ALL requirement; async moves the wall-time cost
+  off the user).
+- **`runVerify` stays synchronous**: its input is the small answers JSON — no Notion
+  fan-out, no 96k source. Follow-up only if it ever trips opsproxy.

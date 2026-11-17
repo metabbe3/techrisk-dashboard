@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Jobs\ConvertDocumentToMarkdown;
+use App\Jobs\ExtractInvestigationFormSource;
 use App\Livewire\InvestigationFormIntake;
+use App\Mail\InvestigationFormRequestMail;
 use App\Models\Incident;
 use App\Models\InvestigationDocument;
 use App\Models\InvestigationFormRecipient;
@@ -17,6 +19,7 @@ use App\Services\Notion\NotionReadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
@@ -72,6 +75,18 @@ class InvestigationFormIntakeTest extends TestCase
         }
 
         $component->set('chronology', [['time' => '2026-11-01T10:00', 'event' => 'Alert fired']]);
+    }
+
+    /**
+     * The extraction is queued (the Dana edge proxy 504s long Livewire
+     * requests): run the last dispatched job inline, then poll for the result.
+     */
+    private function runExtraction($component): void
+    {
+        $jobs = Queue::pushed(ExtractInvestigationFormSource::class);
+        $this->assertNotEmpty($jobs, 'extraction job was not dispatched');
+        $jobs->last()->handle();
+        $component->call('pollExtraction');
     }
 
     public function test_invalid_expired_revoked_and_submitted_tokens_all_render_the_same_page(): void
@@ -202,8 +217,11 @@ class InvestigationFormIntakeTest extends TestCase
             ->set('name', 'Alice')
             ->set('pasteText', 'timeline: alert at 10:00')
             ->call('extractFromSource')
-            ->assertHasNoErrors()
-            ->assertSet('step', 2);
+            ->assertHasNoErrors();
+
+        $this->runExtraction($component);
+
+        $component->assertSet('step', 2);
 
         $component->assertSet('answers.header.incident_name', 'DB timeout');
         $component->assertSet('answers.summary.description', 'API timeouts at 10:00');
@@ -243,9 +261,12 @@ class InvestigationFormIntakeTest extends TestCase
             $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
                 ->set('notionUrl', $url)
                 ->call('extractFromSource')
-                ->assertHasErrors(['notionUrl']);
+                ->assertHasNoErrors(); // the dispatch succeeds — the refusal comes back through the poll
 
-            $this->assertStringContainsString('Notion said: object_not_found', $component->errors()->first('notionUrl'));
+            $this->runExtraction($component);
+
+            $component->assertSet('step', 1);
+            $this->assertStringContainsString('Notion said: object_not_found', $component->get('extractError'));
         }
     }
 
@@ -281,6 +302,8 @@ class InvestigationFormIntakeTest extends TestCase
             ->call('extractFromSource')
             ->assertHasNoErrors();
 
+        $this->runExtraction($component);
+
         $component->assertSet('answers.header.statement_date', '2026-11-01T10:00');
 
         $component->assertSet('actionItems.0.due_date', '2026-12-01T09:30');
@@ -298,6 +321,8 @@ class InvestigationFormIntakeTest extends TestCase
             ->set('pasteText', 'x')
             ->call('extractFromSource')
             ->assertHasNoErrors();
+
+        $this->runExtraction($component);
 
         $component->assertSet('answers.header.statement_date', '');
 
@@ -375,7 +400,7 @@ class InvestigationFormIntakeTest extends TestCase
 
     public function test_ai_calls_increment_server_side_and_block_at_the_cap(): void
     {
-        [, , $plain] = $this->makeLink();
+        [$request, , $plain] = $this->makeLink();
 
         Http::fake(['brain.test/internal/run' => Http::response(['ok' => true, 'output' => '{}'])]);
 
@@ -384,6 +409,9 @@ class InvestigationFormIntakeTest extends TestCase
 
         for ($i = 0; $i < 10; $i++) {
             $component->call('extractFromSource');
+            // Only one extraction may run at a time — finish each dispatch
+            // (without polling) so the next loop call is allowed.
+            $request->refresh()->update(['extraction_status' => 'done']);
         }
 
         $this->assertSame(10, $component->instance()->aiCalls);
@@ -481,8 +509,11 @@ class InvestigationFormIntakeTest extends TestCase
 
         $first = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
             ->set('notionUrl', 'https://www.notion.so/1022556e44dd824cb10e0174d0ed17e8')
-            ->call('extractFromSource')
-            ->assertSet('step', 2);
+            ->call('extractFromSource');
+
+        $this->runExtraction($first);
+
+        $first->assertSet('step', 2);
 
         $notes = $first->get('sourceNotes');
         $this->assertCount(2, $notes);
@@ -493,6 +524,8 @@ class InvestigationFormIntakeTest extends TestCase
         $second = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
             ->set('notionUrl', 'https://www.notion.so/1022556e44dd824cb10e0174d0ed17e8')
             ->call('extractFromSource');
+
+        $this->runExtraction($second);
 
         $this->assertSame([], $second->get('sourceNotes'));
     }
@@ -523,8 +556,11 @@ class InvestigationFormIntakeTest extends TestCase
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
             ->set('pasteText', 'timeline')
             ->call('extractFromSource')
-            ->assertHasNoErrors()
-            ->assertSet('step', 2);
+            ->assertHasNoErrors();
+
+        $this->runExtraction($component);
+
+        $component->assertSet('step', 2);
 
         // Text-matched rows are kept (the draft's own shape wins); unseen
         // rows are appended — position is never used.
@@ -545,10 +581,14 @@ class InvestigationFormIntakeTest extends TestCase
 
         Http::fake(['brain.test/internal/run' => Http::response(['ok' => true, 'output' => 'no JSON here at all', 'model' => 'm'])]);
 
-        Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
             ->set('pasteText', 'x')
             ->call('extractFromSource')
-            ->assertSet('step', 1)
+            ->assertHasNoErrors();
+
+        $this->runExtraction($component);
+
+        $component->assertSet('step', 1)
             ->assertSet('extractError', 'The AI reply could not be read — try again.')
             ->assertSee('could not be read');
     }
@@ -563,11 +603,13 @@ class InvestigationFormIntakeTest extends TestCase
             'model' => 'm',
         ])]);
 
-        Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
             ->set('email', 'a@x.com')
             ->set('pasteText', 'timeline')
             ->call('extractFromSource')
             ->assertHasNoErrors();
+
+        $this->runExtraction($component);
 
         $request->refresh();
         $this->assertSame('DB timeout', $request->answers['header']['incident_name'] ?? null);
@@ -616,6 +658,159 @@ class InvestigationFormIntakeTest extends TestCase
         $request2->refresh();
         $this->assertSame('Alice Submitter', $request2->answers['header']['name'], 'blank answer falls back to step-1 name');
         $this->assertSame('Backend engineer', $request2->answers['header']['job_role']);
+    }
+
+    public function test_extraction_dispatches_to_the_queue_and_waits_instead_of_running_inline(): void
+    {
+        [$request, , $plain] = $this->makeLink();
+
+        // No brain fake on purpose: if the extraction ran inline the test
+        // would fail (unrouted connection) — the whole point is it must not.
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('email', 'a@x.com')
+            ->set('pasteText', 'timeline')
+            ->call('extractFromSource')
+            ->assertHasNoErrors()
+            ->assertSet('extractionRunning', true)
+            ->assertSet('step', 1);
+
+        $request->refresh();
+        $this->assertSame('running', $request->extraction_status);
+        $this->assertNotNull($request->extraction_started_at);
+
+        Queue::assertPushed(ExtractInvestigationFormSource::class, 1);
+    }
+
+    public function test_re_dispatch_is_refused_while_an_extraction_is_running(): void
+    {
+        [, , $plain] = $this->makeLink();
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'first')
+            ->call('extractFromSource')
+            ->assertHasNoErrors();
+
+        $component->set('pasteText', 'second')
+            ->call('extractFromSource')
+            ->assertHasErrors(['notionUrl']);
+
+        $this->assertStringContainsString('already running', $component->errors()->first('notionUrl'));
+        Queue::assertPushed(ExtractInvestigationFormSource::class, 1);
+    }
+
+    public function test_a_stale_running_extraction_is_marked_failed_so_the_user_can_retry(): void
+    {
+        [$request, , $plain] = $this->makeLink();
+
+        // A worker died without failed() firing: running, started 20 min ago.
+        $request->update([
+            'extraction_status' => 'running',
+            'extraction_started_at' => now()->subMinutes(20),
+        ]);
+
+        Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->assertSet('extractionRunning', false) // stale → not "running" for the UI
+            ->call('pollExtraction')
+            ->assertSet('extractError', 'Extraction took too long — try again.')
+            ->assertSet('step', 1);
+
+        $request->refresh();
+        $this->assertSame('failed', $request->extraction_status);
+    }
+
+    public function test_a_reload_mid_extraction_resumes_polling_and_applies_the_result(): void
+    {
+        [$request, , $plain] = $this->makeLink();
+
+        Http::fake(['brain.test/internal/run' => Http::response([
+            'ok' => true,
+            'output' => json_encode(['header' => ['incident_name' => 'DB timeout']]),
+            'model' => 'm',
+        ])]);
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'timeline')
+            ->call('extractFromSource');
+
+        // The user reloads the page while the job is queued/running.
+        $reloaded = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->assertSet('extractionRunning', true);
+
+        // The job lands; the reloaded page's next poll applies it.
+        $jobs = Queue::pushed(ExtractInvestigationFormSource::class);
+        $jobs->last()->handle();
+
+        $reloaded->call('pollExtraction')
+            ->assertSet('extractionRunning', false)
+            ->assertSet('step', 2)
+            ->assertSet('answers.header.incident_name', 'DB timeout');
+
+        $request->refresh();
+        $this->assertSame('done', $request->extraction_status);
+    }
+
+    public function test_the_ready_email_is_queued_on_success_and_skipped_on_failure(): void
+    {
+        Mail::fake();
+
+        [$request, , $plain] = $this->makeLink();
+
+        // One fake with a counter — a second Http::fake on the same URL
+        // MERGES stubs and the first keeps winning (pinned in this file's
+        // earlier round).
+        $calls = 0;
+        Http::fake(['brain.test/internal/run' => function () use (&$calls) {
+            $calls++;
+
+            return $calls === 1
+                ? Http::response([
+                    'ok' => true,
+                    'output' => json_encode(['header' => ['incident_name' => 'DB timeout']]),
+                    'model' => 'm',
+                ])
+                : Http::response(['ok' => true, 'output' => 'no JSON here', 'model' => 'm']);
+        }]);
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('email', 'a@x.com')
+            ->set('pasteText', 'timeline')
+            ->call('extractFromSource');
+
+        $this->runExtraction($component);
+
+        Mail::assertQueued(InvestigationFormRequestMail::class, 1);
+
+        // A failed extraction sends no email — the link stays retryable.
+        [$request2, , $plain2] = $this->makeLink();
+
+        $component2 = Livewire::test(InvestigationFormIntake::class, ['token' => $plain2])
+            ->set('email', 'b@x.com')
+            ->set('pasteText', 'timeline')
+            ->call('extractFromSource');
+
+        $this->runExtraction($component2);
+
+        Mail::assertQueued(InvestigationFormRequestMail::class, 1); // still just the one success mail
+    }
+
+    public function test_a_revoked_request_is_never_extracted(): void
+    {
+        [$request, , $plain] = $this->makeLink();
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'timeline')
+            ->call('extractFromSource');
+
+        $request->update(['status' => InvestigationFormRequest::STATUS_REVOKED]);
+
+        $jobs = Queue::pushed(ExtractInvestigationFormSource::class);
+        $jobs->last()->handle();
+
+        $request->refresh();
+        // Not failed as "try again" (the form is closed) — but not left
+        // 'running' either, or the poller would spin on a dead status.
+        $this->assertSame('failed', $request->extraction_status);
+        $this->assertSame('This form is no longer open.', $request->extraction_result['error']);
     }
 
     private function pendingId($component): int

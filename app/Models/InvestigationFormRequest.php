@@ -29,6 +29,9 @@ class InvestigationFormRequest extends Model
         'answers',
         'draft_updated_by_email',
         'draft_updated_at',
+        'extraction_status',
+        'extraction_started_at',
+        'extraction_result',
         'submitter_email',
         'submitter_name',
         'consented_at',
@@ -42,6 +45,8 @@ class InvestigationFormRequest extends Model
         'expires_at' => 'datetime',
         'answers' => 'array',
         'draft_updated_at' => 'datetime',
+        'extraction_started_at' => 'datetime',
+        'extraction_result' => 'array',
         'consented_at' => 'datetime',
         'submitted_at' => 'datetime',
     ];

@@ -62,6 +62,13 @@
 
                 {{-- Step 1: source --}}
                 @if ($step === 1)
+                    @if ($extractionRunning)
+                        {{-- Queued extraction in flight; polling stops the moment this block un-renders. --}}
+                        <div wire:poll.3s="pollExtraction" class="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 p-4 text-sm text-indigo-900 dark:text-indigo-200">
+                            <p class="font-semibold">Reading your material in the background…</p>
+                            <p class="mt-1">This can take a few minutes for large pages. You can close this page — we'll email you when it's ready, or reopen this link to find the filled draft.</p>
+                        </div>
+                    @else
                     <form wire:submit="extractFromSource" class="space-y-4">
                         <input type="text" wire:model="honeypot" class="hidden" tabindex="-1" autocomplete="off" aria-hidden="true">
 
@@ -119,9 +126,10 @@
                         <button type="submit" wire:loading.attr="disabled" wire:target="extractFromSource"
                             class="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                             <span wire:loading.remove wire:target="extractFromSource">Extract with AI</span>
-                            <span wire:loading wire:target="extractFromSource">Reading your material…</span>
+                            <span wire:loading wire:target="extractFromSource">Starting…</span>
                         </button>
                     </form>
+                    @endif
                 @endif
 
                 {{-- Step 2: fill & review --}}
