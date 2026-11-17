@@ -61,6 +61,19 @@ class EmailSettingsTest extends TestCase
         $this->assertSame('TechRisk Dashboard', config('mail.from.name'));
     }
 
+    public function test_reopening_the_page_shows_the_saved_from_name(): void
+    {
+        Setting::set('mail_from_name', 'Technichal Risk');
+        Setting::set('mail_from_address', 'noreply-techrisk@dana.id');
+
+        // The user's symptom "I saved it but the field shows Example again"
+        // would be a mount() read of a null setting.
+        Livewire::actingAs($this->manager())
+            ->test(EmailSettings::class)
+            ->assertSet('data.from_name', 'Technichal Risk')
+            ->assertSet('data.from_address', 'noreply-techrisk@dana.id');
+    }
+
     public function test_status_panel_reflects_configuration(): void
     {
         // No key -> not active
