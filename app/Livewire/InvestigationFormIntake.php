@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
@@ -45,6 +46,9 @@ class InvestigationFormIntake extends Component implements HasForms
 
     public ?InvestigationFormRequest $formRequest = null;
 
+    // Locked: the browser could otherwise $wire.set('aiCalls', 0) and bypass
+    // the cap on this no-login page (rate limit alone allows far more runs).
+    #[Locked]
     public int $aiCalls = 0;
 
     /** Source inputs (step 1). */
@@ -152,6 +156,7 @@ class InvestigationFormIntake extends Component implements HasForms
     {
         $this->guardValidLink();
         $this->rateLimit(10);
+        $this->checkDraftConcurrency();
 
         if ($this->honeypot !== '') {
             throw ValidationException::withMessages(['notionUrl' => 'Validation failed.']);
@@ -160,6 +165,11 @@ class InvestigationFormIntake extends Component implements HasForms
         if ($this->aiCalls >= self::AI_CALL_CAP) {
             throw ValidationException::withMessages(['notionUrl' => 'AI call limit reached for this session.']);
         }
+
+        // Fresh attempt — a stale refusal or stacked notes from a previous
+        // extract must not survive into this one.
+        $this->notionError = '';
+        $this->sourceNotes = [];
 
         $source = $this->collectSource();
 
@@ -222,6 +232,13 @@ class InvestigationFormIntake extends Component implements HasForms
 
         $this->missing = $out['missing'];
         $this->step = 2;
+
+        if (! empty($out['source_truncated'])) {
+            // The extractor-level cap cut the COMBINED source (paste/upload
+            // + Notion) — Notion's own truncated flag never saw this.
+            $this->sourceNotes[] = 'The combined source was longer than what the AI read ('
+                .number_format(NotionReadService::MAX_CONTENT_CHARS).' characters) — the tail may be missing; paste any missing sections separately.';
+        }
 
         $this->persistDraft();
     }
@@ -596,11 +613,12 @@ class InvestigationFormIntake extends Component implements HasForms
                     .($ext === 'doc' ? ' — please convert it to .docx or .pdf first.' : ' — try exporting it to .pdf or paste the text.');
 
                 $converted = null;
+                $bytes = null;
             }
 
             if ($converted !== null) {
                 $parts[] = "## Uploaded file ({$ext})\n".$converted;
-            } elseif (in_array($ext, ['md', 'txt'], true)) {
+            } elseif ($bytes !== null && in_array($ext, ['md', 'txt'], true)) {
                 $parts[] = "## Uploaded file ({$ext})\n".mb_substr($bytes, 0, 48000);
             }
         }
@@ -644,6 +662,17 @@ class InvestigationFormIntake extends Component implements HasForms
      */
     private function mergeListRows(array &$rows, array $incoming, string $key): void
     {
+        if ($rows === []) {
+            $rows = $incoming;
+
+            return;
+        }
+
+        // An empty "add row" placeholder is not draft content — it would
+        // never match a text key, so extracted rows piled up AFTER it. Drop
+        // blank rows first, then text-match.
+        $rows = array_values(array_filter($rows, fn (array $row): bool => trim((string) ($row[$key] ?? '')) !== ''));
+
         if ($rows === []) {
             $rows = $incoming;
 

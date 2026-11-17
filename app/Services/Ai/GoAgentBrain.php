@@ -36,7 +36,9 @@ class GoAgentBrain
             'agent_id' => 'investigation-form-intake',
             'agent_name' => 'Investigation Form Intake',
             'mode' => 'task',
-            'text' => mb_substr($userMessage, 0, 96000),
+            // Named constant — one cap with the extractor's source budget
+            // (NotionReadService::MAX_CONTENT_CHARS), not a second magic number.
+            'text' => mb_substr($userMessage, 0, \App\Services\Notion\NotionReadService::MAX_CONTENT_CHARS),
         ];
 
         if ($system !== '') {

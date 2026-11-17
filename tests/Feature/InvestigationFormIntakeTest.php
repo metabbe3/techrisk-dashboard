@@ -15,6 +15,7 @@ use App\Services\InvestigationForm\InvestigationFormSchema;
 use App\Services\InvestigationForm\InvestigationFormSettings;
 use App\Services\Notion\NotionReadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -364,11 +365,40 @@ class InvestigationFormIntakeTest extends TestCase
 
         Http::fake(['brain.test/internal/run' => Http::response(['ok' => true, 'output' => '{}'])]);
 
+        // aiCalls is #[Locked]: a client-side $wire.set('aiCalls', 0) once
+        // bypassed the cap on this no-login page. Setting it must now throw.
+        $this->expectException(\Livewire\Features\SupportLockedProperties\CannotUpdateLockedPropertyException::class);
+
         Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
-            ->set('aiCalls', 10)
-            ->set('pasteText', 'x')
-            ->call('extractFromSource')
-            ->assertHasErrors(['notionUrl']);
+            ->set('aiCalls', 10);
+    }
+
+    public function test_ai_calls_increment_server_side_and_block_at_the_cap(): void
+    {
+        [, , $plain] = $this->makeLink();
+
+        Http::fake(['brain.test/internal/run' => Http::response(['ok' => true, 'output' => '{}'])]);
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'x');
+
+        for ($i = 0; $i < 10; $i++) {
+            $component->call('extractFromSource');
+        }
+
+        $this->assertSame(10, $component->instance()->aiCalls);
+
+        // The 11th is the cap. The 10 loop calls already spent the limiter,
+        // so clear it and go straight at the cap check.
+        Cache::flush();
+
+        $instance = $component->instance();
+        try {
+            $instance->extractFromSource();
+            $this->fail('cap not enforced');
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            $this->assertStringContainsString('AI call limit', $e->getMessage().implode(' ', array_column($e->errors(), '0')));
+        }
     }
 
     public function test_submit_is_blocked_without_consent_or_mismatched_email(): void

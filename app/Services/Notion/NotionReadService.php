@@ -148,10 +148,14 @@ class NotionReadService
 
         // Oversized pages list their omitted subtrees — drain them (same
         // shape as NotionIssueSyncService's live-2026-11-03 drain).
+        // ponytail: the flag stays true for any Notion-truncated page even
+        // when every subtree drained (owner test pins it, NotionReadServiceFullPageTest);
+        // revisit only if the intake's note reads wrong after live use.
         $truncated = ! empty($fetched['structured']['truncated']);
 
-        foreach ($this->unknownBlockIds($fetched) as $blockId) {
-            if (++$extraFetches > self::EXTRA_FETCH_CAP) {
+        $blockIds = $this->unknownBlockIds($fetched);
+        foreach ($blockIds as $i => $blockId) {
+            if ($i >= self::EXTRA_FETCH_CAP) {
                 break;
             }
 
@@ -165,17 +169,20 @@ class NotionReadService
         }
 
         // Notion AI blocks (RCA/MOM/…) anchor as placeholders — inline the
-        // generated content (same live-verified pattern as
-        // NotionInvestigationService::inlineAiBlocks).
-        $body = $this->inlineAiBlocks($body);
+        // generated content, sharing the fetch budget (an uncapped loop
+        // fired one MCP call per block, no throttle).
+        $body = $this->inlineAiBlocks($body, $extraFetches);
 
-        // Child pages: one level, max 5 — ponytail: the inner tag shape has
-        // no repo fixture (live MCP pages only); a shape this regex doesn't
-        // recognize passes through raw, so the worst case is "not inlined".
+        // Child pages: one level, max 5 — their OWN counter, or a page with
+        // several drained subtrees got zero children (the shared counter was
+        // already spent). ponytail: the inner tag shape has no repo fixture
+        // (live MCP pages only); a shape this regex doesn't recognize passes
+        // through raw, so the worst case is "not inlined".
+        $childFetches = 0;
         $body = preg_replace_callback(
             '/<page\s[^>]*url="([^"]+)"[^>]*\/?>/i',
-            function (array $match) use (&$extraFetches): string {
-                if (++$extraFetches > 5) {
+            function (array $match) use (&$childFetches): string {
+                if (++$childFetches > 5) {
                     return $match[0];
                 }
 
@@ -246,22 +253,40 @@ class NotionReadService
         $composed = preg_replace('/<colgroup>.*?<\/colgroup>/s', '', $composed) ?? $composed;
         [$composed, $clamped] = $this->clamp($composed);
 
-        return ['body' => $composed, 'images' => $images, 'truncated' => $truncated || $clamped, 'error' => ''];
+        $truncated = $truncated || $clamped;
+
+        return ['body' => $composed, 'images' => $images, 'truncated' => $truncated, 'error' => ''];
     }
 
     /**
      * Inline Notion AI-block placeholders with their generated content.
-     * A failed or not-yet-generated block keeps its placeholder.
+     * A failed or not-yet-generated block keeps its placeholder. $fetches
+     * (optional, by reference) shares a caller's fetch budget — standalone
+     * callers get their own counter, always capped: one MCP call per block
+     * with no cap could hammer Notion's ~3 req/s limit on AI-heavy pages.
      */
-    public function inlineAiBlocks(string $body): string
+    public function inlineAiBlocks(string $body, ?int &$fetches = null): string
     {
+        $ownCounter = $fetches === null;
+        $local = 0;
+
         return preg_replace_callback(
             '/<unknown\s[^>]*\/>/i',
-            function (array $match): string {
+            function (array $match) use (&$fetches, &$local, $ownCounter): string {
                 if (! str_contains($match[0], 'alt="ai_block"')
                     || ! preg_match('/url="[^"#]+#([a-f0-9-]+)"/i', $match[0], $anchor)) {
                     return $match[0];
                 }
+
+                if ($ownCounter) {
+                    if (++$local > self::EXTRA_FETCH_CAP) {
+                        return $match[0];
+                    }
+                } elseif (++$fetches > self::EXTRA_FETCH_CAP) {
+                    return $match[0];
+                }
+
+                usleep(300000);
 
                 $response = $this->fetch(str_replace('-', '', $anchor[1]));
 

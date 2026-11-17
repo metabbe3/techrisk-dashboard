@@ -51,9 +51,13 @@ class AgentScheduleController extends Controller
             $runAt = Carbon::parse($runAt)->setTimezone(config('app.timezone'));
         }
 
+        // enabled only — destroy() parks rows as enabled=false and finished
+        // one-shots are disabled too; counting them locked a chat out of NEW
+        // reminders forever once 20 lifetime rows existed.
         $existing = AiAgent::query()
             ->where('dingtalk_conversation_id', $data['conversation_id'])
             ->whereNotNull('short_no')
+            ->where('enabled', true)
             ->count();
 
         if ($existing >= self::MAX_PER_CHAT) {

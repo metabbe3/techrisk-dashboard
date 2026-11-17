@@ -324,19 +324,14 @@ class NotionInvestigationService
     /**
      * 195 of the last 300 record titles begin with their own date
      * ("31 October 2026 - …") — the composed page title already carries the
-     * date, so the prefix drops. A separator is required so a real title
-     * that merely mentions a date stays intact; a title that is ONLY the
-     * date keeps it.
+     * date, so the prefix drops. Delegates to NotionIssueMapper::stripDatePrefix
+     * (the one parser): this private copy missed the sync's own `Y M d` form
+     * and the repeat loop, so a title synced from Notion came back
+     * double-prefixed ("20261109 - 2026 Nov 09 - …").
      */
     protected function withoutDatePrefix(string $title): string
     {
-        $stripped = preg_replace(
-            '/^\s*(?:\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2}|\w+\s+\d{1,2},?\s+\d{4})\s*[-–—:]\s*/',
-            '',
-            $title,
-        );
-
-        return filled($stripped) ? $stripped : $title;
+        return NotionIssueMapper::stripDatePrefix($title);
     }
 
     /** The metadata block the operator would otherwise retype into Notion. */
@@ -512,7 +507,8 @@ MARKDOWN;
             if ($userIds !== []) {
                 $properties['PIC'] = $userIds;
             } elseif ($emails->isNotEmpty()) {
-                $note = ' None of the PIC emails matched a Notion member — PIC left empty.';
+                // .= — a severity note above must survive, not be overwritten.
+                $note .= ' None of the PIC emails matched a Notion member — PIC left empty.';
             }
         }
 
