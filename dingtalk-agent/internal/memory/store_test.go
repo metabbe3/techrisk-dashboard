@@ -97,6 +97,69 @@ func TestKnowledgeRoundtrip(t *testing.T) {
 	if got[0].Time.IsZero() {
 		t.Error("timestamp must be auto-filled")
 	}
+
+	// AllKnowledge is the digest backfill's view: EVERY parsed entry, not
+	// the last-8 prompt slice.
+	if all := NewStore(dir).AllKnowledge(); len(all) != MaxKnowledgeEntries+3 {
+		t.Fatalf("AllKnowledge() = %d entries, want %d", len(all), MaxKnowledgeEntries+3)
+	}
+}
+
+func TestKnowledgeDigestPersistAndCap(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+	if err := s.AppendKnowledge(KnowledgeEntry{File: "a.pdf", Author: "Nick", Summary: "alpha"}); err != nil {
+		t.Fatalf("AppendKnowledge: %v", err)
+	}
+	if err := s.AppendKnowledge(KnowledgeEntry{File: "b.pdf", Author: "Nick", Summary: "beta"}); err != nil {
+		t.Fatalf("AppendKnowledge: %v", err)
+	}
+
+	if got := s.KnowledgeDigest(); got != "" {
+		t.Fatalf("fresh store must have no digest, got %q", got)
+	}
+	if s.DigestCovered() != 0 {
+		t.Fatalf("fresh store covered = %d, want 0", s.DigestCovered())
+	}
+
+	// 45 lines in: the store keeps the NEWEST MaxDigestLines (the oldest
+	// content is what a digest may drop — newest facts are the live ones).
+	lines := make([]string, 0, MaxDigestLines+5)
+	for i := 0; i < MaxDigestLines+5; i++ {
+		lines = append(lines, fmt.Sprintf("- line %02d of fifty", i))
+	}
+	if err := s.SaveKnowledgeDigest(strings.Join(lines, "\n"), 2); err != nil {
+		t.Fatalf("SaveKnowledgeDigest: %v", err)
+	}
+
+	got := strings.Split(s.KnowledgeDigest(), "\n")
+	if len(got) != MaxDigestLines {
+		t.Fatalf("digest = %d lines, want %d", len(got), MaxDigestLines)
+	}
+	if got[0] != fmt.Sprintf("- line %02d of fifty", len(lines)-MaxDigestLines) {
+		t.Errorf("cap must keep the newest lines, first kept line = %q", got[0])
+	}
+
+	// Digest + covered count survive a restart (auto recall, like history).
+	s2 := NewStore(dir)
+	if s2.DigestCovered() != 2 {
+		t.Errorf("covered did not persist, got %d", s2.DigestCovered())
+	}
+	if !strings.Contains(s2.KnowledgeDigest(), "line 44 of fifty") {
+		t.Errorf("digest did not persist: %.200s", s2.KnowledgeDigest())
+	}
+
+	// A merge gone empty must never wipe the digest (profiles.json rule):
+	// refused, and the covered count stays where it was.
+	if err := s.SaveKnowledgeDigest("   \n  ", 9); err == nil {
+		t.Fatal("empty digest must be refused")
+	}
+	if s.DigestCovered() != 2 {
+		t.Errorf("refused save must not advance covered, got %d", s.DigestCovered())
+	}
+	if !strings.Contains(s.KnowledgeDigest(), "line 44 of fifty") {
+		t.Error("refused save must not touch the stored digest")
+	}
 }
 
 func TestCorruptHistoryFileIgnored(t *testing.T) {

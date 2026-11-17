@@ -55,6 +55,12 @@ type Config struct {
 	// KBToolsEnabled registers search_knowledge (the RAG index over files
 	// users upload in chat). Default on.
 	KBToolsEnabled bool
+	// KnowledgeDigest compiles the append-only knowledge.jsonl into a merged
+	// knowledge.md digest (LLM merge, profiles.json pattern) so old document
+	// memory stays visible past the last-8 window. Default on; set
+	// AGENT_KNOWLEDGE_DIGEST=0 to revert to the raw last-8 injection (the
+	// rollback switch).
+	KnowledgeDigest bool
 
 	// Mesh orchestration (GoMesh v0.5 parity)
 	MeshRole        string        // "solo", "leader", "worker"
@@ -367,7 +373,8 @@ func LoadFromFile(envPath string) (*Config, error) {
 			getVal("LLM_HEAVY_MODEL", ""),
 			getVal("AI_HEAVY_MODEL", ""),
 		), // empty = no heavy escalation; loop retries stay on the chat model
-		KBToolsEnabled: loadBool(getVal, "AGENT_KB_TOOLS", true),
+		KBToolsEnabled:  loadBool(getVal, "AGENT_KB_TOOLS", true),
+		KnowledgeDigest: loadBool(getVal, "AGENT_KNOWLEDGE_DIGEST", true),
 
 		MeshRole:        meshRole,
 		MeshListen:      meshListen,

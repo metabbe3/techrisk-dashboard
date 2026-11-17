@@ -5,6 +5,7 @@ package memory
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -76,6 +77,72 @@ func (s *Store) Knowledge() []KnowledgeEntry {
 	return append([]KnowledgeEntry{}, s.knowledge...)
 }
 
+// Digest caps: the compiled knowledge.md digest is injected EVERY turn, so it
+// stays bounded however long knowledge.jsonl grows (LLM-Wiki-style compiled
+// memory; the raw JSONL layer stays append-only on disk).
+const (
+	MaxDigestLines   = 40
+	MaxDigestLineLen = 200
+	digestFile       = "knowledge.md"
+	digestMetaFile   = "knowledge_digest.json"
+)
+
+type digestMeta struct {
+	Covered int `json:"covered"` // knowledge.jsonl entries already merged into the digest
+}
+
+// AllKnowledge returns every parsed knowledge entry — the digest backfill's
+// view of the raw layer (Knowledge() only serves the last-8 prompt slice).
+func (s *Store) AllKnowledge() []KnowledgeEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]KnowledgeEntry{}, s.knowledge...)
+}
+
+// KnowledgeDigest returns the compiled digest ("" when none yet).
+func (s *Store) KnowledgeDigest() string { return s.digest }
+
+// DigestCovered returns how many knowledge.jsonl entries the digest already
+// covers (the incremental merge's cursor).
+func (s *Store) DigestCovered() int { return s.digestCovered }
+
+// SaveKnowledgeDigest atomically rewrites knowledge.md and advances the
+// covered cursor. Caps and normalizes like LearnProfile: bullets, length-capped
+// lines, newest MaxDigestLines kept. An empty digest is REFUSED (an empty or
+// broken LLM merge must never wipe compiled memory) with the cursor left
+// alone — the next merge retries. Digest file first, meta second: a crash
+// between them leaves the cursor behind, so entries re-merge (duplicates
+// collapse) rather than being lost.
+func (s *Store) SaveKnowledgeDigest(text string, covered int) error {
+	lines := make([]string, 0, MaxDigestLines)
+	for _, ln := range strings.Split(text, "\n") {
+		ln = strings.TrimSpace(ln)
+		ln = strings.TrimPrefix(ln, "-")
+		ln = strings.TrimSpace(ln)
+		ln = strings.Trim(ln, `-"* `)
+		if ln == "" {
+			continue
+		}
+		lines = append(lines, "- "+util.Cut(ln, MaxDigestLineLen))
+	}
+	if len(lines) == 0 {
+		return errors.New("empty digest refused — never wipe compiled memory")
+	}
+	if len(lines) > MaxDigestLines {
+		lines = lines[len(lines)-MaxDigestLines:] // keep the newest
+	}
+
+	s.mu.Lock()
+	if err := util.AtomicWrite(filepath.Join(s.dir, digestFile), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.digest = strings.Join(lines, "\n")
+	s.digestCovered = covered
+	s.mu.Unlock()
+	return s.writeJSON(filepath.Join(s.dir, digestMetaFile), digestMeta{Covered: covered})
+}
+
 // historyFile mirrors the bot's in-memory history map.
 type historyFile struct {
 	Conversations map[string]HistoryEntry `json:"conversations"`
@@ -88,8 +155,10 @@ type HistoryEntry struct {
 }
 
 type Store struct {
-	knownUsers map[string]bool  // staff ids already in users.jsonl (dedupe per person, S9)
-	knowledge  []KnowledgeEntry // parsed mirror of knowledge.jsonl (was re-read every turn)
+	knownUsers    map[string]bool  // staff ids already in users.jsonl (dedupe per person, S9)
+	knowledge     []KnowledgeEntry // parsed mirror of knowledge.jsonl (was re-read every turn)
+	digest        string           // compiled knowledge.md digest ("" = none yet)
+	digestCovered int              // knowledge.jsonl entries already merged into the digest
 
 	historyTTL time.Duration // 0 = no load-time TTL filtering
 
@@ -120,6 +189,7 @@ func NewStore(dir string) *Store {
 	s.loadKnowledge()
 	s.loadHistory()
 	s.loadProfiles()
+	s.loadDigest()
 	return s
 }
 
@@ -314,4 +384,16 @@ func (s *Store) loadProfiles() {
 		return
 	}
 	s.profiles = pf.Profiles
+}
+
+// loadDigest seeds the compiled digest + covered cursor from disk (a restart
+// must not re-merge everything; "" = the boot backfill fills it).
+func (s *Store) loadDigest() {
+	var meta digestMeta
+	if util.LoadJSON(filepath.Join(s.dir, digestMetaFile), &meta) == nil {
+		s.digestCovered = meta.Covered
+	}
+	if data, err := os.ReadFile(filepath.Join(s.dir, digestFile)); err == nil {
+		s.digest = strings.TrimSpace(string(data))
+	}
 }
