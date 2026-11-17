@@ -280,7 +280,7 @@
 
                                 {{-- PIC Avatar or Unassigned + Date + Fund Status --}}
                                 <div class="flex items-center gap-2 flex-wrap">
-                                    @php($firstPic = $incident->pics->first())
+                                    @php $firstPic = $incident->pics->first(); @endphp
                                     @if($firstPic)
                                         <span class="inline-flex items-center gap-1.5" title="{{ $firstPic->name }}">
                                             <span class="kanban-avatar" style="background: {{ \App\Livewire\IncidentKanbanBoard::avatarColor($firstPic->name) }}">
@@ -465,7 +465,7 @@
 
                             {{-- Meta row --}}
                             <div class="flex items-center gap-3 mt-3 text-xs text-gray-500 dark:text-gray-400">
-                                @php($firstPic = $incident->pics->first())
+                                @php $firstPic = $incident->pics->first(); @endphp
                                     @if($firstPic)
                                     <span class="inline-flex items-center gap-1.5">
                                         <span class="kanban-avatar" style="background: {{ \App\Livewire\IncidentKanbanBoard::avatarColor($firstPic->name) }}; width: 20px; height: 20px; font-size: 8px;">

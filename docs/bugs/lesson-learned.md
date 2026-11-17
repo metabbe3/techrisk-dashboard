@@ -1923,3 +1923,45 @@ failing on date validation instead of its own subject. Helper changed to
       future-safe at every hour the suite can run
 
 ---
+
+## [BUG-033] - Board view 500'd since the multi-PIC cutover: a `@php(expr)` one-liner swallowed the next `@endphp` block
+
+**Date:** 2026-11-17
+**Discovered By:** Owner (clicking Board view; ParseError at incident-kanban-board.blade.php:284)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+
+The incident Board view button returned `ParseError: syntax error, unexpected
+token "@"` — on EVERY render, in prod and local alike. Present on `main`
+since 52f20d0 (PROJ-010 multi-PIC cutover, which introduced the one-liners);
+PROJ-022 only shifted the reported line by one.
+
+### Root Cause
+
+Laravel's Blade pre-pass `storePhpBlocks()` runs BEFORE the one-liner
+directive compilation, with a dotall regex pairing `@php` with the NEXT
+`@endphp` in the file. A `@php(expr)` one-liner (no `@endphp` of its own)
+therefore swallows everything up to the next BLOCK `@php…@endphp` (here
+lines 283→311 and 468→439-side), storing the span — raw `@if`/`{{ }}`
+directives included — as one `<?php{...}?>` blob. The raw directives landed
+inside an open PHP tag → parse error. The same line in isolation compiles
+fine, so the trap only shows when a later block `@endphp` exists in the
+file — a scan across the codebase found exactly ONE file affected.
+
+### Fix
+- `incident-kanban-board.blade.php` 283/468: one-liners → inline-block form
+  (`@php $firstPic = ...; @endphp` — the shape line 271 already used).
+- `UserFacingCrashersTest::test_the_kanban_board_view_compiles_to_valid_php`
+  pins the compile shape: no raw `@if(`/`@php`/php-open-paren artifact may
+  survive compilation. (Board still cannot RENDER under SQLite — FIELD() —
+  but now compiles and renders under MySQL.)
+
+### Prevention Checklist
+- [x] NEVER use the `@php(expr)` one-liner in a Blade file that also has a
+      block `@php … @endphp` AFTER it — use `@php expr; @endphp` inline
+- [x] Views that only render under MySQL get a COMPILE pin in
+      UserFacingCrashersTest — compilation is DB-free and catches these
+
+---
