@@ -156,7 +156,11 @@ class InvestigationFormIntake extends Component implements HasForms
         $source = $this->collectSource();
 
         if (trim($source) === '') {
-            throw ValidationException::withMessages(['notionUrl' => 'Provide a Notion URL, a file, or paste your material first.']);
+            // A URL that couldn't be read (not shared with the integration) is a
+            // different problem from "nothing provided" — say which.
+            throw ValidationException::withMessages(['notionUrl' => trim($this->notionUrl) !== ''
+                ? 'This Notion page could not be read — share it with the dashboard Notion integration in Notion (••• → Connections), or paste/upload the content instead.'
+                : 'Provide a Notion URL, a file, or paste your material first.']);
         }
 
         $this->aiCalls++;
