@@ -2927,6 +2927,72 @@
     color: #64748b;
 }
 
+/* --- Sidebar hover temp-expand + pin (DANA HR reference, owner 2026-11-17) ---
+   Hovering the collapsed rail temporarily expands it as an OVERLAY: the aside
+   widens to --sidebar-width while a negative end margin pays the difference
+   back to the layout, so the page content never moves. Leaving collapses it
+   again (script in AdminPanelProvider SIDEBAR_NAV_END); the pin control (fixed
+   over the header's right edge, visible only in the temporary state) makes the
+   expand permanent. $store.sidebar.isOpen is Alpine-persisted, so the pinned /
+   collapsed choice survives reloads. Desktop only. --- */
+@media (min-width: 1024px) {
+    .fi-sidebar {
+        transition: width 0.2s ease, margin-inline-end 0.2s ease;
+    }
+    /* Give the closed rail a deterministic width — the margin compensation
+       below is written against it (--collapsed-sidebar-width, 4.5rem). */
+    .fi-sidebar:not(.fi-sidebar-open) {
+        width: var(--collapsed-sidebar-width);
+    }
+    .fi-sidebar.tr-sidebar-temp-open {
+        width: var(--sidebar-width);
+        margin-inline-end: calc(var(--collapsed-sidebar-width) - var(--sidebar-width));
+        z-index: 30;
+        box-shadow: 0 12px 32px rgba(2, 32, 71, 0.18);
+    }
+    /* In the temporary state the header shows the PIN (click = keep it open)
+       instead of Filament's chevrons. */
+    .fi-sidebar.tr-sidebar-temp-open .fi-sidebar-header .fi-icon-btn {
+        display: none !important;
+    }
+}
+.fi-tr-pin-btn {
+    display: none;
+    position: fixed;
+    top: 0.875rem;
+    left: calc(var(--sidebar-width) - 2.75rem);
+    z-index: 40;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background-color: transparent;
+    color: #64748b;
+    cursor: pointer;
+}
+.fi-tr-pin-btn:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+.fi-sidebar.tr-sidebar-temp-open .fi-tr-pin-btn {
+    display: inline-flex;
+}
+:root.dark .fi-tr-pin-btn { color: #94a3b8; }
+:root.dark .fi-tr-pin-btn:hover {
+    background-color: #1e293b;
+    color: #f1f5f9;
+}
+
+/* The nav scrollbar only appears while the cursor is over the sidebar
+   (the nav's scrollbar-gutter: stable keeps nothing from shifting). */
+.fi-sidebar .fi-sidebar-nav { scrollbar-color: transparent transparent; }
+.fi-sidebar:hover .fi-sidebar-nav { scrollbar-color: rgba(148, 163, 184, 0.55) transparent; }
+.fi-sidebar .fi-sidebar-nav::-webkit-scrollbar { width: 8px; }
+.fi-sidebar .fi-sidebar-nav::-webkit-scrollbar-thumb { border-radius: 9999px; background-color: transparent; }
+.fi-sidebar:hover .fi-sidebar-nav::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.55); }
+
 /* --- Compact Tables --- */
 .fi-ta-cell {
     padding-top: 0.25rem !important;
