@@ -16,6 +16,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Livewire\Livewire;
+use ReflectionMethod;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
@@ -269,14 +270,34 @@ class IncidentMarkdownZipTest extends TestCase
         );
     }
 
-    public function test_action_registered_on_incidents_list(): void
+    /** Owner 2026-11-10: the export pair merged behind ONE header dropdown — like the incident detail page's Export group. */
+    public function test_both_exports_live_in_one_header_group(): void
     {
         Permission::firstOrCreate(['name' => 'view incidents']);
         $user = User::factory()->create();
         $user->givePermissionTo('view incidents');
 
-        Livewire::actingAs($user)
+        $page = Livewire::actingAs($user)
             ->test(ListIncidents::class)
-            ->assertActionVisible('export_markdown_zip');
+            ->instance();
+
+        $top = collect((new ReflectionMethod($page, 'getHeaderActions'))->invoke($page));
+        // ActionGroup itself has no name — only named (non-group) triggers count as top-level buttons.
+        $topNames = $top
+            ->filter(fn ($action) => method_exists($action, 'getName'))
+            ->map(fn ($action) => $action->getName())
+            ->values()
+            ->all();
+
+        $groups = $top->filter(fn ($action) => $action instanceof \Filament\Actions\ActionGroup);
+        $exportGroup = $groups->firstWhere(fn ($group) => $group->getLabel() === 'Export');
+        $grouped = $exportGroup === null
+            ? collect()
+            : collect($exportGroup->getActions())->map(fn ($action) => $action->getName())->values()->all();
+
+        foreach (['export', 'export_markdown_zip'] as $name) {
+            $this->assertContains($name, $grouped, "Action {$name} must live inside the Export group");
+            $this->assertNotContains($name, $topNames, "Action {$name} must not be a top-level header button");
+        }
     }
 }

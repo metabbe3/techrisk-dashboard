@@ -45,8 +45,11 @@ class NotionWatchIdEditorTest extends TestCase
     {
         // Owner 2026-10-30: Change, Sync now, and Preview sit on the same
         // horizontal line — one Filament Actions row, not two stacked rows.
+        // PROJ-018 added a second row for the "Investigation pages" section;
+        // this section's row must stay a single one (a split here makes it 3
+        // and still fails).
         $this->assertSame(
-            1,
+            2,
             substr_count($this->settingsPage()->html(), 'fi-fo-actions'),
         );
     }

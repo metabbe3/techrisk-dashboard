@@ -96,7 +96,32 @@ echo "10. Restarting Docker containers..."
 docker compose restart
 
 echo ""
-echo "11. Caching Laravel config for production..."
+echo "11. Microsoft SSO env scaffold (appends blank MICROSOFT_* vars if absent)..."
+# .env is gitignored, so the SSO vars reach prod through this script. Never
+# overwrites existing values — fills only what's missing. Runs BEFORE
+# config:cache below so the cached config picks the values up.
+docker compose exec app sh -c '
+touch .env
+grep -q "^MICROSOFT_CLIENT_ID=" .env || echo "MICROSOFT_CLIENT_ID=" >> .env
+grep -q "^MICROSOFT_CLIENT_SECRET=" .env || echo "MICROSOFT_CLIENT_SECRET=" >> .env
+grep -q "^MICROSOFT_TENANT_ID=" .env || echo "MICROSOFT_TENANT_ID=" >> .env
+grep -q "^MICROSOFT_REDIRECT_URI=" .env || echo "MICROSOFT_REDIRECT_URI=https://techrisk.paas.dana.id/auth/microsoft/callback" >> .env
+MISSING=""
+[ -z "$(grep "^MICROSOFT_CLIENT_ID=." .env | cut -d= -f2-)" ] && MISSING="$MISSING MICROSOFT_CLIENT_ID"
+[ -z "$(grep "^MICROSOFT_CLIENT_SECRET=." .env | cut -d= -f2-)" ] && MISSING="$MISSING MICROSOFT_CLIENT_SECRET"
+[ -z "$(grep "^MICROSOFT_TENANT_ID=." .env | cut -d= -f2-)" ] && MISSING="$MISSING MICROSOFT_TENANT_ID"
+[ -z "$(grep "^MICROSOFT_REDIRECT_URI=." .env | cut -d= -f2-)" ] && MISSING="$MISSING MICROSOFT_REDIRECT_URI"
+if [ -n "$MISSING" ]; then
+    echo "  ⚠  Still blank:$MISSING — the SSO button will fail until filled (password login unaffected)"
+else
+    echo "  ✓  All MICROSOFT_* vars set. Redirect URI:"
+    echo "     $(grep "^MICROSOFT_REDIRECT_URI=" .env | cut -d= -f2-)"
+    echo "     (must match the Azure app registration exactly)"
+fi'
+echo "  ✓ SSO env scaffold done"
+
+echo ""
+echo "12. Caching Laravel config for production..."
 sleep 3
 # -u www-data: run as the web user so config.php isn't root-owned (root-owned
 # cache files are the "Permission denied" 500s this step 8 exists to fix)

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services\Ai;
 
 use App\Models\AiSetting;
@@ -424,7 +425,8 @@ class WebSearchService
         $model = config('ai.search.gemini_model', 'gemini-2.5-flash');
         $baseUrl = rtrim(config('ai.search.gemini_base_url') ?? '', '/')
             ?: rtrim(AiSetting::get('base_url', config('ai.base_url', '')), '/');
-        $timeout = config('ai.search.timeout', 15);
+        // Env values are strings — PendingRequest::timeout(int|float) throws on '15'.
+        $timeout = (int) config('ai.search.timeout', 15);
 
         if (! $apiKey || ! $baseUrl) {
             Log::warning('Web search skipped: API key or base URL not configured');
@@ -520,7 +522,8 @@ class WebSearchService
         $apiKey = config('ai.search.gemini_api_key');
         $model = config('ai.search.gemini_model', 'gemini-2.5-flash');
         $baseUrl = rtrim(config('ai.search.gemini_base_url') ?? '', '/');
-        $timeout = config('ai.search.timeout', 15);
+        // Env values are strings — PendingRequest::timeout(int|float) throws on '15'.
+        $timeout = (int) config('ai.search.timeout', 15);
 
         if (! $apiKey) {
             Log::warning('Web search skipped: Gemini API key not configured');
@@ -677,7 +680,8 @@ class WebSearchService
         $grounding = $candidate['groundingMetadata'] ?? null;
 
         $sources = [];
-        $maxResults = config('ai.search.max_results', 8);
+        // Env values are strings — array_slice(int $length) throws on '8'.
+        $maxResults = (int) config('ai.search.max_results', 8);
 
         if ($grounding && isset($grounding['groundingChunks'])) {
             foreach (array_slice($grounding['groundingChunks'], 0, $maxResults) as $chunk) {
@@ -715,7 +719,7 @@ class WebSearchService
             $sources[] = ['title' => parse_url($url, PHP_URL_HOST) ?? $url, 'url' => $url];
         }
 
-        return array_slice($sources, 0, config('ai.search.max_results', 8));
+        return array_slice($sources, 0, (int) config('ai.search.max_results', 8));
     }
 
     public function isConfigured(): bool

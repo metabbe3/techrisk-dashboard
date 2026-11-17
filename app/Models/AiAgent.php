@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\AiAgentEngine;
 use App\Enums\AiAgentFrequency;
 use App\Enums\AiAgentRunStatus;
 use App\Jobs\Ai\RunAiAgentJob;
@@ -21,6 +22,10 @@ class AiAgent extends Model implements Auditable
     use HasUuids;
     use \OwenIt\Auditing\Auditable;
 
+    /** Synthetic agent that owns DingTalk chat-turn run rows (seeded by the
+     *  engine migration; never dispatched — the turn-report API inserts runs). */
+    public const CHAT_TURNS_AGENT_ID = '00000000-0000-0000-0000-000000000001';
+
     protected $fillable = [
         'name',
         'description',
@@ -28,6 +33,7 @@ class AiAgent extends Model implements Auditable
         'expected_output',
         'require_json',
         'model',
+        'engine',
         'include_context',
         'include_memory',
         'include_documents',
@@ -36,6 +42,11 @@ class AiAgent extends Model implements Auditable
         'reports_to_agent_id',
         'frequency',
         'cron_expression',
+        'run_at',
+        'short_no',
+        'dingtalk_conversation_type',
+        'dingtalk_conversation_id',
+        'dingtalk_staff_id',
         'notify_email',
         'enabled',
         'last_run_at',
@@ -43,6 +54,7 @@ class AiAgent extends Model implements Auditable
 
     protected $casts = [
         'frequency' => AiAgentFrequency::class,
+        'engine' => AiAgentEngine::class,
         'include_context' => 'boolean',
         'include_memory' => 'boolean',
         'include_documents' => 'boolean',
@@ -50,6 +62,7 @@ class AiAgent extends Model implements Auditable
         'require_json' => 'boolean',
         'enabled' => 'boolean',
         'last_run_at' => 'datetime',
+        'run_at' => 'datetime',
     ];
 
     public function runs(): HasMany
@@ -128,6 +141,11 @@ class AiAgent extends Model implements Auditable
      */
     public function schedulePresetFromCron(): array
     {
+        if ($this->frequency === AiAgentFrequency::Once) {
+            // run_at itself fills the form straight from the record's cast.
+            return ['type' => 'once', 'time' => '09:00', 'weekday' => 1];
+        }
+
         if ($this->frequency !== AiAgentFrequency::Cron || blank($this->cron_expression)) {
             return ['type' => 'manual', 'time' => '09:00', 'weekday' => 1];
         }
@@ -155,6 +173,10 @@ class AiAgent extends Model implements Auditable
      */
     public function getNextRunAtAttribute(): ?Carbon
     {
+        if ($this->frequency === AiAgentFrequency::Once) {
+            return $this->enabled && $this->run_at?->isFuture() ? $this->run_at : null;
+        }
+
         if (! $this->enabled || $this->frequency !== AiAgentFrequency::Cron || blank($this->cron_expression)) {
             return null;
         }

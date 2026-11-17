@@ -188,6 +188,38 @@ services:
       find /app-logs -type f -name '*.log' -mtime +14 -delete 2>/dev/null;
       echo 'Janitor: done.'"
 
+  # DingTalk stream-mode AI agent (Go sidecar) — outbound WSS only, no ports.
+  dingtalk-agent:
+    build:
+      context: ./dingtalk-agent
+      dockerfile: Dockerfile
+    container_name: techrisk-dingtalk-agent
+    restart: unless-stopped
+    depends_on:
+      - nginx
+    env_file:
+      - .env
+    environment:
+      LLM_BASE_URL: ${AI_API_BASE_URL:-}
+      LLM_API_KEY: ${AI_API_KEY:-}
+      LLM_MODEL: ${DINGTALK_MODEL:-}
+      LLM_MAX_TOKENS: ${AI_WAR_ROOM_MAX_OUTPUT_TOKENS:-16384}
+      LLM_EMBEDDING_MODEL: ${AI_EMBEDDING_MODEL:-}
+      AGENT_WEB_TOOLS: ${DINGTALK_WEB_TOOLS:-1}
+      DASHBOARD_API_BASE: http://nginx/api/v1
+      # Internal listener (dashboard's Go engine POSTs /internal/run here) —
+      # reachable only inside the compose network; empty token = disabled.
+      AGENT_INTERNAL_ADDR: ":9091"
+      AGENT_INTERNAL_TOKEN: ${DINGTALK_INTERNAL_TOKEN:-}
+      AGENT_TURN_REPORTS: ${DINGTALK_TURN_REPORTS:-1}
+    volumes:
+      - dingtalk-agent-data:/data
+    networks:
+      - techrisk-network
+
 networks:
   techrisk-network:
     driver: bridge
+
+volumes:
+  dingtalk-agent-data:

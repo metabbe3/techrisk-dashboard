@@ -119,6 +119,7 @@ class NotionIssueSyncService
         }
 
         $created = 0;
+        $restored = 0;
         $failed = 0;
         $alreadySynced = 0;
         $duplicates = 0;
@@ -140,7 +141,10 @@ class NotionIssueSyncService
         // sync would restore.
         if ($restoreDeleted) {
             $recovered = $this->recoverDeletedIssues($collectionUrl, $lines, $dryRun, $restorePageIds, $freshPageIds);
-            $created += $recovered['created'];
+            // Restored issues join the return's `created` (the shape the
+            // caller sees) but are reported separately — a restore is not
+            // an import (owner 2026-11-09). The fold happens at finish().
+            $restored = $recovered['created'];
             $duplicates += $recovered['duplicates'];
             $blanks += $recovered['blanks'];
             $failed += $recovered['failed'];
@@ -248,24 +252,28 @@ class NotionIssueSyncService
         // non-zero segments appear; `skipped` stays the aggregate.
         $skipped = $alreadySynced + $duplicates + $blanks + $unreadable;
 
-        if ($created === 0 && $skipped === 0 && $failed === 0 && $refreshed === 0) {
+        if ($created === 0 && $restored === 0 && $skipped === 0 && $failed === 0 && $refreshed === 0) {
             $message = 'No new issues.';
         } else {
             $segments = array_filter([
-                $created > 0 ? "{$label} {$created} issue(s)" : 'No new issues',
+                // Restores lead the message when nothing new was imported;
+                // "No new issues" only when there is nothing to report at all.
+                $created > 0 ? "{$label} {$created} issue(s)" : ($restored > 0 ? null : 'No new issues'),
+                $restored > 0 ? ($dryRun ? "Would restore {$restored} deleted issue(s)" : "Restored {$restored} deleted issue(s)") : null,
                 $alreadySynced > 0 ? "{$alreadySynced} already synced" : null,
                 $duplicates > 0 ? "{$duplicates} duplicate title(s)" : null,
                 $blanks > 0 ? "{$blanks} blank title(s)" : null,
                 $unreadable > 0 ? "{$unreadable} unreadable URL(s)" : null,
                 $failed > 0 ? "{$failed} failed" : null,
-                $refreshed > 0 ? "{$refreshed} refreshed" : null,
+                // Refreshes are silent in the message (owner 2026-11-09) —
+                // the sweep reports to the log, not the operator.
                 $truncated ? 'scan stopped at the '.self::MAX_SCAN_PAGES.'-page cap — counts cover the first '.count($rows).' rows' : null,
             ]);
 
             $message = implode('; ', $segments).'.';
         }
 
-        return $this->finish($failed > 0 ? 'partial' : 'ok', $message, $created, $skipped, $dryRun, implode("\n", $lines));
+        return $this->finish($failed > 0 ? 'partial' : 'ok', $message, $created + $restored, $skipped, $dryRun, implode("\n", $lines));
     }
 
     /**
@@ -292,8 +300,10 @@ class NotionIssueSyncService
 
         $lines[] = '- '.$this->describeRow($row);
         // This row is being imported — later rows with the same title must
-        // dedupe against it (the per-row DB lookup used to see it; the set must too).
-        $this->existingIssueTitles[\App\Helpers\StringHelper::normalizeForComparison((string) $title)] = true;
+        // dedupe against it (the per-row DB lookup used to see it; the set
+        // must too). Stored titles carry the date prefix (datedTitle); the
+        // set keys on the stripped name so the raw Notion name still matches.
+        $this->existingIssueTitles[\App\Helpers\StringHelper::normalizeForComparison(NotionIssueMapper::stripDatePrefix((string) $title))] = true;
 
         if ($dryRun) {
             return new Incident;
@@ -310,7 +320,7 @@ class NotionIssueSyncService
         // manual sync racing the cron) must not leave an orphan Incident.
         $incident = DB::transaction(function () use ($title, $incidentDate, $severity, $pageId): Incident {
             $incident = Incident::create([
-                'title' => NotionIssueMapper::cleanTitle((string) $title),
+                'title' => NotionIssueMapper::datedTitle((string) $title, $incidentDate),
                 'incident_date' => $incidentDate,
                 'entry_date_tech_risk' => $incidentDate->format('Y-m-d'),
                 'severity' => $severity,
@@ -427,7 +437,9 @@ class NotionIssueSyncService
     {
         $this->existingIssueTitles ??= NotionIssueMapper::existingNormalizedTitles();
 
-        return isset($this->existingIssueTitles[\App\Helpers\StringHelper::normalizeForComparison($title)]);
+        // Stored titles carry the sync's date prefix (datedTitle) — strip it
+        // from the incoming raw name so dedupe sees through the format.
+        return isset($this->existingIssueTitles[\App\Helpers\StringHelper::normalizeForComparison(NotionIssueMapper::stripDatePrefix($title))]);
     }
 
     /**

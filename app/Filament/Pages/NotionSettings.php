@@ -6,6 +6,7 @@ namespace App\Filament\Pages;
 
 use App\Filament\Actions\NotionSyncAction;
 use App\Models\Setting;
+use App\Services\Notion\NotionInvestigationService;
 use App\Services\Notion\NotionIssueSyncService;
 use App\Services\Notion\NotionMcpClient;
 use Filament\Actions\Action as HeaderAction;
@@ -54,6 +55,14 @@ class NotionSettings extends Page implements HasForms
 
     public ?string $watchIdError = null;
 
+    // PROJ-018: the investigation parent ID uses the same Change → Save/Cancel
+    // flow as the watch ID.
+    public bool $editingInvestigationParentId = false;
+
+    public bool $investigationParentIdJustSaved = false;
+
+    public ?string $investigationParentIdError = null;
+
     // The full-sync restore picker's options (owner 2026-10-30), memoized:
     // each option is a Notion page lookup, and the picker's options closure
     // re-runs on every Livewire render while the modal is open — the memo
@@ -76,6 +85,7 @@ class NotionSettings extends Page implements HasForms
     {
         $this->form->fill([
             'watch_page_id' => (string) Setting::get(NotionIssueSyncService::WATCH_KEY, ''),
+            'investigation_parent_id' => (string) Setting::get(NotionInvestigationService::PARENT_KEY, ''),
         ]);
     }
 
@@ -348,6 +358,78 @@ class NotionSettings extends Page implements HasForms
                                 }),
                         ]),
                     ]),
+
+                // PROJ-018: where Start Investigation creates its child pages.
+                Section::make('Notion investigation pages')
+                    ->description('Start Investigation creates a child page under this Notion parent page. Investigation pages are independent of the sub-page sync above.')
+                    ->schema([
+                        Placeholder::make('investigation_parent_id_display')
+                            ->label('Investigation page ID')
+                            ->content(function (NotionSettings $livewire): HtmlString {
+                                $current = (string) ($livewire->data['investigation_parent_id'] ?? '');
+
+                                $value = filled($current)
+                                    ? '<span class="font-mono text-sm">'.e($current).'</span>'
+                                    : '<span class="text-gray-500 dark:text-gray-400">Not set</span>';
+
+                                $badge = $livewire->investigationParentIdJustSaved
+                                    ? ' <span class="font-semibold text-success-600 dark:text-success-400">✓ Saved</span>'
+                                    : '';
+
+                                return new HtmlString($value.$badge);
+                            })
+                            ->columnSpanFull(),
+
+                        TextInput::make('investigation_parent_id_input')
+                            ->label('New investigation parent page ID')
+                            ->placeholder('e.g. 1f2e3d4c5b6a... or the page URL')
+                            ->helperText('Copy the ID or URL of the Notion page (or database data source, collection://…) the investigation pages are created under. Accepts a full URL or a raw ID.')
+                            ->live()
+                            ->visible(fn (NotionSettings $livewire): bool => $livewire->editingInvestigationParentId)
+                            ->columnSpanFull(),
+
+                        Placeholder::make('investigation_parent_id_error')
+                            ->content(fn (NotionSettings $livewire): ?HtmlString => filled($livewire->investigationParentIdError) ? new HtmlString(
+                                '<span class="text-sm font-semibold text-danger-600 dark:text-danger-400">'.e($livewire->investigationParentIdError).'</span>'
+                            ) : null)
+                            ->visible(fn (NotionSettings $livewire): bool => filled($livewire->investigationParentIdError))
+                            ->columnSpanFull(),
+
+                        Actions::make([
+                            Action::make('changeInvestigationParentId')
+                                ->label('Change')
+                                ->icon('heroicon-o-pencil-square')
+                                ->visible(fn (NotionSettings $livewire): bool => ! $livewire->editingInvestigationParentId)
+                                ->action(function (NotionSettings $livewire): void {
+                                    $livewire->editingInvestigationParentId = true;
+                                    $livewire->investigationParentIdJustSaved = false;
+                                    $livewire->investigationParentIdError = null;
+                                    $livewire->data['investigation_parent_id_input'] = (string) ($livewire->data['investigation_parent_id'] ?? '');
+                                }),
+
+                            Action::make('saveInvestigationParentId')
+                                ->label('Save')
+                                ->icon('heroicon-m-check')
+                                ->color('primary')
+                                ->visible(fn (NotionSettings $livewire): bool => $livewire->editingInvestigationParentId)
+                                ->disabled(function (NotionSettings $livewire, Get $get): bool {
+                                    $extracted = $livewire->normalizePageId(trim((string) ($get('investigation_parent_id_input') ?? '')));
+
+                                    return blank($extracted) || $extracted === (string) ($get('investigation_parent_id') ?? '');
+                                })
+                                ->action(fn (NotionSettings $livewire) => $livewire->saveInvestigationParentId()),
+
+                            Action::make('cancelInvestigationParentId')
+                                ->label('Cancel')
+                                ->color('gray')
+                                ->visible(fn (NotionSettings $livewire): bool => $livewire->editingInvestigationParentId)
+                                ->action(function (NotionSettings $livewire): void {
+                                    $livewire->editingInvestigationParentId = false;
+                                    $livewire->investigationParentIdError = null;
+                                    $livewire->data['investigation_parent_id_input'] = null;
+                                }),
+                        ]),
+                    ]),
             ])
             ->statePath('data');
     }
@@ -380,7 +462,7 @@ class NotionSettings extends Page implements HasForms
             return; // disabled states — nothing to do
         }
 
-        if (! preg_match('/^[a-f0-9]{32}$/i', $extracted)) {
+        if (! preg_match('/^[a-f0-9]{32}$/i', str_replace('-', '', $extracted))) {
             $this->watchIdError = 'That value does not contain a Notion page or database ID — paste the page URL or its 32-character ID.';
 
             return; // edit mode + input preserved
@@ -405,16 +487,63 @@ class NotionSettings extends Page implements HasForms
     }
 
     /**
-     * Accept a full Notion URL or a bare ID — store the bare ID either way.
+     * PROJ-018: the investigation parent-ID editor's Save — same flow as
+     * saveWatchId(), writing the investigation PARENT_KEY instead.
+     */
+    public function saveInvestigationParentId(): void
+    {
+        $input = trim((string) ($this->data['investigation_parent_id_input'] ?? ''));
+        $current = (string) ($this->data['investigation_parent_id'] ?? '');
+
+        // PROJ-018: a database data source (collection://…) is a valid parent
+        // too — the created pages become its rows. Stored verbatim (prefix +
+        // ID as pasted) so the service can route it as parent.data_source_id.
+        $isDataSource = str_contains($input, 'collection://');
+        $extracted = $this->normalizePageId($input);
+
+        if ($isDataSource) {
+            $extracted = 'collection://'.$extracted;
+        }
+
+        if (blank($extracted) || $extracted === $current) {
+            return; // disabled states — nothing to do
+        }
+
+        if (! preg_match('/^(collection:\/\/)?[a-f0-9]{32}$/i', str_replace('-', '', $extracted))) {
+            $this->investigationParentIdError = 'That value does not contain a Notion page or database ID — paste the page URL or its 32-character ID.';
+
+            return; // edit mode + input preserved
+        }
+
+        try {
+            Setting::set(NotionInvestigationService::PARENT_KEY, $extracted);
+        } catch (\Throwable $e) {
+            report($e);
+            $this->investigationParentIdError = 'Could not save the new ID — please try again.';
+
+            return; // edit mode + input preserved
+        }
+
+        $this->data['investigation_parent_id'] = $extracted;
+        $this->data['investigation_parent_id_input'] = null;
+        $this->editingInvestigationParentId = false;
+        $this->investigationParentIdError = null;
+        $this->investigationParentIdJustSaved = true;
+
+        Notification::make()->success()->title('Notion settings saved')->send();
+    }
+
+    /**
+     * Accept a full Notion URL, a bare ID, or a dashed UUID — the ID is
+     * stored as pasted (dashes kept, owner 2026-11-04); only extracted out
+     * of URLs. Both shapes Notion itself produces are recognized.
      */
     public function normalizePageId(string $value): string
     {
-        $value = trim($value);
-
-        if (preg_match('/([a-f0-9]{32})/i', $value, $m)) {
+        if (preg_match('/([a-f0-9]{32}|[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i', trim($value), $m)) {
             return $m[1];
         }
 
-        return $value;
+        return trim($value);
     }
 }

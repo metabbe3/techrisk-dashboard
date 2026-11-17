@@ -50,6 +50,7 @@ use App\Http\Controllers\Ai\WarRoomTemplateController;
 use App\Http\Controllers\DownloadActionEvidenceController;
 use App\Http\Controllers\DownloadDocumentController;
 use App\Http\Controllers\WeeklyReportExportController;
+use App\Livewire\InvestigationFormIntake;
 use App\Livewire\RequestAccessForm;
 use App\Services\Notion\NotionMcpClient;
 use Illuminate\Support\Facades\Route;
@@ -273,6 +274,9 @@ Route::get('/admin/weekly-report/export/{year}', WeeklyReportExportController::c
 // Access request form (public - Livewire component with Filament forms)
 Route::get('/request-access', RequestAccessForm::class)->name('request-access');
 
+// Investigation form intake (public no-login page, one unique token per recipient)
+Route::get('/investigation/{token}', InvestigationFormIntake::class)->name('investigation-form.intake');
+
 // Add this line
 Route::get('/documents/{record}/download', DownloadDocumentController::class)
     ->middleware(['auth']) // Optional: Ensure only logged-in users can download
@@ -312,3 +316,10 @@ Mcp::oAuthRoutesFor('notion', function (string $client, TokenSet $token) {
 
     return redirect(NotionSettings::getUrl());
 }, middleware: ['web', 'auth', 'can:manage api tokens']);
+
+// Microsoft (Entra ID) SSO. New emails are JIT-created role-less; the existing
+// canAccessPanel() gate keeps them out until an admin grants a role in User Management.
+Route::middleware('guest')->controller(\App\Http\Controllers\Auth\MicrosoftLoginController::class)->group(function () {
+    Route::get('/auth/microsoft/redirect', 'redirect')->name('microsoft.redirect');
+    Route::get('/auth/microsoft/callback', 'callback')->name('microsoft.callback');
+});

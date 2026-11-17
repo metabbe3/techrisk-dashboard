@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use App\Models\ApiSetting;
@@ -41,6 +42,7 @@ class ApiSettings extends Page implements HasForms
             'rate_limit_reference' => ApiSetting::get('rate_limit.reference', 30),
             'rate_limit_actions' => ApiSetting::get('rate_limit.actions', 60),
             'rate_limit_ai_export' => ApiSetting::get('rate_limit.ai_export', 60),
+            'rate_limit_agent' => ApiSetting::get('rate_limit.agent', 120),
         ]);
     }
 
@@ -63,6 +65,9 @@ class ApiSettings extends Page implements HasForms
                         TextInput::make('rate_limit_ai_export')
                             ->label('AI export')
                             ->numeric()->minValue(1)->step(1)->suffix('req/min')->default(60),
+                        TextInput::make('rate_limit_agent')
+                            ->label('Agent schedules / runs (DingTalk agent)')
+                            ->numeric()->minValue(1)->step(1)->suffix('req/min')->default(120),
                     ])
                     ->columns(2),
             ])
@@ -77,6 +82,7 @@ class ApiSettings extends Page implements HasForms
         ApiSetting::set('rate_limit.reference', (int) ($data['rate_limit_reference'] ?? 30));
         ApiSetting::set('rate_limit.actions', (int) ($data['rate_limit_actions'] ?? 60));
         ApiSetting::set('rate_limit.ai_export', (int) ($data['rate_limit_ai_export'] ?? 60));
+        ApiSetting::set('rate_limit.agent', (int) ($data['rate_limit_agent'] ?? 120));
 
         Notification::make()
             ->success()

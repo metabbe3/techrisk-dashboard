@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
@@ -24,7 +25,9 @@ class IncidentStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $cacheKey = 'incident_stats_v5_'.md5(json_encode([
+        // v6: Fund Loss total gains the excludedFromCounts scope; MTTR tiles
+        // scope by fund_status (matching the export tabs) instead of sign.
+        $cacheKey = 'incident_stats_v6_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -54,12 +57,22 @@ class IncidentStatsOverview extends BaseWidget
 
         // BUG-021: DECIMAL aggregates come back as strings on MySQL — cast for
         // number_format()/abs() under strict_types.
-        $fundLossTotal = (float) $query->clone()->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
+        // Fund Loss card rule (business-rules.md): classification Incident +
+        // status Completed + excludedFromCounts — the same scope as
+        // DashboardStatsOverview's card.
+        $fundLossTotal = (float) $query->clone()
+            ->where('classification', IncidentClassification::Incident->value)
+            ->where('incident_status', IncidentStatus::Completed->value)
+            ->excludedFromCounts()
+            ->sum('fund_loss');
         $recoveredTotal = (float) $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('recovered_fund', '>', 0)->sum('recovered_fund');
-        $mttrNonFundLoss = (float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->average('mttr') ?? 0);
-        $mttrFundLoss = abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->average('mttr') ?? 0));
+        // MTTR tiles follow the export tabs (one logic rule, owner
+        // 2026-11-16): scope by fund_status, keep the sign filter as the
+        // unit bucket (mins/days). Outliers store null MTTR — dropped free.
+        $mttrNonFundLoss = (float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('fund_status', FundStatus::NonFundLoss->value)->where('mttr', '>=', 0)->average('mttr') ?? 0);
+        $mttrFundLoss = abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('fund_status', FundStatus::ConfirmedLoss->value)->where('mttr', '<', 0)->average('mttr') ?? 0));
 
-        $mtbfNonFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->where('fund_status', 'Non fundLoss');
+        $mtbfNonFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->where('fund_status', FundStatus::NonFundLoss->value);
         $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
         $mtbfNonFundLoss = 0;
         if ($mtbfNonFundLossCount > 1) {
@@ -70,7 +83,7 @@ class IncidentStatsOverview extends BaseWidget
             }
         }
 
-        $mtbfFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->where('fund_status', 'Confirmed loss');
+        $mtbfFundLossQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutOutliers()->where('fund_status', FundStatus::ConfirmedLoss->value);
         $mtbfFundLossCount = $mtbfFundLossQuery->count();
         $mtbfFundLoss = 0;
         if ($mtbfFundLossCount > 1) {

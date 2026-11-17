@@ -320,13 +320,16 @@ class IncidentResource extends Resource
 
                         $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
                         $year = $record->incident_date->year;
-                        // Version in the key: a dashboard_cache_version bump (metrics
-                        // recalculation) invalidates this 1-hour cache for free.
-                        $cacheKey = "mtbf_{$tab}_{$year}_v".Cache::get('dashboard_cache_version', 0);
+                        // v2 in the key: the chain now drops non-metric rows
+                        // (METRIC_ELIGIBLE) and renders '-' on the year's
+                        // first row — old cached maps served dayOfYear.
+                        // A dashboard_cache_version bump invalidates for free.
+                        $cacheKey = "mtbf_{$tab}_{$year}_v2_".Cache::get('dashboard_cache_version', 0);
 
                         $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($tab, $year) {
                             $query = Incident::whereYear('incident_date', $year)
                                 ->where('classification', '!=', IncidentClassification::Issue->value)
+                                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                                 ->withoutOutliers()
                                 ->orderBy('incident_date')->orderBy('id');
 
@@ -346,10 +349,15 @@ class IncidentResource extends Resource
                             };
 
                             $incidents = $query->get(['id', 'incident_date']);
+                            // Export chain semantics (one logic, owner
+                            // 2026-11-16): first of the year renders '-', so
+                            // the column's mean = span/(n-1) like every
+                            // footer. G/Non Incident rows are not in the
+                            // chain (METRIC_ELIGIBLE) and render '-' too.
                             $result = [];
                             foreach ($incidents as $i => $inc) {
                                 $result[$inc->id] = $i === 0
-                                    ? $inc->incident_date->dayOfYear
+                                    ? '-'
                                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                                         ->diffInDays($inc->incident_date->startOfDay());
                             }
@@ -357,7 +365,7 @@ class IncidentResource extends Resource
                             return $result;
                         });
 
-                        return $mtbf[$record->id] ?? 0;
+                        return $mtbf[$record->id] ?? '-';
                     })
                     ->formatStateUsing(fn (int|string $state): string => is_int($state) ? number_format($state) : $state)
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
@@ -395,6 +403,16 @@ class IncidentResource extends Resource
                 TextColumn::make('root_cause_category')->label('Root Cause Category')->badge()->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('responsible_team')->label('Responsible Team')->badge()->toggleable(isToggledHiddenByDefault: true),
                 IconColumn::make('goc_upload')->boolean()->toggleable(isToggledHiddenByDefault: true),
+                Tables\Columns\IconColumn::make('notion_investigation_link')
+                    ->label('Notion')
+                    ->state(fn (Incident $record): bool => filled($record->notion_investigation_page_id))
+                    ->trueIcon('heroicon-o-arrow-top-right-on-square')
+                    ->trueColor('info')
+                    ->tooltip('Open the Notion investigation page')
+                    ->url(fn (Incident $record): ?string => filled($record->notion_investigation_page_id)
+                        ? app(\App\Services\Notion\NotionInvestigationService::class)->pageUrl((string) $record->notion_investigation_page_id)
+                        : null)
+                    ->openUrlInNewTab(),
             ])
             ->groups([
                 Group::make('incident_status')
@@ -602,6 +620,18 @@ class IncidentResource extends Resource
                     ->databaseTransaction()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 Tables\Actions\ActionGroup::make([
+                    Tables\Actions\Action::make('start_investigation')
+                        ->label('Start Investigation')
+                        ->icon('heroicon-o-magnifying-glass')
+                        ->color('info')
+                        ->requiresConfirmation()
+                        ->modalHeading('Start Investigation')
+                        ->modalDescription('Creates a Notion investigation page, links it to this record, and sets the status to In progress. On a soft-unlinked record it continues the existing page instead.')
+                        // Round 10: a soft-unlinked record keeps its page id —
+                        // Start Investigation shows again and CONTINUES it.
+                        ->action(fn (Incident $record) => \App\Filament\Actions\NotionInvestigationAction::start($record))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && (blank($record->notion_investigation_page_id) || filled($record->notion_investigation_unlinked_at))),
                     Tables\Actions\Action::make('update_status')
                         ->label('Update Status')
                         ->icon('heroicon-o-arrow-path')
@@ -663,8 +693,13 @@ class IncidentResource extends Resource
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 ]),
             ])
-            ->contentFooter(fn () => view('livewire.incident-stats-footer', [
-                'stats' => app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build(),
+            ->contentFooter(fn ($livewire) => view('livewire.incident-stats-footer', [
+                // BUG-022: the footer must read the SAME rows the table under
+                // it shows — tab + filters + search. The old no-arg build()
+                // re-derived only the date filters, so every fund/status tab
+                // showed All Cases numbers.
+                'stats' => app(\App\Filament\Statistics\IncidentStatsFooterData::class)
+                    ->build($livewire->getFilteredTableQuery()->clone()),
             ]));
     }
 
@@ -673,6 +708,7 @@ class IncidentResource extends Resource
         return [
             RelationManagers\StatusUpdatesRelationManager::class,
             RelationManagers\InvestigationDocumentsRelationManager::class,
+            RelationManagers\InvestigationFormsRelationManager::class,
             RelationManagers\AuditsRelationManager::class,
             RelationManagers\ActionImprovementsRelationManager::class,
             RelationManagers\WarRoomSessionsRelationManager::class,

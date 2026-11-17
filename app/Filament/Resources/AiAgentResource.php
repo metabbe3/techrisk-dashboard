@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources;
 
+use App\Enums\AiAgentEngine;
 use App\Enums\AiAgentFrequency;
 use App\Filament\Resources\AiAgentResource\Pages;
 use App\Models\AiAgent;
@@ -162,7 +163,7 @@ class AiAgentResource extends Resource
                     ]),
 
                 Forms\Components\Section::make('Agent')
-                    ->description('v1 agents are text-only: instructions become the system prompt of a single generation. No code or tools are executed.')
+                    ->description('Go engine: the DingTalk agent runs the instructions as an agentic task with dashboard/Notion tools and posts the answer to chat. PHP: a single text-only generation. Static: the text is delivered as-is, no model call.')
                     ->schema([
                         Forms\Components\TextInput::make('name')
                             ->required()
@@ -177,11 +178,17 @@ class AiAgentResource extends Resource
                             ->extraInputAttributes(['style' => 'font-family: monospace'])
                             ->helperText('Sent as the system prompt on every run. Say what the agent should produce, e.g. "Summarize the week\'s incidents as a digest".')
                             ->columnSpanFull(),
+                        Forms\Components\Select::make('engine')
+                            ->options(AiAgentEngine::labels())
+                            ->default(AiAgentEngine::Go->value)
+                            ->required()
+                            ->selectablePlaceholder(false)
+                            ->helperText('Static ignores the model entirely — it delivers the instructions text as-is to the DingTalk target.'),
                         Forms\Components\Select::make('model')
                             ->options(fn () => app(AiTextService::class)->getModelsForPicker())
                             ->searchable()
                             ->placeholder('Default (from AI Settings)')
-                            ->helperText('Leave empty to use the default model configured in AI Settings. Models marked unhealthy by the last health check are hidden.'),
+                            ->helperText('Leave empty to use the default model configured in AI Settings. Models marked unhealthy by the last health check are hidden. Ignored by the Static engine.'),
                         Forms\Components\Toggle::make('include_context')
                             ->label('Include dashboard context')
                             ->helperText('Append live statistics (this year\'s incident counts, MTTR, fund loss) to every run so the agent reasons over real data.'),
@@ -291,11 +298,18 @@ class AiAgentResource extends Resource
                                 'daily' => 'Every day',
                                 'hourly' => 'Every hour',
                                 'weekly' => 'Every week',
+                                'once' => 'Once, at a set time',
                                 'custom' => 'Custom (cron expression)',
                             ])
                             ->default('manual')
                             ->live()
                             ->required(),
+                        Forms\Components\DateTimePicker::make('run_at')
+                            ->label('Run at')
+                            ->seconds(false)
+                            ->visible(fn (Forms\Get $get): bool => $get('schedule_type') === 'once')
+                            ->required(fn (Forms\Get $get): bool => $get('schedule_type') === 'once')
+                            ->helperText('App timezone (WIB). The agent disables itself after firing; a failed one-shot retries after 5 minutes, up to 3 tries.'),
                         Forms\Components\TimePicker::make('run_time')
                             ->label('At')
                             ->default('09:00')
@@ -345,6 +359,21 @@ class AiAgentResource extends Resource
                             ->maxLength(255)
                             ->helperText('Optional — email this address with the output of every run (or the error, if it fails).')
                             ->columnSpanFull(),
+                        Forms\Components\Select::make('dingtalk_conversation_type')
+                            ->label('DingTalk conversation type')
+                            ->options(['1' => 'DM (1:1 chat)', '2' => 'Group'])
+                            ->required(fn (Forms\Get $get): bool => $get('engine') === AiAgentEngine::Static->value)
+                            ->helperText('Go and Static engines post the run output to this chat. Chat-created reminders are bound here automatically.'),
+                        Forms\Components\TextInput::make('dingtalk_conversation_id')
+                            ->label('DingTalk conversation id')
+                            ->maxLength(190)
+                            ->required(fn (Forms\Get $get): bool => filled($get('dingtalk_conversation_type')) || $get('engine') === AiAgentEngine::Static->value)
+                            ->helperText('The chat\'s openConversationId — the "cid" the bot reports in its reminders.'),
+                        Forms\Components\TextInput::make('dingtalk_staff_id')
+                            ->label('DingTalk staff id (fallback DM)')
+                            ->maxLength(64)
+                            ->required(fn (Forms\Get $get): bool => $get('engine') === AiAgentEngine::Static->value)
+                            ->helperText('Group sends that fail fall back to this user\'s DM.'),
                     ]),
             ]);
     }
@@ -362,6 +391,11 @@ class AiAgentResource extends Resource
                     ->color('gray')
                     ->formatStateUsing(fn ($state): string => $state ?: 'Default')
                     ->placeholder('Default'),
+                Tables\Columns\TextColumn::make('engine')
+                    ->badge()
+                    ->formatStateUsing(fn ($state): string => $state instanceof AiAgentEngine ? $state->label() : (string) $state)
+                    ->color(fn ($state): string => ($state instanceof AiAgentEngine ? $state : AiAgentEngine::from($state))->color())
+                    ->sortable(),
                 Tables\Columns\TextColumn::make('frequency')
                     ->badge()
                     ->formatStateUsing(fn ($state): string => $state instanceof AiAgentFrequency ? $state->value : (string) $state)
@@ -421,6 +455,8 @@ class AiAgentResource extends Resource
             ])
             ->filters([
                 Tables\Filters\TernaryFilter::make('enabled'),
+                Tables\Filters\SelectFilter::make('engine')
+                    ->options(AiAgentEngine::labels()),
                 Tables\Filters\SelectFilter::make('frequency')
                     ->options(AiAgentFrequency::options()),
             ])
@@ -456,24 +492,30 @@ class AiAgentResource extends Resource
     }
 
     /**
-     * Translate the form-only schedule fields (schedule_type/run_time/run_weekday)
-     * into what the model and dispatcher actually store: frequency Manual|Cron
-     * plus a raw cron expression. Shared by Create and Edit pages.
+     * Translate the form-only schedule fields (schedule_type/run_time/run_weekday/run_at)
+     * into what the model and dispatcher actually store: frequency Manual|Cron|Once
+     * plus a raw cron expression or a resolved run_at. Shared by Create and Edit pages.
      */
     public static function resolveScheduleData(array $data): array
     {
         $type = $data['schedule_type'] ?? 'manual';
 
-        $data['frequency'] = $type === 'manual'
-            ? AiAgentFrequency::Manual->value
-            : AiAgentFrequency::Cron->value;
+        $data['frequency'] = match ($type) {
+            'manual' => AiAgentFrequency::Manual->value,
+            'once' => AiAgentFrequency::Once->value,
+            default => AiAgentFrequency::Cron->value,
+        };
 
-        if ($type === 'manual') {
+        if ($type === 'manual' || $type === 'once') {
             $data['cron_expression'] = null;
         } elseif ($type !== 'custom') {
             $data['cron_expression'] = AiAgent::cronFromPreset($type, $data['run_time'] ?? null, $data['run_weekday'] ?? null);
         }
         // custom: cron_expression passes through as entered (validated above).
+
+        // run_at only carries meaning for 'once'; clear it on every other type
+        // so an edited agent cannot keep firing its old one-shot.
+        $data['run_at'] = $type === 'once' ? ($data['run_at'] ?? null) : null;
 
         unset($data['schedule_type'], $data['run_time'], $data['run_weekday']);
 

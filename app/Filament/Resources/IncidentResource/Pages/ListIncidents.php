@@ -47,112 +47,120 @@ class ListIncidents extends ListRecords
                     $model = $data['ai_model'] ?? null;
                     $this->applyAiSearch($data['nl_query'], $model);
                 }),
-            Actions\Action::make('export')
+            // Owner 2026-11-10: the export pair merged behind one dropdown —
+            // the incident detail page's Export group shape (ViewIncident).
+            Actions\ActionGroup::make([
+                Actions\Action::make('export')
+                    ->label('Excel Report')
+                    ->icon('heroicon-o-document-arrow-down')
+                    ->color('info')
+                    ->form(fn () => ExportActionSchema::form())
+                    ->action(function (array $data) {
+                        $query = ExportActionSchema::applyFilters($this->getFilteredTableQuery()->clone(), $data);
+                        // Widget-aligned baseline (Confirmed loss + Non fundLoss) unless
+                        // the user picked fund statuses — owner rule 2026-10-23.
+                        $baseline = ExportActionSchema::baselineQuery($query, $data);
+
+                        if (($data['preset'] ?? 'executive') === 'executive') {
+                            // BUG-013: store → inject chart caches → download, so the
+                            // native charts render in Numbers/QuickLook/Sheets too.
+                            $export = new \App\Exports\ExecutiveIncidentsExport($baseline);
+                            $fname = 'executive-report-'.now()->format('Y-m-d').'.xlsx';
+                            $tmp = storage_path('app/private/temp/'.$fname);
+                            @mkdir(dirname($tmp), 0777, true);
+                            Excel::store($export, 'temp/'.$fname, 'local');
+                            \App\Exports\Concerns\ChartCacheInjector::inject($tmp);
+
+                            return response()->download($tmp, $fname, [
+                                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                            ])->deleteFileAfterSend(true);
+                        }
+
+                        if ($data['preset'] === 'quarterly_report') {
+                            return Excel::download(
+                                new \App\Exports\QuarterlyReportExport($baseline, $query),
+                                'quarterly-report-'.now()->format('Y-m-d').'.xlsx'
+                            );
+                        }
+
+                        if ($data['preset'] === 'group_by') {
+                            return Excel::download(
+                                new \App\Exports\GroupedIncidentsExport($query, $data['group_dim'] ?? 'business_category'),
+                                'incidents-by-'.($data['group_dim'] ?? 'business_category').'-'.now()->format('Y-m-d').'.xlsx'
+                            );
+                        }
+
+                        if ($data['preset'] === 'all_tabs') {
+                            return Excel::download(
+                                new MultiSheetIncidentsExport($baseline, array_values(ExportActionSchema::columnOptions()), array_keys(ExportActionSchema::columnOptions()), $query),
+                                'incidents-all-tabs-'.now()->format('Y-m-d').'.xlsx'
+                            );
+                        }
+
+                        // custom
+                        $selectedColumns = $data['columns'];
+                        $columnOptions = ExportActionSchema::columnOptions();
+                        $headings = array_values(array_intersect_key($columnOptions, array_flip($selectedColumns)));
+
+                        $format = $data['format'];
+
+                        $baseline->orderBy('incident_date', 'asc');
+
+                        $totalCases = $baseline->count();
+
+                        $avgMtbf = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build($baseline)['avgMtbf'];
+
+                        // BUG-021: DECIMAL aggregates are strings on MySQL — cast for
+                        // number_format() inside the strict-typed export classes.
+                        $stats = [
+                            'totalCases' => $totalCases,
+                            'avgMttr' => round((float) ($baseline->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
+                            'avgMtbf' => $avgMtbf,
+                            'totalPotentialFundLoss' => (float) $baseline->sum('potential_fund_loss'),
+                            'totalFundLoss' => (float) $baseline->sum('fund_loss'),
+                            'totalRecoveredFund' => (float) $baseline->sum('recovered_fund'),
+                        ];
+
+                        $incidents = $baseline->clone()->with('labels')->lazy()->collect();
+
+                        return Excel::download(
+                            new IncidentTableExport($incidents, $stats, $headings, $selectedColumns, $baseline),
+                            'incidents-'.now()->format('Y-m-d').'.'.$format
+                        );
+                    }),
+                Actions\Action::make('export_markdown_zip')
+                    ->label('Markdown ZIP')
+                    ->icon('heroicon-o-archive-box-arrow-down')
+                    ->color('success')
+                    ->tooltip('Every incident in view as markdown + converted documents, zipped for AI tools')
+                    ->requiresConfirmation()
+                    ->modalDescription('One folder per incident: full markdown report plus every convertible investigation document. Incidents only (no Issues), P1–P4/X1–X4.')
+                    ->action(function () {
+                        $path = app(\App\Services\Markdown\IncidentMarkdownZipService::class)
+                            ->build(ExportActionSchema::baseExportScope($this->getFilteredTableQuery()->clone()));
+
+                        if ($path === null) {
+                            \Filament\Notifications\Notification::make()
+                                ->warning()
+                                ->title('Nothing to export')
+                                ->body('No incidents match the current view.')
+                                ->send();
+
+                            return;
+                        }
+
+                        return response()->download($path, basename($path), [
+                            'Content-Type' => 'application/zip',
+                        ])->deleteFileAfterSend(true);
+                    }),
+            ])
                 ->label('Export')
                 ->icon('heroicon-o-document-arrow-down')
                 ->color('info')
+                ->button()
                 ->extraAttributes([
                     'class' => 'header-btn-export',
-                ])
-                ->form(fn () => ExportActionSchema::form())
-                ->action(function (array $data) {
-                    $query = ExportActionSchema::applyFilters($this->getFilteredTableQuery()->clone(), $data);
-                    // Widget-aligned baseline (Confirmed loss + Non fundLoss) unless
-                    // the user picked fund statuses — owner rule 2026-10-23.
-                    $baseline = ExportActionSchema::baselineQuery($query, $data);
-
-                    if (($data['preset'] ?? 'executive') === 'executive') {
-                        // BUG-013: store → inject chart caches → download, so the
-                        // native charts render in Numbers/QuickLook/Sheets too.
-                        $export = new \App\Exports\ExecutiveIncidentsExport($baseline);
-                        $fname = 'executive-report-'.now()->format('Y-m-d').'.xlsx';
-                        $tmp = storage_path('app/private/temp/'.$fname);
-                        @mkdir(dirname($tmp), 0777, true);
-                        Excel::store($export, 'temp/'.$fname, 'local');
-                        \App\Exports\Concerns\ChartCacheInjector::inject($tmp);
-
-                        return response()->download($tmp, $fname, [
-                            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                        ])->deleteFileAfterSend(true);
-                    }
-
-                    if ($data['preset'] === 'quarterly_report') {
-                        return Excel::download(
-                            new \App\Exports\QuarterlyReportExport($baseline, $query),
-                            'quarterly-report-'.now()->format('Y-m-d').'.xlsx'
-                        );
-                    }
-
-                    if ($data['preset'] === 'group_by') {
-                        return Excel::download(
-                            new \App\Exports\GroupedIncidentsExport($query, $data['group_dim'] ?? 'business_category'),
-                            'incidents-by-'.($data['group_dim'] ?? 'business_category').'-'.now()->format('Y-m-d').'.xlsx'
-                        );
-                    }
-
-                    if ($data['preset'] === 'all_tabs') {
-                        return Excel::download(
-                            new MultiSheetIncidentsExport($baseline, array_values(ExportActionSchema::columnOptions()), array_keys(ExportActionSchema::columnOptions()), $query),
-                            'incidents-all-tabs-'.now()->format('Y-m-d').'.xlsx'
-                        );
-                    }
-
-                    // custom
-                    $selectedColumns = $data['columns'];
-                    $columnOptions = ExportActionSchema::columnOptions();
-                    $headings = array_values(array_intersect_key($columnOptions, array_flip($selectedColumns)));
-
-                    $format = $data['format'];
-
-                    $baseline->orderBy('incident_date', 'asc');
-
-                    $totalCases = $baseline->count();
-
-                    $avgMtbf = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build($baseline)['avgMtbf'];
-
-                    // BUG-021: DECIMAL aggregates are strings on MySQL — cast for
-                    // number_format() inside the strict-typed export classes.
-                    $stats = [
-                        'totalCases' => $totalCases,
-                        'avgMttr' => round((float) ($baseline->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
-                        'avgMtbf' => $avgMtbf,
-                        'totalPotentialFundLoss' => (float) $baseline->sum('potential_fund_loss'),
-                        'totalFundLoss' => (float) $baseline->sum('fund_loss'),
-                        'totalRecoveredFund' => (float) $baseline->sum('recovered_fund'),
-                    ];
-
-                    $incidents = $baseline->clone()->with('labels')->lazy()->collect();
-
-                    return Excel::download(
-                        new IncidentTableExport($incidents, $stats, $headings, $selectedColumns, $baseline),
-                        'incidents-'.now()->format('Y-m-d').'.'.$format
-                    );
-                }),
-            Actions\Action::make('export_markdown_zip')
-                ->label('Export Markdown ZIP')
-                ->icon('heroicon-o-archive-box-arrow-down')
-                ->color('success')
-                ->tooltip('Every incident in view as markdown + converted documents, zipped for AI tools')
-                ->requiresConfirmation()
-                ->modalDescription('One folder per incident: full markdown report plus every convertible investigation document. Incidents only (no Issues), P1–P4/X1–X4.')
-                ->action(function () {
-                    $path = app(\App\Services\Markdown\IncidentMarkdownZipService::class)
-                        ->build(ExportActionSchema::baseExportScope($this->getFilteredTableQuery()->clone()));
-
-                    if ($path === null) {
-                        \Filament\Notifications\Notification::make()
-                            ->warning()
-                            ->title('Nothing to export')
-                            ->body('No incidents match the current view.')
-                            ->send();
-
-                        return;
-                    }
-
-                    return response()->download($path, basename($path), [
-                        'Content-Type' => 'application/zip',
-                    ])->deleteFileAfterSend(true);
-                }),
+                ]),
             Actions\Action::make('recalculate_metrics')
                 ->label('Recalculate')
                 ->icon('heroicon-o-arrow-path')

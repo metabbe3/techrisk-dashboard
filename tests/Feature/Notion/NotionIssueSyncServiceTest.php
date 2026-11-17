@@ -63,7 +63,7 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->assertSame(1, $result['created']);
 
         $incident = Incident::query()->sole();
-        $this->assertSame('DB down', $incident->title);
+        $this->assertSame('2026 Jan 12 - DB down', $incident->title);
         $this->assertNull($incident->root_cause);
     }
 
@@ -191,7 +191,9 @@ class NotionIssueSyncServiceTest extends TestCase
         $result = app(NotionIssueSyncService::class)->sync();
 
         $this->assertSame('ok', $result['status']);
-        $this->assertSame('No new issues; 1 refreshed.', $result['message']);
+        // Owner 2026-11-09: refreshes are silent in the message — the sweep
+        // still runs, it just doesn't report itself.
+        $this->assertSame('No new issues.', $result['message']);
         $this->assertSame('New cause after the edit', $incident->refresh()->root_cause);
         // The new edit time is remembered — the next run sees it as unchanged.
         $this->assertSame('2026-11-04T09:00:00.000Z', NotionSyncedPage::query()->sole()->last_edited_at);
@@ -232,7 +234,7 @@ class NotionIssueSyncServiceTest extends TestCase
 
         $result = app(NotionIssueSyncService::class)->sync();
 
-        $this->assertStringContainsString('1 refreshed', $result['message']);
+        $this->assertSame('No new issues.', $result['message']);
         $this->assertSame('Backfilled cause', $incident->refresh()->root_cause);
         $this->assertSame('2026-11-04T09:00:00.000Z', NotionSyncedPage::query()->sole()->last_edited_at);
     }
@@ -339,7 +341,7 @@ class NotionIssueSyncServiceTest extends TestCase
 
         $incident = Incident::query()->sole();
 
-        $this->assertSame('DB down', $incident->title);
+        $this->assertSame('2026 Jan 12 - DB down', $incident->title);
         $this->assertSame('2026-01-12', $incident->incident_date->toDateString());
         $this->assertSame('P1', $incident->severity->value);
         $this->assertSame(IncidentClassification::Issue->value, $incident->classification->value);
@@ -349,6 +351,30 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->assertTrue(NotionSyncedPage::where('page_id', '4062556e44dd81c395b0c542f2599858')->where('incident_id', $incident->id)->exists());
         $this->assertNotNull(Setting::get(NotionIssueSyncService::LAST_SYNC_AT_KEY));
         $this->assertSame('Imported 1 issue(s).', $result['message']);
+    }
+
+    /**
+     * Owner 2026-11-09: the stored title carries the issue's date —
+     * "2026 Nov 09 - timeout to database". The date is the row's own
+     * date_start, falling back to its createdTime.
+     */
+    public function test_imported_titles_carry_the_dated_prefix(): void
+    {
+        Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
+        $this->mockConnectedNotion([
+            $this->row('aaaa556e44dd81c395b0c542f2599aaa', 'timeout to database', '2026-11-09', 'P3', 'Data Issue'),
+            // No date_start on the row — createdTime dates the title.
+            $this->row('bbbb556e44dd81c395b0c542f2599bbb', 'DB down', '', 'P1', 'Infrastructure (Database)'),
+            // The row's name carries its own "DD Month YYYY - " prefix (the
+            // live bug 2026-11-09) — the title carries the date ONCE.
+            $this->row('cccc556e44dd81c395b0c542f2599ccc', '9 November 2026 - Multiple App Error Top Spiking', '2026-11-09', 'G', 'Internal Improving Issue'),
+        ]);
+
+        app(NotionIssueSyncService::class)->sync();
+
+        $this->assertSame('2026 Nov 09 - timeout to database', Incident::find(NotionSyncedPage::where('page_id', 'aaaa556e44dd81c395b0c542f2599aaa')->sole()->incident_id)->title);
+        $this->assertSame('2026 Jan 12 - DB down', Incident::find(NotionSyncedPage::where('page_id', 'bbbb556e44dd81c395b0c542f2599bbb')->sole()->incident_id)->title);
+        $this->assertSame('2026 Nov 09 - Multiple App Error Top Spiking', Incident::find(NotionSyncedPage::where('page_id', 'cccc556e44dd81c395b0c542f2599ccc')->sole()->incident_id)->title);
     }
 
     public function test_deleting_an_imported_issue_restores_it_on_the_next_sync(): void
@@ -404,8 +430,9 @@ class NotionIssueSyncServiceTest extends TestCase
 
         $this->assertSame('ok', $result['status']);
         $this->assertSame(1, $result['created']);
-        $this->assertSame('Imported 1 issue(s).', $result['message']);
-        $this->assertSame('DB down', Incident::query()->sole()->title);
+        // Owner 2026-11-09: a restore is not an import — it says so.
+        $this->assertSame('Restored 1 deleted issue(s).', $result['message']);
+        $this->assertSame('2026 Jan 12 - DB down', Incident::query()->sole()->title);
         $this->assertSame(1, NotionSyncedPage::count());
         $this->assertNull(NotionSyncedPage::query()->whereNull('incident_id')->first());
         // Recovery fetches by page ID — the watermark never moves.
@@ -604,6 +631,7 @@ class NotionIssueSyncServiceTest extends TestCase
         $result = app(NotionIssueSyncService::class)->sync(dryRun: true, restoreDeleted: true);
 
         $this->assertSame('ok', $result['status']);
+        $this->assertSame('Would restore 1 deleted issue(s).', $result['message']);
         $this->assertStringContainsString('Would restore', (string) $result['preview']);
         $this->assertStringContainsString('Deleted by accident', (string) $result['preview']);
         $this->assertSame(1, NotionSyncedPage::query()->whereNull('incident_id')->count());
@@ -785,7 +813,7 @@ class NotionIssueSyncServiceTest extends TestCase
 
         $this->assertSame('ok', $result['status']);
         $this->assertSame(1, $result['created']);
-        $this->assertSame('Boundary straggler', Incident::sole()->title);
+        $this->assertSame('2026 Jul 01 - Boundary straggler', Incident::sole()->title);
     }
 
     public function test_incremental_run_reads_only_rows_since_the_watermark(): void
@@ -1050,7 +1078,7 @@ class NotionIssueSyncServiceTest extends TestCase
         // Simulates the realistic poison pill: a write that throws under
         // MySQL strict mode (e.g. a Notion title longer than the 255-char
         // incidents.title column).
-        Incident::creating(fn (Incident $incident) => $incident->title === 'Poison row'
+        Incident::creating(fn (Incident $incident) => str_ends_with($incident->title, 'Poison row')
             ? throw new \RuntimeException('SQLSTATE[22001]: data too long')
             : null);
 
@@ -1084,7 +1112,7 @@ class NotionIssueSyncServiceTest extends TestCase
         $this->assertStringContainsString('Poison row', (string) $result['preview']);
         $this->assertStringContainsString('data too long', (string) $result['preview']);
         // The row after the poison still imported; the poison left no orphan.
-        $this->assertSame('Good row', Incident::query()->sole()->title);
+        $this->assertSame('2026 Jul 01 - Good row', Incident::query()->sole()->title);
         $this->assertSame(0, NotionSyncedPage::where('page_id', 'bbbb556e44dd81c395b0c542f2599bbb')->count());
         // The watermark holds at the first failure — the row is retried next run.
         $this->assertSame('2026-07-01 00:00:00Z', Setting::get(NotionIssueSyncService::WATERMARK_KEY));
@@ -1099,7 +1127,7 @@ class NotionIssueSyncServiceTest extends TestCase
         // The row fails exactly once (admin fixes the Notion title in between).
         $thrown = false;
         Incident::creating(function (Incident $incident) use (&$thrown) {
-            if ($incident->title === 'Poison row' && ! $thrown) {
+            if (str_ends_with($incident->title, 'Poison row') && ! $thrown) {
                 $thrown = true;
 
                 throw new \RuntimeException('SQLSTATE[22001]: data too long');
@@ -1149,7 +1177,7 @@ class NotionIssueSyncServiceTest extends TestCase
         Setting::set(NotionIssueSyncService::WATCH_KEY, 'db-1');
         Setting::set(NotionIssueSyncService::WATERMARK_KEY, '2026-06-01 00:00:00Z');
 
-        Incident::creating(fn (Incident $incident) => $incident->title === 'Poison'
+        Incident::creating(fn (Incident $incident) => str_ends_with($incident->title, 'Poison')
             ? throw new \RuntimeException('SQLSTATE[22001]: data too long')
             : null);
 
@@ -1229,7 +1257,8 @@ class NotionIssueSyncServiceTest extends TestCase
 
         $this->assertSame('ok', $result['status']);
         $this->assertSame(1, $result['created']);
-        $this->assertSame('DB down', Incident::query()->sole()->title);
+        $this->assertSame('Restored 1 deleted issue(s).', $result['message']);
+        $this->assertSame('2026 Jan 12 - DB down', Incident::query()->sole()->title);
         // The unpicked tombstone survived — its issue stays deleted.
         $this->assertTrue(NotionSyncedPage::query()
             ->where('page_id', 'bbbb556e44dd81c395b0c542f2599bbb')

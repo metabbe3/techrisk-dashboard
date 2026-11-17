@@ -116,7 +116,9 @@ class AnalyzeTrendsController extends Controller
             $avgMtbf = round(\Carbon\Carbon::parse($mtbfAgg->min_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($mtbfAgg->max_date)->startOfDay()) / ($mtbfAgg->cnt - 1), 2);
         }
 
-        $fundLoss = (float) (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->sum('fund_loss');
+        // Fund Loss card rule: Incident + Completed + excludedFromCounts
+        // (matches DashboardStatsOverview; aiCounts() already pins Incident).
+        $fundLoss = (float) (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->excludedFromCounts()->sum('fund_loss');
 
         $result = $this->aiService->analyzeTrends(
             monthlyData: $monthlyData,

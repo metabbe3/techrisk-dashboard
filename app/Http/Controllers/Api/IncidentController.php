@@ -43,6 +43,7 @@ class IncidentController extends Controller
      *
      * @queryParam start_date date Filter incidents from this date (inclusive). Example: 2024-01-01
      * @queryParam end_date date Filter incidents until this date (inclusive). Example: 2024-12-31
+     * @queryParam updated_since date Only incidents whose row was UPDATED at/after this timestamp (catches edits — start/end_date filter incident_date only). Example: 2024-12-31T15:00:00Z
      * @queryParam min_fund_loss number Filter incidents with fund loss greater than or equal to this value. Example: 1000000
      * @queryParam max_fund_loss number Filter incidents with fund loss less than or equal to this value. Example: 50000000
      * @queryParam min_potential_fund_loss number Filter incidents with potential loss greater than or equal to this value. Example: 1000000
@@ -92,6 +93,14 @@ class IncidentController extends Controller
 
             if ($request->filled('start_date') && $request->filled('end_date')) {
                 $query->whereBetween('incident_date', [$request->validated('start_date'), $request->validated('end_date')]);
+            }
+
+            // Row-level recency filter — the agent's watch poller + daily digests
+            // use it to find everything that CHANGED (incident_date never moves).
+            // Normalize to the storage timezone (Asia/Jakarta): a raw 'Z'/RFC3339
+            // string binds as text on SQLite and mis-parses on MySQL.
+            if ($request->filled('updated_since')) {
+                $query->where('updated_at', '>=', \Carbon\Carbon::parse($request->validated('updated_since'))->format('Y-m-d H:i:s'));
             }
 
             if ($request->filled('min_fund_loss')) {

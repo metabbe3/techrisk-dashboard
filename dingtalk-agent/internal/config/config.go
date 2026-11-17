@@ -1,0 +1,395 @@
+package config
+
+import (
+	"bufio"
+	"cmp"
+	"errors"
+	"fmt"
+	"os"
+	"strconv"
+	"strings"
+	"time"
+)
+
+// Config holds all configuration values for the DingTalk risk agent.
+type Config struct {
+	DingTalkClientID     string
+	DingTalkClientSecret string
+	DingTalkOpenAPIHost  string   // optional endpoint override (SDK default: api.dingtalk.com)
+	DingTalkAllowlist    []string // sender staffIds; empty = everyone in the app visibility range
+	DingTalkBotNames     []string // robot display name(s) used to strip @mentions; default "Risk Agent"
+	DashboardAPIBase     string   // read-only Laravel API base, e.g. http://nginx/api/v1
+	DashboardAPIToken    string   // Sanctum bearer token (abilities: incidents, incidents-by-no, incidents-markdown, stats)
+	LLMBaseURL           string   // OpenAI-compatible gateway (maps to the app's AI_API_BASE_URL)
+	LLMAPIKey            string
+	LLMModel             string
+	LLMMaxTokens         int               // max output tokens (War Room parity); 0 = omit the field
+	WebToolsEnabled      bool              // web_search / web_fetch registered for the LLM
+	NotionToolsEnabled   bool              // read-only Notion doc tools registered for the LLM
+	NotionDatabases      map[string]string // named Notion databases (NAME=<id>), seed for the agent's catalog
+	AutoLearn            bool              // per-user preference profiles extracted from conversations
+	MaxReplyChars        int               // reply cap before truncation (DingTalk markdown size)
+	MaxIterations        int
+	HistoryTTL           time.Duration // per-conversation memory retention
+	DataDir              string        // user registry + persistent history (empty = memory-only)
+
+	// InternalAddr is the listen address of the internal HTTP listener the
+	// dashboard's RunAiAgentJob calls (/internal/run). Empty disables it.
+	InternalAddr string
+	// InternalToken guards /internal/run (X-Agent-Token header). Empty disables
+	// the listener entirely — it must match the dashboard's GO_AGENT_INTERNAL_TOKEN.
+	InternalToken string
+	// AgentTurnReports reports every chat turn to the dashboard as a run row
+	// (POST /api/v1/agent-runs). Default on.
+	AgentTurnReports bool
+	// EmbeddingModel is the embeddings model for the RAG knowledge base
+	// (AI_EMBEDDING_MODEL parity — one source of truth with the dashboard).
+	EmbeddingModel string
+	// VisionModel is the image-reading model for picture uploads (AI_VISION_MODEL
+	// parity). Empty = the chat model must be multimodal.
+	VisionModel string
+	// HeavyModel is the smarter fallback model. When set, the agent loop
+	// retries a failed/looped-out turn once on this model ("use the smart
+	// model when we need it" — escalation, not per-message routing).
+	HeavyModel string
+	// KBToolsEnabled registers search_knowledge (the RAG index over files
+	// users upload in chat). Default on.
+	KBToolsEnabled bool
+
+	// Mesh orchestration (GoMesh v0.5 parity)
+	MeshRole        string        // "solo", "leader", "worker"
+	MeshListen      string        // leader listen address, e.g. ":7801"
+	MeshToken       string        // shared authentication token
+	LeaderAddr      string        // worker connection to leader
+	WorkerID        string        // worker identity
+	Capabilities    []string      // worker capability tags
+	TaskTimeout     time.Duration // default 300s
+	MissionTimeout  time.Duration // default 1800s
+	SubtaskAttempts int           // default 2, GOAGENT_SUBTASK_ATTEMPTS
+	FanoutMax       int           // default 3, GOAGENT_FANOUT_MAX (0 = off)
+}
+
+// Default values
+const (
+	DefaultLLMBaseURL        = "https://api.openai.com/v1"
+	DefaultLLMModel          = "glm-5.3-flashx"
+	DefaultMaxIterations     = 60    // Hermes parity — owner 2026-11-10
+	DefaultLLMMaxTokens      = 16384 // = War Room's code default (config/ai.php)
+	DefaultMaxReplyChars     = 8000
+	DefaultDashboardAPIBase  = "http://nginx/api/v1"
+	DefaultEnvFile           = "dingtalk-agent.env"
+	DefaultHistoryTTL        = 12 * time.Hour
+	DefaultDataDir           = "data"
+	DefaultInternalAddr      = ":9091"
+	DefaultEmbeddingModel    = "text-embedding-3-large" // = config/ai.php default
+	DefaultMeshRole          = "solo"
+	DefaultMeshListen        = ":7801"
+	DefaultTaskTimeoutSec    = 300
+	DefaultMissionTimeoutSec = 1800
+	DefaultSubtaskAttempts   = 2
+	DefaultFanoutMax         = 3
+)
+
+// loadBool reads a boolean env key ("1"/"true"/"on"/"yes" = on; anything else
+// off) with the given default.
+func loadBool(getVal func(key, defVal string) string, key string, def bool) bool {
+	v := getVal(key, "")
+	if v == "" {
+		return def
+	}
+	switch strings.ToLower(v) {
+	case "0", "false", "off", "no":
+		return false
+	}
+	return true
+}
+
+// Load reads configuration from the default env file (if present)
+// and overrides it with current process environment variables.
+func Load() (*Config, error) {
+	return LoadFromFile(DefaultEnvFile)
+}
+
+// LoadFromFile reads configuration from a specific env file path.
+func LoadFromFile(envPath string) (*Config, error) {
+	envMap := make(map[string]string)
+
+	// If file exists, load KEY=VALUE pairs (os.Open alone — Stat+Open doubled the syscalls)
+	file, err := os.Open(envPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("failed to open env file %s: %w", envPath, err)
+	}
+	if file != nil {
+		defer file.Close()
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+
+			idx := strings.Index(line, "=")
+			if idx <= 0 {
+				continue
+			}
+
+			key := strings.TrimSpace(line[:idx])
+			val := strings.TrimSpace(line[idx+1:])
+
+			// Remove quotes if present
+			if len(val) >= 2 {
+				if (val[0] == '"' && val[len(val)-1] == '"') || (val[0] == '\'' && val[len(val)-1] == '\'') {
+					val = val[1 : len(val)-1]
+				}
+			}
+			envMap[key] = val
+		}
+
+		if err := scanner.Err(); err != nil {
+			return nil, fmt.Errorf("error reading env file %s: %w", envPath, err)
+		}
+	}
+
+	// Helper to get from OS env first, fallback to envMap, fallback to default
+	getVal := func(key, defVal string) string {
+		if osVal := os.Getenv(key); osVal != "" {
+			return osVal
+		}
+		if mapVal, ok := envMap[key]; ok && mapVal != "" {
+			return mapVal
+		}
+		return defVal
+	}
+
+	meshRole := strings.ToLower(strings.TrimSpace(getVal("GOAGENT_ROLE", DefaultMeshRole)))
+	if meshRole == "" {
+		meshRole = DefaultMeshRole
+	}
+	meshListen := getVal("GOAGENT_MESH_LISTEN", DefaultMeshListen)
+	meshToken := getVal("GOAGENT_MESH_TOKEN", "")
+	leaderAddr := getVal("GOAGENT_LEADER_ADDR", "")
+
+	clientID := getVal("DINGTALK_CLIENT_ID", "")
+	clientSecret := getVal("DINGTALK_CLIENT_SECRET", "")
+	apiToken := getVal("DASHBOARD_API_TOKEN", "")
+
+	if meshRole == "solo" {
+		missing := []string{}
+		if clientID == "" {
+			missing = append(missing, "DINGTALK_CLIENT_ID")
+		}
+		if clientSecret == "" {
+			missing = append(missing, "DINGTALK_CLIENT_SECRET")
+		}
+		if apiToken == "" {
+			missing = append(missing, "DASHBOARD_API_TOKEN")
+		}
+		if len(missing) > 0 {
+			return nil, fmt.Errorf("missing required configuration: %s (see dingtalk-agent/README.md)", strings.Join(missing, ", "))
+		}
+	}
+	if meshRole == "leader" && meshToken == "" {
+		return nil, fmt.Errorf("GOAGENT_MESH_TOKEN is required for leader")
+	}
+	if meshRole == "worker" {
+		if meshToken == "" {
+			return nil, fmt.Errorf("GOAGENT_MESH_TOKEN is required for worker")
+		}
+		if leaderAddr == "" {
+			return nil, fmt.Errorf("GOAGENT_LEADER_ADDR is required for worker")
+		}
+	}
+
+	workerID := getVal("GOAGENT_WORKER_ID", "")
+	if workerID == "" {
+		hostname, err := os.Hostname()
+		if err != nil || hostname == "" {
+			hostname = "worker"
+		}
+		workerID = fmt.Sprintf("%s-%d", hostname, os.Getpid())
+	}
+
+	var caps []string
+	if capStr := getVal("GOAGENT_CAPABILITIES", ""); capStr != "" {
+		for _, part := range strings.Split(capStr, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				caps = append(caps, part)
+			}
+		}
+	}
+
+	taskTimeout := time.Duration(DefaultTaskTimeoutSec) * time.Second
+	if ttStr := getVal("GOAGENT_TASK_TIMEOUT", ""); ttStr != "" {
+		if s, err := strconv.Atoi(ttStr); err == nil && s > 0 {
+			taskTimeout = time.Duration(s) * time.Second
+		}
+	}
+
+	missionTimeout := time.Duration(DefaultMissionTimeoutSec) * time.Second
+	if mtStr := getVal("GOAGENT_MISSION_TIMEOUT", ""); mtStr != "" {
+		if s, err := strconv.Atoi(mtStr); err == nil && s > 0 {
+			missionTimeout = time.Duration(s) * time.Second
+		}
+	}
+
+	subtaskAttempts := DefaultSubtaskAttempts
+	if saStr := getVal("GOAGENT_SUBTASK_ATTEMPTS", ""); saStr != "" {
+		if s, err := strconv.Atoi(saStr); err == nil && s > 0 {
+			subtaskAttempts = s
+		}
+	}
+
+	fanoutMax := DefaultFanoutMax
+	if fmStr := getVal("GOAGENT_FANOUT_MAX", ""); fmStr != "" {
+		if s, err := strconv.Atoi(fmStr); err == nil && s >= 0 {
+			fanoutMax = s
+		}
+	}
+
+	// LLM_* wins, then the dashboard's own AI_* env keys (injected via the shared
+	// .env file by docker-compose), then hard defaults. AI_API_DEFAULT_MODEL ships
+	// placeholder values in some .env files — treat those as unset.
+	baseURL := getVal("LLM_BASE_URL", getVal("AI_API_BASE_URL", DefaultLLMBaseURL))
+	baseURL = strings.TrimRight(baseURL, "/")
+
+	model := getVal("LLM_MODEL", "")
+	if model == "" {
+		if candidate := getVal("AI_API_DEFAULT_MODEL", ""); candidate != "" && candidate != "default" && candidate != "SMART-MODEL" {
+			model = candidate
+		} else {
+			model = DefaultLLMModel
+		}
+	}
+	apiKey := getVal("LLM_API_KEY", getVal("AI_API_KEY", ""))
+
+	var allowlist []string
+	if raw := getVal("DINGTALK_ALLOWLIST", ""); raw != "" {
+		allowlist = SplitList(raw)
+	}
+
+	botNames := []string{"Risk Agent"}
+	if raw := getVal("DINGTALK_BOT_NAMES", ""); raw != "" {
+		botNames = SplitList(raw)
+	}
+
+	maxIter := DefaultMaxIterations
+	if iterStr := getVal("AGENT_MAX_ITER", ""); iterStr != "" {
+		if parsed, err := strconv.Atoi(iterStr); err == nil && parsed > 0 {
+			maxIter = parsed
+		}
+	}
+
+	// LLM_MAX_TOKENS wins, then the War Room's own env key (parity on prod), then
+	// the default. 0 = omit max_tokens entirely (escape hatch for models that
+	// reject it); invalid values fall back like maxIter.
+	maxTokens := DefaultLLMMaxTokens
+	if tokStr := getVal("LLM_MAX_TOKENS", getVal("AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "")); tokStr != "" {
+		if parsed, err := strconv.Atoi(tokStr); err == nil && parsed >= 0 {
+			maxTokens = parsed
+		}
+	}
+
+	webTools := true
+	switch strings.ToLower(getVal("AGENT_WEB_TOOLS", "1")) {
+	case "0", "false", "off", "no":
+		webTools = false
+	}
+
+	autoLearn := loadBool(getVal, "AGENT_AUTO_LEARN", true)
+	notionTools := loadBool(getVal, "AGENT_NOTION_TOOLS", true)
+
+	// NOTION_DATABASES="PRD=<id>,TA=<id>" — comma split, first '=' split,
+	// trim; malformed entries are skipped.
+	var notionDBs map[string]string
+	if raw := getVal("NOTION_DATABASES", ""); raw != "" {
+		notionDBs = make(map[string]string)
+		for _, part := range strings.Split(raw, ",") {
+			name, id, ok := strings.Cut(part, "=")
+			name, id = strings.TrimSpace(name), strings.TrimSpace(id)
+			if ok && name != "" && id != "" {
+				notionDBs[name] = id
+			}
+		}
+	}
+
+	maxReply := DefaultMaxReplyChars
+	if replyStr := getVal("AGENT_MAX_REPLY_CHARS", ""); replyStr != "" {
+		if parsed, err := strconv.Atoi(replyStr); err == nil && parsed >= 500 {
+			maxReply = parsed
+		}
+	}
+
+	historyTTL := DefaultHistoryTTL
+	if ttlStr := getVal("AGENT_HISTORY_TTL", ""); ttlStr != "" {
+		if parsed, err := time.ParseDuration(ttlStr); err == nil && parsed > 0 {
+			historyTTL = parsed
+		}
+	}
+
+	return &Config{
+		DingTalkClientID:     clientID,
+		DingTalkClientSecret: clientSecret,
+		DingTalkOpenAPIHost:  getVal("DINGTALK_OPEN_API_HOST", ""),
+		DingTalkAllowlist:    allowlist,
+		DingTalkBotNames:     botNames,
+		DashboardAPIBase:     strings.TrimRight(getVal("DASHBOARD_API_BASE", DefaultDashboardAPIBase), "/"),
+		DashboardAPIToken:    apiToken,
+		LLMBaseURL:           baseURL,
+		LLMAPIKey:            apiKey,
+		LLMModel:             model,
+		LLMMaxTokens:         maxTokens,
+		WebToolsEnabled:      webTools,
+		NotionToolsEnabled:   notionTools,
+		NotionDatabases:      notionDBs,
+		AutoLearn:            autoLearn,
+		MaxReplyChars:        maxReply,
+		MaxIterations:        maxIter,
+		HistoryTTL:           historyTTL,
+		DataDir:              getVal("DINGTALK_DATA_DIR", DefaultDataDir),
+
+		InternalAddr:     getVal("AGENT_INTERNAL_ADDR", DefaultInternalAddr),
+		InternalToken:    getVal("AGENT_INTERNAL_TOKEN", ""),
+		AgentTurnReports: loadBool(getVal, "AGENT_TURN_REPORTS", true),
+
+		// cmp.Or: first non-zero (= non-empty) argument wins.
+		EmbeddingModel: cmp.Or(
+			getVal("LLM_EMBEDDING_MODEL", ""),
+			getVal("AI_EMBEDDING_MODEL", ""),
+			DefaultEmbeddingModel, // matches config/ai.php's default
+		),
+		VisionModel: cmp.Or(
+			getVal("LLM_VISION_MODEL", ""),
+			getVal("AI_VISION_MODEL", ""),
+		), // empty = fall back to the chat model, resolved in llm.NewClient
+		HeavyModel: cmp.Or(
+			getVal("LLM_HEAVY_MODEL", ""),
+			getVal("AI_HEAVY_MODEL", ""),
+		), // empty = no heavy escalation; loop retries stay on the chat model
+		KBToolsEnabled: loadBool(getVal, "AGENT_KB_TOOLS", true),
+
+		MeshRole:        meshRole,
+		MeshListen:      meshListen,
+		MeshToken:       meshToken,
+		LeaderAddr:      leaderAddr,
+		WorkerID:        workerID,
+		Capabilities:    caps,
+		TaskTimeout:     taskTimeout,
+		MissionTimeout:  missionTimeout,
+		SubtaskAttempts: subtaskAttempts,
+		FanoutMax:       fanoutMax,
+	}, nil
+}
+
+// SplitList splits a comma-separated env value, trimming blanks (shared with
+// the -dm flag).
+func SplitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
+}

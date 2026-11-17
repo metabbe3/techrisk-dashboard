@@ -35,4 +35,13 @@ return [
         ],
     ],
 
+    // Microsoft (Entra ID) SSO. `tenant` pins auth to the company tenant —
+    // authorize URL becomes login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize.
+    'microsoft' => [
+        'client_id' => env('MICROSOFT_CLIENT_ID'),
+        'client_secret' => env('MICROSOFT_CLIENT_SECRET'), // the secret's Value, not its Secret ID
+        'redirect' => env('MICROSOFT_REDIRECT_URI'),
+        'tenant' => env('MICROSOFT_TENANT_ID'),
+    ],
+
 ];

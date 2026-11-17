@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use App\Enums\AiAgentRunStatus;
@@ -29,6 +30,8 @@ class AiAgentRun extends Model implements Auditable
         'total_tokens',
         'response_time_ms',
         'error_message',
+        'delivery_status',
+        'delivery_error',
         'requested_at',
         'started_at',
         'completed_at',

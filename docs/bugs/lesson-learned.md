@@ -1515,6 +1515,52 @@ the target. Two surfaces, two implementations, silent divergence.
 
 ---
 
+### [BUG-031] - DingTalk agent 400'd every LLM call: tool schema sent as a JSON string (double-encoded)
+
+**Date:** 2026-11-10 · **Component:** dingtalk-agent (Go) · **Severity:** full outage — every message failed
+
+#### Symptom
+Every DingTalk message → `litellm.BadRequestError: TencentException - The
+request parameter tools[N].function.parameters is invalid or missing`. The
+index N varied across boots (tool map iteration order). Three hotfix rounds
+(`62d6711` maxItems/nested-required removal, `e7f82a4` full flatten) each
+shipped with green tests while the error persisted in prod.
+
+#### Root Cause
+`llm.ToolFunctionDef.Parameters` is `any`. The two generate tools
+(`generate_pdf_report`, `generate_deck`) assigned a raw JSON **string** —
+`json.Marshal` then double-encodes to `"parameters":"{\"type\"…}"`, a string
+where the API demands an object, and the upstream 400s the WHOLE chat request.
+The schema *content* was never the problem; both hotfixes rearranged content
+while the encoding bug rode along. The lint test that should have caught it
+(`TestAllToolSchemasFlat`) helpfully `case string:`-unwrapped the literal
+before validating — it checked the parsed content, never the wire form.
+
+#### Diagnosis (the part worth copying)
+A throwaway probe (`cmd/probe`, since deleted) dumped the registry's defs
+exactly as the client marshals them; the escaped quotes were visible in the
+dump. Replaying 4 payloads against the real gateway isolated it in minutes:
+string-encoded deck → 400 (exact prod error), object-encoded deck → 200,
+entire fleet object-encoded → 200. Local bisect of the actual bytes beats a
+third blind hotfix.
+
+#### Fix
+- `rawSchema()` in `internal/tools/registry.go` — decodes a static JSON
+  schema literal into a map so it marshals as an object; both generate tools
+  use it (panics at boot on a bad literal — static input).
+- `TestAllToolSchemasFlat` now asserts the **wire form** too: the marshaled
+  `parameters` must start with `{`. A raw string can never pass again.
+
+#### Prevention
+- [x] Validate the wire form, not the parsed content — a schema lint test
+      must marshal the definition exactly as the client sends it
+- [x] When an upstream rejects a payload, replay the actual bytes against the
+      real endpoint and bisect (per-item requests) before theorizing
+- [x] `any`-typed JSON fields are double-encoding traps — a raw string
+      literal must pass through a decoder (`rawSchema`), never ride as-is
+
+---
+
 ## Summary Statistics
 
 | Metric | Count |
@@ -1739,3 +1785,223 @@ connection, at the exact moment they were trying to fix it.
       round-trip and was never exercised until the feature tests faked it
 
 ---
+
+### [BUG-031] - String env values into typed internal functions: AI web search silently returned "no results" once .env set AI_SEARCH_TIMEOUT / AI_SEARCH_MAX_RESULTS
+
+**Date:** 2026-11-10
+**Discovered By:** Pre-merge full-suite run on the feature branch — 2 AI
+tests failing on a tree that was green on clean HEAD (environment drift,
+not the branch's changes)
+**Severity:** Medium
+**Status:** Resolved
+
+### Description
+`WebSearchService::searchViaGemini()` collapsed to the "no relevant
+public results" fallback on EVERY call once .env gained
+`AI_SEARCH_TIMEOUT=15` and `AI_SEARCH_MAX_RESULTS=8`. Two TypeError
+layers, both swallowed by the broad catch in `search()` and converted
+into the benign empty-result fallback: first
+`PendingRequest::timeout('15')` (int|float), then — after that cast —
+`array_slice(..., '8')` in `parseGeminiResponse()` (int $length). No
+error surfaced anywhere a human reads; the only visible symptom was the
+fenced-context assertions in `ChatPersonaParityTest` failing. Tests
+passed until the .env gained those vars — environments that never set
+them were fine.
+
+### Root Cause
+Same family as BUG-021 (strict_types + string into a typed function),
+one layer up the config chain: `config()` returns env values AS
+STRINGS — `env('AI_SEARCH_TIMEOUT')` is `'15'`, not `15`. The config
+reads for `ai.search.timeout` and `ai.search.max_results` had no
+`(int)` cast while their sibling reads in the same file
+(`max_parallel_queries`, `max_context_chars`, `relevance_threshold`,
+`parallel_timeout`) did — the vars were added to config/ai.php later,
+without the cast convention. The typed-literal defaults in
+config/ai.php are harmless; only env-provided values break, so the bug
+hides until someone sets the var. And a TypeError thrown mid-parse is
+caught-and-degraded into "no results" — a crashed fetch indistinguishable
+from an empty result set.
+
+### Fix
+- `WebSearchService`: `(int)` casts at the four unguarded numeric config
+  reads — `ai.search.timeout` (×2) and `ai.search.max_results` (×2) —
+  each with a one-line comment naming the trap ("Env values are
+  strings — …").
+- `RunAiAgentJobTest::test_include_corpus_skips_block_when_corpus_never_built`
+  gained `Storage::fake('local')`: the corpus lives on the REAL local
+  disk (phpunit forces CACHE_STORE=array, which hides the manifest but
+  not the files), so dev-built corpus files leaked into the test and
+  flipped its count assertion.
+- Pint applied to `WebSearchService` (pre-existing style debt — the
+  file pre-dated the current Pint ruleset; HEAD's copy already failed
+  `--test` with the same fixers).
+
+### Prevention Checklist
+- [x] Any `config()` feeding a typed internal function (timeout, slice
+      length, limit, threshold) is cast at the READ SITE — never trust
+      an env-backed value's type
+- [x] Grep pattern for the next sweep: `config\('ai\.` — every numeric
+      read carries a cast
+- [x] Search/parse paths must not catch-and-degrade a TypeError into an
+      empty result set silently: the fallback DOES log the error string,
+      but treat "always-empty search" in prod as a crash signal, not a
+      content problem
+- [x] Run the full suite on the HOST (where .env carries the real vars)
+      before merging — the Docker container's env differs and hides
+      env-drift bugs like this one
+
+---
+
+### [BUG-029] - DingTalk agent sweep — stale system prompt, dead card streaming, ticket tokens never matched
+
+**Date:** 2026-11-12
+**Discovered By:** Owner-requested crash/bug/simplify audit of `dingtalk-agent/` (3 read-only passes, every finding re-verified against source)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+A three-bug cluster in the Go DingTalk agent, all in paths the test suite
+never exercised: (1) the LLM system prompt was persisted into chat history
+and reused on every later turn — stale clock, sender A's learned profile
+applied to sender B, new knowledge ignored; (2) the AI card's streaming
+callback had a dirty-flag ordering bug so only the FINAL frame ever rendered
+(users saw nothing until the whole answer finished); (3) reminder/watch
+ticket tokens were generated by Go 1.20's `rand.Text()` (26-char base32)
+while the tool descriptions publish a `[0-9a-f]{16}` regex — tokens could
+NEVER match, so scheduled reminders and incident watches silently never
+bound.
+
+### Root Cause
+1. System prompt: `loop.run` only built the prompt when history lacked a
+   `system` role, then returned history WITH it — save/load round-tripped
+   the stale copy.
+2. Card: `onDelta` set `w.dirty = true` AFTER the `!w.dirty` early-return
+   that the delta handler calls first — classic order-of-assignment bug.
+3. Tokens: two copies of the pending-request pattern drifted from their
+   consumers' format contract. `crypto/rand.Text()` was chosen for
+   "crypto-quality random string" without checking the regex the OTHER
+   side matches against.
+
+### Fix
+- `agent/loop.go`: `run()` strips any incoming `system`, rebuilds the
+  prompt fresh every turn via `buildSystemPrompt(sysExtra)`, returns
+  `messages[1:]` — history starts at a user message and NEVER contains a
+  system role. Trim guards against starting on a `tool` role (orphaned
+  tool result → gateway 400).
+- `stream.go`: `w.dirty = true` moved into `onDelta` before the flush
+  check; `cardWriter` test with a fake stream func pins ≥2 frames.
+- `internal/util.Pending[T]`: one generic replaces the watch + schedule
+  copies; `Put` emits 16-hex tokens (`rand.Read(8)` + `hex.EncodeToString`)
+  matching the ticket regexes; `at` set on Put (zero-`at` made one turn's
+  second Put sweep the first away).
+
+### Prevention Checklist
+- [x] Any generated string that another regex parses must be tested
+      against THAT regex end-to-end (generate → match → claim) — not
+      assumed format-compatible
+- [x] A prompt/any per-turn state that "sticks" in a history file is
+      rebuilt per turn; history stores only user/assistant/tool turns
+- [x] Callback flags set AFTER the check they gate = dead first frame;
+      write the flag where the event happens, not after the consumer
+- [x] When the same pattern exists twice (pending-tokens here), the third
+      caller gets a shared generic — drift between copies IS the bug
+
+---
+
+## 2026-11-12 — New agent tools shipped untaught: prompt/constitution not in the plan's task list (KB file ingest)
+
+**Finding (whole-branch review, PROJ-019 KB ingest):** the feature registered `save_knowledge` / `list_knowledge` / `delete_knowledge`, but the plan never listed `internal/agent/prompt.go` as a touched file — `KnowledgePrompt` still taught only `search_knowledge`, and `ConstitutionTail`'s scope line said the only KB interaction is "answered via search_knowledge. Nothing else." The model would have refused (or never chosen) the headline "remember this" flow the feature exists for. Nothing hermetic catches this: the tools work, the tests pass, and the refusal only appears live.
+
+**Root cause:** plans enumerate code seams (registry, index, client, stream) but not prompt surfaces. A tool the system prompt doesn't mention and the constitution forbids is dead code with a passing suite.
+
+**Prevention:**
+- [x] Any task adding an agent tool MUST also touch (or explicitly rule out) `KnowledgePrompt`/domain-prompt bullets AND the `ConstitutionTail` scope line — same-day precedent: the reminders feature had to widen this exact clause "so the model doesn't refuse scheduling".
+- [x] Plan template: add "prompt surfaces" to the pre-flight interface scan alongside "consumed by" files.
+- [x] Pin it: `TestKnowledgePromptTeachesAllKBTools` asserts every registered KB tool appears in BOTH prompts (a new tool that skips the prompt now fails a test, not a live chat).
+
+---
+
+---
+
+### [BUG-032] - Incidents Summary footer ignored the active tab (fund tabs showed All Cases MTTR/MTBF/totals) + Quarterly fund tabs sequenced MTBF off the baseline chain
+
+**Date:** 2026-11-16
+**Discovered By:** Owner ("in report MTBF and MTTR is wrong for fundloss / non fundloss, for all incident already correct")
+**Severity:** Medium (wrong management numbers, no crash)
+**Status:** Resolved
+
+### Description
+Two surfaces showed All Cases numbers where the owner expected each surface's own rows:
+
+1. **The Incidents table's Summary footer** (contentFooter on `IncidentResource::table()`) called `IncidentStatsFooterData::build()` with NO query. `baseQuery()` re-derives only the request's date filters (`quick_period` + `custom_date_range` — BUG-018's deliberate fallback), so on the Fund Loss / Non Fund Loss tabs (and any other tab / SelectFilter / search), Total Cases, Avg MTTR (mins/days) and Avg MTBF were the All Cases values.
+2. **The Quarterly Report's Fund Loss / Non Fund Loss tabs** passed the baseline query as `mtbfScope`, so their MTBF column and Avg MTBF read gaps against incidents of EVERY fund status. (Quarterly MTTR was already per-tab; the All Tabs export already sequences per-tab — the two surfaces the owner flagged.)
+
+Regression path: the pre-f6779e2 footer used `$this->getFilteredTableQuery()->clone()`; the move to the declarative `->contentFooter()` dropped it, and the BUG-018 rebuild (2026-10-03) intentionally re-derived only date filters — which fixed "footer vs date filter" parity while silently leaving "footer vs tab" broken. The Quarterly baseline-scope behavior was a deliberate 2026-10-23 rule the owner reversed on 2026-11-16.
+
+### Root Cause
+A stats builder whose input scope is *re-derived* instead of *received* can only be right for the surface that last wrote the derivation. Every new scope dimension (tab, search, SelectFilter) added to the table after the builder was written silently desyncs it — exactly the BUG-005/006/007 one-surface-drift family, fixed here by passing the table's own filtered query instead of fixing one call site.
+
+### Fix
+- `IncidentResource.php`: `->contentFooter(fn ($livewire) => ...build($livewire->getFilteredTableQuery()->clone()))` — Filament injects `$livewire` into table closures; `getFilteredTableQuery()` = table query (tab applied) + filters + search.
+- `QuarterlyReportExport.php`: Fund Loss / Non Fund Loss tabs pass their own query clone as `mtbfScope`. All Cases / Recovered Cases / quarter tabs unchanged (baseline chain).
+- `IncidentStatsFooterData::build()` doc: preferred input is the table's filtered query; `baseQuery()` stays as the no-table-context fallback (ExecutiveCalcSheet passes its own query).
+
+### Prevention Checklist
+- [x] Tab parity pinned: `IncidentStatsFooterTabParityTest` — Fund Loss / Non Fund Loss footers must equal their own rows' stats and differ from All Cases (the exact user-visible symptom).
+- [x] Rule for stats builders: take the surface's query as a parameter; re-deriving filters from `request()` is only for callers with no surface (documented on `build()`).
+- [x] Quarterly per-tab semantics pinned in `QuarterlyReportExportTest` (Fund Loss C reads its own chain 5, Non Fund Loss first row '-') and `SeverityFooterTest` (Fund Loss banner Avg MTBF = tab's own 41/2).
+- [x] Lesson family: when moving logic into a declarative/config form (`contentFooter` etc.), diff the closure's old body — the move itself dropped the query argument, and the regression shipped green because no test rendered the footer per tab.
+
+### [BUG-033] - Widget MTTR tiles/series scoped by MTTR sign instead of fund status + export MTBF chain had three private copies + analytics bucket means diluted by the group total
+
+**Date:** 2026-11-16
+**Discovered By:** Owner directive ("check widgets also fix the calculation so report / export and widgets match . also all other export … like 1 logic for all export") during the hand-workbook reconciliation
+**Severity:** Medium (wrong management numbers; one latent prod TypeError)
+**Status:** Resolved
+
+### Description
+The owner asked for ONE metric logic across widgets, report footers and every export. The audit found four divergence families:
+
+1. **Sign was used as a scope.** `IncidentMetricsCalculator::computeMttr()` stores days-scale NEGATIVE mttr for every `shouldCalculateMttrByDays()` status — Confirmed loss AND Potential recovery / Fully recovered / Non Tech Loss. The dashboard's MTTR tiles (`DashboardStatsOverview`, `IncidentStatsOverview`) and the trend chart's two MTTR series split by sign and labeled the buckets "Fund Loss (days)" / "Non Fund Loss (mins)": a Potential recovery row's −20d landed in the "Fund Loss" tile, a null-fund row's 30 min landed in the "Non Fund Loss" tile — neither row belongs to any tab of those names. The export tabs scope by `fund_status` and only use the sign to pick the unit bucket.
+2. **IncidentStatsOverview's Fund Loss money card missed `excludedFromCounts()`** (Completed alone) — Fully recovered / Potential recovery money counted, contradicting the Fund Loss card rule (AiTrendInsights + AnalyzeTrendsController fund totals had the same gap).
+3. **AnalyticsQueryService's JSON-dimension MTTR means divided each bucket's sum by the GROUP total** (`$stats['count']`), diluting mins by days-bucket rows and vice versa. The days branch also called `abs($incident->mttr)` on the raw attribute — a MySQL DECIMAL string (BUG-021 trap): a latent TypeError that no test had ever hit because no test exercised negative mttr through this path.
+4. **The export MTBF gap sequence existed three times** — `ComputesMtbfSequence` (Custom + Quarterly), `SingleIncidentSheetExport::computeMtbfForIncident()` (All-Tabs, per-tab), `IssuesMetricSheetExport::computeIssueMtbf()` (Issues, global) — the 2026-10-23 docs even said "two semantics, do not merge".
+
+### Root Cause
+The tile/series code was written when "fund loss ⇒ negative mttr" happened to hold, and the label froze the coincidence into UI copy; the calculator's status set later widened without the tiles following. The sequence triplication was 2026-09-30/2026-10-23 fixes landing in separate files instead of one trait. The diluted denominator came from a shared accumulator keyed by group, not bucket.
+
+### Fix
+- Tiles/series scope `fund_status` (enum cases) with the sign kept as the unit bucket; cache keys bumped `dashboard_stats_v7` / `incident_stats_v6` / `mttr_mtbf_trend_v6`.
+- IncidentStatsOverview + AiTrendInsights + AnalyzeTrendsController fund totals gain `excludedFromCounts()` (DashboardStatsOverview already had it).
+- AnalyticsQueryService: per-bucket `mttr_cnt` / `mttr_days_cnt` denominators + `(float)` cast before the sign test/abs.
+- ONE sequence: `ComputesMtbfSequence` with a scope-TRUSTED `$mtbfScope` (only metric hygiene — METRIC_ELIGIBLE + outliers + year + ordering — is added). All-Tabs sheets pass their sheet query (per-tab sequencing preserved); IssuesMetricSheetExport passes a FRESH classification=Issue query — NOT its own row query, whose `whereNotNull('mttr'/'mtbf')` membership clauses would shrink the chain (a stored-metric-less intermediate row must keep telescoping). The live table's `mtbf_display` column joined the same semantics (METRIC_ELIGIBLE, first-of-year `-`, key `mtbf_{tab}_{year}_v2_*`).
+
+### Prevention Checklist
+- [x] Rule written down (dependency-map "one-logic rule" + business-rules): a Fund Loss / Non Fund Loss LABEL scopes by `fund_status`; the MTTR sign only picks the unit bucket.
+- [x] `WidgetMetricUnificationTest` (6 tests): sign-vs-scope quadruple pinned on both stat widgets + the trend chart; fund card excludedFromCounts; per-bucket denominators; live-table chain cache map (first `-`, gap telescopes over a G row, G id absent).
+- [x] The live TypeError was caught by adding the missing days-branch test — coverage gap let a prod-only string cast survive three rounds of BUG-021 fixes elsewhere.
+- [x] "Do not merge" doc notes are a smell, not a design: when a second implementation appears for scope reasons, make scope a PARAMETER of the first instead (the trait now trusts `$mtbfScope`), and delete the copies in the same commit.
+
+---
+
+### [BUG-034] - Investigation form intake sent a shifted Notion page id (slug letters glued onto the id)
+
+**Date:** 2026-11-17
+**Discovered By:** Owner, first field test of PROJ-024 ("already provide url but … error"; "even dingtalk agent can read it")
+**Severity:** Medium (Notion source unusable for every link whose title ends in a hex character)
+**Status:** Resolved
+
+### Description
+Every pasted Notion link failed with "could not be read". Diagnostic surfacing of Notion's own reply showed `validation_error 400 "URL type webpage not currently supported"` — Notion answered (connection + access fine) and rejected the INPUT. The same page read fine through the DingTalk agent.
+
+### Root Cause
+`InvestigationFormIntake::collectSource()` stripped every dash from the whole URL, then took the FIRST 32-hex run. Notion links are `<title-slug>-<32hex id>`; removing dashes glues trailing hex letters/digits of the slug onto the id — `RootCaus[e]-1022…` → `e1022…`, `v[1-0]-d352…` → `10d352…` — and the first-32 match returns a shifted, nonexistent id. The agent path never had the bug because it passes the URL verbatim to `notion-fetch`. My first two "fixes" misdiagnosed it as page-sharing and only reworded the error.
+
+### Fix
+`notionPageId()`: the LAST 32-hex (or dashed UUID) in the URL **path** (query/fragment dropped), hex-bounded on both sides, dashes never stripped. Error copy no longer claims a sharing problem; Notion's own refusal stays in the message.
+
+### Prevention Checklist
+- [x] `test_notion_link_sends_the_real_page_id_and_surfaces_notions_refusal` pins the exact id sent for both field URLs + dashed UUID + bare id; verified to FAIL on the old parser (`fetch('e1022556…')`).
+- [x] When one consumer of a shared service works and another fails on the same input, diff the INPUTS the two send before theorizing about permissions.
+- [x] Never normalize (strip separators) before extracting a token from a structured string — extract first, with boundaries.
+- [x] Swallowed upstream errors hide the cause: surfacing Notion's reply is what turned this from "sharing?" guesswork into a one-line diagnosis.

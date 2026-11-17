@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Enums\AiAgentFrequency;
@@ -14,7 +15,7 @@ class DispatchDueAiAgentsCommand extends Command
 {
     protected $signature = 'ai:dispatch-due-agents';
 
-    protected $description = 'Dispatch queued runs for cron-scheduled AI agents (and fail stale runs from dead workers)';
+    protected $description = 'Dispatch queued runs for cron/one-shot scheduled AI agents (and fail stale runs from dead workers)';
 
     public function handle(): int
     {
@@ -34,6 +35,24 @@ class DispatchDueAiAgentsCommand extends Command
         foreach ($due as $agent) {
             $agent->dispatchRun();
             $this->info("Dispatched agent: {$agent->name}");
+        }
+
+        // One-shot agents: due once run_at has passed and this occurrence hasn't
+        // been dispatched yet (last_run_at < run_at — dispatchRun stamps
+        // last_run_at, a failed run re-arms run_at into the future). The JOB,
+        // not this command, parks the agent on success or re-arms the bounded
+        // retry on failure — the command never disables, so failures stay retryable.
+        $dueOnce = AiAgent::query()
+            ->where('enabled', true)
+            ->where('frequency', AiAgentFrequency::Once->value)
+            ->whereNotNull('run_at')
+            ->where('run_at', '<=', now())
+            ->where(fn ($q) => $q->whereNull('last_run_at')->orWhereColumn('last_run_at', '<', 'run_at'))
+            ->get();
+
+        foreach ($dueOnce as $agent) {
+            $agent->dispatchRun();
+            $this->info("Dispatched one-shot agent: {$agent->name}");
         }
 
         return self::SUCCESS;

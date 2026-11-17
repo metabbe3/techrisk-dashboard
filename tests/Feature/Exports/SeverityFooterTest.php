@@ -99,11 +99,12 @@ class SeverityFooterTest extends TestCase
             ->getSheetByName('Fund Loss');
 
         // 3 data rows → Total Cases at 6 → banners 7/8. Minutes avg is the
-        // tab's own two 60s — P2's 30 is not on this tab. MTBF 13 = the
-        // tab's rows reading gaps off the BASELINE chain (01-25→01-20 = 5,
-        // 02-20→01-30 = 21; 26/2) — sequence semantics, not per-tab gaps.
+        // tab's own two 60s — P2's 30 is not on this tab. MTBF 20.5 = the
+        // tab's own chain now (owner 2026-11-16: 01-10→01-25 = 15,
+        // 01-25→02-20 = 26; 41/2) — the old 13 counted the Non fundLoss
+        // and fund-null rows' dates in the baseline chain.
         $this->assertSame('P1: 3 | P2: 0 | P3: 0 | P4: 0 | X1: 0 | X2: 0 | X3: 0 | X4: 0', $data->getCell('A7')->getValue());
-        $this->assertSame('Avg MTTR (mins): 60 | Avg MTTR (days): 3 | Avg MTBF (days): 13 | Fund Loss: 3 | Non Fund Loss: 0', $data->getCell('A8')->getValue());
+        $this->assertSame('Avg MTTR (mins): 60 | Avg MTTR (days): 3 | Avg MTBF (days): 20.5 | Fund Loss: 3 | Non Fund Loss: 0', $data->getCell('A8')->getValue());
     }
 
     public function test_all_tabs_all_cases_banner_below_summary_block(): void

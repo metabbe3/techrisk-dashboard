@@ -40,7 +40,7 @@ class NotionSyncButtonTest extends TestCase
             ->assertNotified();
 
         $this->assertSame(1, Incident::count());
-        $this->assertSame('Synced from the list page', Incident::sole()->title);
+        $this->assertSame('2026 Jul 01 - Synced from the list page', Incident::sole()->title);
     }
 
     public function test_user_without_api_token_permission_does_not_see_the_button(): void

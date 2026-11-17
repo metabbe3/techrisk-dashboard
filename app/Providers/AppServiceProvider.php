@@ -37,6 +37,7 @@ use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
@@ -66,6 +67,11 @@ class AppServiceProvider extends ServiceProvider
     {
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
 
+        // Microsoft (Entra ID) SSO driver — Laravel 11+ registration (no EventServiceProvider).
+        Event::listen(function (\SocialiteProviders\Manager\SocialiteWasCalled $event) {
+            $event->extendSocialite('microsoft', \SocialiteProviders\Microsoft\Provider::class);
+        });
+
         // Netcore Cloud email transport — registered as the 'netcore' mailer.
         Mail::extend('netcore', function (array $config) {
             return new \App\Mail\Transports\NetcoreTransport(
@@ -89,6 +95,22 @@ class AppServiceProvider extends ServiceProvider
             ->withOAuth(config('notion.oauth.client_id'), config('notion.oauth.client_secret'))
             ->withToken(fn () => app(NotionMcpClient::class)->accessToken())
             ->withTimeout((float) config('notion.timeout', 60)));
+
+        // laravel/mcp's OAuth requests hardcode a 2-second connect timeout
+        // (vendor InteractsWithOAuthEndpoints::oAuthRequest) — a slow TLS
+        // handshake to Notion then escapes the Connect/Callback routes as an
+        // unhandled cURL error 28 (live 2026-11-10). Scoped to the MCP host so
+        // nothing else's options are touched.
+        $notionMcpHost = (string) parse_url(config('notion.mcp_url'), PHP_URL_HOST);
+        Http::globalMiddleware(function (callable $handler) use ($notionMcpHost): callable {
+            return function ($request, array $options) use ($handler, $notionMcpHost) {
+                if (parse_url((string) $request->getUri(), PHP_URL_HOST) === $notionMcpHost) {
+                    $options['connect_timeout'] = 10;
+                }
+
+                return $handler($request, $options);
+            };
+        });
 
         // Password-reset emails: brand them with the incident-reminder template.
         // Takes full control of Illuminate's ResetPassword::toMail() (the static
@@ -194,5 +216,6 @@ class AppServiceProvider extends ServiceProvider
         RateLimiter::for('reference', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.reference', 30))->by($limitBy($request)));
         RateLimiter::for('actions', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.actions', 60))->by($limitBy($request)));
         RateLimiter::for('ai_export', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.ai_export', 60))->by($limitBy($request)));
+        RateLimiter::for('agent', fn ($request) => Limit::perMinute((int) ApiSetting::get('rate_limit.agent', 120))->by($limitBy($request)));
     }
 }

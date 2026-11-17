@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasManyThrough;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use OwenIt\Auditing\Auditable as AuditableTrait;
 use OwenIt\Auditing\Contracts\Auditable;
@@ -106,6 +107,11 @@ class Incident extends Model implements Auditable
         'retro_markdown',
         'retro_generated_at',
         'retro_model',
+        'notion_investigation_page_id',
+        'notion_investigation_markdown',
+        'notion_investigation_synced_at',
+        'notion_investigation_deleted_at',
+        'notion_investigation_unlinked_at',
         'detected_via',
         'failed_control',
         'detection_delay_days',
@@ -146,6 +152,9 @@ class Incident extends Model implements Auditable
         'mtbf_non_fund_loss' => 'decimal:2',
         'mtbf_potential_recovery' => 'decimal:2',
         'retro_generated_at' => 'datetime',
+        'notion_investigation_synced_at' => 'datetime',
+        'notion_investigation_deleted_at' => 'datetime',
+        'notion_investigation_unlinked_at' => 'datetime',
         'mtbf_fully_recovered' => 'decimal:2',
         'mtbf_non_tech_loss' => 'decimal:2',
         'mtbf_non_incident' => 'decimal:2',
@@ -373,6 +382,21 @@ class Incident extends Model implements Auditable
     public function investigationDocuments(): HasMany
     {
         return $this->hasMany(InvestigationDocument::class);
+    }
+
+    public function investigationFormRequests(): HasMany
+    {
+        return $this->hasMany(InvestigationFormRequest::class);
+    }
+
+    public function investigationFormRecipients(): HasManyThrough
+    {
+        return $this->hasManyThrough(
+            InvestigationFormRecipient::class,
+            InvestigationFormRequest::class,
+            'incident_id',
+            'request_id',
+        );
     }
 
     public function labels(): BelongsToMany
