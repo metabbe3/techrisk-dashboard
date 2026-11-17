@@ -59,6 +59,11 @@ class IncidentMarkdownCorpusService
         $disk = Storage::disk('local');
 
         foreach ($disk->directories('markdown/corpus') as $dir) {
+            // topics/ holds the LLM-compiled pattern pages (CompileTopicPagesJob)
+            // — regenerated on their own daily schedule, never wiped here.
+            if (str_ends_with($dir, 'topics')) {
+                continue;
+            }
             $disk->deleteDirectory($dir);
         }
 
