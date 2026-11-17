@@ -478,28 +478,22 @@
     border-bottom-color: #1e293b;
 }
 
-.fi-tab-item {
-    font-size: 13px;
-    font-weight: 500;
-    padding: 10px 16px;
-    transition: color .25s cubic-bezier(.4,0,.2,1), background-color .25s cubic-bezier(.4,0,.2,1), border-color .25s cubic-bezier(.4,0,.2,1);
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    color: #64748b;
-    letter-spacing: -.01em;
+/* --- Detail pages (owner 2026-11-17): the relation-manager tab bar joins
+   the panel below it — one card (tab strip on top, table flush beneath),
+   no floating gap, and the strip itself never scrolls vertically. --- */
+.fi-resource-view-record-page .fi-resource-relation-managers { row-gap: 0; }
+.fi-resource-view-record-page .fi-tabs {
+    width: 100%; /* span the card — a centered content-width strip looks detached */
+    border-radius: 0.75rem 0.75rem 0 0;
+    border-bottom: none; /* the table card's ring below draws the seam */
+    box-shadow: none;
+    --tw-ring-shadow: 0 0 #0000;
 }
-.fi-tab-item:hover {
-    color: #6366f1;
-    background: rgba(16,142,233,.04);
+.fi-resource-view-record-page .fi-tabs::after { content: none; }
+.fi-resource-view-record-page .fi-tabs + div .fi-ta-ctn {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
 }
-.fi-tab-item.fi-tab-item-active {
-    color: #4f46e5;
-    border-bottom-color: #6366f1;
-    font-weight: 600;
-}
-:root.dark .fi-tab-item { color: var(--tr-muted-ink); }
-:root.dark .fi-tab-item:hover { color: #818cf8; background: rgba(16,142,233,.06); }
-:root.dark .fi-tab-item.fi-tab-item-active { color: #a5b4fc; border-bottom-color: #6366f1; }
 
 .fi-section-header-icon {
     color: #6366f1;
@@ -2815,26 +2809,38 @@
     margin: 0 !important;
 }
 
-/* Collapsed rail: the DANA logo only — Filament x-shows the logo wrapper
-   off and shows just the expand chevron; un-hide the wrapper, drop the
-   text, and stack logo + chevron centered in a narrow rail. The nav
-   hides (grouped items are x-shown off anyway; ungrouped ones would
-   linger). Owner 2026-11-17: "saat collapse, hanya logo dana yang
-   terlihat". */
-.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header {
-    height: auto;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding-block: 0.75rem;
+/* Collapsed rail: NO logo — Filament's default behavior (owner 2026-11-17:
+   "untuk side bar collapse tidak jadi ada logo dana"). Filament x-shows the
+   logo wrapper off and centers the expand chevron; the narrow white strip in
+   the RISE reference carries only the chevron, while the brand moves to the
+   blue topbar (see .fi-topbar-brand injection in AdminPanelProvider). */
+
+/* RISE reference: the topmost bar is a solid DANA-blue bar spanning the page
+   width, white text/icons, the brand parked at its start whenever the
+   sidebar collapses away (brand lives in the sidebar header when expanded). */
+.fi-topbar nav {
+    background-color: var(--tr-dana-600);
+    color: #fff;
+    box-shadow: none;
+    --tw-ring-shadow: 0 0 #0000;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
-.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div { display: flex !important; }
-.fi-sidebar:not(.fi-sidebar-open) .fi-logo span { display: none; }
-.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {
-    position: static;
-    translate: none;
-    margin-inline: auto !important;
+:root.dark .fi-topbar nav {
+    background-color: var(--tr-dana-700);
+    border-bottom-color: rgba(0, 0, 0, 0.4);
 }
-.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav { display: none; }
+.fi-topbar nav .fi-icon-btn,
+.fi-topbar nav .fi-icon-btn .fi-icon { color: rgba(255, 255, 255, 0.92); }
+.fi-topbar nav .fi-topbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #fff;
+    white-space: nowrap;
+}
 
 .fi-sidebar-item > a {
     padding-top: 0.55rem !important;

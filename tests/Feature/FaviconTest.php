@@ -38,10 +38,26 @@ class FaviconTest extends TestCase
      */
     public function test_the_brand_logo_renders_the_dana_mark_as_a_real_image(): void
     {
+        // ?v=2 cache-busts the rebuilt mark — same URL served the old
+        // dark-fringed PNG, and the browser would keep showing the line.
         $this->actingAs($this->adminUser())
             ->get('/admin')
             ->assertSuccessful()
-            ->assertSeeHtml('<img src="'.asset('images/favicon.png').'"', false);
+            ->assertSeeHtml('<img src="'.asset('images/favicon.png').'?v=2"', false);
+    }
+
+    /**
+     * Owner 2026-11-17 (RISE reference): the collapsed sidebar shows NO logo
+     * — the brand parks in the blue topbar instead, injected at TOPBAR_START
+     * and Alpine-hidden while the sidebar is open.
+     */
+    public function test_the_topbar_carries_the_brand_for_the_collapsed_sidebar(): void
+    {
+        $this->actingAs($this->adminUser())
+            ->get('/admin')
+            ->assertSuccessful()
+            ->assertSeeHtml('fi-topbar-brand', false)
+            ->assertSeeHtml('x-show="! $store.sidebar.isOpen"', false);
     }
 
     private function adminUser(): User
