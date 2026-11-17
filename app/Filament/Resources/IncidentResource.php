@@ -105,7 +105,16 @@ class IncidentResource extends Resource
                 // without it the rules below never ran.
                 ->dehydratedWhenHidden()
                 ->rules([
-                    fn (): \Closure => function (string $attribute, $value, \Closure $fail): void {
+                    fn (?Incident $record): \Closure => function (string $attribute, $value, \Closure $fail) use ($record): void {
+                        // Owner 2026-11-17: on the EDIT page the hidden field
+                        // carries the record's own link — the super would
+                        // fail the "sits at the top" check below (it has
+                        // subs by definition). Only an untouched link is
+                        // exempt; any other value is still validated.
+                        if ($record !== null && (int) $value === (int) $record->parent_incident_id) {
+                            return;
+                        }
+
                         if (blank($value)) {
                             return;
                         }
@@ -134,11 +143,19 @@ class IncidentResource extends Resource
                 // PROJ-022: a record linked in a hierarchy cannot change
                 // classification until unlinked — the guard behind every
                 // metric-scope rule in this feature.
+                // Owner 2026-11-17: the fill state holds the cast ENUM
+                // (EditIncident fills from the record's cast attributes) and
+                // an untouched create submit can hold it too — normalize to
+                // the raw value first, or the strict !== reads enum !==
+                // 'Incident' as changed and EVERY edit of a linked record
+                // fails this guard without touching the field.
                 ->rules([
                     fn (?Incident $record): \Closure => function (string $attribute, $value, \Closure $fail) use ($record): void {
+                        $submitted = $value instanceof \BackedEnum ? $value->value : $value;
+
                         if ($record !== null
                             && $record->hasIncidentLinks()
-                            && $value !== $record->classification?->value) {
+                            && $submitted !== $record->classification?->value) {
                             $fail('Unlink this incident from its super/sub-incidents before changing classification.');
                         }
                     },

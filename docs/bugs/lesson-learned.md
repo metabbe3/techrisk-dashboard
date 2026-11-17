@@ -1851,3 +1851,75 @@ from an empty result set.
       env-drift bugs like this one
 
 ---
+
+## [BUG-032] - The classification guard blocked EVERY edit of a linked record — the fill state holds the cast enum, the rule compared it strictly against the raw value
+
+**Date:** 2026-11-17
+**Discovered By:** Owner (changing a sub-incident's potential loss, PROJ-022)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+
+Changing a sub-incident's Potential Loss through the Edit form failed with
+`Unlink this incident from its super/sub-incidents before changing
+classification.` — classification untouched. EVERY edit of any super or sub
+through EditIncident failed the same way; standalone records edited fine,
+which is exactly why the suite stayed green.
+
+### Affected Component
+- [x] Filament Resource (`IncidentResource` form rules — classification guard + the I4 `parent_incident_id` guard)
+- [x] Model (enum cast on `classification` — the fill state's type)
+
+### Root Cause Analysis (5 Whys)
+1. Why did the guard fire? `$value !== $record->classification?->value` was true.
+2. Why? The fill state holds the cast ENUM (`EditRecord` fills from the
+   record's cast attributes — state = `IncidentClassification::Incident`),
+   while the rule compared it strictly against the string `'Incident'`.
+3. Why a strict compare? The rule was written against the create page,
+   where the select submits the raw value; nobody ran an EDIT through it.
+4. Why did no test catch it? The guard only arms on `hasIncidentLinks()` —
+   every existing edit test used an unlinked record.
+5. **Root cause:** a type-mismatched comparison (enum instance vs value
+   string) in a rule only linked records reach — the one path no test
+   exercised.
+
+A SECOND guard false-fired in the same error bag: the I4 `parent_incident_id`
+rule ran on the sub's edit page, where the hidden field prefills the record's
+own parent — and a super always fails the "sits at the top" check (it has
+subs by definition).
+
+### Impact
+- [x] User facing?
+- [x] Broken workflow?
+- [ ] Data loss/corruption? (the save was blocked, nothing written)
+
+### Fix
+- Classification guard: normalize the submitted value first
+  (`$value instanceof \BackedEnum ? $value->value : $value`), then the
+  strict compare.
+- `parent_incident_id` guard: on edit, an untouched link
+  (`(int) $value === (int) $record->parent_incident_id`) returns early; any
+  other value — including a crafted `?parent=` on a standalone's edit page —
+  is still validated.
+- `SubIncidentCreateParentGuardTest` +2: a linked record's money edit
+  passes the guard; a real classification change on a linked record is
+  still rejected.
+
+### Time-of-day flake found by the same run
+`SubIncidentClassificationGuardTest` seeded `incident_date = today 10:00` —
+future-dated whenever the suite runs before 10am (`maxDate(now())`),
+failing on date validation instead of its own subject. Helper changed to
+`now()->startOfDay()`. Five other files carry the same seed but only render
+(never submit the form) — left as-is until one submits.
+
+### Prevention Checklist
+- [x] Any form rule comparing a field against a model ENUM attribute
+      normalizes the submitted value first — a strict enum-vs-string compare
+      is always-true and reads as "changed"
+- [x] A guard that arms on record state needs a test driving the REAL form
+      path on an ARMED record, not just the guard in isolation
+- [x] Never seed form-validated dates with today-10:00 — `startOfDay()` is
+      future-safe at every hour the suite can run
+
+---

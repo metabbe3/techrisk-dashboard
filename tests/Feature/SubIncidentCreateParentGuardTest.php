@@ -92,4 +92,37 @@ class SubIncidentCreateParentGuardTest extends TestCase
             'parent_incident_id' => $super->id,
         ]);
     }
+
+    public function test_editing_a_linked_record_without_touching_classification_passes_the_guard(): void
+    {
+        $super = Incident::factory()->create(['classification' => IncidentClassification::Incident->value]);
+        $sub = Incident::factory()->subOf($super)->create(['classification' => IncidentClassification::Incident->value]);
+
+        // Owner 2026-11-17: changing a sub's potential loss tripped the
+        // classification guard — the fill state holds the cast ENUM while
+        // the rule compared strictly against the enum's raw value, so EVERY
+        // edit of a linked record failed with "Unlink this incident ...".
+        Livewire::actingAs($this->user)
+            ->test(\App\Filament\Resources\IncidentResource\Pages\EditIncident::class, ['record' => (string) $sub->id])
+            ->fillForm(['potential_fund_loss' => 2500000])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame(2500000.0, (float) $sub->fresh()->potential_fund_loss);
+        $this->assertSame('Incident', $sub->fresh()->classification?->value);
+    }
+
+    public function test_editing_a_linked_record_still_rejects_a_real_classification_change(): void
+    {
+        $super = Incident::factory()->create(['classification' => IncidentClassification::Incident->value]);
+        $sub = Incident::factory()->subOf($super)->create(['classification' => IncidentClassification::Incident->value]);
+
+        Livewire::actingAs($this->user)
+            ->test(\App\Filament\Resources\IncidentResource\Pages\EditIncident::class, ['record' => (string) $sub->id])
+            ->fillForm(['classification' => IncidentClassification::Issue->value])
+            ->call('save')
+            ->assertHasFormErrors(['classification']);
+
+        $this->assertSame('Incident', $sub->fresh()->classification?->value);
+    }
 }

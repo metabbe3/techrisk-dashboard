@@ -28,7 +28,10 @@ class SubIncidentClassificationGuardTest extends TestCase
         return Incident::factory()->createQuietly(array_merge([
             'classification' => IncidentClassification::Incident->value,
             'severity' => Severity::P1->value,
-            'incident_date' => now()->startOfDay()->addHours(10),
+            // Midnight today: never future (maxDate(now())) at any hour the
+            // suite runs — 10:00 today is future-dated before 10am and made
+            // this test fail on the date validation, not its own subject.
+            'incident_date' => now()->startOfDay(),
         ], $attrs));
     }
 
