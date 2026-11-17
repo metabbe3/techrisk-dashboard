@@ -56,12 +56,11 @@ func (s *Store) AppendKnowledge(e KnowledgeEntry) error {
 		return err
 	}
 	s.knowledge = append(s.knowledge, e)
-	// In-memory cap (disk file is append-only history): the knowledge list
-	// is rendered into the system prompt EVERY turn — unbounded growth
-	// bloats every call (audit round 4). Keep the newest 200.
-	if len(s.knowledge) > 200 {
-		s.knowledge = s.knowledge[len(s.knowledge)-200:]
-	}
+	// No in-memory trim: the digest covered cursor is an ABSOLUTE index into
+	// this slice — trimming the window desyncs it (covered >= len(window))
+	// and the incremental merge silently freezes until restart. The prompt
+	// path caps itself (Knowledge() keeps the last MaxKnowledgeEntries);
+	// the full list here must mirror knowledge.jsonl exactly.
 	return nil
 }
 
@@ -100,11 +99,31 @@ func (s *Store) AllKnowledge() []KnowledgeEntry {
 }
 
 // KnowledgeDigest returns the compiled digest ("" when none yet).
-func (s *Store) KnowledgeDigest() string { return s.digest }
+func (s *Store) KnowledgeDigest() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.digest
+}
 
 // DigestCovered returns how many knowledge.jsonl entries the digest already
 // covers (the incremental merge's cursor).
-func (s *Store) DigestCovered() int { return s.digestCovered }
+func (s *Store) DigestCovered() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.digestCovered
+}
+
+// KnowledgeBeyondCovered returns the raw entries the digest does not cover
+// yet — knowledgePrompt injects this tail under the digest so a failed merge
+// never hides newly-learned documents.
+func (s *Store) KnowledgeBeyondCovered() []KnowledgeEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.digestCovered >= len(s.knowledge) {
+		return nil
+	}
+	return append([]KnowledgeEntry{}, s.knowledge[s.digestCovered:]...)
+}
 
 // SaveKnowledgeDigest atomically rewrites knowledge.md and advances the
 // covered cursor. Caps and normalizes like LearnProfile: bullets, length-capped

@@ -59,9 +59,10 @@ func digestBot(t *testing.T, dir string, reply string, cap *promptCapture) *Bot 
 func seedKnowledge(t *testing.T, dir string, files []string, summaries []string) {
 	t.Helper()
 	var sb strings.Builder
+	day := time.Date(2026, 1, 1, 8, 0, 0, 0, time.UTC)
 	for i := range files {
-		fmt.Fprintf(&sb, `{"time":"2026-01-%02dT08:00:00Z","file":%q,"author":"Nick","summary":%q}`+"\n",
-			i+1, files[i], summaries[i])
+		fmt.Fprintf(&sb, `{"time":%q,"file":%q,"author":"Nick","summary":%q}`+"\n",
+			day.AddDate(0, 0, i).Format(time.RFC3339), files[i], summaries[i])
 	}
 	if err := os.WriteFile(filepath.Join(dir, "knowledge.jsonl"), []byte(sb.String()), 0o600); err != nil {
 		t.Fatal(err)
@@ -252,5 +253,98 @@ func TestRememberKnowledgeAppendsAndMerges(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "remembered") {
 		t.Errorf("digest wrong: %s", data)
+	}
+}
+
+// TestDigestMergeSurvivesTheInMemoryTrim (review Critical #1): AppendKnowledge
+// trims the in-memory window to 200 while mergeKnowledgeDigest slices that
+// window with the ABSOLUTE covered cursor — once knowledge.jsonl passes 200
+// entries the incremental merge silently freezes (covered >= len(window))
+// until a restart heals it. The digest must keep merging at every file size.
+func TestDigestMergeSurvivesTheInMemoryTrim(t *testing.T) {
+	dir := t.TempDir()
+	files := make([]string, 250)
+	summaries := make([]string, 250)
+	for i := range files {
+		files[i] = fmt.Sprintf("doc%03d.pdf", i)
+		summaries[i] = fmt.Sprintf("summary %03d", i)
+	}
+	seedKnowledge(t, dir, files, summaries)
+
+	// Echo fake: the "digest" reply is the last user message verbatim, so the
+	// saved digest carries exactly what the merge batch merged — the
+	// assertion sees the truth, not the fake's imagination.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Messages []llm.ChatMessage `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
+			Message: llm.ChatMessage{Role: "assistant", Content: req.Messages[len(req.Messages)-1].Content},
+			FinishReason: "stop",
+		}}}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{LLMBaseURL: srv.URL, LLMAPIKey: "k", LLMModel: "m", DataDir: dir, KnowledgeDigest: true}
+	bot := NewBot(cfg, nil, llm.NewClient(cfg))
+	bot.mergeKnowledgeDigest() // serialize behind the boot backfill
+	if bot.store.DigestCovered() != 250 {
+		t.Fatalf("backfill covered = %d, want 250", bot.store.DigestCovered())
+	}
+
+	fresh := memory.KnowledgeEntry{
+		Time: time.Date(2026, 2, 1, 8, 0, 0, 0, time.UTC),
+		File: "doc251.pdf", Author: "Nick", Summary: "FRESH pattern just learned",
+	}
+	if err := bot.store.AppendKnowledge(fresh); err != nil {
+		t.Fatal(err)
+	}
+	bot.mergeKnowledgeDigest()
+
+	if !strings.Contains(bot.store.KnowledgeDigest(), "doc251.pdf") {
+		t.Error("entry 251 never reached the digest — incremental merge froze past the in-memory trim")
+	}
+}
+
+// TestPromptShowsNewRawEntriesWhenMergeFails (review Important #3): with a
+// digest present, knowledgePrompt served ONLY the digest — an LLM merge
+// failure left newly-learned documents invisible until the next successful
+// merge. The raw tail beyond the covered cursor must ride along under the
+// digest.
+func TestPromptShowsNewRawEntriesWhenMergeFails(t *testing.T) {
+	dir := t.TempDir()
+	seedKnowledge(t, dir, []string{"a.pdf"}, []string{"old gateway pattern"})
+
+	cap := &promptCapture{}
+	bot := digestBot(t, dir, "- [2026-01-01] a.pdf — old gateway pattern", cap)
+	bot.mergeKnowledgeDigest()
+	if bot.store.KnowledgeDigest() == "" {
+		t.Fatal("digest missing after first merge")
+	}
+
+	// Every subsequent merge "fails" (empty reply — SaveKnowledgeDigest
+	// refuses empty and keeps the old digest + cursor).
+	failing := digestBot(t, dir, "", cap)
+	fresh := memory.KnowledgeEntry{
+		Time: time.Date(2026, 2, 2, 8, 0, 0, 0, time.UTC),
+		File: "b.pdf", Author: "Nick", Summary: "fresh stampede pattern",
+	}
+	if err := failing.store.AppendKnowledge(fresh); err != nil {
+		t.Fatal(err)
+	}
+	failing.mergeKnowledgeDigest()
+
+	if failing.store.DigestCovered() != 1 {
+		t.Fatalf("covered advanced on a failed merge: %d", failing.store.DigestCovered())
+	}
+	prompt := failing.knowledgePrompt()
+	if !strings.Contains(prompt, "old gateway pattern") {
+		t.Error("digest line missing from prompt")
+	}
+	if !strings.Contains(prompt, "fresh stampede pattern") {
+		t.Errorf("new raw entry hidden by the stale digest:\n%.300s", prompt)
 	}
 }

@@ -1,6 +1,7 @@
 package memory
 
 import (
+	"sync"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -215,4 +216,27 @@ func TestProfileLearnRecallAndCaps(t *testing.T) {
 	if got := NewStore(dir).Profile("staff2"); got != nil {
 		t.Errorf("another user must not see staff1's profile, got %v", got)
 	}
+}
+
+// TestDigestConcurrentAccess (review Important #2): the digest getters serve
+// conversation goroutines while SaveKnowledgeDigest writes from the merge
+// goroutine — both sides must hold the store mutex (run under -race).
+func TestDigestConcurrentAccess(t *testing.T) {
+	s := NewStore(t.TempDir())
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 300; i++ {
+			_ = s.SaveKnowledgeDigest(fmt.Sprintf("- line %d", i), i)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 300; i++ {
+			_ = s.KnowledgeDigest()
+			_ = s.DigestCovered()
+		}
+	}()
+	wg.Wait()
 }
