@@ -31,6 +31,11 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->brandName('TechRisk Portal')
+            // Owner 2026-11-17: the browser tab showed the default icon —
+            // public/favicon.ico was an empty file. DANA logo, square-cropped
+            // from the source artwork (public/images/favicon.png); the .ico
+            // covers the browser's default /favicon.ico request (Safari).
+            ->favicon(asset('images/favicon.png'))
             ->sidebarCollapsibleOnDesktop()
             ->databaseNotifications()
             ->globalSearch(true)

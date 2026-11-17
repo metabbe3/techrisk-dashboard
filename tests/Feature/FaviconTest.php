@@ -1,0 +1,58 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature;
+
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+use Tests\TestCase;
+
+/**
+ * Owner 2026-11-17: the browser tab showed the DEFAULT icon —
+ * public/favicon.ico was an empty (0-byte) file and no panel favicon was
+ * configured. The favicon is the DANA logo, square-cropped from the
+ * downloaded artwork.
+ */
+class FaviconTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_the_admin_panel_renders_a_favicon_link(): void
+    {
+        Role::firstOrCreate(['name' => 'admin']);
+        Permission::firstOrCreate(['name' => 'view incidents']);
+        Permission::firstOrCreate(['name' => 'view dashboard widgets']);
+        $user = User::factory()->create();
+        $user->assignRole('admin');
+        $user->givePermissionTo(['view incidents', 'view dashboard widgets']);
+
+        $this->actingAs($user)
+            ->get('/admin')
+            ->assertSuccessful()
+            ->assertSeeHtml('<link rel="icon"', false);
+    }
+
+    public function test_the_browsers_default_favicon_request_is_a_real_image(): void
+    {
+        // The browser requests /favicon.ico even with no link tag. The file
+        // used to be 0 bytes, so the tab showed the default icon.
+        $ico = public_path('favicon.ico');
+
+        $this->assertFileExists($ico);
+        $this->assertGreaterThan(0, filesize($ico));
+        $this->assertSame(pack('vvv', 0, 1, 6), substr((string) file_get_contents($ico), 0, 6), 'must be a valid .ICO (ICONDIR: reserved=0, type=1, count>=1)');
+    }
+
+    public function test_the_favicon_image_is_square(): void
+    {
+        $png = public_path('images/favicon.png');
+
+        $this->assertFileExists($png);
+        [$width, $height] = getimagesize($png);
+        $this->assertSame($width, $height, 'favicon must be square (the source artwork is 3:2)');
+        $this->assertSame(256, $width);
+    }
+}
