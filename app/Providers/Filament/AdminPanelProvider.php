@@ -56,14 +56,14 @@ class AdminPanelProvider extends PanelProvider
             // .fi-logo rule in app.css centers the pair. NOTE: a plain string
             // is treated as an image PATH (dropped into src="") — it must be
             // an Htmlable or the markup renders as a broken-image alt text.
-            ->brandLogo(new \Illuminate\Support\HtmlString('<img src="'.asset('images/favicon.png').'?v=2" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
+            ->brandLogo(new \Illuminate\Support\HtmlString('<img src="'.asset('images/favicon.png').'?v=3" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
             ->brandLogoHeight('2rem')
             // Owner 2026-11-17: the browser tab showed the default icon —
             // public/favicon.ico was an empty file. DANA logo, square-cropped
             // from the source artwork (public/images/favicon.png); the .ico
             // covers the browser's default /favicon.ico request (Safari).
-            // ?v=2: the same URL served the dark-fringed rebuild — bust it.
-            ->favicon(asset('images/favicon.png').'?v=2')
+            // ?v=3: the same URL served the dark-fringed rebuild — bust it.
+            ->favicon(asset('images/favicon.png').'?v=3')
             ->sidebarWidth('18rem')
             ->sidebarCollapsibleOnDesktop()
             ->databaseNotifications()
@@ -127,7 +127,7 @@ class AdminPanelProvider extends PanelProvider
                 // x-cloak hides the copy until Alpine registers the sidebar
                 // store (Filament's JS) — no flash on expanded desktop loads.
                 fn (): string => '<a href="'.filament()->getHomeUrl().'" class="fi-topbar-brand" x-cloak x-show="! $store.sidebar.isOpen">'
-                    .'<img src="'.asset('images/favicon.png').'?v=2" alt="DANA logo" class="h-8 w-8">'
+                    .'<img src="'.asset('images/favicon.png').'?v=3" alt="DANA logo" class="h-8 w-8">'
                     .'<span>TechRisk Portal</span>'
                     .'</a>',
             );

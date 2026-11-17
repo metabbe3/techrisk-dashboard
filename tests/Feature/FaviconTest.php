@@ -38,12 +38,12 @@ class FaviconTest extends TestCase
      */
     public function test_the_brand_logo_renders_the_dana_mark_as_a_real_image(): void
     {
-        // ?v=2 cache-busts the rebuilt mark — same URL served the old
-        // dark-fringed PNG, and the browser would keep showing the line.
+        // ?v=N cache-busts each rebuilt mark — the same URL kept serving the
+        // previous bytes (owner-supplied artwork is now version 3).
         $this->actingAs($this->adminUser())
             ->get('/admin')
             ->assertSuccessful()
-            ->assertSeeHtml('<img src="'.asset('images/favicon.png').'?v=2"', false);
+            ->assertSeeHtml('<img src="'.asset('images/favicon.png').'?v=3"', false);
     }
 
     /**
