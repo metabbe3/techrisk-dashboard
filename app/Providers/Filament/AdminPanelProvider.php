@@ -50,6 +50,12 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->brandName('TechRisk Portal')
+            // Owner 2026-11-17: DANA logo left of the brand text in the
+            // sidebar header (RISE-style brand row). brandLogo replaces the
+            // brandName markup, so the text is carried inside the HTML; the
+            // .fi-logo rule in app.css centers the pair.
+            ->brandLogo('<img src="'.asset('images/favicon.png').'" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>')
+            ->brandLogoHeight('2rem')
             // Owner 2026-11-17: the browser tab showed the default icon —
             // public/favicon.ico was an empty file. DANA logo, square-cropped
             // from the source artwork (public/images/favicon.png); the .ico

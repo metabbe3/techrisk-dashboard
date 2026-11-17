@@ -2791,6 +2791,8 @@
 }
 
 .fi-logo {
+    align-items: center;
+    gap: 0.625rem;
     font-size: 1.35rem;
     font-weight: 800;
     letter-spacing: -0.01em;
