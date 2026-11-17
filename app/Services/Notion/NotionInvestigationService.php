@@ -11,6 +11,7 @@ use App\Enums\Severity;
 use App\Models\Incident;
 use App\Models\Setting;
 use App\Models\User;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -75,6 +76,36 @@ class NotionInvestigationService
             }
         }
 
+        // Double-click guard: the create path takes seconds (parent fetch,
+        // page create, body fetch) — two concurrent calls both saw a blank
+        // page id here and each created its own Notion page. The loser
+        // re-checks under the lock and takes the "already exists" exit.
+        $lock = Cache::lock("notion-investigation:{$incident->id}", 120);
+
+        try {
+            $lock->block(10);
+        } catch (LockTimeoutException) {
+            return ['status' => 'failed', 'message' => 'Another start/refresh for this record is in progress — try again in a moment.'];
+        }
+
+        try {
+            if (filled($incident->fresh()->notion_investigation_page_id)
+                && blank($incident->fresh()->notion_investigation_unlinked_at)) {
+                return ['status' => 'failed', 'message' => 'An investigation page already exists for this record — use "Refresh from Notion".'];
+            }
+
+            return $this->createInvestigationPage($incident, $user);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * The create path (parent fetch → page create → body fetch) moved out of
+     * start() so the double-click lock wraps exactly it.
+     */
+    private function createInvestigationPage(Incident $incident, ?User $user): array
+    {
         $parentId = Setting::get(self::PARENT_KEY);
 
         if (blank($parentId)) {

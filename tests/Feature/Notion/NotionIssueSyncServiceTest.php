@@ -1431,4 +1431,21 @@ class NotionIssueSyncServiceTest extends TestCase
             'root_cause' => $rootCause,
         ];
     }
+
+    public function test_a_concurrent_sync_is_refused_instead_of_interleaving(): void
+    {
+        // Manual "Sync now" vs the cron: withoutOverlapping is scheduler-only.
+        // Hold the lock the way a running sync would and expect the refusal.
+        $lock = \Illuminate\Support\Facades\Cache::lock('notion-issue-sync', 900);
+        $this->assertTrue($lock->get());
+
+        try {
+            $result = app(NotionIssueSyncService::class)->sync();
+
+            $this->assertSame('failed', $result['status']);
+            $this->assertStringContainsString('already running', $result['message']);
+        } finally {
+            $lock->release();
+        }
+    }
 }

@@ -8,7 +8,9 @@ use App\Enums\IncidentClassification;
 use App\Models\Incident;
 use App\Models\IncidentType;
 use App\Models\Setting;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -91,6 +93,27 @@ class NotionIssueSyncService
      * @return array{status: string, message: string, created: int, skipped: int, preview: ?string}
      */
     public function sync(bool $dryRun = false, bool $restoreDeleted = false, ?array $restorePageIds = null): array
+    {
+        // Manual "Sync now" vs the cron: withoutOverlapping is scheduler-only,
+        // so a button click during a scheduled run let two syncs interleave
+        // (unique page_id / generateIssueId are the only nets). One lock for
+        // every caller — dry runs included, they read the same live watermark.
+        $lock = Cache::lock('notion-issue-sync', 900);
+
+        try {
+            $lock->block(10);
+        } catch (LockTimeoutException) {
+            return $this->finish('failed', 'A Notion sync is already running — try again in a moment.', 0, 0, $dryRun);
+        }
+
+        try {
+            return $this->runSync($dryRun, $restoreDeleted, $restorePageIds);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function runSync(bool $dryRun, bool $restoreDeleted, ?array $restorePageIds): array
     {
         $targetId = Setting::get(self::WATCH_KEY);
 
@@ -282,7 +305,7 @@ class NotionIssueSyncService
      * the caller decides whether that counts as skipped. Shared by the main
      * window loop and deleted-issue recovery so the two cannot drift.
      */
-    protected function importRow(array $row, string $pageId, bool $dryRun, array &$lines): ?Incident
+    protected function importRow(array $row, string $pageId, bool $dryRun, array &$lines, bool $attachBody = true): ?Incident
     {
         $title = $row['Name'] ?? null;
 
@@ -342,7 +365,11 @@ class NotionIssueSyncService
         // The page body (Summary/Root Cause/Timeline/Action Taken sections)
         // fills the Issue's content fields. Shared with the backfill command.
         // Never fatal: a failed fetch imports the row without content.
-        $this->fetchAndAttachBody($incident, $pageId);
+        // attachBody=false lets recoverDeletedIssues fetch OUTSIDE its DB
+        // transaction (an MCP fetch inside one pins connections).
+        if ($attachBody) {
+            $this->fetchAndAttachBody($incident, $pageId);
+        }
 
         return $incident;
     }
@@ -571,12 +598,23 @@ class NotionIssueSyncService
             }
 
             try {
-                $restored = DB::transaction(function () use ($page, $row, &$lines): bool {
+                // Body fetch OUTSIDE the transaction: the atomic pair is the
+                // tombstone-free + Incident/synced-page insert (importRow's
+                // own transaction); holding a DB transaction open across a
+                // seconds-long MCP fetch (usleep drain loop included) pins
+                // connections for every concurrent query.
+                $restored = DB::transaction(function () use ($page, $row, &$lines, &$restoredIncident): bool {
                     // Free the page ID first — importRow re-registers it.
                     NotionSyncedPage::where('page_id', $page->page_id)->whereNull('incident_id')->delete();
 
-                    return $this->importRow($row, $page->page_id, false, $lines) !== null;
+                    $restoredIncident = $this->importRow($row, $page->page_id, false, $lines, attachBody: false);
+
+                    return $restoredIncident !== null;
                 });
+
+                if ($restored && $restoredIncident) {
+                    $this->fetchAndAttachBody($restoredIncident, $page->page_id);
+                }
             } catch (\Throwable $e) {
                 $failed++;
 

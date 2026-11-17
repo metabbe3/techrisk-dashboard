@@ -1211,4 +1211,24 @@ class NotionInvestigationServiceTest extends TestCase
             'has_more' => false,
         ]);
     }
+
+    /**
+     * Double-click guard: a second start() while the first holds the create
+     * lock is refused — the loser never reaches the page create.
+     */
+    public function test_start_refuses_while_another_start_holds_the_lock(): void
+    {
+        $incident = $this->incidentWithDates();
+        $lock = \Illuminate\Support\Facades\Cache::lock("notion-investigation:{$incident->id}", 120);
+        $this->assertTrue($lock->get());
+
+        try {
+            $result = app(NotionInvestigationService::class)->start($incident);
+
+            $this->assertSame('failed', $result['status']);
+            $this->assertStringContainsString('try again in a moment', $result['message']);
+        } finally {
+            $lock->release();
+        }
+    }
 }
