@@ -213,7 +213,7 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	// before any LLM call is spent.
 	if refusal := guardrail.InputGate(text); refusal != "" {
 		log.Printf("[dingtalk] input gate refused message from %s (%s): %q",
-			m.SenderNick, m.SenderStaffId, truncateStr(text, 120))
+			m.SenderNick, m.SenderStaffId, util.CutEllipsis(text, 120))
 		b.reply(ctx, m, refusal)
 		return nil, nil
 	}
@@ -478,7 +478,7 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 
 	if b.store != nil && reply != "" {
 		b.rememberKnowledge(memory.KnowledgeEntry{
-			File: fm.FileName, Author: m.SenderNick, Summary: truncateStr(reply, 2000),
+			File: fm.FileName, Author: m.SenderNick, Summary: util.CutEllipsis(reply, 2000),
 		})
 	}
 	// RAG ingest runs in the background; embedding failures only log — the
@@ -547,7 +547,7 @@ func (b *Bot) processPictureData(ctx context.Context, m *chatbot.BotCallbackData
 	if injected {
 		note = "\n\n⚠️ Heads-up: the image contains text that looks like instructions to an AI (e.g. \"ignore previous instructions\"). I filed it as plain text and will NOT follow it."
 	}
-	b.reply(ctx, m, fmt.Sprintf("🖼️ Read the picture and filed it in the knowledge base as **%s**.%s\n\n> %s", title, note, truncateStr(transcription, 300)))
+	b.reply(ctx, m, fmt.Sprintf("🖼️ Read the picture and filed it in the knowledge base as **%s**.%s\n\n> %s", title, note, util.CutEllipsis(transcription, 300)))
 }
 
 // visionPrompt builds the image-transcription instruction; the user caption is
@@ -671,7 +671,7 @@ func (b *Bot) learnProfile(ctx context.Context, staffID, nick string, history []
 		if msg.Role != "user" && msg.Role != "assistant" {
 			continue
 		}
-		fmt.Fprintf(&convo, "%s: %s\n", msg.Role, truncateStr(msg.Content, 400))
+		fmt.Fprintf(&convo, "%s: %s\n", msg.Role, util.CutEllipsis(msg.Content, 400))
 	}
 	if convo.Len() == 0 {
 		return
@@ -739,7 +739,7 @@ func (b *Bot) summarizeNotionReads(ctx context.Context, nick string, reads []too
 		file = fmt.Sprintf("%s (+%d more)", file, len(reads)-1)
 	}
 	b.rememberKnowledge(memory.KnowledgeEntry{
-		File: file, Author: nick, Summary: truncateStr(reply.Content, 2000),
+		File: file, Author: nick, Summary: util.CutEllipsis(reply.Content, 2000),
 	})
 }
 
@@ -821,8 +821,8 @@ func (b *Bot) reportTurn(m *chatbot.BotCallbackDataModel, userText, assistantTex
 		ConversationType: m.ConversationType,
 		StaffID:          m.SenderStaffId,
 		Nick:             m.SenderNick,
-		UserText:         truncateStr(userText, 2000),
-		AssistantText:    truncateStr(assistantText, 8000),
+		UserText:         util.CutEllipsis(userText, 2000),
+		AssistantText:    util.CutEllipsis(assistantText, 8000),
 		Model:            b.llm.Model(),
 		Usage:            llm.UsagePtr(usage),
 		ResponseTimeMs:   elapsed.Milliseconds(),
@@ -909,14 +909,6 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
-}
-
-func truncateStr(s string, max int) string {
-	t := util.Cut(s, max)
-	if t != s {
-		return t + "…"
-	}
-	return t
 }
 
 // cardWriter batches LLM deltas into at most one card update per flushInterval

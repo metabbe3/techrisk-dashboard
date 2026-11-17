@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // FunctionCall represents the function called by the assistant.
@@ -160,13 +161,13 @@ func NewClient(cfg *config.Config) *Client {
 	heavyModel := cfg.HeavyModel // empty = escalation disabled
 
 	c := &Client{
-		baseURL:      baseURL,
-		apiKey:       cfg.LLMAPIKey,
-		model:        model,
-		heavyModel:   heavyModel,
-		visionModel:  visionModel,
-		maxTokens:    cfg.LLMMaxTokens,
-		embedModel:   cfg.EmbeddingModel,
+		baseURL:     baseURL,
+		apiKey:      cfg.LLMAPIKey,
+		model:       model,
+		heavyModel:  heavyModel,
+		visionModel: visionModel,
+		maxTokens:   cfg.LLMMaxTokens,
+		embedModel:  cfg.EmbeddingModel,
 
 		// No overall Client.Timeout: long streaming answers (big reports
 		// through the tool loop) legitimately exceed any fixed ceiling and
@@ -232,26 +233,53 @@ func (c *Client) ChatCompletionHeavy(ctx context.Context, messages []ChatMessage
 	return c.doCompletion(ctx, reqBody)
 }
 
-func (c *Client) doCompletion(ctx context.Context, reqBody ChatRequest) (*ChatMessage, Usage, error) {
-	data, err := json.Marshal(reqBody)
+// postJSON builds and sends one JSON POST with the client's auth headers.
+// The response body is NOT read here — the streaming caller needs it raw.
+// One implementation for every request path (doCompletion, embedCall,
+// Vision, ChatCompletionStream) that used to marshal/build/header/Do by hand.
+func (c *Client) postJSON(ctx context.Context, path string, payload any, accept string) (*http.Response, error) {
+	data, err := json.Marshal(payload)
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to marshal chat request: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	url := c.baseURL + "/chat/completions"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to create http request: %w", err)
+		return nil, fmt.Errorf("failed to create http request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("http request failed: %w", err)
+		return nil, fmt.Errorf("http request failed: %w", err)
+	}
+	return resp, nil
+}
+
+// apiError builds the error for a non-2xx response: the gateway's structured
+// error message when parseable, else the rune-safe capped body — a chatty
+// gateway error must not dump unbounded bytes into one log line (the old
+// doCompletion/Vision branches read the whole body; the stream path capped at
+// 64KB; embedCall truncated by bytes, splitting CJK).
+func (c *Client) apiError(status int, body []byte) error {
+	var apiErr ChatResponse
+	if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Error != nil {
+		return fmt.Errorf("llm api error (status %d): %s", status, apiErr.Error.Message)
+	}
+	return fmt.Errorf("llm api error (status %d): %s", status, util.Cut(string(body), 200))
+}
+
+func (c *Client) doCompletion(ctx context.Context, reqBody ChatRequest) (*ChatMessage, Usage, error) {
+	resp, err := c.postJSON(ctx, "/chat/completions", reqBody, "")
+	if err != nil {
+		return nil, Usage{}, err
 	}
 	defer resp.Body.Close()
 
@@ -261,11 +289,7 @@ func (c *Client) doCompletion(ctx context.Context, reqBody ChatRequest) (*ChatMe
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var apiErr ChatResponse
-		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error != nil {
-			return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
-		}
-		return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, string(bodyBytes))
+		return nil, Usage{}, c.apiError(resp.StatusCode, bodyBytes)
 	}
 
 	var chatResp ChatResponse
@@ -352,19 +376,7 @@ func (c *Client) embedCall(ctx context.Context, inputs []string) ([][]float32, e
 	if len(inputs) > 1 {
 		input = inputs
 	}
-	payload, err := json.Marshal(map[string]any{"model": c.embedModel, "input": input})
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/v1/embeddings", bytes.NewReader(payload))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.postJSON(ctx, "/v1/embeddings", map[string]any{"model": c.embedModel, "input": input}, "")
 	if err != nil {
 		return nil, err
 	}
@@ -373,8 +385,10 @@ func (c *Client) embedCall(ctx context.Context, inputs []string) ([][]float32, e
 	if err != nil {
 		return nil, err
 	}
+	// NOT apiError — the "embeddings: <status>" shape is load-bearing:
+	// isEmbedRejection greps it to decide the batch→single downgrade.
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("embeddings: %s: %s", resp.Status, truncate(body, 200))
+		return nil, fmt.Errorf("embeddings: %s: %s", resp.Status, util.Cut(string(body), 200))
 	}
 	var parsed struct {
 		Data []embeddingResult `json:"data"`
@@ -391,13 +405,6 @@ func (c *Client) embedCall(ctx context.Context, inputs []string) ([][]float32, e
 		out[i] = d.Embed
 	}
 	return out, nil
-}
-
-func truncate(b []byte, n int) string {
-	if len(b) <= n {
-		return string(b)
-	}
-	return string(b[:n])
 }
 
 // ChatCompletion sends a request to the LLM provider and returns the assistant's
@@ -440,22 +447,10 @@ func (c *Client) Vision(ctx context.Context, prompt string, image []byte, mimeTy
 	if c.maxTokens > 0 { // 0 = omit — real parity with ChatRequest's omitempty (LLM_MAX_TOKENS=0 escape hatch)
 		reqBody["max_tokens"] = c.maxTokens
 	}
-	payload, err := json.Marshal(reqBody)
+
+	resp, err := c.postJSON(ctx, "/chat/completions", reqBody, "")
 	if err != nil {
 		return "", err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(payload))
-	if err != nil {
-		return "", fmt.Errorf("failed to create http request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("http request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -464,11 +459,7 @@ func (c *Client) Vision(ctx context.Context, prompt string, image []byte, mimeTy
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		var apiErr ChatResponse
-		if err := json.Unmarshal(body, &apiErr); err == nil && apiErr.Error != nil {
-			return "", fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
-		}
-		return "", fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, truncate(body, 200))
+		return "", c.apiError(resp.StatusCode, body)
 	}
 	var chatResp ChatResponse
 	if err := json.Unmarshal(body, &chatResp); err != nil {
@@ -497,34 +488,15 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []ChatMessag
 		MaxTokens: c.maxTokens,
 	}
 
-	data, err := json.Marshal(reqBody)
+	resp, err := c.postJSON(ctx, "/chat/completions", reqBody, "text/event-stream")
 	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to marshal chat request: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(data))
-	if err != nil {
-		return nil, Usage{}, fmt.Errorf("failed to create http request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "text/event-stream")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, Usage{}, fmt.Errorf("http request failed: %w", err)
+		return nil, Usage{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		bodyBytes, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		var apiErr ChatResponse
-		if err := json.Unmarshal(bodyBytes, &apiErr); err == nil && apiErr.Error != nil {
-			return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, apiErr.Error.Message)
-		}
-		return nil, Usage{}, fmt.Errorf("llm api error (status %d): %s", resp.StatusCode, string(bodyBytes))
+		return nil, Usage{}, c.apiError(resp.StatusCode, bodyBytes)
 	}
 
 	var assembled ChatMessage

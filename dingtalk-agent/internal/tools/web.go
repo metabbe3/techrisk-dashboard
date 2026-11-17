@@ -279,9 +279,15 @@ func htmlToText(s string) string {
 	return sb.String()
 }
 
+// selfTruncate caps a web result, reporting how many RUNES were cut. The old
+// byte-length guard produced a negative count on CJK-heavy strings (bytes >
+// limit while runes < limit: the byte guard passed the string through, then
+// the suffix subtracted a byte constant from a rune count). The cut test is
+// rune-based now — util.Cut returned s unchanged means nothing was cut.
 func selfTruncate(s string) string {
-	if len(s) <= webResultMaxChars {
+	t := util.Cut(s, webResultMaxChars)
+	if t == s {
 		return s
 	}
-	return util.Cut(s, webResultMaxChars) + fmt.Sprintf("\n…[truncated %d chars]", len([]rune(s))-webResultMaxChars)
+	return t + fmt.Sprintf("\n…[truncated %d chars]", len([]rune(s))-webResultMaxChars)
 }

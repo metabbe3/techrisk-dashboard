@@ -46,10 +46,10 @@ func (it ScheduleItem) Describe() string {
 	if t, err := time.Parse(time.RFC3339, it.NextRun); err == nil {
 		next = t.In(schedule.WIB).Format("Mon 2006-01-02 15:04")
 	}
-	text := it.Text
-	if len(text) > 80 {
-		text = util.Cut(text, 80) + "…"
-	}
+	// CutEllipsis, not a byte-length guard: len() is bytes and a CJK string
+	// can exceed 80 bytes while staying under 80 runes (a no-op cut then
+	// still got the "…" suffix).
+	text := util.CutEllipsis(it.Text, 80)
 	return fmt.Sprintf("#%d %s (next %s WIB) %s: %s", it.No, kind, next, it.Mode, text)
 }
 

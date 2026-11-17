@@ -74,6 +74,18 @@ func Cut(s string, n int) string {
 	return string(r[:n])
 }
 
+// CutEllipsis is Cut plus a trailing "…" — the suffix lands only when
+// something was actually cut. The cut test is rune-based: a CJK string can
+// exceed n bytes while staying under n runes, so a byte-length guard would
+// append "…" (or a negative "truncated N chars" note) to an untouched string.
+func CutEllipsis(s string, n int) string {
+	t := Cut(s, n)
+	if t != s {
+		return t + "…"
+	}
+	return t
+}
+
 // AtomicWrite writes data to path via a UNIQUE temp file + rename, so a crash
 // mid-write never leaves a truncated state file and two concurrent writers of
 // the same path cannot interleave in one shared .tmp (a fixed name let one

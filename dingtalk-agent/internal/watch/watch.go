@@ -39,10 +39,7 @@ type Item struct {
 
 // Describe renders "#3 20250115_IN_1234 'Payment timeout' (status: Open)".
 func (it Item) Describe() string {
-	title := util.Cut(it.Title, 60)
-	if title != it.Title {
-		title += "…"
-	}
+	title := util.CutEllipsis(it.Title, 60)
 	return fmt.Sprintf("#%d %s %q (status: %s)", it.ID, it.IncidentNo, title, it.LastStatus)
 }
 

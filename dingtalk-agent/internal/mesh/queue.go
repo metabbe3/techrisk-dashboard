@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 const (
@@ -296,10 +298,7 @@ func (q *Queue) ListTasks(missionID string) ([]TaskSummary, error) {
 				assignedAt = t.AssignedAt
 			}
 		}
-		res := st.Result
-		if r := []rune(res); len(r) > 200 {
-			res = string(r[:200])
-		}
+		res := util.Cut(st.Result, 200)
 		out = append(out, TaskSummary{
 			ID:         st.ID,
 			Goal:       st.Goal,
