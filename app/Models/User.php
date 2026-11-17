@@ -185,6 +185,7 @@ class User extends Authenticatable implements Auditable, FilamentUser
             \App\Notifications\AdminAnnouncement::class => 'admin_announcement',
             \App\Notifications\IncidentNotDoneReminder::class => 'incident_not_done_reminder',
             \App\Notifications\FundLossUnsettledReminder::class => 'fund_loss_unsettled_reminder',
+            \App\Notifications\StatusUpdateStaleReminder::class => 'status_update_reminder',
             default => null,
         };
     }

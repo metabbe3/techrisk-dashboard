@@ -105,6 +105,13 @@
     }
 }
 
+/* Fully-collapsed sidebar: vendor sets no inert/aria-hidden, so take the
+   closed sidebar out of tab order and the accessibility tree via visibility
+   (it stays visible through the mobile slide-out, so the animation is kept). */
+.fi-sidebar:not(.fi-sidebar-open) {
+    visibility: hidden;
+}
+
 /* --- Sidebar icon colors per resource --- */
 .fi-sidebar-item [href*="/admin/incidents"] .fi-sidebar-item-icon {
     color: #6366f1;
