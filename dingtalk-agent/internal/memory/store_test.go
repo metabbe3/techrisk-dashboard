@@ -1,11 +1,11 @@
 package memory
 
 import (
-	"sync"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 

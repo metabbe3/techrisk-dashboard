@@ -1,9 +1,9 @@
 package guardrail
 
 import (
-	"unicode/utf8"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestReplyFilter(t *testing.T) {

@@ -280,7 +280,7 @@ func TestDigestMergeSurvivesTheInMemoryTrim(t *testing.T) {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
-			Message: llm.ChatMessage{Role: "assistant", Content: req.Messages[len(req.Messages)-1].Content},
+			Message:      llm.ChatMessage{Role: "assistant", Content: req.Messages[len(req.Messages)-1].Content},
 			FinishReason: "stop",
 		}}}
 		w.Header().Set("Content-Type", "application/json")
