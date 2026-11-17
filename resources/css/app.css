@@ -2792,13 +2792,49 @@
 
 .fi-logo {
     align-items: center;
-    gap: 0.625rem;
+    gap: 0.75rem;
     font-size: 1.35rem;
     font-weight: 800;
     letter-spacing: -0.01em;
     color: #0f172a;
 }
 :root.dark .fi-logo { color: #f1f5f9; }
+
+/* The brand text never wraps (18rem sidebar fits it once the collapse
+   chevron leaves the flow — absolute, vertically centered at the right
+   edge like the RISE reference). */
+.fi-sidebar .fi-logo span { white-space: nowrap; }
+
+.fi-sidebar-header { position: relative; }
+
+.fi-sidebar-header .fi-icon-btn {
+    position: absolute;
+    inset-inline-end: 0.5rem;
+    top: 50%;
+    translate: 0 -50%;
+    margin: 0 !important;
+}
+
+/* Collapsed rail: the DANA logo only — Filament x-shows the logo wrapper
+   off and shows just the expand chevron; un-hide the wrapper, drop the
+   text, and stack logo + chevron centered in a narrow rail. The nav
+   hides (grouped items are x-shown off anyway; ungrouped ones would
+   linger). Owner 2026-11-17: "saat collapse, hanya logo dana yang
+   terlihat". */
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header {
+    height: auto;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-block: 0.75rem;
+}
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div { display: flex !important; }
+.fi-sidebar:not(.fi-sidebar-open) .fi-logo span { display: none; }
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {
+    position: static;
+    translate: none;
+    margin-inline: auto !important;
+}
+.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav { display: none; }
 
 .fi-sidebar-item > a {
     padding-top: 0.55rem !important;

@@ -63,7 +63,7 @@ class AdminPanelProvider extends PanelProvider
             // from the source artwork (public/images/favicon.png); the .ico
             // covers the browser's default /favicon.ico request (Safari).
             ->favicon(asset('images/favicon.png'))
-            ->sidebarWidth('17rem')
+            ->sidebarWidth('18rem')
             ->sidebarCollapsibleOnDesktop()
             ->databaseNotifications()
             ->globalSearch(true)
