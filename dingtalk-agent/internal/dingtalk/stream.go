@@ -826,7 +826,11 @@ var lastExportsGC int64
 
 func gcExports(dir string) {
 	now := time.Now().Unix()
-	if atomic.SwapInt64(&lastExportsGC, now) == now || atomic.LoadInt64(&lastExportsGC)+3600 > now {
+	// CompareAndSwap, not Swap-then-Load: the Swap stored `now` first, so the
+	// Load check that followed was always true and the GC never actually ran
+	// (data/exports grew forever).
+	old := atomic.LoadInt64(&lastExportsGC)
+	if old+3600 > now || !atomic.CompareAndSwapInt64(&lastExportsGC, old, now) {
 		return // someone else just ran it / ran recently
 	}
 	entries, err := os.ReadDir(dir)

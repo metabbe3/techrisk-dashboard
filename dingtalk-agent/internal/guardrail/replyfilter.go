@@ -32,6 +32,21 @@ var (
 	}
 )
 
+// cutRuneSafe returns s truncated to at most maxLen bytes without splitting a
+// multi-byte rune. The old inline loops sliced `s[:maxLen]` FIRST and then
+// scanned for the rune start — reading s[maxLen] panics whenever maxLen ==
+// len(s) (maxLen <= len(TruncationFooter) reached that path).
+func cutRuneSafe(s string, maxLen int) string {
+	if maxLen >= len(s) {
+		return s
+	}
+	cutIndex := maxLen
+	for cutIndex > 0 && !utf8.RuneStart(s[cutIndex]) {
+		cutIndex--
+	}
+	return s[:cutIndex]
+}
+
 // FilterReplyCap applies post-processing to a reply before it reaches the
 // user:
 // 1. Redacts sensitive secrets, keys, and tokens.
@@ -75,17 +90,9 @@ func FilterReplyCap(reply string, maxLen int) string {
 			if lastNL > cutIndex-200 && lastNL > 0 {
 				cutIndex = lastNL
 			}
-			// Never split a multi-byte rune at the cut.
-			for cutIndex > 0 && !utf8.RuneStart(filtered[cutIndex]) {
-				cutIndex--
-			}
-			filtered = strings.TrimRight(filtered[:cutIndex], "\r\n ") + TruncationFooter
+			filtered = strings.TrimRight(cutRuneSafe(filtered, cutIndex), "\r\n ") + TruncationFooter
 		} else {
-			filtered = filtered[:maxLen]
-			for maxLen > 0 && !utf8.RuneStart(filtered[maxLen]) {
-				maxLen--
-			}
-			filtered = filtered[:maxLen]
+			filtered = cutRuneSafe(filtered, maxLen)
 		}
 	}
 
@@ -105,15 +112,7 @@ func FilterReplyData(reply string, maxLen int) string {
 
 	redacted, _ := Redact(reply)
 
-	if len(redacted) > maxLen {
-		cutIndex := maxLen
-		for cutIndex > 0 && !utf8.RuneStart(redacted[cutIndex]) {
-			cutIndex--
-		}
-		redacted = redacted[:cutIndex]
-	}
-
-	return redacted
+	return cutRuneSafe(redacted, maxLen)
 }
 
 // sanitizeSystemLeaks replaces lines or sentences containing system prompt markers with a safe placeholder.

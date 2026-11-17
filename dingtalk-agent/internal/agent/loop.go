@@ -212,8 +212,7 @@ func (l *Loop) runWithEscalation(ctx context.Context, userText string, history [
 	retry := *l
 	retry.maxIterations = max(l.maxIterations/2, 2)
 	reply2, msgs2, usage2, err2 := retry.run(ctx, userText, history, onDelta, sysExtra+"\n[Retry on the primary model failed to converge within its tool budget. Be DECISIVE: gather at most the few facts you still need, then commit to a final answer.]", true)
-	usage.PromptTokens += usage2.PromptTokens
-	usage.CompletionTokens += usage2.CompletionTokens
+	usage = usage.Add(usage2) // Add, not two hand-picked fields — TotalTokens was silently lost
 	if err2 != nil {
 		return reply, msgs, usage, err // original error is the true story
 	}

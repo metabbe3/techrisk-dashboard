@@ -1,6 +1,7 @@
 package guardrail
 
 import (
+	"unicode/utf8"
 	"strings"
 	"testing"
 )
@@ -62,4 +63,29 @@ func TestReplyFilter(t *testing.T) {
 			t.Errorf("truncated reply missing truncation footer: %s", got)
 		}
 	})
+}
+
+// Regression: the old cap path sliced filtered[:maxLen] and THEN scanned for
+// the rune start, reading filtered[maxLen] — an index-out-of-range panic
+// whenever maxLen <= len(TruncationFooter). FilterReplyData had the same shape.
+func TestReplyFilterTinyCapDoesNotPanic(t *testing.T) {
+	for _, maxLen := range []int{1, 5, len(TruncationFooter) - 1, len(TruncationFooter), 100} {
+		got := FilterReplyCap("some reply that is definitely longer than any cap here", maxLen)
+		if got == "" {
+			t.Errorf("maxLen=%d: empty reply", maxLen)
+		}
+		got = FilterReplyData("some reply that is definitely longer than any cap here", maxLen)
+		if got == "" {
+			t.Errorf("maxLen=%d: FilterReplyData empty", maxLen)
+		}
+	}
+	// A reply shorter than the cap must pass through untouched.
+	if got := FilterReplyData("short", 100); got != "short" {
+		t.Errorf("short reply mutated: %q", got)
+	}
+	// Multi-byte runes are never split at the cut.
+	cjk := strings.Repeat("风", 100) // 300 bytes
+	if got := cutRuneSafe(cjk, 299); len(got) != 297 || (len(got) > 0 && !utf8.ValidString(got)) {
+		t.Errorf("rune-split at cut: %d bytes", len(got))
+	}
 }

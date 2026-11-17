@@ -235,7 +235,6 @@ func (s *Store) loadHistory() {
 // SetHistoryTTL arms the load-time TTL filter; call before first read.
 func (s *Store) SetHistoryTTL(ttl time.Duration) { s.historyTTL = ttl }
 
-// writeJSON atomically replaces path (tmp+rename).
 func (s *Store) writeJSON(path string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -244,11 +243,7 @@ func (s *Store) writeJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return util.AtomicWrite(path, data, 0o600)
 }
 
 // UserProfile is what the agent has learned about one person's preferences
@@ -292,9 +287,15 @@ func (s *Store) LearnProfile(staffID, nick string, lines []string) error {
 
 	s.pmu.Lock()
 	s.profiles[staffID] = UserProfile{Nick: nick, UpdatedAt: time.Now(), Lines: clean}
-	snap := profileFileFormat{Profiles: s.profiles}
+	// Snapshot a COPY under the lock — handing the live map to json.Marshal
+	// outside it raced a concurrent learnProfile write ("concurrent map
+	// iteration and map write", fatal, not recoverable).
+	profiles := make(map[string]UserProfile, len(s.profiles))
+	for id, p := range s.profiles {
+		profiles[id] = p
+	}
 	s.pmu.Unlock()
-	return s.writeJSON(filepath.Join(s.dir, profileFile), snap)
+	return s.writeJSON(filepath.Join(s.dir, profileFile), profileFileFormat{Profiles: profiles})
 }
 
 // Profile returns a user's learned preference lines (nil when unknown).

@@ -167,11 +167,7 @@ func (c *notionCatalog) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	tmp := c.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, c.path)
+	return util.AtomicWrite(c.path, data, 0o600)
 }
 
 // listing renders "PRD=<id>, TA=<id>" sorted by name (stable tool descriptions).
