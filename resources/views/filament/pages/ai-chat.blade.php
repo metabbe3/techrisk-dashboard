@@ -50,7 +50,7 @@
                                     </div>
                                     <div class="flex flex-wrap gap-1 mt-1">
                                         <template x-for="tag in (conv.tags || [])" :key="tag">
-                                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500" x-text="tag"></span>
+                                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-dana-50 dark:bg-dana-900/30 text-dana-500" x-text="tag"></span>
                                         </template>
                                     </div>
                                 </div>
@@ -101,7 +101,7 @@
                                         </div>
                                         <div class="flex flex-wrap gap-1 mt-1">
                                             <template x-for="tag in (conv.tags || []).slice(0, 3)" :key="tag">
-                                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500" x-text="tag"></span>
+                                                <span class="text-[10px] px-1.5 py-0.5 rounded bg-dana-50 dark:bg-dana-900/30 text-dana-500" x-text="tag"></span>
                                             </template>
                                         </div>
                                     </div>
@@ -377,7 +377,7 @@
                                     <div>
                                         <textarea x-model="editingMessageValue" class="ai-chat-edit-box" rows="3" @keydown.escape.stop="cancelEdit()"></textarea>
                                         <div class="flex items-center gap-2 mt-2">
-                                            <button @click="saveEditAndSend(idx)" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors">Save &amp; Send</button>
+                                            <button @click="saveEditAndSend(idx)" class="px-3 py-1.5 text-xs font-semibold rounded-lg bg-dana-600 text-white hover:bg-dana-500 transition-colors">Save &amp; Send</button>
                                             <button @click="cancelEdit()" class="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">Cancel</button>
                                         </div>
                                     </div>
@@ -422,7 +422,7 @@
                                             Searched web
                                         </span>
                                     </template>
-                                    <span x-show="msg.tokens_used" class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500 dark:text-indigo-400" x-text="msg.prompt_tokens ? msg.prompt_tokens + '→' + msg.completion_tokens + ' (' + msg.tokens_used + ')' : msg.tokens_used + ' tokens'"></span>
+                                    <span x-show="msg.tokens_used" class="text-[10px] px-1.5 py-0.5 rounded bg-dana-50 dark:bg-dana-900/30 text-dana-500 dark:text-dana-400" x-text="msg.prompt_tokens ? msg.prompt_tokens + '→' + msg.completion_tokens + ' (' + msg.tokens_used + ')' : msg.tokens_used + ' tokens'"></span>
                                     <button @click="copyMessage(msg.content)" class="ai-chat-action-btn" aria-label="Copy message" title="Copy">
                                         <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
                                     </button>
@@ -661,7 +661,7 @@ function aiChat() {
     let _timer = null;
 
     const colorMap = {
-        blue: '#3b82f6', indigo: '#6366f1', purple: '#8b5cf6', green: '#22c55e',
+        blue: '#3b82f6', indigo: '#108ee9', purple: '#8b5cf6', green: '#22c55e',
         teal: '#14b8a6', cyan: '#06b6d4', red: '#ef4444', orange: '#f97316',
         amber: '#f59e0b', pink: '#ec4899', emerald: '#10b981', gray: '#6b7280',
         rose: '#f43f5e', fuchsia: '#d946ef', sky: '#0ea5e9', violet: '#8b5cf6',
@@ -1495,7 +1495,7 @@ function aiChat() {
                                 role: 'assistant',
                                 content: '',
                                 _raw: '',
-                                parsedHtml: '<div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 p-3"><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="text-sm font-medium">Synthesizing results from all specialists...</span></div>',
+                                parsedHtml: '<div class="flex items-center gap-2 text-dana-600 dark:text-dana-400 p-3"><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="text-sm font-medium">Synthesizing results from all specialists...</span></div>',
                                 model: null,
                                 isStreaming: true,
                                 copied: false,
@@ -1599,7 +1599,7 @@ function aiChat() {
                                 lastMsg.toolCalls.push({ name: data.name || 'tool', status: 'running' });
                                 // Show a visible badge in the streaming area.
                                 lastMsg.parsedHtml = (lastMsg.parsedHtml || '').replace(/<span class="ai-chat-cursor">▌<\/span>/, '') +
-                                    '<div class="flex items-center gap-1.5 text-xs text-indigo-500 dark:text-indigo-400 py-1">🔧 <span class="font-medium">' + (data.name || 'tool') + '</span> — executing…</div><span class="ai-chat-cursor">▌</span>';
+                                    '<div class="flex items-center gap-1.5 text-xs text-dana-500 dark:text-dana-400 py-1">🔧 <span class="font-medium">' + (data.name || 'tool') + '</span> — executing…</div><span class="ai-chat-cursor">▌</span>';
                             }
                         } else if (eventType === 'tool_result') {
                             const data = JSON.parse(dataStr);
@@ -1705,7 +1705,7 @@ function aiChat() {
                 dev_be: 'text-green-600 dark:text-green-400',
                 dev_fe: 'text-cyan-600 dark:text-cyan-400',
                 qa: 'text-teal-600 dark:text-teal-400',
-                pm: 'text-indigo-600 dark:text-indigo-400',
+                pm: 'text-dana-600 dark:text-dana-400',
                 compliance: 'text-orange-600 dark:text-orange-400',
                 data_analyst: 'text-pink-600 dark:text-pink-400',
                 devils_advocate: 'text-rose-600 dark:text-rose-400',
@@ -1727,7 +1727,7 @@ function aiChat() {
                 'Security Analysis': 'text-red-600 dark:text-red-400',
                 'Database Analysis': 'text-purple-600 dark:text-purple-400',
                 'Data Analysis': 'text-pink-600 dark:text-pink-400',
-                'Response Planning': 'text-indigo-600 dark:text-indigo-400',
+                'Response Planning': 'text-dana-600 dark:text-dana-400',
             };
 
             let html = '<div class="plan-mode-container p-3 space-y-3">';
@@ -1983,7 +1983,7 @@ function aiChat() {
                                 role: 'assistant',
                                 content: '',
                                 _raw: '',
-                                parsedHtml: '<div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 p-3"><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="text-sm font-medium">Synthesizing results from all specialists...</span></div>',
+                                parsedHtml: '<div class="flex items-center gap-2 text-dana-600 dark:text-dana-400 p-3"><svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg><span class="text-sm font-medium">Synthesizing results from all specialists...</span></div>',
                                 model: null,
                                 isStreaming: true,
                                 copied: false,

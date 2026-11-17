@@ -33,7 +33,7 @@ class NotionBodyTest extends TestCase
      * the app build's @layer utilities at any specificity); the colliding
      * border classes must be important or the marker renders as nothing.
      */
-    private const TRAITLET = '<span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-indigo-500! align-middle transition-transform group-open:rotate-90"></span>';
+    private const TRAITLET = '<span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-dana-500! align-middle transition-transform group-open:rotate-90"></span>';
 
     public function test_toggles_become_collapsible_sections_with_their_children(): void
     {

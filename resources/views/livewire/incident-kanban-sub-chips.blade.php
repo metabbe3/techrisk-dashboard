@@ -1,7 +1,7 @@
 {{-- PROJ-022: hierarchy chips on kanban cards — included by incident-kanban-board --}}
 @if ($incident->parent_incident_id && $incident->superIncident)
     <span
-        class="inline-flex items-center gap-0.5 text-[10px] font-medium text-indigo-600 dark:text-indigo-400 cursor-pointer hover:underline"
+        class="inline-flex items-center gap-0.5 text-[10px] font-medium text-dana-600 dark:text-dana-400 cursor-pointer hover:underline"
         title="Sub of {{ $incident->superIncident->no }} — {{ $incident->superIncident->title }}"
         wire:click.stop="viewIncident({{ $incident->parent_incident_id }})"
     >
@@ -10,7 +10,7 @@
     </span>
 @endif
 @if (($incident->sub_incidents_count ?? 0) > 0)
-    <span class="inline-flex items-center text-[10px] font-medium text-indigo-600 dark:text-indigo-400">
+    <span class="inline-flex items-center text-[10px] font-medium text-dana-600 dark:text-dana-400">
         {{ $incident->sub_incidents_count }} sub{{ $incident->sub_incidents_count === 1 ? '' : 's' }}
     </span>
 @endif

@@ -27,6 +27,25 @@ class AdminPanelProvider extends PanelProvider
 {
     public function panel(\Filament\Panel $panel): \Filament\Panel
     {
+        // Owner 2026-11-17: the sidebar follows the RISE portal reference and
+        // the panel switches to DANA blue. 'indigo' is overridden with the same
+        // palette because the primary WAS indigo — every existing 'indigo'
+        // badge/accent keeps its exact relationship to primary. 'info' moves
+        // Sky -> Cyan: Sky (#0ea5e9) is near-identical to the new primary.
+        $dana = [
+            50 => '238, 247, 254',
+            100 => '216, 236, 253',
+            200 => '182, 222, 251',
+            300 => '127, 203, 247',
+            400 => '56, 175, 241',
+            500 => '16, 142, 233',
+            600 => '6, 115, 201',
+            700 => '8, 92, 163',
+            800 => '12, 78, 134',
+            900 => '15, 66, 111',
+            950 => '9, 43, 73',
+        ];
+
         return $panel
             ->default()
             ->id('admin')
@@ -36,6 +55,7 @@ class AdminPanelProvider extends PanelProvider
             // from the source artwork (public/images/favicon.png); the .ico
             // covers the browser's default /favicon.ico request (Safari).
             ->favicon(asset('images/favicon.png'))
+            ->sidebarWidth('17rem')
             ->sidebarCollapsibleOnDesktop()
             ->databaseNotifications()
             ->globalSearch(true)
@@ -44,11 +64,12 @@ class AdminPanelProvider extends PanelProvider
             ->passwordReset()
             ->profile(CustomProfilePage::class)
             ->colors([
-                'primary' => Color::Indigo,
+                'primary' => $dana,
+                'indigo' => $dana,
                 'danger' => Color::Rose,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,
-                'info' => Color::Sky,
+                'info' => Color::Cyan,
                 'gray' => Color::Slate,
                 'violet' => Color::Violet,
                 'teal' => Color::Teal,

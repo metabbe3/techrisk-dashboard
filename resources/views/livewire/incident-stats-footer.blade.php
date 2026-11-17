@@ -1,6 +1,6 @@
 @php
     $statCards = [
-        ['label' => 'Total Cases', 'value' => number_format($stats['totalCases']), 'icon' => 'heroicon-o-chart-bar', 'iconBg' => 'bg-indigo-100 dark:bg-indigo-900/40', 'iconColor' => 'text-indigo-600 dark:text-indigo-400', 'border' => 'border-l-indigo-500'],
+        ['label' => 'Total Cases', 'value' => number_format($stats['totalCases']), 'icon' => 'heroicon-o-chart-bar', 'iconBg' => 'bg-dana-100 dark:bg-dana-900/40', 'iconColor' => 'text-dana-600 dark:text-dana-400', 'border' => 'border-l-dana-500'],
         ['label' => 'Avg MTTR (Mins)', 'value' => number_format($stats['avgMttrMins'], 2), 'icon' => 'heroicon-o-clock', 'iconBg' => 'bg-sky-100 dark:bg-sky-900/40', 'iconColor' => 'text-sky-600 dark:text-sky-400', 'border' => 'border-l-sky-500'],
         ['label' => 'Avg MTTR (Days)', 'value' => number_format($stats['avgMttrDays'], 2), 'icon' => 'heroicon-o-clock', 'iconBg' => 'bg-orange-100 dark:bg-orange-900/40', 'iconColor' => 'text-orange-600 dark:text-orange-400', 'border' => 'border-l-orange-500'],
         ['label' => 'Avg MTBF (Days)', 'value' => number_format($stats['avgMtbf'], 2), 'icon' => 'heroicon-o-shield-check', 'iconBg' => 'bg-violet-100 dark:bg-violet-900/40', 'iconColor' => 'text-violet-600 dark:text-violet-400', 'border' => 'border-l-violet-500'],

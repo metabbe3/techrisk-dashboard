@@ -41,8 +41,8 @@
             <button
                 type="button"
                 class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors cursor-pointer
-                    @if($activeFilterCount > 0) bg-indigo-50 dark:bg-indigo-500/10 border-indigo-200 dark:border-indigo-500/30 text-indigo-600 dark:text-indigo-400
-                    @else bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500 dark:hover:text-indigo-400
+                    @if($activeFilterCount > 0) bg-dana-50 dark:bg-dana-500/10 border-dana-200 dark:border-dana-500/30 text-dana-600 dark:text-dana-400
+                    @else bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-dana-300 hover:text-dana-600 dark:hover:border-dana-500 dark:hover:text-dana-400
                     @endif"
                 x-on:click="filtersVisible = !filtersVisible"
             >
@@ -51,7 +51,7 @@
                 </svg>
                 Filters
                 @if($activeFilterCount > 0)
-                    <span class="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full bg-indigo-500 text-white">{{ $activeFilterCount }}</span>
+                    <span class="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 text-[10px] font-bold rounded-full bg-dana-500 text-white">{{ $activeFilterCount }}</span>
                 @endif
             </button>
 
@@ -61,11 +61,11 @@
                     aria-label="Search incidents by ID or title"
                     wire:model.live.debounce.300ms="searchQuery"
                     placeholder="Search ID or title..."
-                    class="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-500/20 outline-none transition-colors"
+                    class="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-200 placeholder-gray-400 focus:border-dana-400 focus:ring-2 focus:ring-dana-100 dark:focus:ring-dana-500/20 outline-none transition-colors"
                 />
             </div>
 
-            <select wire:model.live="quickPeriod" aria-label="Time period" class="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none cursor-pointer focus:border-indigo-400">
+            <select wire:model.live="quickPeriod" aria-label="Time period" class="px-2.5 py-1.5 text-xs border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-400 outline-none cursor-pointer focus:border-dana-400">
                 <option value="year">This Year</option>
                 <option value="quarter">This Quarter</option>
                 <option value="month">This Month</option>
@@ -88,7 +88,7 @@
                 wire:click="toggleQuickFilter('assignedToMe')"
                 @class([
                     'px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 cursor-pointer flex items-center gap-2 select-none',
-                    'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-500 text-indigo-700 dark:text-indigo-400 ring-1 ring-indigo-500' => $assignedToMe,
+                    'bg-dana-50 dark:bg-dana-500/10 border-dana-500 text-dana-700 dark:text-dana-400 ring-1 ring-dana-500' => $assignedToMe,
                     'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800' => !$assignedToMe,
                 ])
             >
@@ -100,7 +100,7 @@
                 wire:click="toggleQuickFilter('p1Only')"
                 @class([
                     'px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 cursor-pointer flex items-center gap-2 select-none',
-                    'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-500 text-indigo-700 dark:text-indigo-400 ring-1 ring-indigo-500' => $p1Only,
+                    'bg-dana-50 dark:bg-dana-500/10 border-dana-500 text-dana-700 dark:text-dana-400 ring-1 ring-dana-500' => $p1Only,
                     'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800' => !$p1Only,
                 ])
             >
@@ -112,7 +112,7 @@
                 wire:click="toggleQuickFilter('unassignedOnly')"
                 @class([
                     'px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 cursor-pointer flex items-center gap-2 select-none',
-                    'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-500 text-indigo-700 dark:text-indigo-400 ring-1 ring-indigo-500' => $unassignedOnly,
+                    'bg-dana-50 dark:bg-dana-500/10 border-dana-500 text-dana-700 dark:text-dana-400 ring-1 ring-dana-500' => $unassignedOnly,
                     'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800' => !$unassignedOnly,
                 ])
             >
@@ -124,7 +124,7 @@
                 wire:click="toggleQuickFilter('fundLossOnly')"
                 @class([
                     'px-3 py-1.5 rounded-full text-xs font-medium border transition-all duration-200 cursor-pointer flex items-center gap-2 select-none',
-                    'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-500 text-indigo-700 dark:text-indigo-400 ring-1 ring-indigo-500' => $fundLossOnly,
+                    'bg-dana-50 dark:bg-dana-500/10 border-dana-500 text-dana-700 dark:text-dana-400 ring-1 ring-dana-500' => $fundLossOnly,
                     'bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800' => !$fundLossOnly,
                 ])
             >
@@ -154,8 +154,8 @@
                                 wire:click="toggleFilter('severity', '{{ $value }}')"
                                 class="px-2 py-1.5 text-[11px] font-medium rounded-md border cursor-pointer transition-all
                                     {{ in_array($value, $severity)
-                                        ? 'bg-indigo-500 border-indigo-500 text-white'
-                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500 dark:hover:text-indigo-400'
+                                        ? 'bg-dana-500 border-dana-500 text-white'
+                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-dana-300 hover:text-dana-600 dark:hover:border-dana-500 dark:hover:text-dana-400'
                                     }}"
                             >
                                 {{ $label }}
@@ -174,8 +174,8 @@
                                 wire:click="toggleFilter('incidentType', '{{ $value }}')"
                                 class="px-2 py-1.5 text-[11px] font-medium rounded-md border cursor-pointer transition-all
                                     {{ in_array($value, $incidentType)
-                                        ? 'bg-indigo-500 border-indigo-500 text-white'
-                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500 dark:hover:text-indigo-400'
+                                        ? 'bg-dana-500 border-dana-500 text-white'
+                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-dana-300 hover:text-dana-600 dark:hover:border-dana-500 dark:hover:text-dana-400'
                                     }}"
                             >
                                 {{ $label }}
@@ -205,8 +205,8 @@
                                 wire:click="toggleFilter('picId', '{{ $id }}')"
                                 class="px-2 py-1.5 text-[11px] font-medium rounded-md border cursor-pointer transition-all
                                     {{ in_array((string) $id, array_map('strval', $picId))
-                                        ? 'bg-indigo-500 border-indigo-500 text-white'
-                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-indigo-300 hover:text-indigo-600 dark:hover:border-indigo-500 dark:hover:text-indigo-400'
+                                        ? 'bg-dana-500 border-dana-500 text-white'
+                                        : 'bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-dana-300 hover:text-dana-600 dark:hover:border-dana-500 dark:hover:text-dana-400'
                                     }}"
                             >
                                 {{ $name }}
@@ -355,7 +355,7 @@
                                     <svg xmlns="http://www.w3.org/2000/svg" class="w-3 h-3 text-gray-300 dark:text-gray-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-5L21 6m0 0l-4.5 4.5M21 6h-13.5" /></svg>
                                     <select
                                         wire:change="updateStatus({{ $incident->id }}, $event.target.value)"
-                                        class="kanban-move-select w-full text-[11px] font-medium bg-transparent border-0 outline-none cursor-pointer text-gray-500 dark:text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 focus:text-indigo-600 dark:focus:text-indigo-400"
+                                        class="kanban-move-select w-full text-[11px] font-medium bg-transparent border-0 outline-none cursor-pointer text-gray-500 dark:text-gray-500 hover:text-dana-600 dark:hover:text-dana-400 focus:text-dana-600 dark:focus:text-dana-400"
                                         aria-label="Move incident {{ $incident->no }} to another status"
                                         onclick="event.stopPropagation()"
                                         title="Move to status"
@@ -379,7 +379,7 @@
                         <button
                             type="button"
                             wire:click="toggleShowAllCompleted"
-                            class="w-full py-2 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors cursor-pointer"
+                            class="w-full py-2 text-xs font-semibold text-dana-600 dark:text-dana-400 hover:text-dana-800 dark:hover:text-dana-300 transition-colors cursor-pointer"
                         >
                             Show all {{ $totalCounts['Completed'] ?? 0 }} completed
                         </button>
@@ -511,7 +511,7 @@
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300">{{ $incident->incident_type }}</span>
                                 @endif
                                 @if($incident->incidentType)
-                                    <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">{{ $incident->incidentType->name }}</span>
+                                    <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-dana-50 dark:bg-dana-500/15 text-dana-600 dark:text-dana-300">{{ $incident->incidentType->name }}</span>
                                 @endif
                                 @if($incident->incident_category)
                                     <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-amber-50 dark:bg-amber-500/15 text-amber-600 dark:text-amber-300">{{ $incident->incident_category }}</span>
@@ -534,7 +534,7 @@
                             <span class="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-500 self-start pt-0.5">Business</span>
                             <div class="flex flex-wrap gap-1">
                                 @foreach($incident->business_category as $cat)
-                                    <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-indigo-50 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300">{{ $cat }}</span>
+                                    <span class="px-2 py-0.5 text-[10px] font-semibold rounded-full bg-dana-50 dark:bg-dana-500/15 text-dana-600 dark:text-dana-300">{{ $cat }}</span>
                                 @endforeach
                             </div>
                         @endif
@@ -605,7 +605,7 @@
                     <a
                         href="{{ url('/admin/incidents/' . $incident->id) }}"
                         target="_blank"
-                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex-1"
+                        class="inline-flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-lg bg-dana-600 text-white hover:bg-dana-700 transition-colors flex-1"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 6H5.25A2.25 2.25 0 003 8.25v10.5A2.25 2.25 0 005.25 21h10.5A2.25 2.25 0 0018 18.75V10.5m-10.5 6L21 3m0 0h-5.25M21 3v5.25" /></svg>
                         Open Full Page
