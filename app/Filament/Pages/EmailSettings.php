@@ -5,9 +5,14 @@ declare(strict_types=1);
 namespace App\Filament\Pages;
 
 use App\Models\Setting;
+use App\Services\InvestigationForm\InvestigationFormSchema;
+use App\Services\InvestigationForm\InvestigationFormSettings;
 use App\Support\MailSettings;
+use Filament\Forms\Components\CheckboxList;
+use Filament\Forms\Components\MarkdownEditor;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Section;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Concerns\InteractsWithForms;
@@ -59,6 +64,17 @@ class EmailSettings extends Page implements HasForms
             'reminder_remind_interval_days' => Setting::get('reminder_remind_interval_days', 7),
             'from_address' => Setting::get('mail_from_address', 'noreply-techrisk@dana.id'),
             'from_name' => Setting::get('mail_from_name', config('mail.from.name')),
+            'investigation_form_expiry_days' => InvestigationFormSettings::expiryDays(),
+            'investigation_form_max_recipients' => InvestigationFormSettings::maxRecipients(),
+            'investigation_form_reminders_enabled' => InvestigationFormSettings::remindersEnabled(),
+            'investigation_form_reminder_interval_days' => InvestigationFormSettings::reminderIntervalDays(),
+            'investigation_form_final_reminder_days' => InvestigationFormSettings::finalReminderDays(),
+            'investigation_form_prepare_list' => implode("\n", InvestigationFormSettings::prepareList()),
+            'investigation_form_required_fields' => InvestigationFormSettings::requiredFields(),
+            'investigation_form_request_subject' => InvestigationFormSettings::requestSubject(),
+            'investigation_form_request_body' => InvestigationFormSettings::requestBody(),
+            'investigation_form_reminder_subject' => InvestigationFormSettings::reminderSubject(),
+            'investigation_form_reminder_body' => InvestigationFormSettings::reminderBody(),
         ]);
     }
 
@@ -173,6 +189,64 @@ class EmailSettings extends Page implements HasForms
                             ->label('Unsettled fund-loss reminders')
                             ->columnSpanFull(),
                     ]),
+
+                Section::make('Investigation Form')
+                    ->description('Per-team investigation form links: emails, requirements, expiry and reminders.')
+                    ->schema([
+                        TextInput::make('investigation_form_expiry_days')
+                            ->label('Link validity (days)')
+                            ->numeric()->minValue(1)->maxValue(60)->default(14)
+                            ->helperText('Each recipient link expires this many days after the request (or reissue).'),
+                        TextInput::make('investigation_form_max_recipients')
+                            ->label('Max recipients per team')
+                            ->numeric()->minValue(1)->maxValue(50)->default(10),
+                        Toggle::make('investigation_form_reminders_enabled')
+                            ->label('Send auto reminders')
+                            ->columnSpanFull(),
+                        TextInput::make('investigation_form_reminder_interval_days')
+                            ->label('Remind every (days)')
+                            ->numeric()->minValue(1)->maxValue(14)->default(7)
+                            ->helperText('Days since the last email before the next reminder.'),
+                        TextInput::make('investigation_form_final_reminder_days')
+                            ->label('Final reminder (days before expiry)')
+                            ->numeric()->minValue(0)->maxValue(30)->default(2)
+                            ->helperText('0 disables the final reminder.'),
+                        Textarea::make('investigation_form_prepare_list')
+                            ->label('What to prepare (one item per line)')
+                            ->rows(4)
+                            ->columnSpanFull(),
+                        CheckboxList::make('investigation_form_required_fields')
+                            ->label('Fields required to submit')
+                            ->options(array_merge(
+                                InvestigationFormSchema::flatFields(),
+                                ['chronology' => 'Chronology (at least one row)'],
+                            ))
+                            ->columns(3)
+                            ->bulkToggleable()
+                            ->columnSpanFull()
+                            ->helperText('Empty required fields block submit. The Statement of Truth is always required.'),
+                        TextInput::make('investigation_form_request_subject')
+                            ->label('Request email subject')
+                            ->maxLength(200)
+                            ->columnSpanFull(),
+                        MarkdownEditor::make('investigation_form_request_body')
+                            ->label('Request email body')
+                            ->columnSpanFull(),
+                        TextInput::make('investigation_form_reminder_subject')
+                            ->label('Reminder email subject')
+                            ->maxLength(200)
+                            ->columnSpanFull(),
+                        MarkdownEditor::make('investigation_form_reminder_body')
+                            ->label('Reminder email body')
+                            ->columnSpanFull(),
+                        Placeholder::make('investigation_form_placeholder_help')
+                            ->label('Placeholders')
+                            ->content(new \Illuminate\Support\HtmlString(
+                                'Request: '.collect(InvestigationFormSettings::PLACEHOLDERS)->map(fn (string $p): string => '{'.$p.'}')->implode(', ')
+                                .'<br>Reminder: the same plus {days_left}'
+                            ))
+                            ->columnSpanFull(),
+                    ])->columns(2),
             ])
             ->statePath('data');
     }
@@ -276,6 +350,38 @@ class EmailSettings extends Page implements HasForms
         Setting::set('incident_not_done_reminder_days', (int) ($data['incident_not_done_reminder_days'] ?? 7));
         Setting::set('fund_loss_reminder_enabled', (bool) ($data['fund_loss_reminder_enabled'] ?? false));
         Setting::set('reminder_remind_interval_days', (int) ($data['reminder_remind_interval_days'] ?? 7));
+
+        // Investigation form: reject unknown {placeholders} before saving
+        // anything (a typo'd token would ship verbatim in every email).
+        $unknown = array_merge(
+            InvestigationFormSettings::unknownPlaceholders((string) ($data['investigation_form_request_subject'] ?? ''), false),
+            InvestigationFormSettings::unknownPlaceholders((string) ($data['investigation_form_request_body'] ?? ''), false),
+            InvestigationFormSettings::unknownPlaceholders((string) ($data['investigation_form_reminder_subject'] ?? ''), true),
+            InvestigationFormSettings::unknownPlaceholders((string) ($data['investigation_form_reminder_body'] ?? ''), true),
+        );
+
+        if ($unknown !== []) {
+            Notification::make()
+                ->danger()
+                ->title('Unknown placeholders: '.implode(', ', $unknown))
+                ->body('Allowed: '.implode(', ', array_merge(InvestigationFormSettings::PLACEHOLDERS, InvestigationFormSettings::REMINDER_PLACEHOLDERS)))
+                ->persistent()
+                ->send();
+
+            return;
+        }
+
+        Setting::set('investigation_form_expiry_days', (int) ($data['investigation_form_expiry_days'] ?? 14));
+        Setting::set('investigation_form_max_recipients', (int) ($data['investigation_form_max_recipients'] ?? 10));
+        Setting::set('investigation_form_reminders_enabled', (bool) ($data['investigation_form_reminders_enabled'] ?? true));
+        Setting::set('investigation_form_reminder_interval_days', (int) ($data['investigation_form_reminder_interval_days'] ?? 7));
+        Setting::set('investigation_form_final_reminder_days', (int) ($data['investigation_form_final_reminder_days'] ?? 2));
+        Setting::set('investigation_form_prepare_list', filled($data['investigation_form_prepare_list'] ?? null) ? $data['investigation_form_prepare_list'] : null);
+        Setting::set('investigation_form_required_fields', array_values((array) ($data['investigation_form_required_fields'] ?? [])) ?: null);
+        Setting::set('investigation_form_request_subject', filled($data['investigation_form_request_subject'] ?? null) ? $data['investigation_form_request_subject'] : null);
+        Setting::set('investigation_form_request_body', filled($data['investigation_form_request_body'] ?? null) ? $data['investigation_form_request_body'] : null);
+        Setting::set('investigation_form_reminder_subject', filled($data['investigation_form_reminder_subject'] ?? null) ? $data['investigation_form_reminder_subject'] : null);
+        Setting::set('investigation_form_reminder_body', filled($data['investigation_form_reminder_body'] ?? null) ? $data['investigation_form_reminder_body'] : null);
 
         // Apply immediately so this request (and restarted queue workers) use
         // the new mailer/From without waiting for a cache TTL or redeploy.

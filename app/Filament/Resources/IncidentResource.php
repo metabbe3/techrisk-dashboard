@@ -700,6 +700,7 @@ class IncidentResource extends Resource
         return [
             RelationManagers\StatusUpdatesRelationManager::class,
             RelationManagers\InvestigationDocumentsRelationManager::class,
+            RelationManagers\InvestigationFormsRelationManager::class,
             RelationManagers\AuditsRelationManager::class,
             RelationManagers\ActionImprovementsRelationManager::class,
             RelationManagers\WarRoomSessionsRelationManager::class,

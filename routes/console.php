@@ -47,6 +47,8 @@ Schedule::command('incidents:refresh-corpus')->hourlyAt(17)->withoutOverlapping(
 Schedule::command('reminders:send-action-improvements')->dailyAt('08:00');
 // Incident & unsettled fund-loss reminders via Netcore — daily at 08:15
 Schedule::command('reminders:send-incidents')->dailyAt('08:15');
+// Investigation form reminders (rotates each recipient link) — daily at 08:30
+Schedule::command('investigation-forms:send-reminders')->dailyAt('08:30')->withoutOverlapping();
 // Clean up old notifications — daily at 02:00
 Schedule::command('notifications:clean')->dailyAt('02:00');
 // Re-index stale RAG documents — daily at 02:30

@@ -23,6 +23,7 @@ type fakeInternalAPI struct {
 	pushes   []map[string]any
 	pushPath []string
 	failLLM  bool
+	reply    string // optional fixed LLM reply (empty = the default)
 }
 
 func newFakeInternalAPI(t *testing.T) *fakeInternalAPI {
@@ -36,15 +37,19 @@ func newFakeInternalAPI(t *testing.T) *fakeInternalAPI {
 			f.mu.Lock()
 			f.llmReqs = append(f.llmReqs, req)
 			fail := f.failLLM
+			reply := f.reply
 			f.mu.Unlock()
 			if fail {
 				http.Error(w, `llm down`, http.StatusInternalServerError)
 				return
 			}
+			if reply == "" {
+				reply = "All clear — 0 open P1 incidents."
+			}
 			_ = json.NewEncoder(w).Encode(llm.ChatResponse{
 				Usage: &llm.Usage{PromptTokens: 40, CompletionTokens: 8, TotalTokens: 48},
 				Choices: []llm.ChatChoice{{
-					Message:      llm.ChatMessage{Role: "assistant", Content: "All clear — 0 open P1 incidents."},
+					Message:      llm.ChatMessage{Role: "assistant", Content: reply},
 					FinishReason: "stop",
 				}},
 			})
@@ -285,6 +290,45 @@ func TestInternalRunTaskErrorReturnsNotOK(t *testing.T) {
 	}
 	if len(f.pushes) != 0 {
 		t.Errorf("failed run must not push, got %d", len(f.pushes))
+	}
+}
+
+// Investigation-form extraction rides internal/run too (mode task, unbound —
+// no DingTalk delivery). A filled form's JSON exceeds the chat-sized reply
+// cap, so the dashboard raises it per run with max_reply_chars; without it
+// the default cap truncates the payload.
+func TestInternalRunTaskModeHonorsMaxReplyCharsOverride(t *testing.T) {
+	f := newFakeInternalAPI(t)
+	bot := newInternalBot(t, f)
+	srv := httptest.NewServer(NewInternalMux(bot))
+	defer srv.Close()
+
+	big := strings.Repeat("x", 12000)
+
+	// Default cap truncates the extraction payload.
+	f.mu.Lock()
+	f.reply = big
+	f.mu.Unlock()
+	_, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{Mode: "task", Text: "extract"})
+	if got := out["output"].(string); len(got) > 8060 { // cap + truncation footer slack
+		t.Errorf("default cap: output len = %d, want <= ~8000", len(got))
+	}
+
+	// The override raises it: the full payload comes back.
+	f.mu.Lock()
+	f.reply = big
+	f.mu.Unlock()
+	_, out = postInternal(t, srv.URL, "shared-secret", internalRunRequest{
+		Mode: "task", Text: "extract", MaxReplyChars: 60000,
+	})
+	if got := out["output"].(string); len(got) < 12000 {
+		t.Errorf("override: output len = %d, want the full %d-byte payload", len(got), len(big))
+	}
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.llmReqs) != 2 {
+		t.Errorf("llm calls = %d, want 2", len(f.llmReqs))
 	}
 }
 

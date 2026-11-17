@@ -88,6 +88,38 @@ Owner decision 2026-11-11 (full unification): the dashboard becomes the control 
 - 2026-11-12: Phases 4–6 landed (schedule store retired, Filament engine/once/delivery UI, compose + docs).
 
 
+### [PROJ-024] Investigation form intake: unique links → AI fills → consent → DOCX + PDF
+
+**Status:** In Progress (code complete, tests green; manual Docker verification + prod migration pending)
+**Priority:** P1
+**Start Date:** 2026-11-16
+
+#### Description
+Owner 2026-11-16: teams currently fill the Word "Incident Investigation Form – Template 2025 v1.0" by hand. Each team gets a **unique link per incident** — the admin lists recipient emails on the incident's Investigation Forms relation manager, **each person gets their OWN link by email**, the team shares ONE draft on a no-login page (`/investigation/{token}`), the **AI extracts the form's fields and asks for what's missing**, the investigator re-verifies and **consents** (the template's Statement of Truth, typed email), and submit renders **DOCX (the owner's template) + PDF** onto the incident's Supporting Documents.
+
+#### Key decisions
+- Typed email only (no OTP); AI suggests, never auto-submits.
+- AI runs through the **DingTalk agent's Go brain** (owner override 2026-11-16 "use dingtalk agent i mean") — `app/Services/Ai/GoAgentBrain.php`, NOT `AiTextService`.
+- Plain tokens never stored (sha256); reminders/resends rotate tokens; one submit closes all team links.
+- Editable email templates + requirements on EmailSettings → "Investigation Form"; auto reminders daily 08:30.
+
+#### Tasks
+- [x] Template prep: `resources/templates/investigation-form-v1.docx` — 60 `${section.field}` tokens, GRC row split (3 rows), summary answer paragraphs; generator self-check pins every token.
+- [x] Migration (2 tables) + models + `Incident` relations; `dateTime(3)` draft_updated_at + model `$dateFormat` ms write format (concurrency guard needs sub-second).
+- [x] `StoreInvestigationDocument` extraction (2 callers); `RequestInvestigationForm` (normalized emails, caps).
+- [x] Admin: Investigation Forms relation manager — request/resend/revoke/reissue/revoke-all, one-time copy link, status + docx/pdf download FKs.
+- [x] Public page: 4-step intake (source → AI fill → verify → consent), shared draft + concurrency warning, honeypot + rate limits + AI-call cap.
+- [x] `GoAgentBrain` + Go-side per-run `max_reply_chars` (tested); `InvestigationFormExtractor` (extract + verify, schema-validated output).
+- [x] Renderer: DOCX via TemplateProcessor (cloneRow lists, XML-escaped values) + PDF blade.
+- [x] EmailSettings section (expiry/recipients/reminders/prepare list/required fields/4 mail templates, all-or-nothing placeholder validation) + reminder command.
+- [x] Tests: +42 across 5 files (schema 8, renderer 8, intake 9, admin 10, reminders 7).
+- [ ] Manual Docker verification (2-email request → log check → shared draft → submit → downloads).
+- [ ] Prod `php artisan migrate --force` (owner-only guardrail).
+
+#### Progress Updates
+- 2026-11-16: Implementation complete; full suite green (see CLAUDE.md baseline); `InvestigationFormIntakeTest` pins the concurrency guard end-to-end.
+
+
 ### [PROJ-020] Incident list: one Export dropdown
 
 **Status:** Done

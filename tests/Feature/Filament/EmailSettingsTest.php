@@ -171,4 +171,52 @@ class EmailSettingsTest extends TestCase
             ->call('sendTestEmail')
             ->assertNotified('Test email not sent');
     }
+
+    public function test_investigation_form_settings_save_and_unknown_placeholders_rejected(): void
+    {
+        Livewire::actingAs($this->manager())
+            ->test(EmailSettings::class)
+            ->set('data.investigation_form_expiry_days', 21)
+            ->set('data.investigation_form_request_subject', 'Fill the form for {incident_no}')
+            ->set('data.investigation_form_request_body', 'Link: {link} team {team} {bogus_token}')
+            ->call('save')
+            ->assertNotified();
+
+        // A typo'd placeholder must reject the WHOLE save (nothing persisted).
+        // Read the DB row (Setting::get is cache-poisoned by mount's defaults).
+        $this->assertNull(\App\Models\Setting::where('key', 'investigation_form_expiry_days')->first()?->value, 'save must be all-or-nothing on placeholder errors');
+        $this->assertNull(\App\Models\Setting::where('key', 'investigation_form_request_subject')->first());
+
+        Livewire::actingAs($this->manager())
+            ->test(EmailSettings::class)
+            ->set('data.investigation_form_expiry_days', 21)
+            ->set('data.investigation_form_request_subject', 'Fill the form for {incident_no}')
+            ->set('data.investigation_form_reminder_body', '{days_left} days left')
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame('21', \App\Models\Setting::where('key', 'investigation_form_expiry_days')->first()?->value, 'json_encode(21) = "21"');
+        $this->assertStringContainsString('{incident_no}', (string) \App\Models\Setting::where('key', 'investigation_form_request_subject')->first()?->value);
+    }
+
+    public function test_investigation_form_required_fields_persist_and_drive_the_page(): void
+    {
+        $defaults = \App\Services\InvestigationForm\InvestigationFormSettings::requiredFields();
+
+        Livewire::actingAs($this->manager())
+            ->test(EmailSettings::class)
+            ->set('data.investigation_form_required_fields', ['header.incident_name', 'chronology'])
+            ->call('save')
+            ->assertHasNoErrors();
+
+        $this->assertSame(['header.incident_name', 'chronology'], Setting::get('investigation_form_required_fields'));
+
+        // Unknown keys (schema changed since) are dropped on read.
+        \App\Models\Setting::set('investigation_form_required_fields', ['header.incident_name', 'ghost.field', 'chronology']);
+        $this->assertSame(['header.incident_name', 'chronology'], \App\Services\InvestigationForm\InvestigationFormSettings::requiredFields());
+
+        // Defaults return when nothing stored.
+        \App\Models\Setting::set('investigation_form_required_fields', null);
+        $this->assertSame($defaults, \App\Services\InvestigationForm\InvestigationFormSettings::requiredFields());
+    }
 }

@@ -46,6 +46,7 @@ class InvestigationDocumentsRelationManager extends RelationManager
     public function table(Table $table): Table
     {
         $aiService = app(\App\Services\Ai\AiTextService::class);
+        $storeDocument = app(\App\Actions\StoreInvestigationDocument::class);
         $models = $aiService->getModelsForPicker();
         $defaultModel = \App\Models\AiSetting::get('default_model', config('ai.default_model', 'SMART-MODEL'));
 
@@ -76,36 +77,27 @@ class InvestigationDocumentsRelationManager extends RelationManager
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
-                    ->mutateFormDataUsing(function (array $data, EncryptionService $encryptionService): array {
+                    ->action(function (array $data) use ($storeDocument): void {
+                        $fileInput = $data['file_path'] ?? null;
+
+                        if (is_array($fileInput)) {
+                            $fileInput = reset($fileInput);
+                        }
+
                         try {
-                            $fileInput = $data['file_path'] ?? null;
-
-                            if (is_array($fileInput)) {
-                                $fileInput = reset($fileInput);
-                            }
-
                             if ($fileInput instanceof UploadedFile) {
-                                $key = $encryptionService->generateKey();
-                                $salt = $encryptionService->generateSalt();
-                                $method = 'method'.rand(1, 3);
-                                $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
+                                $storeDocument->handle(
+                                    $this->ownerRecord,
+                                    $fileInput->get(),
+                                    $fileInput->getClientOriginalName(),
+                                    $data['description'],
+                                );
 
-                                $this->encryptionData = [
-                                    'key' => $key,
-                                    'salt' => $salt,
-                                    'method' => $method,
-                                    'original_filename' => $fileInput->getClientOriginalName(),
-                                ];
-
-                                $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
-                                $directory = 'investigation-forms';
-                                $newFileName = $directory.'/'.Str::uuid().'.encrypted';
-
-                                Storage::disk('public')->makeDirectory($directory);
-                                Storage::disk('public')->put($newFileName, $encryptedContent);
-
-                                $data['file_path'] = $newFileName;
-                                $data['original_filename'] = $fileInput->getClientOriginalName();
+                                Notification::make()
+                                    ->title('Document uploaded successfully')
+                                    ->body('Document queued for Markdown conversion.')
+                                    ->success()
+                                    ->send();
                             }
                         } catch (\Exception $e) {
                             Notification::make()
@@ -116,37 +108,6 @@ class InvestigationDocumentsRelationManager extends RelationManager
                             throw \Illuminate\Validation\ValidationException::withMessages([
                                 'file_path' => 'File upload failed: '.$e->getMessage(),
                             ]);
-                        }
-
-                        return $data;
-                    })
-                    ->after(function (Model $record) {
-                        if (! empty($this->encryptionData)) {
-                            $record->encryptionKey()->create($this->encryptionData);
-
-                            try {
-                                $this->ownerRecord->audits()->create([
-                                    'user_id' => Auth::id(),
-                                    'event' => 'file_uploaded',
-                                    'auditable_type' => Incident::class,
-                                    'auditable_id' => $this->ownerRecord->id,
-                                    'new_values' => [
-                                        'filename' => (string) Str::of($this->encryptionData['original_filename'])->ascii(),
-                                    ],
-                                ]);
-                            } catch (\Exception $e) {
-                                Log::error('Error creating audit log: '.$e->getMessage());
-                            }
-
-                            // Dispatch markdown conversion job
-                            \App\Jobs\ConvertDocumentToMarkdown::dispatch($record);
-
-                            $this->encryptionData = [];
-                            Notification::make()
-                                ->title('Document uploaded successfully')
-                                ->body('Document queued for Markdown conversion.')
-                                ->success()
-                                ->send();
                         }
                     }),
             ])

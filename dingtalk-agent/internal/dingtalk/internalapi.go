@@ -31,6 +31,7 @@ type internalRunRequest struct {
 	Mode             string `json:"mode"` // "task" (agent loop) | "message" (deliver text, no LLM)
 	System           string `json:"system,omitempty"`
 	Text             string `json:"text"`
+	MaxReplyChars    int    `json:"max_reply_chars,omitempty"` // optional per-run reply cap override (default AGENT_MAX_REPLY_CHARS)
 	ConversationType string `json:"conversation_type,omitempty"`
 	ConversationID   string `json:"conversation_id,omitempty"`
 	StaffID          string `json:"staff_id,omitempty"`
@@ -140,7 +141,13 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 			}
 		}
 
-		filtered := guardrail.FilterReplyCap(reply, b.cfg.MaxReplyChars)
+		// The dashboard can raise the reply cap for one run (large JSON
+		// extraction payloads exceed the chat-sized default).
+		replyCap := b.cfg.MaxReplyChars
+		if req.MaxReplyChars > 0 {
+			replyCap = req.MaxReplyChars
+		}
+		filtered := guardrail.FilterReplyCap(reply, replyCap)
 		if filtered == "" {
 			filtered = "The scheduled run produced no answer."
 		}
