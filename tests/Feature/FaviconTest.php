@@ -22,6 +22,30 @@ class FaviconTest extends TestCase
 
     public function test_the_admin_panel_renders_a_favicon_link(): void
     {
+        $user = $this->adminUser();
+
+        $this->actingAs($user)
+            ->get('/admin')
+            ->assertSuccessful()
+            ->assertSeeHtml('<link rel="icon"', false);
+    }
+
+    /**
+     * Owner 2026-11-17: the DANA brand logo beside "TechRisk Portal" first
+     * shipped as a plain string — Filament treats that as an image PATH and
+     * dropped the whole HTML into src="", rendering the broken-image alt
+     * text instead. brandLogo() must receive an Htmlable for markup.
+     */
+    public function test_the_brand_logo_renders_the_dana_mark_as_a_real_image(): void
+    {
+        $this->actingAs($this->adminUser())
+            ->get('/admin')
+            ->assertSuccessful()
+            ->assertSeeHtml('<img src="'.asset('images/favicon.png').'"', false);
+    }
+
+    private function adminUser(): User
+    {
         Role::firstOrCreate(['name' => 'admin']);
         Permission::firstOrCreate(['name' => 'view incidents']);
         Permission::firstOrCreate(['name' => 'view dashboard widgets']);
@@ -29,10 +53,7 @@ class FaviconTest extends TestCase
         $user->assignRole('admin');
         $user->givePermissionTo(['view incidents', 'view dashboard widgets']);
 
-        $this->actingAs($user)
-            ->get('/admin')
-            ->assertSuccessful()
-            ->assertSeeHtml('<link rel="icon"', false);
+        return $user;
     }
 
     public function test_the_browsers_default_favicon_request_is_a_real_image(): void
