@@ -270,9 +270,16 @@ class ApiAuditLogResource extends Resource
             $query->where('user_id', $user->id);
         }
 
-        // Apply year filtering if user doesn't have full access
+        // Apply year filtering if user doesn't have full access.
+        // whereYear(col, $array) does NOT build an IN — Laravel flattens the
+        // array to its head, silently binding only the FIRST year. OR the
+        // years one by one instead (compiles on MySQL and SQLite alike).
         if (! $settings->can_view_all_logs && ! empty($settings->allowed_years)) {
-            $query->whereYear('request_timestamp', $settings->allowed_years);
+            $query->where(function ($w) use ($settings) {
+                foreach ($settings->allowed_years as $year) {
+                    $w->orWhereYear('request_timestamp', (int) $year);
+                }
+            });
         }
 
         return $query;

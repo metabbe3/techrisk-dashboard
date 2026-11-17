@@ -233,7 +233,14 @@ class Incident extends Model implements Auditable
         $settings = \App\Models\UserAuditLogSetting::forUser($user);
 
         if (! $settings->can_view_all_logs && ! empty($settings->allowed_years)) {
-            $query->whereYear('incident_date', $settings->allowed_years);
+            // whereYear(col, $array) does NOT build an IN — Laravel flattens the
+            // array to its head, silently binding only the FIRST year. OR the
+            // years one by one instead (compiles on MySQL and SQLite alike).
+            $query->where(function ($w) use ($settings) {
+                foreach ($settings->allowed_years as $year) {
+                    $w->orWhereYear('incident_date', (int) $year);
+                }
+            });
         }
     }
 

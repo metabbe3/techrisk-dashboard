@@ -2074,3 +2074,26 @@ One round-trip: a single `url LIKE '%id1%' OR url LIKE '%id2%' …` query (serve
 - [x] `NotionIssueSyncServiceTest` restorableIssues tests still green (the shared-mock falls through on the combined query).
 - [x] Batch reads for UI lists; per-item reads only where per-item failure isolation is the point (a background restore must survive one bad tombstone).
 - [x] When replacing N queries with one bulk read over a capped channel, keep a server-side WHERE — an unfiltered bulk read trades a latency bug for a silent-truncation bug.
+## BUG-037 — Multi-year year-access silently showed only the first year (2026-11-17)
+
+### Symptom
+A non-admin user granted `allowed_years = ['2025', '2026']` in `UserAuditLogSetting` saw only 2025's incidents — on every surface routing through `Incident::scopeApplyUserYearAccess` (Incidents list, Issues list, ActionImprovement whereHas, Reporting, export footers, `/api/v1/stats`) and in the audit-log copy `ApiAuditLogResource::applyAccessControl()`. No error anywhere.
+
+### Root Cause
+`whereYear($col, $array)` does NOT build an `IN` clause. Laravel's `flattenValue()` (`Builder.php:4654`) turns the array into `head(Arr::flatten($value))` — the query compiles to `year(col) = ?` bound to the FIRST element only, order-dependently. Single-element arrays (the default `[(int) date('Y')]`) work by accident, which is why prod never flagged it. Admins and `can_view_all_logs` users skip the restriction entirely and were never affected.
+
+### Fix
+OR the years one by one inside a `where()` closure — portable across MySQL (`year(col) = ? or year(col) = ?`) and SQLite (`strftime('%Y', col) = cast(? as text)`):
+```php
+$query->where(function ($w) use ($settings) {
+    foreach ($settings->allowed_years as $year) {
+        $w->orWhereYear('incident_date', (int) $year);
+    }
+});
+```
+The raw alternative `whereIn(DB::raw('YEAR(col)'), $years)` fails on SQLite ("no such function: YEAR") — do not use it.
+
+### Prevention Checklist
+- [x] `IncidentYearAccessScopeTest::test_multi_year_allowed_years_see_every_granted_year` + `ApiAuditLogYearAccessTest` (multi-year + admin-default pins) — were RED on the old code, now green.
+- [x] Full suite 1338 / 5,356 green (7 known reverb errors only, Docker down).
+- [ ] Any future multi-value `where*Date/whereYear` call: pass scalars one per `orWhere*`, never an array — the array form is a silent head-flatten, not an IN.
