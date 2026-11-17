@@ -459,6 +459,89 @@ class Incident extends Model implements Auditable
     }
 
     /**
+     * Status-update freshness rule (owner 2026-11-09/10). One shared
+     * definition feeding both surfaces — the incident-list "Status update"
+     * column and the reminders:send-incidents email lane — so they cannot
+     * drift (BUG-005/006/007 lesson: one rule, every surface).
+     */
+    public const UPDATE_SETTLED_STATUSES = ['Resolved', 'Recovered', 'Closed'];
+
+    public const STATUS_UPDATE_STALE_DAYS = 6;
+
+    public const FLAG_NEED_UPDATE = 'Need update';
+
+    public const FLAG_NEEDS_FOLLOW_UP = 'Needs follow-up';
+
+    /**
+     * Latest status update RECORD by update_date (the owner's staleness
+     * rule), reusing the eager-loaded statusUpdates when present. Not the
+     * latestStatusUpdate() HasOne relation — that is latestOfMany by id,
+     * a different ordering.
+     */
+    public function latestUpdateRecord(): ?StatusUpdate
+    {
+        if ($this->relationLoaded('statusUpdates')) {
+            return $this->statusUpdates->first();
+        }
+
+        return $this->statusUpdates()->orderByDesc('update_date')->orderByDesc('id')->first();
+    }
+
+    /**
+     * List flag: 'Need update' when there is no status update
+     * at all (immediate — no age gate), 'Needs follow-up' when the last
+     * update is unsettled and > STATUS_UPDATE_STALE_DAYS old, else null.
+     */
+    public function statusUpdateFlag(): ?string
+    {
+        if (! $this->isNotDone()) {
+            return null;
+        }
+
+        if ($this->latestUpdateRecord() === null) {
+            return self::FLAG_NEED_UPDATE;
+        }
+
+        return $this->staleUnsettledUpdateFlag();
+    }
+
+    /**
+     * Email-eligibility flag: same rule, but the empty case waits until the
+     * incident itself is also older than STATUS_UPDATE_STALE_DAYS (owner
+     * 2026-11-10: email waits — screen nudge is immediate, inbox nudge is
+     * only for genuinely neglected incidents).
+     */
+    public function statusUpdateReminderFlag(): ?string
+    {
+        if (! $this->isNotDone()) {
+            return null;
+        }
+
+        if ($this->latestUpdateRecord() === null) {
+            return $this->created_at?->lt(now()->subDays(self::STATUS_UPDATE_STALE_DAYS))
+                ? self::FLAG_NEED_UPDATE
+                : null;
+        }
+
+        return $this->staleUnsettledUpdateFlag();
+    }
+
+    private function staleUnsettledUpdateFlag(): ?string
+    {
+        $last = $this->latestUpdateRecord();
+
+        if (in_array($last->status, self::UPDATE_SETTLED_STATUSES, true)) {
+            return null;
+        }
+
+        $lastDate = $last->update_date ?? $this->created_at;
+
+        return $lastDate->lt(now()->subDays(self::STATUS_UPDATE_STALE_DAYS))
+            ? self::FLAG_NEEDS_FOLLOW_UP
+            : null;
+    }
+
+    /**
      * Outstanding (unsettled) amount: potential loss not yet recovered.
      */
     public function getOutstandingFundLossAttribute(): float

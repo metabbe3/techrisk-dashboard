@@ -8,10 +8,12 @@ use App\Mail\GroupNotificationMail;
 use App\Models\Incident;
 use App\Models\NotificationPreference;
 use App\Models\Setting;
+use App\Models\StatusUpdate;
 use App\Models\User;
 use App\Notifications\ChannelFilteredNotification;
 use App\Notifications\FundLossUnsettledReminder;
 use App\Notifications\IncidentNotDoneReminder;
+use App\Notifications\StatusUpdateStaleReminder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
@@ -255,6 +257,159 @@ class SendIncidentRemindersTest extends TestCase
             'recovered_fund' => 0,
             'incident_date' => now()->subDays(30),
         ], $pic);
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertNothingSent();
+    }
+
+    /**
+     * Seed that keeps the OTHER lanes quiet (recent incident_date -> not-done
+     * lane skips; NonFundLoss/zero amounts -> fund-loss lane skips) so only
+     * the status-update lane can fire. created_at is not fillable — forceFill
+     * after create to age the incident.
+     */
+    private function statusUpdateQuietSeed(User $pic): Incident
+    {
+        return $this->incidentWithPic([
+            'incident_status' => IncidentStatus::Open->value,
+            'fund_status' => FundStatus::NonFundLoss->value,
+            'potential_fund_loss' => 0,
+            'recovered_fund' => 0,
+            'incident_date' => now(),
+        ], $pic);
+    }
+
+    /** Owner 2026-11-10: the email waits 6 days even when updates are empty. */
+    public function test_status_update_lane_waits_six_days_on_never_updated_incident(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $this->statusUpdateQuietSeed($pic);
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_reminds_pic_when_incident_has_no_status_update_after_six_days(): void
+    {
+        Notification::fake();
+        Mail::fake();
+        $pic = User::factory()->create();
+        $incident = $this->statusUpdateQuietSeed($pic);
+        $incident->forceFill(['created_at' => now()->subDays(8)])->saveQuietly();
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertSentTo($pic, ChannelFilteredNotification::class, fn ($n) => $n->databaseType() === StatusUpdateStaleReminder::class);
+        Mail::assertSent(GroupNotificationMail::class, 1);
+        $this->assertNotNull($incident->fresh()->last_reminded_at);
+    }
+
+    public function test_status_update_reminder_sends_one_combined_email_to_all_pics(): void
+    {
+        Notification::fake();
+        Mail::fake();
+        $pic1 = User::factory()->create();
+        $pic2 = User::factory()->create();
+        $incident = Incident::factory()->createQuietly([
+            'incident_status' => IncidentStatus::Open->value,
+            'fund_status' => FundStatus::NonFundLoss->value,
+            'potential_fund_loss' => 0,
+            'recovered_fund' => 0,
+            'incident_date' => now(),
+        ]);
+        $incident->pics()->sync([$pic1->id, $pic2->id]);
+        Notification::fake(); // re-fake after attach noise
+        $incident->forceFill(['created_at' => now()->subDays(8)])->saveQuietly();
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Mail::assertSent(GroupNotificationMail::class, 1);
+        Mail::assertSent(GroupNotificationMail::class, fn ($mail) => $mail->hasTo($pic1->email) && $mail->hasTo($pic2->email));
+        Notification::assertSentTo($pic1, ChannelFilteredNotification::class, fn ($n) => $n->databaseType() === StatusUpdateStaleReminder::class);
+    }
+
+    public function test_reminds_pic_when_last_status_update_is_stale_and_unsettled(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $incident = $this->statusUpdateQuietSeed($pic);
+        StatusUpdate::create([
+            'incident_id' => $incident->id,
+            'status' => 'Investigation',
+            'notes' => 'still digging',
+            'update_date' => now()->subDays(7),
+        ]);
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertSentTo($pic, ChannelFilteredNotification::class, fn ($n) => $n->databaseType() === StatusUpdateStaleReminder::class);
+    }
+
+    public function test_status_update_lane_skips_settled_last_update(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $incident = $this->statusUpdateQuietSeed($pic);
+        StatusUpdate::create([
+            'incident_id' => $incident->id,
+            'status' => 'Resolved',
+            'notes' => 'resolved on the ground',
+            'update_date' => now()->subDays(30),
+        ]);
+        Notification::fake(); // re-fake after StatusUpdateObserver noise
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_status_update_lane_skips_recent_update(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $incident = $this->statusUpdateQuietSeed($pic);
+        StatusUpdate::create([
+            'incident_id' => $incident->id,
+            'status' => 'Investigation',
+            'notes' => 'fresh',
+            'update_date' => now()->subDays(2),
+        ]);
+        Notification::fake(); // re-fake after StatusUpdateObserver noise
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_status_update_lane_skips_completed_incidents(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $incident = $this->statusUpdateQuietSeed($pic);
+        $incident->forceFill(['incident_status' => IncidentStatus::Completed->value])->saveQuietly();
+        StatusUpdate::create([
+            'incident_id' => $incident->id,
+            'status' => 'Investigation',
+            'notes' => 'stale but completed anyway',
+            'update_date' => now()->subDays(30),
+        ]);
+        Notification::fake(); // re-fake after StatusUpdateObserver noise
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_status_update_toggle_disables_the_lane(): void
+    {
+        Notification::fake();
+        Setting::set('status_update_reminder_enabled', false);
+        $pic = User::factory()->create();
+        $incident = $this->statusUpdateQuietSeed($pic);
+        $incident->forceFill(['created_at' => now()->subDays(8)])->saveQuietly();
 
         $this->artisan('reminders:send-incidents')->assertSuccessful();
 

@@ -18,6 +18,14 @@ Full detail of every counting/metric/fund rule. CLAUDE.md carries only the headl
 
 A Label `Outlier` tag removes the row from every MTBF/MTTR *average* (calculator nulls its stored metrics; every metric query/span composes `withoutOutliers()`; predecessor gaps telescope over it so Σgaps still equals span) while it stays in every *count* (Total Cases, status tabs, severity breakdowns, KPI counts, Group-By Cases) and every table/export row — its own MTTR/MTBF cells render the literal **`Outlier`** (`mttr_formatted` accessor + per-surface mtbf cells; live-table `state()` returns `int|string`). Tagging fires a recalc + cache bump via the `IncidentLabel` pivot — NOT the observer; raw pivot writes and deleting/renaming the label record bypass it (remedy: Recalculate button / sweep command).
 
+## Status-update freshness (owner 2026-11-09/10)
+
+- One shared rule on `Incident` feeding two surfaces so they cannot drift (BUG-005/006/007 lesson): the incident-list "Status update" column (`Incident::statusUpdateFlag()`) and the `reminders:send-incidents` status-update email lane (`Incident::statusUpdateReminderFlag()`, `StatusUpdateStaleReminder`).
+- Rule: incident not `Completed` AND (no status update at all → "Need update", immediate on the list) OR last update's status not in `Resolved/Recovered/Closed` AND its `update_date` older than 6 days → "Needs follow-up".
+- The EMAIL lane is the same rule except the empty case waits until the incident itself is also older than 6 days (owner 2026-11-10: the email waits — the screen nudge is immediate, the inbox nudge only for genuinely neglected incidents).
+- Ordering for "last update" is `update_date DESC, id DESC` (`Incident::latestUpdateRecord()`), NOT the `latestStatusUpdate()` HasOne relation (that is latestOfMany by id — different ordering, used by Kanban/Reporting/etc.).
+- Lane gated by the Email Settings toggle `status_update_reminder_enabled` + the shared `last_reminded_at` throttle and `netcore_enabled` kill-switch, like the other two reminder lanes. Delivery preference type: `status_update_reminder` (`User::getNotificationType()`).
+
 ## Action Improvements lifecycle (PROJ-014, owner 2026-10-14)
 
 - Statuses draft/pending/done/cancelled/tbd; priority optional, default low.

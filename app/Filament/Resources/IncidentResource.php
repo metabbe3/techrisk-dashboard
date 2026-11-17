@@ -168,10 +168,10 @@ class IncidentResource extends Resource
                             Section::make('Incident Dates')
                                 ->icon('heroicon-o-calendar')
                                 ->schema([
-                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required()->maxDate(now()),
-                                    DateTimePicker::make('discovered_at')->afterOrEqual('incident_date'),
-                                    DateTimePicker::make('stop_bleeding_at')->afterOrEqual('incident_date'),
-                                    DateTimePicker::make('entry_date_tech_risk')->required()->maxDate(now()),
+                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required()->maxDate(now())->native(false)->seconds(false),
+                                    DateTimePicker::make('discovered_at')->afterOrEqual('incident_date')->native(false)->seconds(false),
+                                    DateTimePicker::make('stop_bleeding_at')->afterOrEqual('incident_date')->native(false)->seconds(false),
+                                    DateTimePicker::make('entry_date_tech_risk')->required()->maxDate(now())->native(false)->seconds(false),
                                     Select::make('detected_via')
                                         ->label('Detected Via')
                                         ->options(DetectedVia::options())
@@ -296,7 +296,7 @@ class IncidentResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'statusUpdates' => fn ($u) => $u->orderByDesc('update_date')->orderByDesc('id')]))
             ->defaultSort('incident_date', 'desc')
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases')),
@@ -371,6 +371,14 @@ class IncidentResource extends Resource
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
                 TextColumn::make('severity')->badge()->color(fn (?Severity $state): string => $state?->color() ?? 'gray')->sortable()->width('80px'),
                 TextColumn::make('incident_status')->badge()->color(fn (?IncidentStatus $state): string => $state?->color() ?? 'gray')->sortable()->width('100px'),
+                // Owner rule (2026-11-09/10): status-update freshness flag —
+                // rule lives on Incident::statusUpdateFlag() (shared with
+                // the reminder email lane so the two cannot drift).
+                TextColumn::make('follow_up')
+                    ->label('Status update')
+                    ->badge()
+                    ->color(fn (?string $state): string => $state === Incident::FLAG_NEED_UPDATE ? 'danger' : 'warning')
+                    ->state(fn (Incident $record): ?string => $record->statusUpdateFlag()),
                 TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
                 TextColumn::make('pics.name')->label('PIC')->badge()->toggleable()->width('100px'),
                 TextColumn::make('incident_date')->dateTime()->sortable()->width('100px'),

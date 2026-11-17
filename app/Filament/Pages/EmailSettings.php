@@ -60,6 +60,7 @@ class EmailSettings extends Page implements HasForms
             'base_url' => Setting::get('netcore_base_url', config('mail.mailers.netcore.base_url')),
             'incident_not_done_reminder_enabled' => Setting::get('incident_not_done_reminder_enabled', true),
             'incident_not_done_reminder_days' => Setting::get('incident_not_done_reminder_days', 7),
+            'status_update_reminder_enabled' => Setting::get('status_update_reminder_enabled', true),
             'fund_loss_reminder_enabled' => Setting::get('fund_loss_reminder_enabled', true),
             'reminder_remind_interval_days' => Setting::get('reminder_remind_interval_days', 7),
             'from_address' => Setting::get('mail_from_address', 'noreply-techrisk@dana.id'),
@@ -172,6 +173,11 @@ class EmailSettings extends Page implements HasForms
                             ->maxValue(365)
                             ->default(7)
                             ->helperText('Remind when incident_status != Completed and the incident is at least this old.'),
+
+                        Toggle::make('status_update_reminder_enabled')
+                            ->label('Stale status-update reminders')
+                            ->helperText('Email the PIC when an incident has no status update and is older than 6 days, or the last update is unsettled and older than 6 days.')
+                            ->columnSpanFull(),
 
                         TextInput::make('reminder_remind_interval_days')
                             ->label('Re-remind every (days)')
@@ -348,6 +354,7 @@ class EmailSettings extends Page implements HasForms
 
         Setting::set('incident_not_done_reminder_enabled', (bool) ($data['incident_not_done_reminder_enabled'] ?? false));
         Setting::set('incident_not_done_reminder_days', (int) ($data['incident_not_done_reminder_days'] ?? 7));
+        Setting::set('status_update_reminder_enabled', (bool) ($data['status_update_reminder_enabled'] ?? false));
         Setting::set('fund_loss_reminder_enabled', (bool) ($data['fund_loss_reminder_enabled'] ?? false));
         Setting::set('reminder_remind_interval_days', (int) ($data['reminder_remind_interval_days'] ?? 7));
 
