@@ -849,10 +849,11 @@ class IncidentResource extends Resource
                 }
 
                 return $record->sub_incidents_count > 0 ? ['sub-incident-family-head'] : [];
-            })
-            ->contentFooter(fn () => view('livewire.incident-stats-footer', [
-                'stats' => app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build(),
-            ]));
+            });
+        // Summary left the contentFooter (owner 2026-11-17): a content
+        // footer lives INSIDE the table's horizontal scroll container.
+        // It renders as the IncidentListSummary header widget on the list
+        // page instead — above the tabs, never moving with the table.
     }
 
     public static function getRelations(): array

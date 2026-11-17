@@ -10,10 +10,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\App;
 
 /**
- * Footer statistics for the Incidents table.
+ * Summary statistics for the Incidents list page.
  *
- * Lifted from ListIncidents::getTableContentFooter() so the resource table()
- * itself can own the stats declaratively via ->contentFooter().
+ * Rendered by the IncidentListSummary header widget (owner 2026-11-17: moved
+ * out of the table's contentFooter, which lived inside the table's horizontal
+ * scroll container). Exports share the builder for their stats sheets.
  */
 class IncidentStatsFooterData
 {

@@ -10,7 +10,7 @@
     ];
 @endphp
 
-<x-filament::section>
+<x-filament::section collapsible>
     <x-slot name="heading">
         Summary
     </x-slot>
