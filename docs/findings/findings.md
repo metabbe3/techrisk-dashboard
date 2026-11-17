@@ -430,3 +430,34 @@ gain. Revisit only if the env var is retired.
 
 **Ship guardrail reminder:** stash@{0} holds PROJ-022 (OPA/guardrails, 2026-11-11)
 — recover there before touching the reply-filter/guardrail stack again.
+
+---
+
+### Sync intake request can exceed any gateway timeout (2026-11-17)
+
+**Date:** 2026-11-17
+**Category:** Architecture
+**Severity:** Medium
+**Status:** Open (mitigated 2026-11-17)
+
+#### Description
+`InvestigationFormIntake::extractFromSource()` runs the whole intake — Notion
+read-all fan-out (up to ~30 sequential MCP calls, `NotionReadService::readFullPage`)
+plus the Go-brain LLM extract (Go ctx 360s, PHP Http 420s) — synchronously inside
+one Livewire POST. Nothing bounds the request except its work, so any gateway in
+front can expire first: nginx `fastcgi_read_timeout 300` produced prod 504s while
+PHP kept running. The 2026-11-17 read-all change (48k→96k cap, subtree drains,
+child pages) pushed real wall time past 300s for the first time.
+
+#### Mitigation applied
+nginx `fastcgi_read_timeout` / `max_execution_time` raised 300→600 (`nginx.conf:30-31`),
+above the documented ladder (Go ctx 360 < Http 420 < nginx 600); `connectTimeout(10)`
+added to the Go call (`GoAgentBrain.php`, per the lesson-learned connect_timeout checklist).
+If an edge proxy sits in front of prod nginx, its read timeout must be raised separately.
+
+#### Recommended Action (eventual fix)
+Move extraction to a queued job and poll from the Livewire page (`wire:poll` on the
+draft status). Survives any gateway/edge timeout and fixes the UX (user waits on a
+progress state, not a held request). Deferred per owner decision 2026-11-17 —
+a real refactor: new job, draft status flow, polling UI, test churn on a
+heavily-pinned flow (45+ intake tests).
