@@ -20,6 +20,7 @@ use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
 use Livewire\Component;
@@ -71,6 +72,9 @@ class InvestigationFormIntake extends Component implements HasForms
 
     /** Concurrency guard: reload warning when the draft moved under us. */
     public ?string $loadedDraftAt = null;
+
+    /** Notion's own refusal text when a provided URL can't be fetched (diagnostic). */
+    public string $notionError = '';
 
     public array $missing = [];
 
@@ -159,7 +163,9 @@ class InvestigationFormIntake extends Component implements HasForms
             // A URL that couldn't be read (not shared with the integration) is a
             // different problem from "nothing provided" — say which.
             throw ValidationException::withMessages(['notionUrl' => trim($this->notionUrl) !== ''
-                ? 'This Notion page could not be read — share it with the dashboard Notion integration in Notion (••• → Connections), or paste/upload the content instead.'
+                ? 'This Notion page could not be read'
+                    .($this->notionError !== '' ? ' — Notion said: '.$this->notionError : '')
+                    .' — share it with the dashboard Notion integration in Notion (••• → Connections), or paste/upload the content instead.'
                 : 'Provide a Notion URL, a file, or paste your material first.']);
         }
 
@@ -479,6 +485,10 @@ class InvestigationFormIntake extends Component implements HasForms
             if ($fetched !== null && ! $fetched['isError'] && ($body = app(NotionReadService::class)->extractPageBody($fetched['text'])) !== null) {
                 [$clamped] = app(NotionReadService::class)->clamp($body);
                 $parts[] = "## Notion page\n".$clamped;
+            } else {
+                // Keep Notion's own refusal — "could not be read" alone hides
+                // whether it's page-sharing, a dead token or a deleted page.
+                $this->notionError = Str::limit(trim((string) ($fetched['text'] ?? 'connection failed')), 200);
             }
         }
 
