@@ -9,6 +9,7 @@ use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
 use App\Exports\IncidentsExport;
+use App\Filament\Statistics\IncidentStatsFooterData;
 use App\Models\Incident;
 use App\Models\ReportTemplate;
 use Carbon\Carbon;
@@ -281,19 +282,7 @@ class Reporting extends Page implements HasForms
             $metrics['avg_mttr'] = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
-            $mtbfQuery = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->withoutOutliers();
-            $mtbfCount = $mtbfQuery->count();
-            $avgMtbf = 0;
-            if ($mtbfCount > 1) {
-                $minDate = $mtbfQuery->min('incident_date');
-                $maxDate = $mtbfQuery->max('incident_date');
-                if ($minDate && $maxDate) {
-                    $totalDays = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay());
-                    $avgMtbf = round($totalDays / ($mtbfCount - 1), 2);
-                }
-            }
-            $metrics['avg_mtbf'] = $avgMtbf;
+            $metrics['avg_mtbf'] = round(IncidentStatsFooterData::avgMtbf($query), 2);
         }
         $this->metrics = $metrics;
 

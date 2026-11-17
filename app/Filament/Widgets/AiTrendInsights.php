@@ -7,6 +7,7 @@ namespace App\Filament\Widgets;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
+use App\Filament\Statistics\IncidentStatsFooterData;
 use App\Models\AiSetting;
 use App\Models\Incident;
 use App\Models\Label;
@@ -187,19 +188,7 @@ class AiTrendInsights extends Widget
         // so every round()/number_format() below is safe under strict_types.
         $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0);
 
-        $mtbfAgg = (clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->selectRaw('COUNT(*) as cnt, MIN(incident_date) as min_date, MAX(incident_date) as max_date')
-            ->first();
-        $avgMtbf = 0;
-        if ($mtbfAgg && $mtbfAgg->cnt > 1 && $mtbfAgg->min_date && $mtbfAgg->max_date) {
-            $avgMtbf = round(
-                \Carbon\Carbon::parse($mtbfAgg->min_date)->startOfDay()->diffInDays(
-                    \Carbon\Carbon::parse($mtbfAgg->max_date)->startOfDay()
-                ) / ($mtbfAgg->cnt - 1),
-                2
-            );
-        }
+        $avgMtbf = round(IncidentStatsFooterData::avgMtbf($baseQuery), 2);
 
         // Fund Loss card rule: Incident + Completed + excludedFromCounts
         // (matches DashboardStatsOverview).

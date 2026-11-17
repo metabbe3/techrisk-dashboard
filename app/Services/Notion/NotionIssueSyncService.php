@@ -82,6 +82,12 @@ class NotionIssueSyncService
 
     public function __construct(private NotionMcpClient $notion) {}
 
+    /** Shared read helpers (row/untitled-block extraction, id parser) — one implementation with NotionReadService. */
+    protected function read(): NotionReadService
+    {
+        return new NotionReadService($this->notion);
+    }
+
     /**
      * @param  bool  $restoreDeleted  Full sync — also re-import Issues deleted
      *                                from the dashboard (their tombstones).
@@ -336,8 +342,7 @@ class NotionIssueSyncService
 
         // The database's own severity column wins; the root-cause map is
         // the fallback for rows where nobody classified it yet.
-        $severity = NotionIssueMapper::mapClassificationToSeverity($row['classification'] ?? null)
-            ?? NotionIssueMapper::mapSeverityToCode((string) ($row['root_cause'] ?? 'G'));
+        $severity = NotionIssueMapper::severityForRow($row);
 
         // Atomic pair: a failed synced-page insert (unique page_id — the
         // manual sync racing the cron) must not leave an orphan Incident.
@@ -436,13 +441,7 @@ class NotionIssueSyncService
      */
     protected function unknownBlockIds(array $fetch, string $pageId): array
     {
-        $ids = $fetch['structured']['unknown_block_ids'] ?? [];
-
-        if (! is_array($ids)) {
-            $ids = [];
-        }
-
-        $ids = array_values(array_filter($ids, 'is_string'));
+        $ids = $this->read()->unknownBlockIds($fetch);
 
         if (! empty($fetch['structured']['truncated']) && $ids === []) {
             Log::warning('Notion issue sync: page truncated but no unknown_block_ids found — check the structured payload shape.', [
@@ -479,8 +478,7 @@ class NotionIssueSyncService
 
         // The database's own severity column wins; the root-cause map is
         // the fallback for rows where nobody classified it yet.
-        $severity = NotionIssueMapper::mapClassificationToSeverity($row['classification'] ?? null)
-            ?? NotionIssueMapper::mapSeverityToCode((string) ($row['root_cause'] ?? 'G'));
+        $severity = NotionIssueMapper::severityForRow($row);
 
         return ($row['Name'] ?? '?')." ({$incidentDate->toDateString()}, {$severity})";
     }
@@ -512,12 +510,44 @@ class NotionIssueSyncService
             return [];
         }
 
+        // ONE url-LIKE round-trip for all dangling tombstones — the picker
+        // renders them on page open, and a per-tombstone lookup
+        // (recoverDeletedIssues' run-time shape) is N round-trips for a modal.
+        // Server-side OR filter keeps the reply small (result caps).
+        $pageIds = NotionSyncedPage::query()->whereNull('incident_id')
+            ->pluck('page_id')->filter(fn (string $id) => ctype_xdigit($id))->values();
+        if ($pageIds->isEmpty()) {
+            return [];
+        }
+
+        $where = collect($pageIds)
+            ->map(fn (string $id) => sprintf("url LIKE '%%%s%%'", $id))
+            ->implode(' OR ');
+
+        $query = $this->notion->callToolDetailed('notion-query-data-sources', [
+            'data' => [
+                'data_source_urls' => [$collectionUrl],
+                'query' => sprintf('SELECT %s FROM "%s" WHERE %s', self::ROW_COLUMNS, $collectionUrl, $where),
+            ],
+        ]);
+
+        $rows = ($query === null || $query['isError'])
+            ? []
+            : ($this->read()->extractRows((string) $query['text']) ?? []);
+
         $options = [];
 
-        foreach (NotionSyncedPage::query()->whereNull('incident_id')->pluck('page_id') as $pageId) {
-            $row = $this->queryPageById($collectionUrl, $pageId);
+        foreach ($pageIds as $pageId) {
+            $row = null;
+            foreach ($rows as $candidate) {
+                if (str_contains((string) ($candidate['url'] ?? ''), $pageId)) {
+                    $row = $candidate;
 
-            if ($row === null || $row === [] || blank($row['Name'] ?? null) || $this->titleAlreadyExists((string) $row['Name'])) {
+                    break;
+                }
+            }
+
+            if ($row === null || blank($row['Name'] ?? null) || $this->titleAlreadyExists((string) $row['Name'])) {
                 continue;
             }
 
@@ -949,7 +979,7 @@ class NotionIssueSyncService
      */
     protected function extractCollectionUrl(string $text): ?string
     {
-        return preg_match('/collection:\/\/[0-9a-f-]{36}/i', $text, $m) ? $m[0] : null;
+        return NotionReadService::collectionUrlFrom($text);
     }
 
     /**
@@ -957,19 +987,13 @@ class NotionIssueSyncService
      */
     protected function extractRows(string $text): ?array
     {
-        $decoded = json_decode($text, true);
-
-        if (! is_array($decoded) || ! is_array($decoded['results'] ?? null)) {
-            return null;
-        }
-
-        return array_values(array_filter($decoded['results'], fn ($row) => is_array($row)));
+        return $this->read()->extractRows($text);
     }
 
-    /** The trailing 32-hex ID of a Notion page URL. */
+    /** The 32-hex/UUID id inside a Notion URL — NotionReadService::bareId, the one parser (BUG-034 shape: bounded, last match). */
     protected function pageIdFromUrl(string $url): ?string
     {
-        return preg_match('/([a-f0-9]{32})/i', $url, $m) ? $m[1] : null;
+        return NotionReadService::bareId($url);
     }
 
     protected function parseDate(mixed $dateStart, mixed $createdTime): Carbon

@@ -449,6 +449,7 @@ class RunAiAgentJob implements ShouldQueue
         try {
             $response = Http::withHeaders(['X-Agent-Token' => $token])
                 ->timeout($timeoutSeconds ?? (int) config('ai.go_agent.timeout', 420))
+                ->connectTimeout(10)
                 ->post(rtrim((string) config('ai.go_agent.base_url'), '/').'/internal/run', $payload);
         } catch (\Throwable $e) {
             return AiTextResult::failure('Go agent unreachable: '.$e->getMessage());

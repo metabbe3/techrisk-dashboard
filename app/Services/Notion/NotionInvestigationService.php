@@ -317,14 +317,14 @@ class NotionInvestigationService
             return ['status' => 'failed', 'message' => 'The linked Notion page has been deleted in Notion — use "Re-investigate" to start a fresh investigation.'];
         }
 
-        $body = $this->extractPageBody($response['text']);
+        $body = $this->read()->extractPageBody($response['text']);
 
         if ($body === null) {
             return ['status' => 'failed', 'message' => 'Could not read the page body from Notion\'s response — the stored copy is unchanged.'];
         }
 
         $incident->update([
-            'notion_investigation_markdown' => $this->inlineAiBlocks($body),
+            'notion_investigation_markdown' => $this->read()->inlineAiBlocks($body),
             'notion_investigation_synced_at' => now(),
             // The page came back (restored by hand in Notion) — unflag.
             'notion_investigation_deleted_at' => null,
@@ -617,10 +617,10 @@ MARKDOWN;
                 return null;
             }
 
-            $body = $this->extractPageBody($response['text']);
+            $body = $this->read()->extractPageBody($response['text']);
 
             if ($body !== null) {
-                return $this->inlineAiBlocks($body);
+                return $this->read()->inlineAiBlocks($body);
             }
         }
 
@@ -628,67 +628,14 @@ MARKDOWN;
     }
 
     /**
-     * Owner 2026-11-04 (round 8): the page envelope renders Notion AI blocks
-     * as self-closing `<unknown url="…#<block id>" alt="ai_block" />`
-     * placeholders — the generated content is NOT inlined (the operator's
-     * "refresh didn't import my AI content"). Each placeholder is replaced
-     * with the block's own fetched body (live-verified: a generated block
-     * fetches as a page envelope; an empty one as <blank-page>). A failed
-     * block fetch keeps the placeholder — the next refresh retries it.
+     * Shared Notion read helpers (body extraction with the unterminated-<content>
+     * tolerance, AI-block inlining with a capped, throttled fetch loop) — one
+     * implementation with NotionReadService; this service's private copies
+     * were uncapped and dropped the tolerance.
      */
-    protected function inlineAiBlocks(string $body): string
+    protected function read(): NotionReadService
     {
-        return preg_replace_callback(
-            '/<unknown\s[^>]*\/>/i',
-            function (array $match): string {
-                if (! str_contains($match[0], 'alt="ai_block"')) {
-                    return $match[0];
-                }
-
-                if (! preg_match('/url="[^"#]+#([a-f0-9-]+)"/i', $match[0], $anchor)) {
-                    return $match[0];
-                }
-
-                $response = $this->notion->callToolDetailed(
-                    'notion-fetch',
-                    ['id' => str_replace('-', '', $anchor[1])],
-                );
-
-                if ($response === null || $response['isError']) {
-                    return $match[0];
-                }
-
-                // Round 10 ("table content not fully imported"): a
-                // not-yet-generated block anchors as <blank-page> — no
-                // <content> to extract. Keeping the placeholder preserves
-                // the section (the operator runs the block in Notion, then
-                // Refresh inlines it); the old `?? ''` deleted it instead.
-                return $this->extractPageBody($response['text']) ?? $match[0];
-            },
-            $body,
-        ) ?? $body;
-    }
-
-    /**
-     * The page body (notion-flavored markdown) out of a notion-fetch
-     * response — the tool result is a JSON envelope whose inner text wraps
-     * the body in <content> tags (live 2026-11-03).
-     */
-    protected function extractPageBody(string $responseText): ?string
-    {
-        $payload = json_decode($responseText, true);
-
-        if (! is_array($payload)) {
-            return null;
-        }
-
-        if (! preg_match('/<content>(.*)<\/content>/s', (string) ($payload['text'] ?? ''), $matches)) {
-            return null;
-        }
-
-        $body = trim($matches[1]);
-
-        return $body === '' ? null : $body;
+        return new NotionReadService($this->notion);
     }
 
     /**

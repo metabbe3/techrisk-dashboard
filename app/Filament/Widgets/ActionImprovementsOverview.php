@@ -61,18 +61,22 @@ class ActionImprovementsOverview extends BaseWidget
                 ->groupBy('status')
                 ->pluck('count', 'status');
 
-            $pendingCount = $results['pending'] ?? 0;
-            $doneCount = $results['done'] ?? 0;
+            $pendingCount = $results[ActionImprovement::STATUS_PENDING] ?? 0;
+            $doneCount = $results[ActionImprovement::STATUS_DONE] ?? 0;
 
             // PROJ-014: overdue aging aligned with the escalation ladder —
             // same "pending + past due" semantics as governance
             // overdueActionItemCount(), plus escalated rows separately.
             $aging = $scoped()
-                ->selectRaw("
-                    COUNT(CASE WHEN status = 'pending' AND due_date < ? THEN 1 END) as overdue,
-                    COUNT(CASE WHEN status = 'pending' AND due_date < ? AND escalation_level > 0 THEN 1 END) as escalated,
-                    COUNT(CASE WHEN status = 'pending' AND due_date IS NULL THEN 1 END) as tbd
-                ", [today()->toDateString(), today()->toDateString()])
+                ->selectRaw('
+                    COUNT(CASE WHEN status = ? AND due_date < ? THEN 1 END) as overdue,
+                    COUNT(CASE WHEN status = ? AND due_date < ? AND escalation_level > 0 THEN 1 END) as escalated,
+                    COUNT(CASE WHEN status = ? AND due_date IS NULL THEN 1 END) as tbd
+                ', [
+                    ActionImprovement::STATUS_PENDING, today()->toDateString(),
+                    ActionImprovement::STATUS_PENDING, today()->toDateString(),
+                    ActionImprovement::STATUS_PENDING,
+                ])
                 ->first();
             $overdueCount = (int) ($aging->overdue ?? 0);
             $escalatedCount = (int) ($aging->escalated ?? 0);

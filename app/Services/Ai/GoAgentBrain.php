@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Ai;
 
+use App\Services\Ai\Concerns\JsonExtractor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -115,22 +116,11 @@ class GoAgentBrain
 
     private function decode(?string $text): ?array
     {
-        if ($text === null || trim($text) === '') {
-            return null;
-        }
-
-        $decoded = json_decode(trim($text), true);
-
-        // Tolerate fenced/prose-wrapped JSON — the Go reply filter and the
-        // model itself can surround the object ("Here you go: ```json …").
-        if (! is_array($decoded)
-            && ($start = mb_strpos($text, '{')) !== false
-            && ($end = mb_strrpos($text, '}')) !== false
-            && $end > $start) {
-            $decoded = json_decode(mb_substr($text, $start, $end - $start + 1), true);
-        }
-
-        return is_array($decoded) ? $decoded : null;
+        // Tolerates fenced/prose-wrapped JSON via the shared extractor — the
+        // Go reply filter and the model itself can surround the object.
+        return $text === null || trim($text) === ''
+            ? null
+            : JsonExtractor::extract($text);
     }
 
     private static function replyCap(string $fieldType): int

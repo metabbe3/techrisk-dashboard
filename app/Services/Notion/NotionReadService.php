@@ -315,12 +315,22 @@ class NotionReadService
         return array_values(array_filter(is_array($ids) ? $ids : [], 'is_string'));
     }
 
-    /** The bare 32-hex (or dashed-UUID) id inside a Notion URL, if any. */
+    /**
+     * The page id in a Notion link: the LAST 32-hex (or dashed UUID) in the
+     * URL path, hex-bounded. Never strip dashes first — that glues slug
+     * letters onto the id ("RootCaus[e]-1022…", "v[1-0]-d352…") and sends a
+     * shifted, nonexistent id (BUG-034: the first-match parser sent it).
+     * ponytail: peek links (?p=<id>) resolve to their database; paste the page's own link.
+     */
     public static function bareId(string $url): ?string
     {
-        return preg_match('/([0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i', $url, $m)
-            ? $m[1]
-            : null;
+        preg_match_all(
+            '/(?<![0-9a-f])(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![0-9a-f])/i',
+            (string) strtok(trim($url), '?#'),
+            $m,
+        );
+
+        return $m[0] === [] ? null : end($m[0]);
     }
 
     /**
@@ -356,6 +366,12 @@ class NotionReadService
      * The queryable collection url for a database id/URL, scraped from a
      * notion-fetch of the database (`<data-source url="collection://uuid">`).
      */
+    /** The collection:// url inside a fetched database document. */
+    public static function collectionUrlFrom(string $text): ?string
+    {
+        return preg_match('/collection:\/\/[0-9a-f-]{36}/i', $text, $m) ? $m[0] : null;
+    }
+
     protected function collectionUrl(string $database): ?string
     {
         $key = 'notion.collection_url.'.md5($database);
@@ -372,14 +388,16 @@ class NotionReadService
             return null;
         }
 
-        if (! preg_match('/collection:\/\/[0-9a-f-]{36}/i', (string) $response['text'], $m)) {
+        // Manual get/put (not Cache::remember) so a failed resolve is never
+        // cached as an empty value.
+        $url = self::collectionUrlFrom((string) $response['text']);
+
+        if ($url === null) {
             return null;
         }
 
-        // Manual get/put (not Cache::remember) so a failed resolve is never
-        // cached as an empty value.
-        Cache::put($key, $m[0], now()->addDay());
+        Cache::put($key, $url, now()->addDay());
 
-        return $m[0];
+        return $url;
     }
 }

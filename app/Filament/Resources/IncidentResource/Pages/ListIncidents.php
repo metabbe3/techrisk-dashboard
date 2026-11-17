@@ -108,7 +108,9 @@ class ListIncidents extends ListRecords
 
                         $totalCases = $baseline->count();
 
-                        $avgMtbf = app(\App\Filament\Statistics\IncidentStatsFooterData::class)->build($baseline)['avgMtbf'];
+                        // One metric, one implementation — the full build() would
+                        // run 9 queries just to hand back this single key.
+                        $avgMtbf = round(\App\Filament\Statistics\IncidentStatsFooterData::avgMtbf($baseline), 3);
 
                         // BUG-021: DECIMAL aggregates are strings on MySQL — cast for
                         // number_format() inside the strict-typed export classes.
