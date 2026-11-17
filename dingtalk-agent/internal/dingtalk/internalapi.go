@@ -142,12 +142,21 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 		}
 
 		// The dashboard can raise the reply cap for one run (large JSON
-		// extraction payloads exceed the chat-sized default).
+		// extraction payloads exceed the chat-sized default). A raised cap
+		// also marks the reply as DATA — machine-read JSON — so only Redact
+		// and the cap apply: the chat guards (scope gate, tool-call fence
+		// strip, leak redaction) replace lines over text the model is merely
+		// quoting from the source.
 		replyCap := b.cfg.MaxReplyChars
 		if req.MaxReplyChars > 0 {
 			replyCap = req.MaxReplyChars
 		}
-		filtered := guardrail.FilterReplyCap(reply, replyCap)
+		var filtered string
+		if req.MaxReplyChars > 0 {
+			filtered = guardrail.FilterReplyData(reply, replyCap)
+		} else {
+			filtered = guardrail.FilterReplyCap(reply, replyCap)
+		}
 		if filtered == "" {
 			filtered = "The scheduled run produced no answer."
 		}

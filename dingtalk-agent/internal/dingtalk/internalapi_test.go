@@ -332,6 +332,41 @@ func TestInternalRunTaskModeHonorsMaxReplyCharsOverride(t *testing.T) {
 	}
 }
 
+func TestInternalRunDataReplySkipsChatGuardsWhenCapRaised(t *testing.T) {
+	f := newFakeInternalAPI(t)
+	bot := newInternalBot(t, f)
+	srv := httptest.NewServer(NewInternalMux(bot))
+	defer srv.Close()
+
+	// An extraction reply quoting source text: identity/rename guard, leak
+	// marker, and a tool-call fence — every one of these would trip the chat
+	// filter (OutputRefusal / fence strip / "[System instruction omitted]").
+	// Backticks can't sit inside a Go raw string — concatenate the fence.
+	tick := "```"
+	data := `{"summary": {"description": "page quotes: You are Risk Agent, ATURAN and \"my name is Bob\"", "note": "` + tick + `json\n{"name": "t", "function": "f"}` + tick + `"}}`
+
+	f.mu.Lock()
+	f.reply = data
+	f.mu.Unlock()
+
+	// With the cap raised (intake extraction): the payload passes VERBATIM.
+	_, out := postInternal(t, srv.URL, "shared-secret", internalRunRequest{
+		Mode: "task", Text: "extract", MaxReplyChars: 60000,
+	})
+	if got := out["output"].(string); got != data {
+		t.Errorf("data run corrupted the payload:\n got  %q\n want %q", got, data)
+	}
+
+	// Without the override (chat-sized run): the guards still fire.
+	f.mu.Lock()
+	f.reply = data
+	f.mu.Unlock()
+	_, out = postInternal(t, srv.URL, "shared-secret", internalRunRequest{Mode: "task", Text: "extract"})
+	if got := out["output"].(string); got == data {
+		t.Errorf("chat run must still filter, got the payload verbatim")
+	}
+}
+
 func TestInternalRunUnknownMode(t *testing.T) {
 	f := newFakeInternalAPI(t)
 	bot := newInternalBot(t, f)

@@ -12,6 +12,7 @@ use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
 use App\Models\User;
 use App\Services\InvestigationForm\InvestigationFormSchema;
+use App\Services\InvestigationForm\InvestigationFormSettings;
 use App\Services\Notion\NotionReadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
@@ -233,8 +234,8 @@ class InvestigationFormIntakeTest extends TestCase
 
         $notion = $this->mock(NotionReadService::class);
         foreach ($cases as $id) {
-            $notion->shouldReceive('fetch')->once()->with($id)
-                ->andReturn(['structured' => null, 'text' => 'object_not_found', 'isError' => true]);
+            $notion->shouldReceive('readFullPage')->once()->with($id)
+                ->andReturn(['body' => null, 'images' => 0, 'truncated' => false, 'error' => 'object_not_found']);
         }
 
         foreach (array_keys($cases) as $url) {
@@ -287,9 +288,12 @@ class InvestigationFormIntakeTest extends TestCase
         $component->assertSet('actionItems.2.due_date', '');
         $component->assertSet('actionItems.2.item', 'Patch probe [source due date: end of month]');
 
-        // Second extract: a bare date is never guessed into the picker — it
-        // comes back as a question quoting the source value.
-        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+        // Second extract on a FRESH link: a bare date is never guessed into
+        // the picker — it comes back as a question quoting the source value.
+        // (On the same link the draft persisted by the first extract would
+        // legitimately win over the AI's bare date — that's draft > AI.)
+        [, , $plain2] = $this->makeLink();
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain2])
             ->set('pasteText', 'x')
             ->call('extractFromSource')
             ->assertHasNoErrors();
@@ -430,6 +434,158 @@ class InvestigationFormIntakeTest extends TestCase
             ->assertSee('This link is not valid');
 
         Queue::assertPushed(ConvertDocumentToMarkdown::class, 2);
+    }
+
+    public function test_notion_notes_flag_unreadable_images_and_a_truncated_page(): void
+    {
+        [, , $plain] = $this->makeLink();
+
+        $this->mock(NotionReadService::class)
+            ->shouldReceive('readFullPage')->twice()
+            ->andReturn(
+                ['body' => 'Root cause: DB died.', 'images' => 2, 'truncated' => true, 'error' => ''],
+                ['body' => 'All text.', 'images' => 0, 'truncated' => false, 'error' => ''],
+            );
+
+        Http::fake(['brain.test/internal/run' => Http::response(['ok' => true, 'output' => '{}', 'model' => 'm'])]);
+
+        $first = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('notionUrl', 'https://www.notion.so/1022556e44dd824cb10e0174d0ed17e8')
+            ->call('extractFromSource')
+            ->assertSet('step', 2);
+
+        $notes = $first->get('sourceNotes');
+        $this->assertCount(2, $notes);
+        $this->assertStringContainsString('2 image(s) on the Notion page could not be read', $notes[0]);
+        $this->assertStringContainsString('96,000 characters', $notes[1]);
+
+        // A clean page raises no notes.
+        $second = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('notionUrl', 'https://www.notion.so/1022556e44dd824cb10e0174d0ed17e8')
+            ->call('extractFromSource');
+
+        $this->assertSame([], $second->get('sourceNotes'));
+    }
+
+    public function test_extraction_appends_unseen_rows_and_keeps_draft_rows(): void
+    {
+        [$request, , $plain] = $this->makeLink();
+        $request->update(['answers' => [
+            'chronology' => [
+                ['time' => '2026-11-01T10:00', 'event' => 'Alert fired'],
+                ['time' => '', 'event' => 'Investigator called'],
+            ],
+            'action_items' => [['item' => 'Add regression case', 'due_date' => '2026-11-20T09:00', 'verification' => '', 'owner' => 'Budi']],
+        ]]);
+
+        Http::fake(['brain.test/internal/run' => Http::response([
+            'ok' => true,
+            'output' => json_encode([
+                'chronology' => [
+                    ['time' => '2026-11-01T09:55', 'event' => 'alert FIRED '], // same text → the draft's row stands
+                    ['time' => '2026-11-01T11:00', 'event' => 'Service restored'],
+                ],
+                'action_items' => [['item' => 'add regression CASE', 'due_date' => '', 'verification' => '', 'owner' => '']],
+            ]),
+            'model' => 'm',
+        ])]);
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'timeline')
+            ->call('extractFromSource')
+            ->assertHasNoErrors()
+            ->assertSet('step', 2);
+
+        // Text-matched rows are kept (the draft's own shape wins); unseen
+        // rows are appended — position is never used.
+        $this->assertSame([
+            ['time' => '2026-11-01T10:00', 'event' => 'Alert fired'],
+            ['time' => '', 'event' => 'Investigator called'],
+            ['time' => '2026-11-01T11:00', 'event' => 'Service restored'],
+        ], $component->get('chronology'));
+
+        $this->assertSame([
+            ['item' => 'Add regression case', 'due_date' => '2026-11-20T09:00', 'verification' => '', 'owner' => 'Budi'],
+        ], $component->get('actionItems'));
+    }
+
+    public function test_an_unparseable_ai_reply_shows_an_error_and_stays_on_step_1(): void
+    {
+        [, , $plain] = $this->makeLink();
+
+        Http::fake(['brain.test/internal/run' => Http::response(['ok' => true, 'output' => 'no JSON here at all', 'model' => 'm'])]);
+
+        Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'x')
+            ->call('extractFromSource')
+            ->assertSet('step', 1)
+            ->assertSet('extractError', 'The AI reply could not be read — try again.')
+            ->assertSee('could not be read');
+    }
+
+    public function test_a_successful_extraction_persists_the_shared_draft(): void
+    {
+        [$request, , $plain] = $this->makeLink();
+
+        Http::fake(['brain.test/internal/run' => Http::response([
+            'ok' => true,
+            'output' => json_encode(['header' => ['incident_name' => 'DB timeout']]),
+            'model' => 'm',
+        ])]);
+
+        Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('email', 'a@x.com')
+            ->set('pasteText', 'timeline')
+            ->call('extractFromSource')
+            ->assertHasNoErrors();
+
+        $request->refresh();
+        $this->assertSame('DB timeout', $request->answers['header']['incident_name'] ?? null);
+        $this->assertSame('a@x.com', $request->draft_updated_by_email);
+        $this->assertNotNull($request->draft_updated_at, 'extraction persists the draft so a teammate continues it');
+    }
+
+    public function test_a_filled_answer_wins_over_the_step1_identity_fields(): void
+    {
+        [$request, , $plain] = $this->makeLink();
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain]);
+        $this->fillRequired($component); // fills header.name + header.job_role
+
+        $component->set('name', 'Alice Submitter')
+            ->set('consentAccepted', true)
+            ->set('consentEmail', 'a@x.com')
+            ->call('submit')
+            ->assertHasNoErrors();
+
+        $request->refresh();
+        $this->assertSame('Alice Submitter', $request->submitter_name);
+        $this->assertSame('value for header.name', $request->answers['header']['name'], 'a filled answer beats the step-1 name');
+        $this->assertSame('value for header.job_role', $request->answers['header']['job_role']);
+
+        // The reverse: a BLANK answer falls back to the step-1 input. name /
+        // job_role must not be required for this case, or the blank blocks
+        // the submit itself.
+        \App\Models\Setting::set(InvestigationFormSettings::KEY_REQUIRED_FIELDS, ['header.incident_name', 'chronology']);
+        [, $recipient2, $plain2] = $this->makeLink();
+        $component2 = Livewire::test(InvestigationFormIntake::class, ['token' => $plain2]);
+        $this->fillRequired($component2);
+        foreach (['header.name', 'header.job_role'] as $key) {
+            [$section, $field] = explode('.', $key, 2);
+            $component2->set("answers.{$section}.{$field}", '');
+        }
+
+        $component2->set('name', 'Alice Submitter')
+            ->set('jobRole', 'Backend engineer')
+            ->set('consentAccepted', true)
+            ->set('consentEmail', mb_strtolower(trim((string) $recipient2->email)))
+            ->call('submit')
+            ->assertHasNoErrors();
+
+        $request2 = $recipient2->request;
+        $request2->refresh();
+        $this->assertSame('Alice Submitter', $request2->answers['header']['name'], 'blank answer falls back to step-1 name');
+        $this->assertSame('Backend engineer', $request2->answers['header']['job_role']);
     }
 
     private function pendingId($component): int

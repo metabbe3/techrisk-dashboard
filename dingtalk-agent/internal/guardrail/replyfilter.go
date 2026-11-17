@@ -92,6 +92,30 @@ func FilterReplyCap(reply string, maxLen int) string {
 	return filtered
 }
 
+// FilterReplyData is the DATA path for internal runs that raise the reply
+// cap (dashboard extraction payloads, machine-read JSON): the chat guards —
+// scope gate, tool-call fence strip, system-leak redaction — would fire over
+// text the model is merely QUOTING from the source and replace or corrupt
+// the payload. Only secret redaction and a rune-safe hard cap apply (no
+// truncation footer: it would corrupt the JSON).
+func FilterReplyData(reply string, maxLen int) string {
+	if maxLen <= 0 {
+		maxLen = MaxReplyLength
+	}
+
+	redacted, _ := Redact(reply)
+
+	if len(redacted) > maxLen {
+		cutIndex := maxLen
+		for cutIndex > 0 && !utf8.RuneStart(redacted[cutIndex]) {
+			cutIndex--
+		}
+		redacted = redacted[:cutIndex]
+	}
+
+	return redacted
+}
+
 // sanitizeSystemLeaks replaces lines or sentences containing system prompt markers with a safe placeholder.
 func sanitizeSystemLeaks(text string) string {
 	lines := strings.Split(text, "\n")

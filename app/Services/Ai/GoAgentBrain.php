@@ -36,7 +36,7 @@ class GoAgentBrain
             'agent_id' => 'investigation-form-intake',
             'agent_name' => 'Investigation Form Intake',
             'mode' => 'task',
-            'text' => Str::limit($userMessage, 48000),
+            'text' => mb_substr($userMessage, 0, 96000),
         ];
 
         if ($system !== '') {
@@ -117,6 +117,15 @@ class GoAgentBrain
         }
 
         $decoded = json_decode(trim($text), true);
+
+        // Tolerate fenced/prose-wrapped JSON — the Go reply filter and the
+        // model itself can surround the object ("Here you go: ```json …").
+        if (! is_array($decoded)
+            && ($start = mb_strpos($text, '{')) !== false
+            && ($end = mb_strrpos($text, '}')) !== false
+            && $end > $start) {
+            $decoded = json_decode(mb_substr($text, $start, $end - $start + 1), true);
+        }
 
         return is_array($decoded) ? $decoded : null;
     }
