@@ -48,6 +48,15 @@ Live QA (HTTP-submit matrix) found bad data silently persisting; these constrain
 - `discovered_at`, `stop_bleeding_at`: `afterOrEqual('incident_date')` — the timeline cannot precede the incident.
 - Filament API note: `DateTimePicker` has **`maxDate()`**, not `maxValue()` (numeric/text only — using the wrong one throws 500).
 
+## Investigation Form Intake — datetime rule (2026-11-17)
+
+Every date/time field on the public intake is a native datetime-to-the-minute picker (`<input type="datetime-local" step="60">`, value `Y-m-d\TH:i`, WIB): `header.incident_date`, `header.statement_date`, `summary.occurred_time`, `summary.discovery_time`, `summary.stop_bleeding_time`, every chronology row's time, and every action item's due date (`empty = TBD`).
+
+- **Never guess a missing date or minute.** AI output must be `YYYY-MM-DDTHH:MM` when the source gives both; anything else passes through untouched. `InvestigationFormSchema::toPickerValue()` is the single normalizer (accepts `./-`/space separators, drops seconds; a date OR minute missing/invalid → `null`, never filled in). Chronology times that can't be normalized ride the event text as `[source time: …]`; action due dates ride the item as `[source due date: …]`; "TBD" → empty.
+- **Data precedence:** saved draft/manual edit > incident-record prefill > AI extraction. The AI merge fills BLANK fields only; the incident's non-nullable `incident_date` always covers `header.incident_date` + `summary.occurred_time`.
+- **Submit gate:** non-canonical values (e.g. old free-text drafts like `2026.11.01 10:00`) are rejected on `consent` with the field list named — nothing is saved. Flat-field times pick with `max=now` (no future); due dates may be future.
+- **Printing:** documents render `Y-m-d H:i` (the `T` is stripped via `InvestigationFormRenderer::display()`); an action row with an item but no due date prints `TBD`.
+
 ## Export-specific rules
 
 See `docs/reference/exports.md` — exclusions, `mttr_formatted` rendering, per-instance MTBF caches, `-`/0 conventions.

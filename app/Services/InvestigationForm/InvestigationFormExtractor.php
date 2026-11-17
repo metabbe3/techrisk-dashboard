@@ -34,7 +34,8 @@ You fill an incident investigation form. Extract what the SOURCE TEXT supports; 
 
 ## Form fields
 {$flat}
-List-type sections: "chronology" = [{time, event}] rows in time order; "action_items" = [{item, due_date, verification, owner}] rows. due_date format YYYY-MM-DD.
+List-type sections: "chronology" = [{time, event}] rows in time order; "action_items" = [{item, due_date, verification, owner}] rows.
+Date/time rule: header.incident_date, header.statement_date, summary.occurred_time, summary.discovery_time, summary.stop_bleeding_time, chronology[].time and action_items[].due_date must be `YYYY-MM-DDTHH:MM` (24-hour, WIB) when the source gives BOTH the date and the minute. Otherwise output the value EXACTLY as the source has it (or omit it) — never guess a missing date or minute. due_date may also be "TBD".
 
 ## Output
 One JSON object only, no markdown fences:
@@ -116,23 +117,64 @@ PROMPT;
 
                 foreach ($section['fields'] as $fieldKey => $label) {
                     $value = $sectionData[$fieldKey] ?? null;
-                    if (is_string($value) && trim($value) !== '') {
-                        $fields["{$sectionKey}.{$fieldKey}"] = trim($value);
+                    if (! is_string($value) || trim($value) === '') {
+                        continue;
                     }
+
+                    $key = "{$sectionKey}.{$fieldKey}";
+
+                    if (in_array($key, InvestigationFormSchema::DATETIME_FIELDS, true)) {
+                        $picker = InvestigationFormSchema::toPickerValue($value);
+
+                        if ($picker !== null) {
+                            $fields[$key] = $picker;
+                        } else {
+                            // The source lacks the date or the minute — ask,
+                            // never guess (business rule: no invented dates).
+                            $missing[] = ['field' => $key, 'question' => 'The source says "'.mb_substr(trim($value), 0, 60).'" — pick the exact date and time (to the minute).'];
+                        }
+
+                        continue;
+                    }
+
+                    $fields[$key] = trim($value);
                 }
             }
 
             foreach ((array) ($data['chronology'] ?? []) as $row) {
-                if (is_array($row) && isset($row['time'], $row['event']) && is_string($row['time']) && is_string($row['event']) && trim($row['event']) !== '') {
-                    $chronology[] = ['time' => trim($row['time']), 'event' => trim($row['event'])];
+                if (is_array($row) && isset($row['event']) && is_string($row['event']) && trim($row['event']) !== '') {
+                    $time = '';
+
+                    if (isset($row['time']) && is_string($row['time']) && trim($row['time']) !== '') {
+                        $time = (string) InvestigationFormSchema::toPickerValue($row['time']);
+
+                        if ($time === '') {
+                            // Bare time or odd format — keep it visible in the
+                            // event text; the user picks the real datetime.
+                            $row['event'] = trim($row['event']).' [source time: '.trim($row['time']).']';
+                        }
+                    }
+
+                    $chronology[] = ['time' => $time, 'event' => trim($row['event'])];
                 }
             }
 
             foreach ((array) ($data['action_items'] ?? []) as $row) {
                 if (is_array($row) && isset($row['item']) && is_string($row['item']) && trim($row['item']) !== '') {
+                    $due = '';
+                    $dueRaw = isset($row['due_date']) && is_string($row['due_date']) ? trim($row['due_date']) : '';
+
+                    if ($dueRaw !== '') {
+                        $due = mb_strtolower($dueRaw) === 'tbd' ? '' : (string) InvestigationFormSchema::toPickerValue($dueRaw);
+
+                        if ($due === '' && mb_strtolower($dueRaw) !== 'tbd') {
+                            $row['item'] = trim($row['item']).' [source due date: '.$dueRaw.']';
+                        }
+                    }
+
                     $actionItems[] = [
                         'item' => trim($row['item']),
-                        'due_date' => isset($row['due_date']) && is_string($row['due_date']) ? trim($row['due_date']) : '',
+                        'due_date' => $due,
                         'verification' => isset($row['verification']) && is_string($row['verification']) ? trim($row['verification']) : '',
                         'owner' => isset($row['owner']) && is_string($row['owner']) ? trim($row['owner']) : '',
                     ];

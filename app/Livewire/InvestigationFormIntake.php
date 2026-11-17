@@ -130,6 +130,7 @@ class InvestigationFormIntake extends Component implements HasForms
             'prepareList' => InvestigationFormSettings::prepareList(),
             'requiredFields' => InvestigationFormSettings::requiredFields(),
             'statementOfTruth' => InvestigationFormSchema::STATEMENT_OF_TRUTH,
+            'nowMax' => now()->format('Y-m-d\TH:i'),
         ])
             ->layout('layouts.public');
     }
@@ -291,6 +292,33 @@ class InvestigationFormIntake extends Component implements HasForms
             throw ValidationException::withMessages(['consent' => 'Required fields are still empty.']);
         }
 
+        // Datetime fields come from `<input type="datetime-local">`, but the
+        // shared draft may carry old free-text values — a non-canonical one
+        // can't be rendered or compared, so reject with the offending fields.
+        $badDates = [];
+        $draft = $this->draftArray();
+
+        foreach (InvestigationFormSchema::DATETIME_FIELDS as $key) {
+            [$section, $field] = explode('.', $key, 2);
+            $value = trim((string) ($draft[$section][$field] ?? ''));
+
+            if ($value !== '' && InvestigationFormSchema::toPickerValue($value) !== $value) {
+                $badDates[] = InvestigationFormSchema::flatFields()[$key];
+            }
+        }
+
+        foreach ($draft['chronology'] as $i => $row) {
+            if (($row['time'] ?? '') !== '' && InvestigationFormSchema::toPickerValue($row['time']) !== $row['time']) {
+                $badDates[] = 'chronology row '.($i + 1).' time';
+            }
+        }
+
+        if ($badDates !== []) {
+            throw ValidationException::withMessages([
+                'consent' => 'These date/time fields must be picked to the minute (use the picker): '.implode(', ', $badDates).'.',
+            ]);
+        }
+
         if (! $this->consentAccepted) {
             throw ValidationException::withMessages(['consent' => 'You must accept the Statement of Truth.']);
         }
@@ -409,6 +437,31 @@ class InvestigationFormIntake extends Component implements HasForms
 
         $this->loadedDraftAt = $this->formRequest->draft_updated_at?->format('U.u');
         $this->draftUpdatedAt = $this->formRequest->draft_updated_at?->format('Y-m-d H:i');
+
+        // The incident's own times fill still-blank datetime fields (draft
+        // values win — prefill is blank-only, like the AI merge).
+        $incident = $this->formRequest->incident;
+
+        if ($incident !== null) {
+            $prefill = [
+                'header.incident_date' => $incident->incident_date,
+                'summary.occurred_time' => $incident->incident_date,
+                'summary.discovery_time' => $incident->discovered_at,
+                'summary.stop_bleeding_time' => $incident->stop_bleeding_at,
+            ];
+
+            foreach ($prefill as $key => $value) {
+                if ($value === null) {
+                    continue;
+                }
+
+                [$section, $field] = explode('.', $key, 2);
+
+                if (trim((string) ($this->answers[$section][$field] ?? '')) === '') {
+                    $this->answers[$section][$field] = $value->format('Y-m-d\TH:i');
+                }
+            }
+        }
     }
 
     /** @return array<string, mixed> */

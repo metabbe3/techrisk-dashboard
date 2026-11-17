@@ -27,13 +27,13 @@ class InvestigationFormRendererTest extends TestCase
         return [
             'header' => [
                 'incident_name' => 'Test & <fail>', 'business_unit' => 'BU', 'technology' => 'Tech',
-                'incident_date' => '2026-11-01', 'name' => 'Alice', 'impacted_domain' => 'd',
-                'job_role' => 'r', 'duration' => '1h', 'job_function' => 'f', 'statement_date' => '2026-11-16',
+                'incident_date' => '2026-11-01T10:00', 'name' => 'Alice', 'impacted_domain' => 'd',
+                'job_role' => 'r', 'duration' => '1h', 'job_function' => 'f', 'statement_date' => '2026-11-16T09:00',
             ],
             'summary' => [
                 'description' => 'Desc', 'business_flow' => 'Flow', 'business_impact' => 'Impact',
-                'occurred_time' => '10:00', 'discovery_time' => '10:20', 'discovery_mechanism' => 'monitoring',
-                'stop_bleeding_time' => '10:40',
+                'occurred_time' => '2026-11-01T10:00', 'discovery_time' => '2026-11-01T10:20', 'discovery_mechanism' => 'monitoring',
+                'stop_bleeding_time' => '2026-11-01T10:40',
             ],
             'development_process' => $qa(6, 'a'),
             'testing_process' => $qa(8, 'ta'),
@@ -43,11 +43,12 @@ class InvestigationFormRendererTest extends TestCase
             'internal_control' => $qa(3, 'ia'),
             'grc_review' => $qa(3, 'ga'),
             'chronology' => [
-                ['time' => '10:00', 'event' => 'Alert fired'],
-                ['time' => '10:15', 'event' => 'Mitigated'],
+                ['time' => '2026-11-01T10:00', 'event' => 'Alert fired'],
+                ['time' => '2026-11-01T10:15', 'event' => 'Mitigated'],
             ],
             'action_items' => [
-                ['item' => 'Add alert', 'due_date' => '2026-11-30', 'verification' => 'Alert exists', 'owner' => 'Alice'],
+                ['item' => 'Add alert', 'due_date' => '2026-11-30T17:00', 'verification' => 'Alert exists', 'owner' => 'Alice'],
+                ['item' => 'Write RCA', 'due_date' => '', 'verification' => '', 'owner' => 'Bob'],
             ],
             'submitter_name' => 'Alice',
         ];
@@ -77,6 +78,15 @@ class InvestigationFormRendererTest extends TestCase
         $this->assertStringContainsString('Mitigated', $xml, 'second chronology row must exist (cloneRow)');
         $this->assertStringContainsString('Add alert', $xml);
         $this->assertStringContainsString('Alice', $xml, 'submitter name');
+    }
+
+    public function test_datetime_values_print_as_space_separated_and_empty_due_date_prints_tbd(): void
+    {
+        $xml = $this->docxXml($this->draft());
+
+        $this->assertStringContainsString('2026-11-01 10:00', $xml, 'picker values print without the T');
+        $this->assertStringNotContainsString('T10:00', $xml);
+        $this->assertStringContainsString('TBD', $xml, 'an action row with no due date prints TBD');
     }
 
     public function test_docx_with_empty_lists_leaves_no_tokens(): void

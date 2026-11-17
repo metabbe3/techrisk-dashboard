@@ -43,6 +43,25 @@ class InvestigationFormSchemaTest extends TestCase
         $this->assertStringContainsString('without any alteration or modification', InvestigationFormSchema::STATEMENT_OF_TRUTH);
     }
 
+    public function test_to_picker_value_normalizes_and_never_guesses(): void
+    {
+        $p = InvestigationFormSchema::toPickerValue(...);
+
+        $this->assertSame('2026-11-01T10:00', $p('2026-11-01 10:00'));
+        $this->assertSame('2026-11-01T10:00', $p('2026.11.1 10:00'));
+        $this->assertSame('2026-11-01T10:00', $p('2026/11/01 10:00'));
+        $this->assertSame('2026-11-01T10:00', $p('2026-11-01T10:00:45')); // seconds dropped
+        $this->assertSame('2026-11-01T10:00', $p('  2026-11-01T10:00  '));
+
+        // Date OR minute missing / invalid → null, never guessed.
+        $this->assertNull($p('2026-11-01'));
+        $this->assertNull($p('10:00'));
+        $this->assertNull($p('end of month'));
+        $this->assertNull($p('2026-13-01T10:00'));
+        $this->assertNull($p('2026-11-01T25:00'));
+        $this->assertNull($p('2026-02-30T10:00'));
+    }
+
     public function test_flat_fields_are_prefixed_by_section(): void
     {
         $flat = InvestigationFormSchema::flatFields();
@@ -59,8 +78,8 @@ class InvestigationFormSchemaTest extends TestCase
             'header' => ['name' => 'Budi', 'hacker_key' => 'ignored', 'incident_date' => 12345],
             'summary' => ['description' => '  App error spike  ', 'discovery_time' => ['not' => 'a string']],
             'chronology' => [
-                ['time' => '09:45', 'event' => 'Error spike'],
-                ['event' => 'no time — dropped'],
+                ['time' => '09:45', 'event' => 'Error spike'], // bare time → event note, never guessed
+                ['event' => 'no time — kept with blank time'],
                 'garbage — dropped',
             ],
             'action_items' => [['item' => 'Add regression case', 'due_date' => '2026-12-01']],
@@ -87,8 +106,12 @@ class InvestigationFormSchemaTest extends TestCase
         $this->assertSame('App error spike', $out['fields']['summary.description']);
         $this->assertArrayNotHasKey('header.hacker_key', $out['fields']);
         $this->assertArrayNotHasKey('summary.discovery_time', $out['fields']);
-        $this->assertSame([['time' => '09:45', 'event' => 'Error spike']], $out['chronology']);
-        $this->assertSame('2026-12-01', $out['action_items'][0]['due_date']);
+        $this->assertSame([
+            ['time' => '', 'event' => 'Error spike [source time: 09:45]'],
+            ['time' => '', 'event' => 'no time — kept with blank time'],
+        ], $out['chronology'], 'an event-only row is kept — the user picks its time');
+        $this->assertSame('', $out['action_items'][0]['due_date'], 'a date without a minute is not guessed');
+        $this->assertSame('Add regression case [source due date: 2026-12-01]', $out['action_items'][0]['item']);
         $this->assertSame([['field' => 'summary.business_flow', 'question' => 'What was the business flow?']], $out['missing']);
     }
 

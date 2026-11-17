@@ -146,6 +146,34 @@ class InvestigationFormSchema
     /** Sections whose value is a list of rows rather than one answer per field. */
     public const LIST_SECTIONS = ['chronology', 'action_items'];
 
+    /**
+     * Date-time fields, picked to the minute (`Y-m-d\TH:i`, WIB) — plus the
+     * list columns chronology.time and action_items.due_date.
+     */
+    public const DATETIME_FIELDS = [
+        'header.incident_date',
+        'header.statement_date',
+        'summary.occurred_time',
+        'summary.discovery_time',
+        'summary.stop_bleeding_time',
+    ];
+
+    /**
+     * Free text → picker value `Y-m-d\TH:i`, or null when the date OR the
+     * minute is missing/invalid — never guessed (a bare "10:00" has no date,
+     * a bare date has no minute). Accepts `-`, `.` or `/` date separators.
+     */
+    public static function toPickerValue(string $value): ?string
+    {
+        if (! preg_match('/^(\d{4})[-.\/](\d{1,2})[-.\/](\d{1,2})[T ](\d{1,2}):(\d{2})(?::\d{2})?$/', trim($value), $m)
+            || ! checkdate((int) $m[2], (int) $m[3], (int) $m[1])
+            || (int) $m[4] > 23 || (int) $m[5] > 59) {
+            return null;
+        }
+
+        return sprintf('%04d-%02d-%02dT%02d:%02d', $m[1], $m[2], $m[3], $m[4], $m[5]);
+    }
+
     /** Q&A sections (fixed question lists — chronology/action rows are free-form). */
     public static function qaSections(): array
     {

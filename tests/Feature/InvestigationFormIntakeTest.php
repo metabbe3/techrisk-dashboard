@@ -63,10 +63,13 @@ class InvestigationFormIntakeTest extends TestCase
     {
         foreach (InvestigationFormSchema::flatFields() as $key => $label) {
             [$section, $field] = explode('.', $key, 2);
-            $component->set("answers.{$section}.{$field}", 'value for '.$key);
+            $value = in_array($key, InvestigationFormSchema::DATETIME_FIELDS, true)
+                ? '2026-11-01T10:00'
+                : 'value for '.$key;
+            $component->set("answers.{$section}.{$field}", $value);
         }
 
-        $component->set('chronology', [['time' => '2026.11.01 10:00', 'event' => 'Alert fired']]);
+        $component->set('chronology', [['time' => '2026-11-01T10:00', 'event' => 'Alert fired']]);
     }
 
     public function test_invalid_expired_revoked_and_submitted_tokens_all_render_the_same_page(): void
@@ -202,7 +205,9 @@ class InvestigationFormIntakeTest extends TestCase
 
         $component->assertSet('answers.header.incident_name', 'DB timeout');
         $component->assertSet('answers.summary.description', 'API timeouts at 10:00');
-        $component->assertSet('chronology.0.event', 'Alert fired');
+        // A bare time can't fill a datetime picker — it rides the event text.
+        $component->assertSet('chronology.0.time', '');
+        $component->assertSet('chronology.0.event', 'Alert fired [source time: 10:00]');
 
         // missing[] carries only schema-known fields.
         $missing = $component->get('missing');
@@ -240,6 +245,113 @@ class InvestigationFormIntakeTest extends TestCase
 
             $this->assertStringContainsString('Notion said: object_not_found', $component->errors()->first('notionUrl'));
         }
+    }
+
+    public function test_ai_datetime_output_is_normalized_and_incomplete_dates_are_asked_not_guessed(): void
+    {
+        // incident_date always prefills (non-nullable on the incident) — the
+        // AI test fields are ones the incident record doesn't cover.
+        [, , $plain] = $this->makeLink();
+
+        // One fake, two responses in order — a second Http::fake() on the
+        // same URL MERGES with the first stub, so the first would keep winning.
+        $outputs = [
+            json_encode([
+                'header' => ['statement_date' => '2026.11.01 10:00'], // separators + seconds → normalized
+                'action_items' => [
+                    ['item' => 'Add alert', 'due_date' => '2026/12/01 09:30', 'verification' => '', 'owner' => 'A'],
+                    ['item' => 'Write RCA', 'due_date' => 'TBD', 'verification' => '', 'owner' => 'B'],
+                    ['item' => 'Patch probe', 'due_date' => 'end of month', 'verification' => '', 'owner' => 'C'],
+                ],
+                'missing' => [],
+            ]),
+            json_encode(['header' => ['statement_date' => '2026-11-01'], 'missing' => []]), // bare date → never guessed
+        ];
+        $call = 0;
+        Http::fake([
+            'brain.test/internal/run' => function () use (&$call, $outputs) {
+                return Http::response(['ok' => true, 'output' => $outputs[$call++], 'model' => 'test-model']);
+            },
+        ]);
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'x')
+            ->call('extractFromSource')
+            ->assertHasNoErrors();
+
+        $component->assertSet('answers.header.statement_date', '2026-11-01T10:00');
+
+        $component->assertSet('actionItems.0.due_date', '2026-12-01T09:30');
+        $component->assertSet('actionItems.1.due_date', ''); // TBD stays empty, no note
+        $component->assertSet('actionItems.1.item', 'Write RCA');
+        $component->assertSet('actionItems.2.due_date', '');
+        $component->assertSet('actionItems.2.item', 'Patch probe [source due date: end of month]');
+
+        // Second extract: a bare date is never guessed into the picker — it
+        // comes back as a question quoting the source value.
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->set('pasteText', 'x')
+            ->call('extractFromSource')
+            ->assertHasNoErrors();
+
+        $component->assertSet('answers.header.statement_date', '');
+
+        $missing = collect($component->get('missing'))->pluck('question')->implode('|');
+        $this->assertStringContainsString('2026-11-01', $missing, 'the unparseable source value is quoted back');
+        $this->assertStringContainsString('pick the exact date and time', $missing);
+    }
+
+    public function test_incident_times_prefill_blank_datetime_fields_and_draft_values_win(): void
+    {
+        $incident = Incident::factory()->create([
+            'incident_date' => '2026-11-01 08:30:00',
+            'discovered_at' => '2026-11-01 08:45:00',
+            'stop_bleeding_at' => '2026-11-01 09:10:00',
+        ]);
+        $request = InvestigationFormRequest::create([
+            'incident_id' => $incident->id,
+            'team' => 'Payments',
+            'status' => InvestigationFormRequest::STATUS_PENDING,
+            'expires_at' => now()->addDays(14),
+            'created_by' => User::factory()->create()->id,
+            'answers' => ['header' => ['incident_date' => '2026-11-01T08:31']], // teammate already picked
+        ]);
+        $plain = InvestigationFormRecipient::newToken();
+        $request->recipients()->create([
+            'email' => 'a@x.com',
+            'token_hash' => InvestigationFormRecipient::hashToken($plain),
+            'emailed_at' => now(),
+        ]);
+
+        Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
+            ->assertSet('answers.header.incident_date', '2026-11-01T08:31') // a saved draft value is never overwritten
+            ->assertSet('answers.summary.occurred_time', '2026-11-01T08:30')
+            ->assertSet('answers.summary.discovery_time', '2026-11-01T08:45')
+            ->assertSet('answers.summary.stop_bleeding_time', '2026-11-01T09:10');
+    }
+
+    public function test_submit_rejects_non_canonical_datetime_values(): void
+    {
+        [, , $plain] = $this->makeLink();
+
+        $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain]);
+        $this->fillRequired($component);
+
+        // An old free-text draft (pre-picker) can't be printed or compared.
+        $component->set('answers.header.incident_date', '2026.11.01 10:00')
+            ->set('consentAccepted', true)
+            ->set('consentEmail', 'a@x.com')
+            ->call('submit')
+            ->assertHasErrors(['consent']);
+
+        $this->assertSame(0, InvestigationDocument::count(), 'a rejected submit must not create documents');
+
+        $component->set('chronology', [['time' => '2026.11.01 10:00', 'event' => 'Alert fired']])
+            ->set('answers.header.incident_date', '2026-11-01T10:00')
+            ->call('submit')
+            ->assertHasErrors(['consent']); // a non-canonical chronology time is rejected too
+
+        $this->assertSame(0, InvestigationDocument::count());
     }
 
     public function test_ai_call_cap_is_enforced(): void

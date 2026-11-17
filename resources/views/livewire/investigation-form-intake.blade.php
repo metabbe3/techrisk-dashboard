@@ -155,9 +155,17 @@
                                                 @if (in_array($sectionKey.'.'.$fieldKey, $requiredFields))
                                                     <span class="text-red-500">*</span>
                                                 @endif
+                                                @if (in_array($sectionKey.'.'.$fieldKey, \App\Services\InvestigationForm\InvestigationFormSchema::DATETIME_FIELDS))
+                                                    <span class="text-xs font-normal text-gray-400">(date & time, WIB)</span>
+                                                @endif
                                             </label>
-                                            <textarea wire:model="answers.{{ $sectionKey }}.{{ $fieldKey }}" rows="2"
-                                                class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none"></textarea>
+                                            @if (in_array($sectionKey.'.'.$fieldKey, \App\Services\InvestigationForm\InvestigationFormSchema::DATETIME_FIELDS))
+                                                <input type="datetime-local" step="60" max="{{ $nowMax }}" wire:model="answers.{{ $sectionKey }}.{{ $fieldKey }}"
+                                                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" />
+                                            @else
+                                                <textarea wire:model="answers.{{ $sectionKey }}.{{ $fieldKey }}" rows="2"
+                                                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none"></textarea>
+                                            @endif
                                             @error('answers.'.$sectionKey.'.'.$fieldKey)<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                         </div>
                                     @endforeach
@@ -172,7 +180,7 @@
                                 <tbody>
                                     @foreach ($chronology as $i => $row)
                                         <tr>
-                                            <td class="pr-2 py-1"><input type="text" wire:model="chronology.{{ $i }}.time" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" placeholder="YYYY.MM.DD HH:MM" /></td>
+                                            <td class="pr-2 py-1"><input type="datetime-local" step="60" max="{{ $nowMax }}" wire:model="chronology.{{ $i }}.time" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" /></td>
                                             <td class="py-1"><input type="text" wire:model="chronology.{{ $i }}.event" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" /></td>
                                             <td class="pl-2"><button type="button" wire:click="removeChronologyRow({{ $i }})" class="text-red-500 hover:text-red-700 text-xs">Remove</button></td>
                                         </tr>
@@ -190,7 +198,7 @@
                                     @foreach ($actionItems as $i => $row)
                                         <tr>
                                             <td class="pr-2 py-1"><input type="text" wire:model="actionItems.{{ $i }}.item" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" /></td>
-                                            <td class="pr-2 py-1"><input type="text" wire:model="actionItems.{{ $i }}.due_date" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" placeholder="TBD ok" /></td>
+                                            <td class="pr-2 py-1"><input type="datetime-local" step="60" wire:model="actionItems.{{ $i }}.due_date" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" /><span class="block text-xs text-gray-400 mt-0.5">empty = TBD</span></td>
                                             <td class="pr-2 py-1"><input type="text" wire:model="actionItems.{{ $i }}.verification" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" /></td>
                                             <td class="py-1"><input type="text" wire:model="actionItems.{{ $i }}.owner" class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100" /></td>
                                             <td class="pl-2"><button type="button" wire:click="removeActionItemRow({{ $i }})" class="text-red-500 hover:text-red-700 text-xs">Remove</button></td>

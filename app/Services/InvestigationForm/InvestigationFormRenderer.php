@@ -20,6 +20,8 @@ class InvestigationFormRenderer
 {
     public function docx(array $draft): string
     {
+        $draft = $this->display($draft);
+
         $processor = new TemplateProcessor(resource_path('templates/investigation-form-v1.docx'));
 
         foreach (InvestigationFormSchema::flatFields() as $key => $label) {
@@ -60,13 +62,36 @@ class InvestigationFormRenderer
     public function pdf(array $draft): string
     {
         $html = View::make('pdf.investigation-form', [
-            'draft' => $draft,
+            'draft' => $this->display($draft),
             'sections' => InvestigationFormSchema::SECTIONS,
             'listSections' => InvestigationFormSchema::LIST_SECTIONS,
             'statement' => InvestigationFormSchema::STATEMENT_OF_TRUTH,
         ])->render();
 
         return Pdf::loadHTML($html)->output();
+    }
+
+    /**
+     * Storage format → print format: picker values `Y-m-d\TH:i` print as
+     * `Y-m-d H:i`; an action row with an item but no due date prints "TBD".
+     *
+     * @return array<string, mixed>
+     */
+    private function display(array $draft): array
+    {
+        array_walk_recursive($draft, function (&$value): void {
+            if (is_string($value) && preg_match('/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/', $value, $m) === 1) {
+                $value = $m[1].' '.$m[2];
+            }
+        });
+
+        foreach ((array) ($draft['action_items'] ?? []) as $i => $row) {
+            if (is_array($row) && trim((string) ($row['item'] ?? '')) !== '' && trim((string) ($row['due_date'] ?? '')) === '') {
+                $draft['action_items'][$i]['due_date'] = 'TBD';
+            }
+        }
+
+        return $draft;
     }
 
     /**
