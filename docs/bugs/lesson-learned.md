@@ -2028,3 +2028,49 @@ The closure gate (`IncidentObserver::saving()`, RD-2) worked correctly. It threw
 - [x] Livewire tests `assertHasFormErrors` / `assertHasTableActionErrors(['incident_status'])`. Verified failing before the fix.
 - [x] A `ValidationException` thrown below Filament (observer/model/service) never reaches a field. Mirror the rule as a field `->rule()` and keep the low-level throw only as a backstop.
 - [x] Filament rule closures: compare enum-cast fields as enums (`tryFrom`), not string `->value`.
+
+---
+
+### [BUG-036] - Go selfTruncate printed a NEGATIVE "truncated N chars" on CJK web results + byte-length guards suffixed ellipses onto untouched strings
+
+**Date:** 2026-11-17
+**Discovered By:** Claude audit (batch 5, plan item D12/D8)
+**Severity:** Low (cosmetic/correctness of truncation notes; no data loss)
+**Status:** Resolved
+
+### Description
+`internal/tools/web.go` `selfTruncate()` guarded with `len(s) <= webResultMaxChars` (BYTES) but computed the note from `len([]rune(s)) - webResultMaxChars` (RUNES). A CJK-heavy web result — ~2.3 runes per byte — can cross the byte limit while staying far under the rune cap: the guard passed, then `util.Cut(s, webResultMaxChars)` returned the string unchanged, and the suffix printed e.g. `[truncated -4667 chars]`. The same byte-vs-rune confusion lived in `scheduleapi.go`'s `len(text) > 80` guard (appended "…" after a no-op cut) and five hand-rolled cut+suffix copies disagreed about both.
+
+### Root Cause
+Mixing byte length (`len(s)`) with rune counts in one expression, and writing the cut+ellipsis pattern per call site instead of one helper — each copy re-decided the guard's unit independently.
+
+### Fix
+One helper, `util.CutEllipsis(s, n)`: rune-safe `Cut` + "…" only when `Cut` actually shortened the string. The cut test IS the guard — if `Cut` returns `s` unchanged, nothing was cut, so a rune-count suffix can never be negative. Five call sites converted (stream.go `truncateStr` deleted, watch Describe, scheduleapi describe, mesh queue summary, web selfTruncate — the latter keeps its own count suffix but rune-based now). `llm/client.go`'s byte-slicing `truncate` deleted too (rune-safe `util.Cut`).
+
+### Prevention Checklist
+- [x] `TestCutRuneSafe` extended: `CutEllipsis` must not suffix an untouched string and must be rune-based on CJK (a 55-byte Thai string at n=100 stays unchanged).
+- [x] Never mix `len(s)` (bytes) with `len([]rune(s))` (runes) in one guard+count expression. In Go, guard on the SAME unit you count.
+- [x] The "did anything get cut?" test (`cut(s) != s`) is the correct guard for any suffix/count that assumes a cut happened — a byte-length pre-check is a second, drift-prone copy of that fact.
+
+---
+
+### [WASTE-01] - One MCP round-trip per dangling tombstone on every Notion Settings render (restorableIssues)
+
+**Date:** 2026-11-17
+**Discovered By:** Claude audit (batch 5, plan item C13)
+**Severity:** Low (Settings page latency; N sequential MCP queries per picker render before memoization)
+**Status:** Resolved
+
+### Description
+`NotionIssueSyncService::restorableIssues()` — the restore picker's options — issued one `notion-query-data-sources` round-trip PER dangling tombstone (`WHERE url LIKE '%<id>%'` each). Every Sync-now modal render re-ran the closure, so a workspace with N deleted issues paid N sequential Notion round-trips before the modal could open.
+
+### Root Cause
+The picker reused `recoverDeletedIssues()`'s per-page lookup shape (correct for a background run that processes each tombstone individually) for an N-items-at-once UI read.
+
+### Fix
+One round-trip: a single `url LIKE '%id1%' OR url LIKE '%id2%' …` query (server-side filter keeps the reply inside the result cap — an unfiltered full-table read could silently truncate), then match page ids in PHP. `recoverDeletedIssues()` keeps its per-page shape — pinned mocks document it and the run reports per-tombstone failures.
+
+### Prevention Checklist
+- [x] `NotionIssueSyncServiceTest` restorableIssues tests still green (the shared-mock falls through on the combined query).
+- [x] Batch reads for UI lists; per-item reads only where per-item failure isolation is the point (a background restore must survive one bad tombstone).
+- [x] When replacing N queries with one bulk read over a capped channel, keep a server-side WHERE — an unfiltered bulk read trades a latency bug for a silent-truncation bug.
