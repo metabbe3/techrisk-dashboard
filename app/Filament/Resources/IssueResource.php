@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Resources;
 
 use App\Enums\IncidentClassification;
+use App\Enums\Severity;
 use App\Filament\Resources\IssueResource\Pages;
 use App\Models\Incident;
 use Filament\Forms\Components\DateTimePicker;
@@ -19,6 +20,7 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Cache;
 
 class IssueResource extends Resource
 {
@@ -141,27 +143,35 @@ class IssueResource extends Resource
                             return 'Outlier';
                         }
 
-                        static $cache = [];
+                        // ONE MTBF sequence logic (owner 2026-11-16) — the
+                        // private copy missed METRIC_ELIGIBLE, showed
+                        // dayOfYear on the year's first row, cached in a
+                        // static and never invalidated. Now shares the
+                        // IncidentResource chain semantics (first row '-',
+                        // versioned cache) and matches the Issues export.
                         $year = $record->incident_date->year;
-                        $key = "issues_{$year}";
+                        $cacheKey = "mtbf_issues_{$year}_v2_".Cache::get('dashboard_cache_version', 0);
 
-                        if (! isset($cache[$key])) {
+                        $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($year) {
                             $incidents = Incident::whereYear('incident_date', $year)
                                 ->where('classification', IncidentClassification::Issue->value)
+                                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                                 ->withoutOutliers()
                                 ->orderBy('incident_date')->orderBy('id')
                                 ->get(['id', 'incident_date']);
 
-                            $cache[$key] = [];
+                            $result = [];
                             foreach ($incidents as $i => $inc) {
-                                $cache[$key][$inc->id] = $i === 0
-                                    ? $inc->incident_date->dayOfYear
+                                $result[$inc->id] = $i === 0
+                                    ? '-'
                                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                                         ->diffInDays($inc->incident_date->startOfDay());
                             }
-                        }
 
-                        return $cache[$key][$record->id] ?? 0;
+                            return $result;
+                        });
+
+                        return $mtbf[$record->id] ?? '-';
                     })
                     ->formatStateUsing(fn (int|string $state): string => is_int($state) ? number_format($state) : $state)
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),

@@ -15,6 +15,7 @@ use App\Models\Incident;
 use App\Notifications\IncidentStatusChanged;
 use App\Notifications\IncidentUpdated;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
 class IncidentObserver
@@ -203,5 +204,43 @@ class IncidentObserver
     private function clearAiContextCache(): void
     {
         app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
+    }
+
+    /**
+     * Handle the Incident "deleted" event. Without it a delete bumped
+     * nothing: widgets and exports kept counting the deleted row until the
+     * cache TTL, and the NEXT incident's stored MTBF still measured its gap
+     * from the deleted one. The job can't be reused — its handle() starts
+     * with fresh(), which is null for a deleted row — so the same adjacent
+     * repair runs inline (a single metric recompute, no heavy work).
+     */
+    public function deleted(Incident $incident): void
+    {
+        $next = Incident::whereYear('incident_date', $incident->incident_date->year)
+            ->where('classification', $incident->classification->value)
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
+            ->where(function ($query) use ($incident) {
+                $query->where('incident_date', '>', $incident->incident_date)
+                    ->orWhere(function ($query) use ($incident) {
+                        $query->where('incident_date', '=', $incident->incident_date)
+                            ->where('id', '>', $incident->id);
+                    });
+            })
+            ->orderBy('incident_date', 'asc')->orderBy('id', 'asc')
+            ->first();
+
+        if ($next) {
+            $calculator = app(\App\Services\Metrics\IncidentMetricsCalculator::class);
+            $calculator->computeMtbf($next);
+            $calculator->computeMttr($next);
+            $calculator->computeCategoryMtbf($next);
+            $calculator->computeMtbfAll($next);
+
+            $next->saveQuietly();
+        }
+
+        Cache::increment('dashboard_cache_version');
+        $this->clearAiContextCache();
     }
 }

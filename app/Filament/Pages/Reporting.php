@@ -241,14 +241,19 @@ class Reporting extends Page implements HasForms
             return;
         }
 
-        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value);
+        $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value)
+            // Year access matches what the Incidents table shows — without it
+            // a year-restricted user saw every year's rows here.
+            ->applyUserYearAccess(auth()->user());
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));
         }
 
         if ($data['end_date']) {
-            $query->where('incident_date', '<=', Carbon::parse($data['end_date']));
+            // endOfDay — a plain date compares midnight, dropping everything
+            // that happened ON the end date (same fix as DashboardFilter).
+            $query->where('incident_date', '<=', Carbon::parse($data['end_date'])->endOfDay());
         }
 
         if (! empty($data['incident_types'])) {
@@ -256,9 +261,11 @@ class Reporting extends Page implements HasForms
         }
 
         if (! empty($data['statuses'])) {
-            $query->whereHas('latestStatusUpdate', function ($q) use ($data) {
-                $q->whereIn('status', $data['statuses']);
-            });
+            // The incidents table's own status column — the old
+            // latestStatusUpdate check compared IncidentStatus values
+            // (Open/…/Completed) against the Kanban update vocabulary
+            // (Open/Investigation/…/Closed), so "Completed" matched ~nothing.
+            $query->whereIn('incident_status', $data['statuses']);
         }
 
         if (! empty($data['severities'])) {
@@ -298,6 +305,12 @@ class Reporting extends Page implements HasForms
                     $relations[] = explode('.', $column)[0];
                 }
             }
+        }
+
+        // The 'pic' column has no dot, but pic_names reads $incident->pics —
+        // without the eager load that is one query per row.
+        if (in_array('pic', $data['columns'] ?? [], true)) {
+            $relations[] = 'pics';
         }
 
         // Load incidents with eager loaded relations
