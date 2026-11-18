@@ -6,11 +6,10 @@
 # binary logs, old Laravel logs, and stray manual SQL dumps.
 #
 # This is SAFE to run because every piece of persistent data in this project is
-# bind-mounted (storage/dbdata, storage/redis, storage/backups) — there are NO
-# named Docker volumes, so `docker system prune --volumes` cannot delete the
-# database, Redis data, or backups. It only removes unreferenced images,
-# stopped containers, dangling networks, and orphaned volumes (e.g. anonymous
-# volumes left by image layers).
+# bind-mounted (storage/dbdata, storage/redis, storage/backups) — except
+# dingtalk-agent-data, a named volume (agent KB + chat history). Volumes are
+# therefore NEVER pruned by this script (no --volumes flag), whatever the
+# Docker version.
 #
 # Usage:
 #   scripts/disk-cleanup.sh                # interactive — prompts before each step
@@ -105,8 +104,8 @@ next_step() { step=$((step + 1)); }
 # --- 1. Docker prune ---------------------------------------------------------
 next_step
 log "${step}. Docker — prune unused images, containers, networks, build cache, orphaned volumes"
-if confirm "Run \`docker system prune -a --volumes -f\` and \`docker builder prune -a -f\`?"; then
-    docker system prune -a --volumes -f
+if confirm "Run \`docker system prune -a -f\` and \`docker builder prune -a -f\`?"; then
+    docker system prune -a -f
     docker builder prune -a -f
     ok "Docker pruned"
 else

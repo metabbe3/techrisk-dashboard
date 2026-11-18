@@ -2,10 +2,10 @@
 #
 # scripts/docker-prune.sh — Weekly Docker prune, with self-installing crontab.
 #
-# Keeps Docker from hoarding build cache, old images, and orphaned volumes —
-# the ~57 GB culprit from the disk-full incident. Safe because this project
-# keeps all persistent data on bind mounts (no named Docker volumes), so
-# `--volumes` only clears orphaned/anonymous volumes, never the DB/Redis/backups.
+# Keeps Docker from hoarding build cache, old images, and stopped containers —
+# the ~57 GB culprit from the disk-full incident. Volumes are NEVER pruned here
+# (dingtalk-agent-data is a named volume holding the KB/chat history; dropping
+# --volumes makes that un-touchable on every Docker version).
 #
 # Usage:
 #   scripts/docker-prune.sh              # run the prune now (this is what cron calls)
@@ -32,7 +32,7 @@ require_cmd() {
 do_prune() {
     require_cmd docker
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] docker-prune start" | tee -a "$LOG_FILE" >/dev/null
-    docker system prune -a --volumes -f | tee -a "$LOG_FILE"
+    docker system prune -a -f | tee -a "$LOG_FILE"
     docker builder prune -a -f | tee -a "$LOG_FILE"
     docker image prune -a -f | tee -a "$LOG_FILE" >/dev/null
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] docker-prune done" | tee -a "$LOG_FILE" >/dev/null
