@@ -2,6 +2,7 @@ package dingtalk
 
 import (
 	"context"
+	"time"
 	"fmt"
 	"log"
 	"strings"
@@ -11,6 +12,12 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
+
+// bgLLMCallTimeout bounds LLM calls made on a caller Background ctx (digest
+// merge, profile learn) — the llm client has no overall timeout (streaming),
+// so a stalled body used to hold digestMu / leak the goroutine forever
+// (audit round 5). Var so tests can shrink it.
+var bgLLMCallTimeout = 3 * time.Minute
 
 // The compiled document-memory digest. knowledge.jsonl stays the append-only
 // raw layer; this merges it (oldest→newest, batches, one cheap no-tools LLM
@@ -83,7 +90,9 @@ func (b *Bot) mergeKnowledgeDigest() {
 		// job — the chat max_tokens budget (LLM_MAX_TOKENS) can be burned
 		// entirely by a thinking model's reasoning, which is exactly the
 		// empty-reply refusal seen on prod. The provider default applies.
-		reply, usage, err := b.llm.ChatCompletionUncapped(context.Background(), []llm.ChatMessage{
+		mergeCtx, mergeCancel := context.WithTimeout(context.Background(), bgLLMCallTimeout)
+		defer mergeCancel()
+		reply, usage, err := b.llm.ChatCompletionUncapped(mergeCtx, []llm.ChatMessage{
 			{Role: "system", Content: digestSystemPrompt},
 			{Role: "user", Content: fmt.Sprintf(
 				"EXISTING DIGEST:\n%s\n\nNEW DOCUMENT SUMMARIES (oldest first):\n%s",

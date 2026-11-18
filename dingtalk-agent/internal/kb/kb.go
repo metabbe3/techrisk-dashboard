@@ -49,6 +49,12 @@ type Embedder interface {
 	Embed(ctx context.Context, inputs []string) ([][]float32, error)
 }
 
+// embedCallTimeout bounds every embed call made on a caller-supplied
+// Background ctx (boot rebuild, background Ingest): the llm HTTP client has
+// no overall timeout (streaming), so a stalled body used to wedge the ingest
+// slot / boot forever (audit round 5).
+var embedCallTimeout = 3 * time.Minute
+
 // chunk is one embedded piece of one document.
 type chunk struct {
 	Doc   string    `json:"doc"`
@@ -130,7 +136,9 @@ func (ix *Index) rebuild() {
 	}
 	ix.mu.RUnlock()
 
-	vecs, err := ix.embedAll(context.Background(), texts)
+	ctx, cancel := context.WithTimeout(context.Background(), embedCallTimeout)
+	defer cancel()
+	vecs, err := ix.embedAll(ctx, texts)
 	if err != nil {
 		log.Printf("[kb] re-embed failed: %v", err)
 		return
@@ -156,7 +164,9 @@ func (ix *Index) Ingest(doc, text string) {
 	go func() {
 		ix.ingest <- struct{}{} // blocking — a concurrent upload waits, never drops
 		defer func() { <-ix.ingest }()
-		if err := ix.ingestNow(context.Background(), doc, text); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), embedCallTimeout)
+		defer cancel()
+		if err := ix.ingestNow(ctx, doc, text); err != nil {
 			log.Printf("[kb] ingest %s failed: %v", doc, err)
 		}
 	}()
@@ -256,11 +266,14 @@ func (ix *Index) Search(ctx context.Context, query string, k int) ([]chunk, erro
 		return nil, nil
 	}
 
-	// One query embed, best effort.
+	// One query embed, best effort (deadline-bounded: a stalled body must not
+	// wedge the turn — audit round 5).
 	embedded := false
 	var q []float32
 	if ix.embed != nil {
-		vecs, err := ix.embed.Embed(ctx, []string{query})
+		qCtx, qCancel := context.WithTimeout(ctx, embedCallTimeout)
+		defer qCancel()
+		vecs, err := ix.embed.Embed(qCtx, []string{query})
 		switch {
 		case err != nil:
 			log.Printf("[kb] query embed failed (%v) — keyword fallback", err)

@@ -387,3 +387,63 @@ func TestModelMismatchReembeds(t *testing.T) {
 		t.Error("re-embed made no embedder calls")
 	}
 }
+
+// A hung embedder must not hold the ingest slot / rebuild forever: every
+// un-capped embed call carries a 3-minute deadline (audit round 5). The test
+// shrinks nothing — it asserts the ctx the embedder RECEIVES is already
+// deadline-bounded, which fails while the call sites pass Background.
+func TestEmbedCallsCarryDeadline(t *testing.T) {
+	var sawDeadline bool
+	emb := deadlineProbe{probe: func(ctx context.Context) {
+		_, ok := ctx.Deadline()
+		sawDeadline = ok
+	}}
+	dir := t.TempDir()
+	ix := NewIndex(dir, "m1", emb)
+
+	// Seed one doc via the public background Ingest so rebuild has real
+	// chunks to re-embed (ingestNow takes its ctx from the caller — Ingest
+	// is the production path and must bound it).
+	sawDeadline = false
+	ix.Ingest("D.pdf", "some indexed text")
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		ix.mu.RLock()
+		n := len(ix.chunks)
+		ix.mu.RUnlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if !sawDeadline {
+		t.Fatal("Ingest's embed ran with no deadline — a hung embedder holds the ingest slot forever")
+	}
+
+	// Boot rebuild path (embedAll on Background).
+	sawDeadline = false
+	ix.rebuild()
+	if !sawDeadline {
+		t.Fatal("rebuild's embedAll ran with no deadline — a hung embedder wedges the index forever")
+	}
+
+	// Search query embed path.
+	sawDeadline = false
+	_, _ = ix.Search(context.Background(), "query", 3)
+	if !sawDeadline {
+		t.Fatal("Search's query embed ran with no deadline")
+	}
+}
+
+type deadlineProbe struct {
+	probe func(ctx context.Context)
+}
+
+func (d deadlineProbe) Embed(ctx context.Context, inputs []string) ([][]float32, error) {
+	d.probe(ctx)
+	out := make([][]float32, len(inputs))
+	for i := range inputs {
+		out[i] = []float32{1, 0}
+	}
+	return out, nil
+}

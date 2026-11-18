@@ -737,6 +737,10 @@ func (b *Bot) learnLater(m *chatbot.BotCallbackDataModel) {
 // One cheap no-tools call; any failure is logged and skipped — learning must
 // never break chatting.
 func (b *Bot) learnProfile(ctx context.Context, staffID, nick string, history []llm.ChatMessage) {
+	// Bounded even for fire-and-forget callers: a stalled LLM body must not
+	// leak the goroutine forever (audit round 5).
+	ctx, cancel := context.WithTimeout(ctx, bgLLMCallTimeout)
+	defer cancel()
 	var cur strings.Builder
 	for _, ln := range b.store.Profile(staffID) {
 		fmt.Fprintf(&cur, "- %s\n", ln)

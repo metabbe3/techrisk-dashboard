@@ -2,6 +2,7 @@ package dingtalk
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -492,5 +493,47 @@ func TestDigestMergeOmitsMaxTokensOnTheWire(t *testing.T) {
 	}
 	if bot.store.DigestCovered() != 1 {
 		t.Fatalf("merge did not advance the cursor: %d", bot.store.DigestCovered())
+	}
+}
+
+// The digest merge and the profile learn run on a caller Background ctx and
+// hold shared state (digestMu) — a stalled LLM body used to freeze the digest
+// forever (audit round 5). Both calls must carry a deadline.
+func TestBackgroundLLMCallsBounded(t *testing.T) {
+	old := bgLLMCallTimeout
+	bgLLMCallTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { bgLLMCallTimeout = old })
+
+	// Cleanup is LIFO: the server must be registered FIRST so close(block)
+	// (releasing the handler) runs before srv.Close waits on it.
+	block := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block // never answer: the caller's deadline must cut the call
+	}))
+	t.Cleanup(func() { close(block); srv.Close() })
+
+	dir := t.TempDir()
+	cfg := &config.Config{LLMBaseURL: srv.URL, LLMAPIKey: "k", LLMModel: "m", DataDir: dir, KnowledgeDigest: true}
+	bot := NewBot(cfg, nil, llm.NewClient(cfg))
+	seedKnowledge(t, dir, []string{"SOP.pdf"}, []string{"a summary"})
+
+	done := make(chan struct{})
+	go func() { bot.mergeKnowledgeDigest(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("digest merge never returned with a stalled LLM — digestMu is wedged")
+	}
+	if b := bot.store.KnowledgeDigest(); b != "" {
+		t.Errorf("a failed merge must not save a digest, got %q", b)
+	}
+
+	hist := []llm.ChatMessage{{Role: "user", Content: "always reply in Indonesian"}, {Role: "assistant", Content: "oke"}}
+	done = make(chan struct{})
+	go func() { bot.learnProfile(context.Background(), "s1", "N", hist); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("learnProfile never returned with a stalled LLM")
 	}
 }
