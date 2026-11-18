@@ -2837,10 +2837,11 @@
     --tw-ring-shadow: 0 0 #0000;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
-/* Owner 2026-11-18: a hardcoded deep tone, NOT var(--tr-dana-700) — the
-   dark ramp shifts one step LIGHTER (#0673c9), which renders bright. */
+/* Owner 2026-11-18: dark mode paints the topbar the SAME color as the dark
+   sidebar (#0f172a) — NOT var(--tr-dana-700) either, which is bright: the
+   dark DANA ramp shifts one step LIGHTER (#0673c9). */
 :root.dark .fi-topbar nav {
-    background-color: #0f426f;
+    background-color: #0f172a;
     border-bottom-color: rgba(0, 0, 0, 0.4);
 }
 .fi-topbar nav .fi-icon-btn,

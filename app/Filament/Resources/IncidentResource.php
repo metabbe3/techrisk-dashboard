@@ -491,10 +491,20 @@ class IncidentResource extends Resource
                     ->state(fn (Incident $record): bool => filled($record->notion_investigation_page_id))
                     ->trueIcon('heroicon-o-arrow-top-right-on-square')
                     ->trueColor('info')
-                    ->tooltip('Open the Notion investigation page')
+                    ->tooltip(fn (Incident $record): ?string => filled($record->notion_investigation_page_id)
+                        ? 'Open the Notion investigation page'
+                        : null)
                     ->url(fn (Incident $record): ?string => filled($record->notion_investigation_page_id)
                         ? app(\App\Services\Notion\NotionInvestigationService::class)->pageUrl((string) $record->notion_investigation_page_id)
                         : null)
+                    // Owner 2026-11-18: without a page the cell must navigate
+                    // NOWHERE — Filament's ListRecords wraps every cell in an
+                    // anchor to the detail page (the table carries a
+                    // ViewAction, so the row's default recordUrl exists), and
+                    // a null column URL falls back to it. Disable the click
+                    // per record so the cell renders a plain div when no page
+                    // is linked; the Notion anchor itself stays.
+                    ->disableClick(fn (Incident $record): bool => blank($record->notion_investigation_page_id))
                     ->openUrlInNewTab(),
             ])
             ->groups([
