@@ -2074,6 +2074,24 @@ One round-trip: a single `url LIKE '%id1%' OR url LIKE '%id2%' …` query (serve
 - [x] `NotionIssueSyncServiceTest` restorableIssues tests still green (the shared-mock falls through on the combined query).
 - [x] Batch reads for UI lists; per-item reads only where per-item failure isolation is the point (a background restore must survive one bad tombstone).
 - [x] When replacing N queries with one bulk read over a capped channel, keep a server-side WHERE — an unfiltered bulk read trades a latency bug for a silent-truncation bug.
+## BUG-038 — Board View 500 on prod: `@php(...)` expression form mixed with block `@php…@endphp` breaks Blade compilation (2026-11-18)
+
+### Symptom
+`/admin/incidents/board` → red Filament 500, `Parse error: syntax error, unexpected token "@"`. Governance 500 on prod (techrisk.paas.dana.id) was a separate surface (schema drift — see Prevention) but reported together.
+
+### Root Cause
+Laravel 12.70.1 `BladeCompiler::storePhpBlocks()` runs regex `/(?<!@)@php(.*?)@endphp/s` BEFORE directive compilation — it does NOT skip the expression form `@php(...)`. In `incident-kanban-board.blade.php` the expression form `@php($firstPic = $incident->pics->first())` (line 282, shipped in 52f20d0, PROJ-010 cutover) made that regex match from `@php(` to the NEXT `@endphp` (line 310's), swallowing the 308–310 block and emitting the captured range verbatim as a raw block — an unclosed `<?php(` plus never-compiled `@php`/`@if` text → parse error. Blocks BEFORE the first expression form compiled fine; everything after was mangled. Verified minimal repro on the installed framework: `@php($a = 1)\nX @php\n$y = 2;\n@endphp` → `<?php($a = 1)\nX @php\n$y = 2;\n?>` (raw `@php`, no `; ?>`).
+
+Not caught for 7 weeks: the board cannot render under SQLite (`FIELD(severity, …)` ordering — documented limitation in `UserFacingCrashersTest`), so no component test reached the template.
+
+### Fix
+`@php($x = …)` → block form `@php $x = …; @endphp` (the pattern line 271 already used). Never mix the expression form with block-form `@php` in one template.
+
+### Prevention Checklist
+- [x] `tests/Feature/BladeTemplatesCompileTest.php` — compile+lint sweep over every `resources/views` template (`Blade::compileString` + `php -l`), DB-free; catches the whole class (would have failed on the broken file).
+- [x] Dev DB repair: 8 pending migrations run (dev scheduler `ai:dispatch-due-agents` had failed every ~min since Nov 12 — `Unknown column 'run_at'`), `view:clear` + `docker compose restart app` (OPcache/bind-mount lag trap).
+- [ ] Prod (owner-only guardrail): deploy the fixed file, then `php artisan migrate:status` + `migrate --force`; if governance still 500s, read `storage/logs/laravel-<date>.log` — dev renders it clean, so prod's exception is the definitive evidence.
+- [ ] Any future `@php(` in a template: check the same file for block-form `@php … @endphp`; if mixed, convert. The lint test now fails loud instead.
 ## BUG-037 — Multi-year year-access silently showed only the first year (2026-11-17)
 
 ### Symptom
