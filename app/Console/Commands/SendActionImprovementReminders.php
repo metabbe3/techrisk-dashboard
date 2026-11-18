@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Notifications\ActionImprovementDueSoon;
 use App\Notifications\ActionImprovementEscalated;
 use App\Notifications\ActionImprovementOverdue;
+use App\Support\MailSettings;
 use App\Support\ReminderMail;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -114,7 +115,12 @@ class SendActionImprovementReminders extends Command
         $recipients->each(fn ($user) => $user->notify(new ActionImprovementOverdue($action, $daysOverdue)));
         $action->recordReminderSent(ReminderMail::send($recipients, new ActionImprovementOverdue($action, $daysOverdue)));
 
-        $this->escalateIfDue($action, $daysOverdue);
+        // Email kill-switch ON → escalation must NOT advance: the rung was
+        // informed only if an email actually went out. In-app overdue
+        // notification above still fires.
+        if (MailSettings::enabled()) {
+            $this->escalateIfDue($action, $daysOverdue);
+        }
 
         $this->logRecipients($action, 'overdue notification', $recipients);
     }

@@ -36,25 +36,26 @@ class ActionImprovementReminder extends ActionImprovementNotification
         $daysUntilDue = $this->daysUntilDue();
         $isOverdue = $daysUntilDue !== null && $daysUntilDue < 0;
 
-        $extraLines = [
-            '**Status:** '.ucfirst($this->actionImprovement->status),
-        ];
+        $extraDetails = [];
+        $intro = 'This action improvement still needs work from you.';
 
         if ($daysUntilDue === null) {
-            $extraLines[] = '**Due date not set (TBD)**';
+            $intro = 'This action improvement has no due date yet (TBD). Please set a date or start the work.';
         } elseif ($isOverdue) {
-            $extraLines[] = '**'.abs($daysUntilDue).' days overdue**';
+            $extraDetails['Days overdue'] = abs($daysUntilDue);
+            $intro = 'This action improvement is '.abs($daysUntilDue).' days past its due date and still open.';
         } else {
-            $extraLines[] = '**'.$daysUntilDue.' days remaining**';
+            $extraDetails['Days remaining'] = $daysUntilDue;
+            $intro = 'This action improvement is due in '.$daysUntilDue.' days.';
         }
 
         return $this->buildActionMailMessage(
-            $isOverdue
-                ? '[OVERDUE] Action Improvement Required'
-                : '[Reminder] Action Improvement Due Soon',
-            $extraLines,
-            $notifiable,
-            'Please take action as soon as possible.'
+            subject: ($isOverdue ? '[Overdue '.abs((int) $daysUntilDue).'d] ' : '[Reminder] ').$this->actionImprovement->title.' — ['.$this->actionImprovement->incident->no.']',
+            headline: $isOverdue ? 'Action improvement overdue' : 'Action improvement reminder',
+            intro: $intro,
+            extraDetails: $extraDetails,
+            notifiable: $notifiable,
+            closingLine: 'Please take action as soon as possible.',
         );
     }
 

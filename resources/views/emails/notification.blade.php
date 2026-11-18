@@ -1,6 +1,18 @@
 {{--
-    Branded reminder email (email-client-safe: tables + inline styles only).
-    Vars: $greeting, $headline, $intro, $details (assoc label => value), $actionText, $actionUrl
+    Branded notification email (email-client-safe: tables + inline styles only).
+    Shared layout for every portal email — incident reminders, action
+    improvements, investigation forms, reports, agent runs, password reset.
+
+    Vars:
+    - $headline        header-band title
+    - $intro           lead paragraph (optional)
+    - $details         assoc label => value rows (optional)
+    - $lines           paragraph list; **bold** supported, HTML-escaped (optional)
+    - $bodyHtml        pre-escaped HTML block (investigation-form/agent bodies, optional)
+    - $actionText/$actionUrl   primary button (optional)
+    - $secondaryText/$secondaryUrl  small text link under the button (optional)
+    - $greeting        "Hello X," (optional)
+    - $footer          footer note (optional)
 --}}
 <!doctype html>
 <html lang="en">
@@ -24,11 +36,22 @@
                     {{-- Body --}}
                     <tr>
                         <td style="padding:26px 28px;">
-                            <p style="margin:0 0 4px;font-size:15px;color:#475569;">{{ $greeting }}</p>
-                            <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#334155;">{{ $intro }}</p>
+                            @isset($greeting)
+                                <p style="margin:0 0 4px;font-size:15px;color:#475569;">{{ $greeting }}</p>
+                            @endisset
+
+                            @isset($intro)
+                                <p style="margin:0 0 18px;font-size:15px;line-height:1.6;color:#334155;">{{ $intro }}</p>
+                            @endisset
+
+                            @if (! empty($lines))
+                                @foreach ($lines as $line)
+                                    <p style="margin:0 0 10px;font-size:15px;line-height:1.6;color:#334155;">{!! Illuminate\Support\Str::inlineMarkdown($line, ['html_input' => 'escape']) !!}</p>
+                                @endforeach
+                            @endif
 
                             @if (! empty($details))
-                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;@empty($intro) margin-top:6px;@endempty">
                                     @foreach ($details as $label => $value)
                                         <tr>
                                             <td style="padding:8px 12px;border:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-weight:600;white-space:nowrap;width:160px;">{{ $label }}</td>
@@ -37,6 +60,10 @@
                                     @endforeach
                                 </table>
                             @endif
+
+                            @isset($bodyHtml)
+                                <div style="margin:14px 0;font-size:14px;line-height:1.6;color:#334155;">{!! $bodyHtml !!}</div>
+                            @endisset
 
                             @if (! empty($actionUrl))
                                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:24px;">
@@ -47,12 +74,18 @@
                                     </tr>
                                 </table>
                             @endif
+
+                            @if (! empty($secondaryUrl) && ! empty($secondaryText))
+                                <p style="margin:14px 0 0;font-size:13px;color:#64748b;">
+                                    <a href="{{ $secondaryUrl }}" style="color:#4f46e5;text-decoration:underline;font-weight:600;">{{ $secondaryText }}</a>
+                                </p>
+                            @endif
                         </td>
                     </tr>
                     {{-- Footer --}}
                     <tr>
                         <td style="padding:16px 28px;border-top:1px solid #e2e8f0;background:#f8fafc;">
-                            <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">{{ $footer ?? 'This is an automated reminder from the Technical Risk Portal. Please do not reply to this email.' }}</p>
+                            <p style="margin:0;font-size:12px;color:#94a3b8;line-height:1.5;">{{ $footer ?? 'This is an automated message from the Technical Risk Portal. Please do not reply to this email.' }}</p>
                         </td>
                     </tr>
                 </table>

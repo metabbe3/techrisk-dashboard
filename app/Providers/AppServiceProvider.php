@@ -38,6 +38,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
@@ -81,6 +82,19 @@ class AppServiceProvider extends ServiceProvider
             );
         });
 
+        // Global email kill-switch — THE gate. A MessageSending listener
+        // returning false makes Laravel's Mailer abort the send BEFORE any
+        // transport runs, so suppression covers netcore AND log/smtp/array,
+        // queued mailables, the notification mail channel and Mail::raw.
+        // NetcoreTransport re-checks as defense in depth.
+        Event::listen(\Illuminate\Mail\Events\MessageSending::class, function () {
+            if (! \App\Support\MailSettings::enabled()) {
+                Log::info('[Mail] Email suppressed (netcore_enabled=false).');
+
+                return false;
+            }
+        });
+
         // Runtime mail activation + From override from dashboard settings.
         \App\Support\MailSettings::apply();
 
@@ -112,7 +126,7 @@ class AppServiceProvider extends ServiceProvider
             };
         });
 
-        // Password-reset emails: brand them with the incident-reminder template.
+        // Password-reset emails: brand them with the shared notification template.
         // Takes full control of Illuminate's ResetPassword::toMail() (the static
         // callback is checked before anything else), so the queued vendor
         // notification renders through here.
@@ -122,7 +136,7 @@ class AppServiceProvider extends ServiceProvider
 
                 return (new MailMessage)
                     ->subject('TechRisk Portal — Reset Password')
-                    ->view('emails.incident-reminder', [
+                    ->view('emails.notification', [
                         'greeting' => 'Hello '.$notifiable->name.',',
                         'headline' => 'Reset your password',
                         'intro' => 'We received a request to reset the password for your TechRisk Portal account. '

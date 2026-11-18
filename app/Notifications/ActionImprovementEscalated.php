@@ -36,14 +36,16 @@ class ActionImprovementEscalated extends ActionImprovementNotification
     public function toMail(object $notifiable): MailMessage
     {
         return $this->buildActionMailMessage(
-            "[ESCALATION L{$this->level}] Action Improvement overdue {$this->daysOverdue} days",
-            [
-                '**Days Overdue:** '.$this->daysOverdue,
-                '**Assigned to:** '.$this->picNames,
-                '**Escalation level:** '.$this->level.' (next manager up)',
+            subject: "[ESCALATION L{$this->level}] ".$this->actionImprovement->title.' — ['.$this->actionImprovement->incident->no.']',
+            headline: "Action improvement escalated (level {$this->level})",
+            intro: 'This action improvement has been open past its due date for '.$this->daysOverdue.' days and has been escalated to you as the next manager up.',
+            extraDetails: [
+                'Days overdue' => $this->daysOverdue,
+                'Assigned to' => $this->picNames,
+                'Escalation level' => $this->level.' (next manager up)',
             ],
-            $notifiable,
-            'This action improvement has been open past its due date for '.$this->daysOverdue.' days. Please help chase it to closure.'
+            notifiable: $notifiable,
+            closingLine: 'Please help chase it to closure.',
         );
     }
 

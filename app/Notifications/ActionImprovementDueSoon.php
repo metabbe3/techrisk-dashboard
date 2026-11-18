@@ -28,12 +28,12 @@ class ActionImprovementDueSoon extends ActionImprovementNotification
     public function toMail(object $notifiable): \Illuminate\Notifications\Messages\MailMessage
     {
         return $this->buildActionMailMessage(
-            '[Reminder] Action Improvement Due in '.$this->daysRemaining.' Days',
-            [
-                '**Days Remaining:** '.$this->daysRemaining,
-            ],
-            $notifiable,
-            'Please complete this action improvement before the due date.'
+            subject: '[Due in '.$this->daysRemaining.'d] '.$this->actionImprovement->title.' — ['.$this->actionImprovement->incident->no.']',
+            headline: 'Action improvement due soon',
+            intro: 'This action improvement is due in '.$this->daysRemaining.' days. Please make sure it is on track to close on time.',
+            extraDetails: ['Days remaining' => $this->daysRemaining],
+            notifiable: $notifiable,
+            closingLine: 'Please complete this action improvement before the due date.',
         );
     }
 

@@ -24,6 +24,16 @@ use Illuminate\Support\Facades\Schema;
  */
 class MailSettings
 {
+    /**
+     * THE global email kill-switch read. Every path that must not send (or
+     * must not consume side effects of a send) checks this — the transport
+     * suppression in NetcoreTransport is defense in depth.
+     */
+    public static function enabled(): bool
+    {
+        return (bool) Setting::get('netcore_enabled', true);
+    }
+
     public static function apply(): void
     {
         try {
@@ -33,7 +43,7 @@ class MailSettings
                 return;
             }
 
-            $enabled = (bool) Setting::get('netcore_enabled', true);
+            $enabled = self::enabled();
             $apiKey = Setting::get('netcore_api_key', config('mail.mailers.netcore.api_key'));
 
             if ($enabled && filled($apiKey)) {

@@ -189,7 +189,9 @@ class RunAiAgentJobTest extends TestCase
         $this->assertSame('ops@example.test', $message->getTo()[0]->getAddress());
         $this->assertStringContainsString($agent->name, $message->getSubject());
         $this->assertStringContainsString('completed', $message->getSubject());
-        $this->assertStringContainsString('Digest: 3 incidents', $message->getTextBody());
+        // Branded layout (emails/notification) — the output is an HTML body.
+        $this->assertStringContainsString('Digest: 3 incidents', $message->getHtmlBody());
+        $this->assertStringContainsString('#4f46e5', (string) $message->getHtmlBody());
     }
 
     public function test_notify_email_receives_error_when_run_fails(): void
@@ -202,7 +204,7 @@ class RunAiAgentJobTest extends TestCase
 
         $message = Mail::mailer('array')->getSymfonyTransport()->messages()[0]->getOriginalMessage();
         $this->assertStringContainsString('failed', $message->getSubject());
-        $this->assertStringContainsString('Agent run failed', $message->getTextBody());
+        $this->assertStringContainsString('failed', (string) $message->getHtmlBody());
     }
 
     public function test_no_email_is_sent_without_notify_email(): void

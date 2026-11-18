@@ -274,11 +274,13 @@ class EmailSettings extends Page implements HasForms
 
         // Suppressed / keyless leaves the app on the log mailer, where
         // Mail::raw "succeeds" by writing to laravel.log — a false green.
-        if (config('mail.default') !== 'netcore') {
+        if (! MailSettings::enabled() || config('mail.default') !== 'netcore') {
             Notification::make()
                 ->danger()
                 ->title('Test email not sent')
-                ->body($this->netcoreStatus())
+                ->body(! MailSettings::enabled()
+                    ? 'The global kill-switch is ON — all email is suppressed. Turn on "Send email" above first.'
+                    : $this->netcoreStatus())
                 ->persistent()
                 ->send();
 
@@ -286,7 +288,12 @@ class EmailSettings extends Page implements HasForms
         }
 
         try {
-            Mail::raw('This is a test email from the TechRisk Portal. If you received it, Netcore delivery works.', function ($message) use ($to): void {
+            Mail::send('emails.notification', [
+                'headline' => 'Test email',
+                'intro' => 'If you received this, Netcore delivery works — and this is exactly what portal emails look like.',
+                'actionText' => 'Go to Dashboard',
+                'actionUrl' => route('filament.admin.pages.dashboard'),
+            ], function ($message) use ($to): void {
                 $message->to($to)->subject('TechRisk Portal — test email');
             });
         } catch (\Throwable $e) {

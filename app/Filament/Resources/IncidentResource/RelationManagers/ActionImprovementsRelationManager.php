@@ -153,7 +153,9 @@ class ActionImprovementsRelationManager extends RelationManager
 
                         Notification::make()
                             ->when($recipients->isNotEmpty() && $mailed > 0, fn ($n) => $n->success()->title('Reminder sent')->body('Email sent to '.$mailed.' recipient(s).'))
-                            ->when($recipients->isNotEmpty() && $mailed === 0, fn ($n) => $n->warning()->title('No email sent')->body('Recipients exist but none have email reminders enabled in their preferences.'))
+                            ->when($recipients->isNotEmpty() && $mailed === 0, fn ($n) => $n->warning()->title('No email sent')->body(\App\Support\MailSettings::enabled()
+                                ? 'Recipients exist but none have email reminders enabled in their preferences.'
+                                : 'Email is turned off in Email Settings (global kill-switch).'))
                             ->when($recipients->isEmpty(), fn ($n) => $n->warning()->title('No matching users')->body('No registered users matched the PIC email(s).'))
                             ->send();
                     }),
