@@ -60,71 +60,13 @@ func TestParseRejects(t *testing.T) {
 	}
 }
 
-func TestStoreLifecycle(t *testing.T) {
-	dir := t.TempDir()
-	s := NewStore(dir)
-
-	weekly, err := s.Add(Item{ConversationID: "c1", When: "0 9 * * 1", Mode: ModeTask, Text: "summarize open incidents"}, now)
-	if err != nil {
-		t.Fatal(err)
+// Recurring decides whether bindSchedule sends cron or a resolved run_at to the dashboard.
+func TestSpecRecurring(t *testing.T) {
+	if s, err := Parse("0 9 * * 1", now); err != nil || !s.Recurring() {
+		t.Errorf("cron recurring = %v (err %v)", s.Recurring(), err)
 	}
-	once, err := s.Add(Item{ConversationID: "c1", When: "in 30m", Mode: ModeMessage, Text: "check P1"}, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if weekly.ID != 1 || once.ID != 2 {
-		t.Fatalf("ids = %d,%d want 1,2", weekly.ID, once.ID)
-	}
-
-	// Cancel is scoped to the owning conversation.
-	if _, err := s.Cancel(1, "other-chat"); err == nil {
-		t.Error("another chat must not cancel #1")
-	}
-
-	// Persistence survives a reload.
-	if got := len(NewStore(dir).List("c1")); got != 2 {
-		t.Fatalf("reloaded store has %d items, want 2", got)
-	}
-
-	// 10:30: the one-shot fires and is removed; the weekly is untouched.
-	due := s.TakeDue(now.Add(30 * time.Minute))
-	if len(due) != 1 || due[0].ID != 2 {
-		t.Fatalf("due at 10:30 = %+v, want only #2", due)
-	}
-	if len(s.List("c1")) != 1 {
-		t.Fatal("one-shot not removed after firing")
-	}
-
-	// Monday 09:00: the weekly fires and advances a week.
-	mon := time.Date(2026, 11, 16, 9, 0, 0, 0, WIB)
-	due = s.TakeDue(mon)
-	if len(due) != 1 || !due[0].NextRun.Equal(mon) {
-		t.Fatalf("due Monday = %+v", due)
-	}
-	if got := s.List("c1")[0].NextRun.In(WIB).Format("2006-01-02 15:04"); got != "2026-11-23 09:00" {
-		t.Errorf("weekly advanced to %s, want 2026-11-23 09:00", got)
-	}
-	if len(s.TakeDue(mon)) != 0 {
-		t.Error("same instant must not fire twice")
-	}
-
-	if _, err := s.Cancel(1, "c1"); err != nil || len(s.List("c1")) != 0 {
-		t.Errorf("cancel by owner failed: %v", err)
-	}
-}
-
-func TestStoreCapsPerConversation(t *testing.T) {
-	s := NewStore("")
-	for i := 0; i < MaxPerConversation; i++ {
-		if _, err := s.Add(Item{ConversationID: "c", When: "in 1h", Mode: ModeMessage, Text: "x"}, now); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := s.Add(Item{ConversationID: "c", When: "in 1h", Mode: ModeMessage, Text: "x"}, now); err == nil {
-		t.Error("cap not enforced")
-	}
-	if _, err := s.Add(Item{ConversationID: "other", When: "in 1h", Mode: ModeMessage, Text: "x"}, now); err != nil {
-		t.Errorf("cap must be per conversation: %v", err)
+	if s, err := Parse("in 30m", now); err != nil || s.Recurring() {
+		t.Errorf("one-shot recurring = %v (err %v)", s.Recurring(), err)
 	}
 }
 

@@ -2046,7 +2046,7 @@ class ChatContextService
             ->latest('incident_date')
             ->get();
 
-        $overdueActions = \App\Models\ActionImprovement::where('status', 'pending')
+        $overdueActions = \App\Models\ActionImprovement::whereIn('status', \App\Models\ActionImprovement::openStatuses())
             ->where('due_date', '<', now())
             ->count();
 
@@ -2135,7 +2135,7 @@ class ChatContextService
             ->take(5)
             ->get();
 
-        $overdueActions = \App\Models\ActionImprovement::where('status', 'pending')
+        $overdueActions = \App\Models\ActionImprovement::whereIn('status', \App\Models\ActionImprovement::openStatuses())
             ->where('due_date', '<', now())
             ->with('incident')
             ->get();

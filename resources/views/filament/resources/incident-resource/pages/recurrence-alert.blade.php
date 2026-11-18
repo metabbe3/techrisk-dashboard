@@ -90,8 +90,8 @@
                                 @endif
                             </div>
 
-                            @if(($match['summary'] ?? null))
-                            <p class="text-xs text-gray-600 dark:text-gray-400 mt-1.5 line-clamp-2 leading-relaxed">{{ $match['summary'] }}</p>
+                            @if(($match['title'] ?? null) || ($match['summary'] ?? null))
+                            <p class="text-xs text-gray-600 dark:text-gray-400 mt-1.5 line-clamp-2 leading-relaxed">{{ $match['title'] ?? $match['summary'] }}</p>
                             @endif
 
                             @if(($match['overdue_actions'] ?? 0) > 0 || ($match['pending_actions'] ?? 0) > 0 || ($match['completed_actions'] ?? 0) > 0)

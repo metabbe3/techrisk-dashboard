@@ -16,6 +16,12 @@ enum ApiEndpoint: string
     case CATEGORIES = 'categories';
     case USERS = 'users';
     case NOTION = 'notion';
+    case AGENT_SCHEDULES = 'agent-schedules';
+    case AGENT_RUNS = 'agent-runs';
+    case STATS = 'stats';
+    case AGENT_CORPUS = 'agent-corpus';
+    case SKILLS = 'skills';
+    case GOVERNANCE = 'governance';
 
     /**
      * Get all endpoints as an array for select options
@@ -41,6 +47,12 @@ enum ApiEndpoint: string
             self::CATEGORIES => 'Categories (Reference Data)',
             self::USERS => 'Users (Reference Data)',
             self::NOTION => 'Notion (read-only docs)',
+            self::AGENT_SCHEDULES => 'Agent Schedules (DingTalk reminders)',
+            self::AGENT_RUNS => 'Agent Runs (DingTalk turn reports)',
+            self::STATS => 'Stats (Aggregated Metrics)',
+            self::AGENT_CORPUS => 'Corpus pages (incident memory + topic patterns)',
+            self::SKILLS => 'Skills (agent skill library + War Room personas)',
+            self::GOVERNANCE => 'Governance KPIs (PDR metrics, verbatim service output)',
         };
     }
 
@@ -60,6 +72,12 @@ enum ApiEndpoint: string
             self::CATEGORIES => 'api/v1/categories',
             self::USERS => 'api/v1/users',
             self::NOTION => 'api/v1/notion',
+            self::AGENT_SCHEDULES => 'api/v1/agent-schedules',
+            self::AGENT_RUNS => 'api/v1/agent-runs',
+            self::STATS => 'api/v1/stats',
+            self::AGENT_CORPUS => 'api/v1/corpus',
+            self::SKILLS => 'api/v1/skills',
+            self::GOVERNANCE => 'api/v1/governance',
         };
     }
 

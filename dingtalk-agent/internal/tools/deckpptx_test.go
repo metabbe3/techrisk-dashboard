@@ -3,12 +3,14 @@ package tools
 import (
 	"archive/zip"
 	"encoding/json"
+	"encoding/xml"
 	"io"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/kb"
 )
 
 func readZip(t *testing.T, path string) map[string]string {
@@ -81,12 +83,44 @@ func TestGenerateDeckTool(t *testing.T) {
 
 func TestGenerateDeckEmpty(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"title": "X", "slides": "   "})
-	out, err := handleGenerateDeck(t.TempDir(), string(args))
-	if err != nil {
-		t.Fatalf("handleGenerateDeck: %v", err)
+	_, err := handleGenerateDeck(t.TempDir(), string(args))
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("empty slides must error, got err=%v", err)
 	}
-	if !strings.Contains(out, "Error") {
-		t.Errorf("empty slides should return an error note, got: %s", out)
+}
+
+// TestPptxWellFormed: every XML part unmarshals (well-formedness + declared
+// namespaces) — PowerPoint answers a malformed part with a "repair" dialog.
+// Also pins the p:-prefixed presentation elements (sldMasterIdLst/sldIdLst/
+// sldSz/notesSz shipped unprefixed once and PowerPoint refused the file).
+func TestPptxWellFormed(t *testing.T) {
+	dir := t.TempDir()
+	args, _ := json.Marshal(map[string]string{
+		"title": "WF", "slides": "## One & <Two>\n- bullet <1>\n- bullet 2\n",
+	})
+	if _, err := handleGenerateDeck(dir, string(args)); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	files, _ := filepath.Glob(filepath.Join(dir, "exports", "*.pptx"))
+	z := readZip(t, files[0])
+
+	for name, content := range z {
+		if !strings.HasSuffix(name, ".xml") && !strings.HasSuffix(name, ".rels") {
+			continue
+		}
+		var v any
+		if err := xml.Unmarshal([]byte(content), &v); err != nil {
+			t.Errorf("part %s not well-formed: %v", name, err)
+		}
+		if strings.Contains(content, "\\n") {
+			t.Errorf("part %s contains a literal backslash-n", name)
+		}
+	}
+	pres := z["ppt/presentation.xml"]
+	for _, want := range []string{"<p:sldMasterIdLst>", "</p:sldMasterIdLst>", "<p:sldIdLst>", "</p:sldIdLst>", "<p:sldSz ", "<p:notesSz "} {
+		if !strings.Contains(pres, want) {
+			t.Errorf("presentation.xml missing %s — PowerPoint will ask to repair", want)
+		}
 	}
 }
 
@@ -116,8 +150,11 @@ func TestParseDeckSpec(t *testing.T) {
 // "parameters":"{…}" and the upstream 400s the WHOLE chat request.
 func TestAllToolSchemasFlat(t *testing.T) {
 	reg := NewRegistry(&config.Config{WebToolsEnabled: true, NotionToolsEnabled: true})
+	// The four KB tools ride the same guard — a nested schema 400s the WHOLE
+	// upstream request (2026-11-10 outage); they shipped outside this net once.
+	reg.RegisterKnowledgeTools(kb.NewIndex(t.TempDir(), "m", sameEmb{}))
 	defs := reg.GetDefinitions()
-	if len(defs) < 11 { // 3 dashboard + 2 web + 2 generate + 4 notion
+	if len(defs) < 23 { // 3 dashboard + 2 web + 3 generate (incl. chart) + 1 external RCA + 4 notion + 4 kb + 2 skills + 4 track-C reads
 		t.Fatalf("expected the full fleet, got %d defs", len(defs))
 	}
 	for _, def := range defs {
@@ -189,5 +226,19 @@ func TestDeckSlideCap(t *testing.T) {
 	}
 	if _, ok := z["ppt/slides/slide20.xml"]; !ok {
 		t.Errorf("cap should keep 20 slides, slide20 missing")
+	}
+}
+
+func TestParseDeckSpecHashHeading(t *testing.T) {
+	slides := parseDeckSpec("#1 Priority\n- fix now")
+	if len(slides) != 1 || slides[0].Heading != "1 Priority" {
+		t.Errorf("heading mangled: %+v", slides)
+	}
+}
+
+func TestParseDeckSpecTrimmedHashHeading(t *testing.T) {
+	slides := parseDeckSpec("## Section Two\n- a")
+	if slides[0].Heading != "Section Two" {
+		t.Errorf("heading = %q", slides[0].Heading)
 	}
 }

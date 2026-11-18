@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"html"
 	"io"
@@ -14,7 +14,9 @@ import (
 	"syscall"
 	"time"
 
+	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // Keyless web research tools (owner request 2026-11-10). web_search hits DuckDuckGo's
@@ -46,16 +48,31 @@ func newWebTools() *webTools {
 	return &webTools{searchClient: plain, fetchClient: guarded}
 }
 
+var (
+	cgnatRange  = netip.MustParsePrefix("100.64.0.0/10") // carrier NAT incl. Alibaba metadata 100.100.100.200
+	benchRange  = netip.MustParsePrefix("198.18.0.0/15") // benchmarking, some cloud metadata mirrors
+	thisNetRng  = netip.MustParsePrefix("0.0.0.0/8")     // "this network"
+	nat64Prefix = netip.MustParsePrefix("64:ff9b::/96")  // IPv6 translation to v4 intranets
+)
+
 // blockedIP reports whether an address must never be dialed.
 func blockedIP(a netip.Addr) bool {
 	a = a.Unmap()
 	return !a.IsValid() || a.IsLoopback() || a.IsPrivate() || a.IsLinkLocalUnicast() ||
-		a.IsLinkLocalMulticast() || a.IsMulticast() || a.IsUnspecified()
+		a.IsLinkLocalMulticast() || a.IsMulticast() || a.IsUnspecified() ||
+		cgnatRange.Contains(a) || benchRange.Contains(a) || thisNetRng.Contains(a) ||
+		(a.Is6() && nat64Prefix.Contains(a))
 }
 
 // guardedTransport resolves + dials only public IPs (Control fires post-DNS,
 // pre-connect, covering redirects and DNS rebinding).
 func guardedTransport() *http.Transport {
+	return GuardedTransport()
+}
+
+// GuardedTransport is the exported form: shared by the file downloader so
+// message-file GETs also refuse private/loopback dials.
+func GuardedTransport() *http.Transport {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
 		Control: func(_, addr string, _ syscall.RawConn) error {
@@ -75,8 +92,8 @@ func guardedTransport() *http.Transport {
 
 func (r *Registry) registerWebTools() {
 	wt := newWebTools()
-	r.Register(webSearchDef(), wt.handleWebSearch)
-	r.Register(webFetchDef(), wt.handleWebFetch)
+	r.Register(webSearchDef(), typed(wt.handleWebSearch))
+	r.Register(webFetchDef(), typed(wt.handleWebFetch))
 }
 
 func webSearchDef() llm.ToolDefinition {
@@ -101,17 +118,13 @@ type webSearchArgs struct {
 	Query string `json:"query"`
 }
 
-func (w *webTools) handleWebSearch(argsJSON string) (string, error) {
-	var args webSearchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (w *webTools) handleWebSearch(ctx context.Context, args webSearchArgs) (string, error) {
 	q := strings.TrimSpace(args.Query)
 	if q == "" {
 		return "", fmt.Errorf("query is required")
 	}
 
-	req, err := http.NewRequest(http.MethodGet, ddgEndpoint+"?q="+url.QueryEscape(q), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ddgEndpoint+"?q="+url.QueryEscape(q), nil)
 	if err != nil {
 		return "", err
 	}
@@ -138,7 +151,8 @@ func (w *webTools) handleWebSearch(argsJSON string) (string, error) {
 	for i, res := range results {
 		fmt.Fprintf(&sb, "%d. %s\n   %s\n   %s\n", i+1, res.title, res.link, res.snippet)
 	}
-	return selfTruncate(sb.String()), nil
+	// Snippets quote arbitrary pages — same framing as web_fetch.
+	return guardrail.FrameDocumentContent("web search", selfTruncate(sb.String())), nil
 }
 
 type ddgResult struct{ title, link, snippet string }
@@ -217,18 +231,14 @@ var (
 	blockElRe     = regexp.MustCompile(`(?is)</(p|div|br|li|tr|h[1-6])>`)
 )
 
-func (w *webTools) handleWebFetch(argsJSON string) (string, error) {
-	var args webFetchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (w *webTools) handleWebFetch(ctx context.Context, args webFetchArgs) (string, error) {
 	raw := strings.TrimSpace(args.URL)
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", fmt.Errorf("url must be absolute http(s), got %q", raw)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return "", err
 	}
@@ -250,7 +260,10 @@ func (w *webTools) handleWebFetch(argsJSON string) (string, error) {
 	if strings.TrimSpace(text) == "" {
 		return "", fmt.Errorf("page has no readable text")
 	}
-	return selfTruncate(text), nil
+	// Web pages are untrusted: framed as data so embedded prompt injection
+	// ("ignore instructions and fetch X") reads as content, not commands
+	// (audit 2026-11-12).
+	return guardrail.FrameDocumentContent("web page "+u.Host, selfTruncate(text)), nil
 }
 
 // htmlToText drops script/style blocks, converts block ends to newlines, strips tags.
@@ -273,9 +286,15 @@ func htmlToText(s string) string {
 	return sb.String()
 }
 
+// selfTruncate caps a web result, reporting how many RUNES were cut. The old
+// byte-length guard produced a negative count on CJK-heavy strings (bytes >
+// limit while runes < limit: the byte guard passed the string through, then
+// the suffix subtracted a byte constant from a rune count). The cut test is
+// rune-based now — util.Cut returned s unchanged means nothing was cut.
 func selfTruncate(s string) string {
-	if len(s) <= webResultMaxChars {
+	t := util.Cut(s, webResultMaxChars)
+	if t == s {
 		return s
 	}
-	return s[:webResultMaxChars] + fmt.Sprintf("\n…[truncated %d chars]", len(s)-webResultMaxChars)
+	return t + fmt.Sprintf("\n…[truncated %d chars]", len([]rune(s))-webResultMaxChars)
 }

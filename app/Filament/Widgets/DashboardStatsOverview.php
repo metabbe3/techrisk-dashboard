@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
+use App\Filament\Statistics\IncidentStatsFooterData;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
@@ -26,7 +28,10 @@ class DashboardStatsOverview extends BaseWidget
     {
         // v6: counting rule changed (severity G / Non Incident excluded) —
         // bump so pre-change cached numbers are never served.
-        $cacheKey = 'dashboard_stats_v6_'.md5(json_encode([
+        // v7: MTTR tiles now scope by fund_status (matching the Fund Loss /
+        // Non Fund Loss export tabs), not by MTTR sign — a Potential recovery
+        // row also stores days-scale negative MTTR but is neither tab.
+        $cacheKey = 'dashboard_stats_v7_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'v' => Cache::get('dashboard_cache_version', 0),
@@ -93,11 +98,21 @@ class DashboardStatsOverview extends BaseWidget
 
         $lastIncidentLabel = $days === 0 ? 'No recent incident' : $days.' days ago';
 
+        // MTTR tiles follow the export tabs (one logic rule, owner
+        // 2026-11-16): "Non Fund Loss (mins)" = Non fundLoss rows' positive
+        // (minutes) values; "Fund Loss (days)" = Confirmed loss rows'
+        // negative (days) values. Sign alone is NOT the scope — the metric
+        // calculator stores days-scale negative MTTR for every
+        // shouldCalculateMttrByDays() status (also Potential recovery /
+        // Fully recovered / Non Tech Loss), which are no tab's rows. The
+        // sign filters stay as the unit bucket inside each scope. Outliers
+        // store null MTTR, so the sign filters drop them for free.
         $mttrNonFundLoss = Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutSubIncidents() // subs carry computed mttr (unlike outliers) — they must leave the average
+            ->withoutSubIncidents() // PROJ-022: subs carry computed mttr — they must leave the average
             ->tap($incidentDateFilter)
+            ->where('fund_status', FundStatus::NonFundLoss->value)
             ->where('mttr', '>=', 0)
             ->average('mttr');
 
@@ -106,46 +121,27 @@ class DashboardStatsOverview extends BaseWidget
         $mttrFundLoss = abs((float) (Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutSubIncidents()
+            ->withoutSubIncidents() // PROJ-022: same exclusion as above
             ->tap($incidentDateFilter)
+            ->where('fund_status', FundStatus::ConfirmedLoss->value)
             ->where('mttr', '<', 0)
             ->average('mttr') ?? 0));
 
-        $mtbfNonFundLossQuery = Incident::query()
-            ->where('classification', '!=', IncidentClassification::Issue->value)
-            ->tap($incidentDateFilter)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->withoutSubIncidents()
-            ->where('fund_status', 'Non fundLoss');
+        // One span-MTBF implementation (IncidentStatsFooterData::avgMtbf):
+        // the metric rules ride on it; only the tab scope stays here.
+        $mtbfNonFundLoss = IncidentStatsFooterData::avgMtbf(
+            Incident::query()
+                ->where('classification', '!=', IncidentClassification::Issue->value)
+                ->tap($incidentDateFilter)
+                ->where('fund_status', FundStatus::NonFundLoss->value),
+        );
 
-        $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
-        $mtbfNonFundLoss = 0;
-        if ($mtbfNonFundLossCount > 1) {
-            $minDate = $mtbfNonFundLossQuery->min('incident_date');
-            $maxDate = $mtbfNonFundLossQuery->max('incident_date');
-            if ($minDate && $maxDate) {
-                $mtbfNonFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfNonFundLossCount - 1);
-            }
-        }
-
-        $mtbfFundLossQuery = Incident::query()
-            ->where('classification', '!=', IncidentClassification::Issue->value)
-            ->tap($incidentDateFilter)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->withoutSubIncidents()
-            ->where('fund_status', 'Confirmed loss');
-
-        $mtbfFundLossCount = $mtbfFundLossQuery->count();
-        $mtbfFundLoss = 0;
-        if ($mtbfFundLossCount > 1) {
-            $minDate = $mtbfFundLossQuery->min('incident_date');
-            $maxDate = $mtbfFundLossQuery->max('incident_date');
-            if ($minDate && $maxDate) {
-                $mtbfFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfFundLossCount - 1);
-            }
-        }
+        $mtbfFundLoss = IncidentStatsFooterData::avgMtbf(
+            Incident::query()
+                ->where('classification', '!=', IncidentClassification::Issue->value)
+                ->tap($incidentDateFilter)
+                ->where('fund_status', FundStatus::ConfirmedLoss->value),
+        );
 
         return [
             Stat::make('Total Incidents', $totalIncidentsOnly)

@@ -5,8 +5,7 @@ package memory
 
 import (
 	"encoding/json"
-	"errors"
-	"io/fs"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // UserRecord is one line of the append-only user registry (JSONL).
@@ -52,32 +52,114 @@ func (s *Store) AppendKnowledge(e KnowledgeEntry) error {
 		return err
 	}
 	defer f.Close()
-	_, err = f.Write(append(data, '\n'))
-	return err
+	if _, err = f.Write(append(data, '\n')); err != nil {
+		return err
+	}
+	s.knowledge = append(s.knowledge, e)
+	// No in-memory trim: the digest covered cursor is an ABSOLUTE index into
+	// this slice — trimming the window desyncs it (covered >= len(window))
+	// and the incremental merge silently freezes until restart. The prompt
+	// path caps itself (Knowledge() keeps the last MaxKnowledgeEntries);
+	// the full list here must mirror knowledge.jsonl exactly.
+	return nil
 }
 
-// Knowledge returns the most recent document summaries (auto recall).
+// Knowledge returns the most recent document summaries (auto recall) — from
+// the in-memory mirror; the JSONL used to be re-parsed under the lock on
+// every turn.
 func (s *Store) Knowledge() []KnowledgeEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	data, err := os.ReadFile(filepath.Join(s.dir, "knowledge.jsonl"))
-	if err != nil {
+	if len(s.knowledge) > MaxKnowledgeEntries {
+		return append([]KnowledgeEntry{}, s.knowledge[len(s.knowledge)-MaxKnowledgeEntries:]...)
+	}
+	return append([]KnowledgeEntry{}, s.knowledge...)
+}
+
+// Digest caps: the compiled knowledge.md digest is injected EVERY turn, so it
+// stays bounded however long knowledge.jsonl grows (LLM-Wiki-style compiled
+// memory; the raw JSONL layer stays append-only on disk).
+const (
+	MaxDigestLines   = 40
+	MaxDigestLineLen = 200
+	digestFile       = "knowledge.md"
+	digestMetaFile   = "knowledge_digest.json"
+)
+
+type digestMeta struct {
+	Covered int `json:"covered"` // knowledge.jsonl entries already merged into the digest
+}
+
+// AllKnowledge returns every parsed knowledge entry — the digest backfill's
+// view of the raw layer (Knowledge() only serves the last-8 prompt slice).
+func (s *Store) AllKnowledge() []KnowledgeEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]KnowledgeEntry{}, s.knowledge...)
+}
+
+// KnowledgeDigest returns the compiled digest ("" when none yet).
+func (s *Store) KnowledgeDigest() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.digest
+}
+
+// DigestCovered returns how many knowledge.jsonl entries the digest already
+// covers (the incremental merge's cursor).
+func (s *Store) DigestCovered() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.digestCovered
+}
+
+// KnowledgeBeyondCovered returns the raw entries the digest does not cover
+// yet — knowledgePrompt injects this tail under the digest so a failed merge
+// never hides newly-learned documents.
+func (s *Store) KnowledgeBeyondCovered() []KnowledgeEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.digestCovered >= len(s.knowledge) {
 		return nil
 	}
-	var recs []KnowledgeEntry
-	for _, line := range strings.Split(string(data), "\n") {
-		if line == "" {
+	return append([]KnowledgeEntry{}, s.knowledge[s.digestCovered:]...)
+}
+
+// SaveKnowledgeDigest atomically rewrites knowledge.md and advances the
+// covered cursor. Caps and normalizes like LearnProfile: bullets, length-capped
+// lines, newest MaxDigestLines kept. An empty digest is REFUSED (an empty or
+// broken LLM merge must never wipe compiled memory) with the cursor left
+// alone — the next merge retries. Digest file first, meta second: a crash
+// between them leaves the cursor behind, so entries re-merge (duplicates
+// collapse) rather than being lost.
+func (s *Store) SaveKnowledgeDigest(text string, covered int) error {
+	lines := make([]string, 0, MaxDigestLines)
+	for _, ln := range strings.Split(text, "\n") {
+		ln = strings.TrimSpace(ln)
+		ln = strings.TrimPrefix(ln, "-")
+		ln = strings.TrimSpace(ln)
+		ln = strings.Trim(ln, `-"* `)
+		if ln == "" {
 			continue
 		}
-		var e KnowledgeEntry
-		if json.Unmarshal([]byte(line), &e) == nil {
-			recs = append(recs, e)
-		}
+		lines = append(lines, "- "+util.Cut(ln, MaxDigestLineLen))
 	}
-	if len(recs) > MaxKnowledgeEntries {
-		recs = recs[len(recs)-MaxKnowledgeEntries:]
+	if len(lines) == 0 {
+		return fmt.Errorf("empty digest refused (raw reply %d chars) — never wipe compiled memory", len(text))
 	}
-	return recs
+	if len(lines) > MaxDigestLines {
+		lines = lines[len(lines)-MaxDigestLines:] // keep the newest
+	}
+
+	s.mu.Lock()
+	if err := util.AtomicWrite(filepath.Join(s.dir, digestFile), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.digest = strings.Join(lines, "\n")
+	s.digestCovered = covered
+	s.mu.Unlock()
+	return s.writeJSON(filepath.Join(s.dir, digestMetaFile), digestMeta{Covered: covered})
 }
 
 // historyFile mirrors the bot's in-memory history map.
@@ -92,6 +174,13 @@ type HistoryEntry struct {
 }
 
 type Store struct {
+	knownUsers    map[string]bool  // staff ids already in users.jsonl (dedupe per person, S9)
+	knowledge     []KnowledgeEntry // parsed mirror of knowledge.jsonl (was re-read every turn)
+	digest        string           // compiled knowledge.md digest ("" = none yet)
+	digestCovered int              // knowledge.jsonl entries already merged into the digest
+
+	historyTTL time.Duration // 0 = no load-time TTL filtering
+
 	dir string
 
 	mu       sync.Mutex
@@ -105,7 +194,9 @@ type Store struct {
 }
 
 // NewStore loads (auto recall) or initializes the store inside dir.
-func NewStore(dir string) *Store {
+// historyTTL filters expired conversations at LOAD time (SetHistoryTTL used
+// to arm this after the load had already happened — dead code, audit round 5).
+func NewStore(dir string, historyTTL time.Duration) *Store {
 	_ = os.MkdirAll(dir, 0o700)
 	s := &Store{
 		dir:         dir,
@@ -113,13 +204,19 @@ func NewStore(dir string) *Store {
 		historyPath: filepath.Join(dir, "history.json"),
 		history:     map[string]HistoryEntry{},
 		profiles:    map[string]UserProfile{},
+		knownUsers:  map[string]bool{},
 	}
+	s.historyTTL = historyTTL
+	s.loadUsers()
+	s.loadKnowledge()
 	s.loadHistory()
 	s.loadProfiles()
+	s.loadDigest()
 	return s
 }
 
-// AppendUser records a chat contact (auto save who chats).
+// AppendUser records a chat contact (auto save who chats). One line per
+// person: the file used to grow a line per message, forever.
 func (s *Store) AppendUser(rec UserRecord) error {
 	if rec.Time.IsZero() {
 		rec.Time = time.Now()
@@ -130,48 +227,49 @@ func (s *Store) AppendUser(rec UserRecord) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.knownUsers[rec.StaffID] { // first contact wins; later records are noise
+		return nil
+	}
 	f, err := os.OpenFile(s.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
 	_, err = f.Write(append(data, '\n'))
-	return err
-}
-
-// Users returns every recorded contact in chronological order.
-func (s *Store) Users() ([]UserRecord, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	data, err := os.ReadFile(s.path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
-	}
 	if err != nil {
-		return nil, err
+		return err
 	}
-	var recs []UserRecord
-	for _, line := range strings.Split(string(data), "\n") {
-		if line == "" {
-			continue
-		}
-		var r UserRecord
-		if json.Unmarshal([]byte(line), &r) == nil {
-			recs = append(recs, r)
-		}
-	}
-	return recs, nil
+	s.knownUsers[rec.StaffID] = true
+	return nil
 }
 
-// TakeHistory returns the persisted messages for a conversation (may be nil).
-func (s *Store) TakeHistory(conversationID string) []llm.ChatMessage {
-	s.hmu.Lock()
-	defer s.hmu.Unlock()
-	entry, ok := s.history[conversationID]
-	if !ok {
-		return nil
+// loadUsers seeds the dedupe set from the existing registry (a restart must
+// not re-append every person already on disk).
+func (s *Store) loadUsers() {
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		return
 	}
-	return entry.Messages
+	for _, line := range strings.Split(string(data), "\n") {
+		var r UserRecord
+		if json.Unmarshal([]byte(line), &r) == nil && r.StaffID != "" {
+			s.knownUsers[r.StaffID] = true
+		}
+	}
+}
+
+// loadKnowledge parses knowledge.jsonl once; Knowledge() served from memory.
+func (s *Store) loadKnowledge() {
+	data, err := os.ReadFile(filepath.Join(s.dir, "knowledge.jsonl"))
+	if err != nil {
+		return
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		var e KnowledgeEntry
+		if json.Unmarshal([]byte(line), &e) == nil && e.File != "" {
+			s.knowledge = append(s.knowledge, e)
+		}
+	}
 }
 
 // All returns every persisted conversation (boot-time hydration for the bot).
@@ -186,7 +284,10 @@ func (s *Store) All() map[string]HistoryEntry {
 }
 
 // SaveHistory persists a conversation, dropping entries idle beyond ttl so
-// the file stays bounded on long-lived servers.
+// the file stays bounded on long-lived servers. Synchronous write (audit
+// 2026-11-12 considered a debounced async flusher — rejected: restart
+// recall is a hard contract and a deferred write widens the crash-loss
+// window; at this agent's scale the whole-map rewrite is cheap and atomic).
 func (s *Store) SaveHistory(conversationID string, messages []llm.ChatMessage, ttl time.Duration) error {
 	s.hmu.Lock()
 	s.history[conversationID] = HistoryEntry{Messages: messages, LastSeen: time.Now()}
@@ -197,23 +298,32 @@ func (s *Store) SaveHistory(conversationID string, messages []llm.ChatMessage, t
 			}
 		}
 	}
-	snap := historyFile{Conversations: s.history}
+	convs := make(map[string]HistoryEntry, len(s.history))
+	for id, e := range s.history {
+		convs[id] = e
+	}
 	s.hmu.Unlock()
-	return s.writeJSON(s.historyPath, snap)
+	return s.writeJSON(s.historyPath, historyFile{Conversations: convs})
 }
 
 func (s *Store) loadHistory() {
-	data, err := os.ReadFile(s.historyPath)
-	if err != nil {
-		return // no file yet — start fresh
-	}
 	var hf historyFile
-	if json.Unmarshal(data, &hf) == nil && hf.Conversations != nil {
-		s.history = hf.Conversations
+	if err := util.LoadJSON(s.historyPath, &hf); err != nil || hf.Conversations == nil {
+		return // no file yet (nil), or corrupt already renamed away
 	}
+	// Hydration used to reload EVERY conversation, including ones whose TTL
+	// had expired while the bot was down — stale context came back until the
+	// next save purged it (audit round 4).
+	if s.historyTTL > 0 {
+		for id, e := range hf.Conversations {
+			if time.Since(e.LastSeen) > s.historyTTL {
+				delete(hf.Conversations, id)
+			}
+		}
+	}
+	s.history = hf.Conversations
 }
 
-// writeJSON atomically replaces path (tmp+rename).
 func (s *Store) writeJSON(path string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -222,11 +332,7 @@ func (s *Store) writeJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return util.AtomicWrite(path, data, 0o600)
 }
 
 // UserProfile is what the agent has learned about one person's preferences
@@ -258,9 +364,7 @@ func (s *Store) LearnProfile(staffID, nick string, lines []string) error {
 		if ln == "" {
 			continue
 		}
-		if len(ln) > MaxProfileLineLen {
-			ln = ln[:MaxProfileLineLen]
-		}
+		ln = util.Cut(ln, MaxProfileLineLen)
 		clean = append(clean, ln)
 		if len(clean) == MaxProfileLines {
 			break
@@ -272,9 +376,15 @@ func (s *Store) LearnProfile(staffID, nick string, lines []string) error {
 
 	s.pmu.Lock()
 	s.profiles[staffID] = UserProfile{Nick: nick, UpdatedAt: time.Now(), Lines: clean}
-	snap := profileFileFormat{Profiles: s.profiles}
+	// Snapshot a COPY under the lock — handing the live map to json.Marshal
+	// outside it raced a concurrent learnProfile write ("concurrent map
+	// iteration and map write", fatal, not recoverable).
+	profiles := make(map[string]UserProfile, len(s.profiles))
+	for id, p := range s.profiles {
+		profiles[id] = p
+	}
 	s.pmu.Unlock()
-	return s.writeJSON(filepath.Join(s.dir, profileFile), snap)
+	return s.writeJSON(filepath.Join(s.dir, profileFile), profileFileFormat{Profiles: profiles})
 }
 
 // Profile returns a user's learned preference lines (nil when unknown).
@@ -288,12 +398,21 @@ func (s *Store) Profile(staffID string) []string {
 }
 
 func (s *Store) loadProfiles() {
-	data, err := os.ReadFile(filepath.Join(s.dir, profileFile))
-	if err != nil {
-		return // no file yet — start fresh
-	}
 	var pf profileFileFormat
-	if json.Unmarshal(data, &pf) == nil && pf.Profiles != nil {
-		s.profiles = pf.Profiles
+	if err := util.LoadJSON(filepath.Join(s.dir, profileFile), &pf); err != nil || pf.Profiles == nil {
+		return
+	}
+	s.profiles = pf.Profiles
+}
+
+// loadDigest seeds the compiled digest + covered cursor from disk (a restart
+// must not re-merge everything; "" = the boot backfill fills it).
+func (s *Store) loadDigest() {
+	var meta digestMeta
+	if util.LoadJSON(filepath.Join(s.dir, digestMetaFile), &meta) == nil {
+		s.digestCovered = meta.Covered
+	}
+	if data, err := os.ReadFile(filepath.Join(s.dir, digestFile)); err == nil {
+		s.digest = strings.TrimSpace(string(data))
 	}
 }

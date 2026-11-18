@@ -11,6 +11,7 @@ use App\Enums\Severity;
 use App\Models\Incident;
 use App\Models\Setting;
 use App\Models\User;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 
@@ -75,6 +76,36 @@ class NotionInvestigationService
             }
         }
 
+        // Double-click guard: the create path takes seconds (parent fetch,
+        // page create, body fetch) — two concurrent calls both saw a blank
+        // page id here and each created its own Notion page. The loser
+        // re-checks under the lock and takes the "already exists" exit.
+        $lock = Cache::lock("notion-investigation:{$incident->id}", 120);
+
+        try {
+            $lock->block(10);
+        } catch (LockTimeoutException) {
+            return ['status' => 'failed', 'message' => 'Another start/refresh for this record is in progress — try again in a moment.'];
+        }
+
+        try {
+            if (filled($incident->fresh()->notion_investigation_page_id)
+                && blank($incident->fresh()->notion_investigation_unlinked_at)) {
+                return ['status' => 'failed', 'message' => 'An investigation page already exists for this record — use "Refresh from Notion".'];
+            }
+
+            return $this->createInvestigationPage($incident, $user);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
+     * The create path (parent fetch → page create → body fetch) moved out of
+     * start() so the double-click lock wraps exactly it.
+     */
+    private function createInvestigationPage(Incident $incident, ?User $user): array
+    {
         $parentId = Setting::get(self::PARENT_KEY);
 
         if (blank($parentId)) {
@@ -286,14 +317,14 @@ class NotionInvestigationService
             return ['status' => 'failed', 'message' => 'The linked Notion page has been deleted in Notion — use "Re-investigate" to start a fresh investigation.'];
         }
 
-        $body = $this->extractPageBody($response['text']);
+        $body = $this->read()->extractPageBody($response['text']);
 
         if ($body === null) {
             return ['status' => 'failed', 'message' => 'Could not read the page body from Notion\'s response — the stored copy is unchanged.'];
         }
 
         $incident->update([
-            'notion_investigation_markdown' => $this->inlineAiBlocks($body),
+            'notion_investigation_markdown' => $this->read()->inlineAiBlocks($body),
             'notion_investigation_synced_at' => now(),
             // The page came back (restored by hand in Notion) — unflag.
             'notion_investigation_deleted_at' => null,
@@ -324,19 +355,14 @@ class NotionInvestigationService
     /**
      * 195 of the last 300 record titles begin with their own date
      * ("31 October 2026 - …") — the composed page title already carries the
-     * date, so the prefix drops. A separator is required so a real title
-     * that merely mentions a date stays intact; a title that is ONLY the
-     * date keeps it.
+     * date, so the prefix drops. Delegates to NotionIssueMapper::stripDatePrefix
+     * (the one parser): this private copy missed the sync's own `Y M d` form
+     * and the repeat loop, so a title synced from Notion came back
+     * double-prefixed ("20261109 - 2026 Nov 09 - …").
      */
     protected function withoutDatePrefix(string $title): string
     {
-        $stripped = preg_replace(
-            '/^\s*(?:\d{1,2}\s+\w+\s+\d{4}|\d{4}-\d{2}-\d{2}|\w+\s+\d{1,2},?\s+\d{4})\s*[-–—:]\s*/',
-            '',
-            $title,
-        );
-
-        return filled($stripped) ? $stripped : $title;
+        return NotionIssueMapper::stripDatePrefix($title);
     }
 
     /** The metadata block the operator would otherwise retype into Notion. */
@@ -512,7 +538,8 @@ MARKDOWN;
             if ($userIds !== []) {
                 $properties['PIC'] = $userIds;
             } elseif ($emails->isNotEmpty()) {
-                $note = ' None of the PIC emails matched a Notion member — PIC left empty.';
+                // .= — a severity note above must survive, not be overwritten.
+                $note .= ' None of the PIC emails matched a Notion member — PIC left empty.';
             }
         }
 
@@ -590,10 +617,10 @@ MARKDOWN;
                 return null;
             }
 
-            $body = $this->extractPageBody($response['text']);
+            $body = $this->read()->extractPageBody($response['text']);
 
             if ($body !== null) {
-                return $this->inlineAiBlocks($body);
+                return $this->read()->inlineAiBlocks($body);
             }
         }
 
@@ -601,67 +628,14 @@ MARKDOWN;
     }
 
     /**
-     * Owner 2026-11-04 (round 8): the page envelope renders Notion AI blocks
-     * as self-closing `<unknown url="…#<block id>" alt="ai_block" />`
-     * placeholders — the generated content is NOT inlined (the operator's
-     * "refresh didn't import my AI content"). Each placeholder is replaced
-     * with the block's own fetched body (live-verified: a generated block
-     * fetches as a page envelope; an empty one as <blank-page>). A failed
-     * block fetch keeps the placeholder — the next refresh retries it.
+     * Shared Notion read helpers (body extraction with the unterminated-<content>
+     * tolerance, AI-block inlining with a capped, throttled fetch loop) — one
+     * implementation with NotionReadService; this service's private copies
+     * were uncapped and dropped the tolerance.
      */
-    protected function inlineAiBlocks(string $body): string
+    protected function read(): NotionReadService
     {
-        return preg_replace_callback(
-            '/<unknown\s[^>]*\/>/i',
-            function (array $match): string {
-                if (! str_contains($match[0], 'alt="ai_block"')) {
-                    return $match[0];
-                }
-
-                if (! preg_match('/url="[^"#]+#([a-f0-9-]+)"/i', $match[0], $anchor)) {
-                    return $match[0];
-                }
-
-                $response = $this->notion->callToolDetailed(
-                    'notion-fetch',
-                    ['id' => str_replace('-', '', $anchor[1])],
-                );
-
-                if ($response === null || $response['isError']) {
-                    return $match[0];
-                }
-
-                // Round 10 ("table content not fully imported"): a
-                // not-yet-generated block anchors as <blank-page> — no
-                // <content> to extract. Keeping the placeholder preserves
-                // the section (the operator runs the block in Notion, then
-                // Refresh inlines it); the old `?? ''` deleted it instead.
-                return $this->extractPageBody($response['text']) ?? $match[0];
-            },
-            $body,
-        ) ?? $body;
-    }
-
-    /**
-     * The page body (notion-flavored markdown) out of a notion-fetch
-     * response — the tool result is a JSON envelope whose inner text wraps
-     * the body in <content> tags (live 2026-11-03).
-     */
-    protected function extractPageBody(string $responseText): ?string
-    {
-        $payload = json_decode($responseText, true);
-
-        if (! is_array($payload)) {
-            return null;
-        }
-
-        if (! preg_match('/<content>(.*)<\/content>/s', (string) ($payload['text'] ?? ''), $matches)) {
-            return null;
-        }
-
-        $body = trim($matches[1]);
-
-        return $body === '' ? null : $body;
+        return new NotionReadService($this->notion);
     }
 
     /**

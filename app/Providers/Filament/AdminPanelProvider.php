@@ -73,6 +73,13 @@ class AdminPanelProvider extends PanelProvider
             // DANA logo itself — the brandLogo wrapper is CSS-promoted into
             // the collapsed header (app.css); the pin lives only on the
             // temporary expand state (SIDEBAR_NAV_START hook below).
+            // MERGE 2026-11-18: main flipped this to
+            // sidebarFullyCollapsibleOnDesktop() (commit 84c6914, a side
+            // note in the stale-reminders round) — fully HIDES the sidebar
+            // when closed. Every rail round here (rail logo, hover
+            // temp-expand, pin, 5.5rem width) is built on the COLLAPSIBLE
+            // icon rail, so the flip is reverted; switching modes is an
+            // owner decision, not a reminder-feature side effect.
             ->databaseNotifications()
             ->globalSearch(true)
             ->path('admin')

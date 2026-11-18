@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,7 @@ func newTestRegistry(t *testing.T, handler http.HandlerFunc) (*Registry, *httpte
 	cfg := &config.Config{
 		DashboardAPIBase:  server.URL,
 		DashboardAPIToken: "test-token",
+		SkillToolsEnabled: true,
 	}
 	return NewRegistry(cfg), server
 }
@@ -38,6 +40,44 @@ func envelope(w http.ResponseWriter, data any, meta any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+// TestSearchIncidentsKeepsIdentityFields pins the projection against the exact
+// row shape IncidentListApiResource emits. The 2026-11-16 drift: the keep-list
+// expected `no`/`title` while the resource renamed to `incident_no`/
+// `incident_title` — every search row silently lost its number and the
+// external-RCA flow got blocked asking the human for it.
+func TestSearchIncidentsKeepsIdentityFields(t *testing.T) {
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		envelope(w, []any{map[string]any{
+			"id":              42,
+			"incident_no":     "20261106_IN_0042",
+			"incident_title":  "dana.id inaccessible via several ISPs",
+			"summary":         "Domain access blocked.",
+			"severity":        "X1",
+			"incident_date":   "2026-11-06",
+			"incident_status": "Open",
+			"created_at":      "2026-11-06T10:00:00.000000Z",
+			"updated_at":      "2026-11-06T12:00:00.000000Z",
+		}}, map[string]any{"total": 1})
+	})
+
+	out, err := reg.Execute(context.Background(), "search_incidents", `{"limit":1}`)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	for _, want := range []string{
+		`"incident_no":"20261106_IN_0042"`, `"incident_title":"dana.id inaccessible via several ISPs"`,
+		`"id":42`, `"severity":"X1"`, `"incident_date":"2026-11-06"`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("projected row missing %s (got: %s)", want, out)
+		}
+	}
+	// non-identity payload (summary, audit noise) must NOT survive the projection
+	if strings.Contains(out, `"summary"`) {
+		t.Errorf("summary leaked into the projected search row: %s", out)
+	}
+}
+
 func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 	var gotQuery string
 	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
@@ -52,7 +92,7 @@ func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 		envelope(w, []any{}, map[string]any{"total": 7})
 	})
 
-	out, err := reg.Execute("search_incidents", `{
+	out, err := reg.Execute(context.Background(), "search_incidents", `{
 		"severity": "P1",
 		"status": "Completed",
 		"classification": "Incident",
@@ -83,6 +123,22 @@ func TestSearchIncidentsMapsParamsToQuery(t *testing.T) {
 	}
 }
 
+// updated_since passes through untouched — the API normalizes the timestamp
+// (RFC3339/Z + storage tz) server-side; the tool must not mangle it.
+func TestSearchIncidentsPassesUpdatedSince(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, []any{}, map[string]any{"total": 0})
+	})
+	if _, err := reg.Execute(context.Background(), "search_incidents", `{"updated_since":"2026-11-10T17:00:00Z","limit":1}`); err != nil {
+		t.Fatalf("updated_since search failed: %v", err)
+	}
+	if !strings.Contains(gotQuery, "updated_since=2026-11-10T17%3A00%3A00Z") {
+		t.Errorf("updated_since not passed to the API: %s", gotQuery)
+	}
+}
+
 func TestSearchIncidentsPairsStartDateWithToday(t *testing.T) {
 	var gotQuery string
 	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +147,7 @@ func TestSearchIncidentsPairsStartDateWithToday(t *testing.T) {
 	})
 
 	// A lone start_date must be paired — the API ignores a single bound (all-time counts otherwise).
-	if _, err := reg.Execute("search_incidents", `{"start_date":"2026-01-01","limit":1}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "search_incidents", `{"start_date":"2026-01-01","limit":1}`); err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
 	if !strings.Contains(gotQuery, "start_date=2026-01-01") || !strings.Contains(gotQuery, "end_date=") {
@@ -106,7 +162,7 @@ func TestSearchIncidentsClampsLimitAndIgnoresShortSearch(t *testing.T) {
 		envelope(w, []any{}, map[string]any{"total": 0})
 	})
 
-	if _, err := reg.Execute("search_incidents", `{"limit": 5000, "search": "a"}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "search_incidents", `{"limit": 5000, "search": "a"}`); err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
 	if !strings.Contains(gotQuery, "limit=100") {
@@ -128,7 +184,7 @@ func TestSearchIncidentsRejectsBadDate(t *testing.T) {
 		`{"start_date":"2026-13-45","limit":1}`,
 		`{"start_date":"2026-10-05","end_date":"2026-10-01","limit":1}`,
 	} {
-		out, err := reg.Execute("search_incidents", args)
+		out, err := reg.Execute(context.Background(), "search_incidents", args)
 		if err != nil {
 			t.Fatalf("Execute should not error (error becomes tool content), got %v", err)
 		}
@@ -145,14 +201,14 @@ func TestGetIncidentByNoAndID(t *testing.T) {
 		envelope(w, map[string]any{"no": "20250115_IN_1234", "title": "Payment Gateway Timeout"}, nil)
 	})
 
-	if _, err := reg.Execute("get_incident", `{"no":"20250115_IN_1234"}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "get_incident", `{"no":"20250115_IN_1234"}`); err != nil {
 		t.Fatalf("get by no failed: %v", err)
 	}
 	if gotPath != "/incidents-by-no/20250115_IN_1234" {
 		t.Errorf("unexpected path: %s", gotPath)
 	}
 
-	if _, err := reg.Execute("get_incident", `{"id": 42}`); err != nil {
+	if _, err := reg.Execute(context.Background(), "get_incident", `{"id": 42}`); err != nil {
 		t.Fatalf("get by id failed: %v", err)
 	}
 	if gotPath != "/incidents/42" {
@@ -166,7 +222,7 @@ func TestGetIncidentRejectsUnsafeRef(t *testing.T) {
 	})
 
 	for _, bad := range []string{`{"no":"../../etc/passwd"}`, `{"no":"2026 IN 01"}`, `{"no":""}`, `{"no":"abc%20def"}`} {
-		out, err := reg.Execute("get_incident", bad)
+		out, err := reg.Execute(context.Background(), "get_incident", bad)
 		if err != nil {
 			t.Fatalf("Execute should not error (error becomes tool content), got %v", err)
 		}
@@ -184,7 +240,7 @@ func TestGetIncidentMarkdownDecodesBase64(t *testing.T) {
 		envelope(w, base64.StdEncoding.EncodeToString([]byte("# Payment Gateway Timeout\n\n**Root cause:** pool exhausted")), nil)
 	})
 
-	out, err := reg.Execute("get_incident_markdown", `{"no":"20250115_IN_1234"}`)
+	out, err := reg.Execute(context.Background(), "get_incident_markdown", `{"no":"20250115_IN_1234"}`)
 	if err != nil {
 		t.Fatalf("markdown failed: %v", err)
 	}
@@ -214,12 +270,128 @@ func TestDashboardErrorSurfacing(t *testing.T) {
 			w.WriteHeader(tc.status)
 			fmt.Fprintf(w, `{"code":%d,"status":"Error","message":"boom"}`, tc.status)
 		})
-		out, err := reg.Execute("search_incidents", `{"limit":1}`)
+		out, err := reg.Execute(context.Background(), "search_incidents", `{"limit":1}`)
 		if err != nil {
 			t.Fatalf("status %d: unexpected Execute error: %v", tc.status, err)
 		}
 		if !strings.Contains(out, tc.wantErr) {
 			t.Errorf("status %d: want error content containing %s, got %q", tc.status, tc.wantErr, out)
 		}
+	}
+}
+
+// Subset must keep only the allowed tools and share the client pointers, so a
+// subset registry behaves like the full one for the tools it kept.
+func TestRegistrySubset(t *testing.T) {
+	r := NewRegistry(&config.Config{})
+	sub := r.Subset(func(name string) bool {
+		return name != "schedule_reminder" && name != "watch_incident"
+	})
+	if sub.Has("schedule_reminder") || sub.Has("watch_incident") {
+		t.Error("subset kept ticket tools")
+	}
+	if !sub.Has("search_incidents") {
+		t.Error("subset lost search_incidents")
+	}
+	if sub.dash != r.dash || sub.pending != r.pending || sub.kbIndex != r.kbIndex {
+		t.Error("subset must share the client pointers")
+	}
+	if len(sub.GetDefinitions()) >= len(r.GetDefinitions()) {
+		t.Errorf("subset size %d not smaller than %d", len(sub.GetDefinitions()), len(r.GetDefinitions()))
+	}
+}
+
+func TestStatsDefaultsToSummaryMode(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, map[string]any{"totalCases": 42, "avgMtbf": 12.4}, nil)
+	})
+
+	out, err := reg.Execute(context.Background(), "get_dashboard_stats", `{}`)
+	if err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	if !strings.Contains(gotQuery, "mode=summary") {
+		t.Errorf("empty args must default to mode=summary, got %q", gotQuery)
+	}
+	if strings.Contains(gotQuery, "metric=") || strings.Contains(gotQuery, "dimension=") {
+		t.Errorf("summary mode must not send metric/dimension, got %q", gotQuery)
+	}
+	if !strings.Contains(out, `"totalCases":42`) {
+		t.Errorf("summary data passthrough broken, got %s", out)
+	}
+}
+
+func TestStatsByDimensionSendsMetricAndDimension(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, map[string]any{"labels": []string{"Network"}, "values": []int{3}}, nil)
+	})
+
+	out, err := reg.Execute(context.Background(), "get_dashboard_stats",
+		`{"mode":"by_dimension","metric":"count","dimension":"responsible_team"}`)
+	if err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	for _, want := range []string{"mode=by_dimension", "metric=count", "dimension=responsible_team"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query missing %s (got: %s)", want, gotQuery)
+		}
+	}
+	if !strings.Contains(out, `"labels":["Network"]`) {
+		t.Errorf("by_dimension data passthrough broken, got %s", out)
+	}
+}
+
+func TestStatsByDimensionRequiresMetricAndDimension(t *testing.T) {
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		t.Error("server must not be called when by_dimension is missing metric")
+	})
+
+	// Registry.Execute converts handler errors into returned strings.
+	out, err := reg.Execute(context.Background(), "get_dashboard_stats", `{"mode":"by_dimension"}`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "requires metric and dimension") {
+		t.Errorf("error text missing from output: %s", out)
+	}
+}
+
+func TestStatsListFiltersEncodeAsBracketArrays(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("missing bearer token")
+		}
+		envelope(w, map[string]any{}, nil)
+	})
+
+	if _, err := reg.Execute(context.Background(), "get_dashboard_stats",
+		`{"severities":"P1,P2","fund_statuses":"Confirmed loss"}`); err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	for _, want := range []string{"severities%5B%5D=P1", "severities%5B%5D=P2", "fund_statuses%5B%5D=Confirmed+loss"} {
+		if !strings.Contains(gotQuery, want) {
+			t.Errorf("query missing %s (got: %s)", want, gotQuery)
+		}
+	}
+}
+
+func TestStatsPairsLoneStartDate(t *testing.T) {
+	var gotQuery string
+	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.RawQuery
+		envelope(w, map[string]any{}, nil)
+	})
+
+	if _, err := reg.Execute(context.Background(), "get_dashboard_stats", `{"start_date":"2026-10-01"}`); err != nil {
+		t.Fatalf("stats failed: %v", err)
+	}
+	if !strings.Contains(gotQuery, "start_date=2026-10-01") || !strings.Contains(gotQuery, "end_date=") {
+		t.Errorf("lone start_date must be paired with an end_date, got %q", gotQuery)
 	}
 }

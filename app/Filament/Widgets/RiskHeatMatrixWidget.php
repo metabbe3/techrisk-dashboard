@@ -11,6 +11,7 @@ use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\Widget;
 use Illuminate\Support\Facades\Cache;
+use Livewire\Attributes\On;
 
 class RiskHeatMatrixWidget extends Widget
 {
@@ -35,6 +36,10 @@ class RiskHeatMatrixWidget extends Widget
         $this->computeMatrix();
     }
 
+    // The attribute must sit on THIS override — Livewire discovers listeners
+    // via method attributes, so an override without #[On] silently stops
+    // reacting to filter updates (IncidentsBySeverityChart keeps its own).
+    #[On('dashboardFiltersUpdated')]
     public function updateDashboardFilters(array $data): void
     {
         $this->start_date = $data['start_date'];
@@ -109,7 +114,10 @@ class RiskHeatMatrixWidget extends Widget
                 return $carry;
             }
 
-            $daysDiff = now()->diffInDays(Carbon::parse($date));
+            // abs() — Carbon 3's diffInDays is signed (a past date is
+            // negative), so exp(-$daysDiff/365) grew WITH age and older
+            // matches inflated likelihood instead of decaying.
+            $daysDiff = abs(now()->startOfDay()->diffInDays(Carbon::parse($date)->startOfDay()));
             $decayFactor = exp(-$daysDiff / 365);
 
             return $carry + $decayFactor;

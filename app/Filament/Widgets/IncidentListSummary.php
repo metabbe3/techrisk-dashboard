@@ -29,6 +29,22 @@ class IncidentListSummary extends Widget
 
     protected function getViewData(): array
     {
-        return ['stats' => app(IncidentStatsFooterData::class)->build()];
+        // BUG-022 (merged from main 2026-11-18): read the SAME rows the
+        // summary sits above — tab + filters + search — not just the
+        // request-derived date filters. Callers with no table context
+        // (exports) fall back to build()'s own base query.
+        //
+        // Livewire v3 has no $this->getLivewire() on a component (that
+        // method lives on Filament's Table concerns only). This widget is
+        // EAGER ($isLazy = false, BUG-018), so during the page's inline
+        // render the Livewire component stack is [page, widget] and the
+        // parent page is one below the top. Standalone renders get null.
+        $stack = \Livewire\Mechanisms\HandleComponents\HandleComponents::$componentStack;
+        $parent = $stack[count($stack) - 2] ?? null;
+        $query = $parent instanceof \Filament\Resources\Pages\ListRecords
+            ? $parent->getFilteredTableQuery()->clone()
+            : null;
+
+        return ['stats' => app(IncidentStatsFooterData::class)->build($query)];
     }
 }

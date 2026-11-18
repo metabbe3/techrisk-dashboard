@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -10,6 +11,7 @@ use App\Http\Resources\ActionImprovementResource;
 use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Traits\ApiResponser;
+use Illuminate\Http\Request;
 
 /**
  * @group Action Improvements
@@ -94,6 +96,78 @@ class ActionImprovementController extends Controller
             new ActionImprovementResource($actionImprovement),
             'Action improvement created successfully.',
             201
+        );
+    }
+
+    /**
+     * Search action improvements across incidents (the DingTalk agent's view)
+     *
+     * "What's overdue this week / for X". Defaults to OPEN work
+     * (pending + on_progress via ActionImprovement::openStatuses() — the ONE
+     * map every gate shares); `status=` overrides it. `overdue=1` applies the
+     * governance definition (open work, due before today) — the same query
+     * GovernanceKpiService::overdueActionItemCount() runs, never re-derived.
+     *
+     * @authenticated
+     *
+     * @queryParam status string One of the real statuses (draft/pending/on_progress/done/cancelled/tbd). Example: pending
+     * @queryParam overdue boolean 1 = open work past its due date (null due dates are TBD, never chased). Example: 1
+     * @queryParam pic string Filter to actions where this email is a PIC. Example: kevin@dana.id
+     * @queryParam incident_no string Scope to one incident number. Example: 20250115_IN_1234
+     * @queryParam limit integer Rows to return, 1-100 (default 20). Use 1 for count-only via meta.total. Example: 20
+     * @queryParam offset integer Rows to skip (paging). Example: 0
+     */
+    public function search(Request $request)
+    {
+        $data = $request->validate([
+            'status' => ['nullable', 'string', 'in:'.implode(',', ActionImprovement::STATUSES)],
+            'overdue' => ['nullable', 'boolean'],
+            'pic' => ['nullable', 'email'],
+            'incident_no' => ['nullable', 'string', 'max:40'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
+            'offset' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $query = ActionImprovement::query()->with('incident:id,no,title');
+
+        if (isset($data['status'])) {
+            $query->where('status', $data['status']);
+        } else {
+            $query->whereIn('status', ActionImprovement::openStatuses());
+        }
+
+        if (! empty($data['overdue'])) {
+            // The KPI's overdue definition (GovernanceKpiService::overdueActionItemCount):
+            // open work with a due date before today. A null due date is TBD — never chased.
+            $query->whereIn('status', ActionImprovement::openStatuses())
+                ->whereDate('due_date', '<', today());
+        }
+
+        if (isset($data['pic'])) {
+            $query->whereJsonContains('pic_email', $data['pic']);
+        }
+
+        if (isset($data['incident_no'])) {
+            $query->whereHas('incident', fn ($q) => $q->where('no', $data['incident_no']));
+        }
+
+        $limit = (int) ($data['limit'] ?? 20);
+        $offset = (int) ($data['offset'] ?? 0);
+
+        $total = (clone $query)->count();
+        $rows = $query->orderBy('due_date')->orderBy('id')
+            ->skip($offset)->take($limit)->get();
+
+        return $this->successResponse(
+            ActionImprovementResource::collection($rows),
+            'Action improvements retrieved successfully.',
+            meta: [
+                'total' => $total,
+                'limit' => $limit,
+                'offset' => $offset,
+                'returned' => $rows->count(),
+                'has_more' => ($offset + $rows->count()) < $total,
+            ],
         );
     }
 

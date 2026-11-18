@@ -115,19 +115,12 @@ class AnalyzeTrendsController extends Controller
         // so every round()/number_format() below is safe under strict_types.
         $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '>=', 0)->avg('mttr') ?? 0);
 
-        $mtbfAgg = (clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->withoutSubIncidents()
-            ->selectRaw('COUNT(*) as cnt, MIN(incident_date) as min_date, MAX(incident_date) as max_date')
-            ->first();
-        $avgMtbf = 0;
-        if ($mtbfAgg && $mtbfAgg->cnt > 1 && $mtbfAgg->min_date && $mtbfAgg->max_date) {
-            $avgMtbf = round(\Carbon\Carbon::parse($mtbfAgg->min_date)->startOfDay()->diffInDays(\Carbon\Carbon::parse($mtbfAgg->max_date)->startOfDay()) / ($mtbfAgg->cnt - 1), 2);
-        }
+        $avgMtbf = round(\App\Filament\Statistics\IncidentStatsFooterData::avgMtbf($baseQuery), 2);
 
-        // Review I2 (PROJ-022): money stays with subs — the sum gets its OWN
-        // money base (withSubIncidents), NOT a clone of the count base, which
-        // excludes subs. AI trends must agree with the Fund Loss tile.
+        // Review I2 (PROJ-022): money stays with subs — the money base opts
+        // IN to sub-incidents (withSubIncidents: true), NOT a clone of the
+        // count base, which excludes them. AI trends must agree with the
+        // Fund Loss tile.
         $fundLoss = (float) Incident::aiCounts(withSubIncidents: true)
             ->tap($dateFilter)
             ->where('incident_status', IncidentStatus::Completed->value)

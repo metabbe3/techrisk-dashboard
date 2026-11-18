@@ -80,6 +80,81 @@ Owner PRD 2026-11-11: incidents can cause multiple related impacts, each its own
 #### Progress Updates
 - 2026-11-11: PRD analyzed, owner clarified all ambiguity (roll-up + money-stays + Reporting mirror), design written + builder-checked, PM gate passed (conflict check: PROJ-018 view-page overlap noted).
 
+### [PROJ-023] Agent unification: dashboard control plane + Go engine
+
+**Status:** In Progress
+**Priority:** P1
+**Start Date:** 2026-11-11
+
+#### Description
+Owner decision 2026-11-11 (full unification): the dashboard becomes the control plane — every schedule/task (including chat-created reminders) is an `AiAgent` row monitored in the existing Filament tabs — and the DingTalk agent becomes the execution engine. New `engine` column: `go` (default; all existing agents flipped by the migration backfill), `php` (pre-unification text-only path, kept as fallback), `static` (no LLM — deliver the text as-is). Dashboard Chat page stays PHP for now. Owner add-on: all failed jobs/requests/responses visible + re-runnable from the dashboard.
+
+#### Architecture
+- `AiAgent::dispatchRun()` stays the single dispatch choke point; the engine branch lives only in `RunAiAgentJob::handle()`.
+- Go/Static engines: `POST http://dingtalk-agent:9091/internal/run` (`X-Agent-Token` shared secret, compose-network only). Timeout ladder: Go ctx 360s < HTTP 420s < job 480s < worker 660s ≤ retry_after 900s; lock TTL 900s.
+- New v1 API (first live v1 writes): `GET/POST/DELETE /api/v1/agent-schedules` (chat-reminder create/list/cancel; ≤20/chat, `short_no` per-chat ids, soft cancel) + `POST /api/v1/agent-runs` (per-turn reporting under the synthetic "DingTalk Bot (chat turns)" agent).
+- Go side: local `schedules.json` store + 30s scheduler loop retired; grammar validation + conversation binding stay Go-owned (ticket/claim pattern unchanged); `RunScheduler`/`fireDue`/`fire` deleted; `deliverMarkdown` kept.
+
+#### Tasks
+- [x] Phase 1 — Laravel foundation: engine/schedule/delivery columns migration (backfill to `go`), `AiAgentEngine`/`Once` frequency enums, Once dispatch + one-shot re-arm (<3 failed runs) / disable, `Retry` action on failed runs, `RunAiAgentJob` engine branch + usage row + delivery columns, `config/ai.php` `go_agent` block, `RunAiAgentGoEngineTest` (10).
+- [x] Phase 2 — API endpoints: `AgentScheduleController`/`AgentRunController` + FormRequests + `agent` rate limiter + `ApiEndpoint` cases, `AgentScheduleApiTest` (10) + `AgentTurnReportApiTest` (6).
+- [x] Phase 3 — Go engine plumbing: LLM usage parsing (stream + non-stream), run-local usage accumulation in the loop, async turn reporting, `/internal/run` listener (token-guarded, panic-safe, deliver-before-respond), main.go wiring + graceful shutdown; `internalapi_test.go` (6) + llm/loop/turnreport tests.
+- [x] Phase 4 — Go schedule tools → dashboard API: `tools/schedules.go` client, `bindSchedule` rewrite (re-parse Go-side, cron passthrough / resolved run_at, fail-closed notes), store/`RunScheduler` retirement, prompt + README wording; `reminders_test.go` rewrite (7) + `tools/schedules_test.go` (5).
+- [x] Phase 5 — Filament UI: engine Select (default `go`) + badge column + filter, `once` schedule type + `run_at` picker, DingTalk delivery fields (required-with when Static), `resolveScheduleData` once-mapping + preset round-trip; `AiAgentScheduleMappingTest` (5).
+- [x] Phase 6 — compose env (`AGENT_INTERNAL_ADDR/TOKEN`, `AGENT_TURN_REPORTS`), README, business-rules + dependency-map rows, this entry, testing-standards baseline.
+- [x] Full-suite runs + Pint + commit (`c9cf367`, 2026-11-12) — baseline 1169/4,592 → 1203/4,744 (+34; Docker down, 7 known reverb env errors excluded); Go suite 11 packages + `-race` green; Pint clean.
+
+#### Dependencies
+- DingTalk agent container (compose network reachability to nginx + shared token in both `.env` keys).
+- API token abilities `agent-schedules` + `agent-runs` ticked on the `dingtalk-agent` token.
+
+#### Blockers
+- None (dev-green; prod steps are owner-only guardrails).
+
+#### Owner actions
+1. Prod `php artisan migrate --force` (engine/run_at/delivery columns + synthetic agent seed).
+2. Prod `.env`: `DINGTALK_INTERNAL_TOKEN` and `GO_AGENT_INTERNAL_TOKEN` set to the same secret; `GO_AGENT_BASE_URL=http://dingtalk-agent:9091`.
+3. Filament → API Tokens → `dingtalk-agent` → tick `agent-schedules` + `agent-runs`.
+4. `docker compose up -d --build dingtalk-agent app worker scheduler`.
+5. Existing `schedules.json` chat reminders do NOT carry over (dev-only, 1 day old) — say the word if an importer is wanted.
+
+#### Progress Updates
+- 2026-11-11: Phases 1–3 landed and green (Laravel 1166 → 1198 tests / 4,726 assertions with the 7 documented reverb env errors excluded; Go suite + `-race` clean).
+- 2026-11-12: Phases 4–6 landed (schedule store retired, Filament engine/once/delivery UI, compose + docs).
+- 2026-11-18: **Capability decision — no generic MCP client in the Go agent.** MCP is a transport, not a capability; the Go tool registry already provides the tool interface, and an in-Go MCP client would add server lifecycle + unrestricted egress + an arbitrary-tool surface for zero current integrations. The template for external systems stays the Notion pattern: **Laravel holds the MCP client + OAuth, exposes read-only proxy endpoints, the Go agent gains a tool family over them.** Candidates when a real need lands (each read-only, each needs owner-provided credentials — guardrail): **Jira/Confluence read** (Atlassian hosted MCP via a Laravel `laravel/mcp` client), **Grafana read** (plain REST proxy — no MCP needed). Also landed same day: panic guard in `Registry.Execute` (a panicking tool no longer kills the bot), prod 404 fix in `read_corpus_page` (double `/v1`), and a `generate_chart` deliverable (chart PDFs via the existing generated-file marker path).
+
+
+### [PROJ-024] Investigation form intake: unique links → AI fills → consent → DOCX + PDF
+
+**Status:** In Progress (code complete, tests green; manual Docker verification + prod migration pending)
+**Priority:** P1
+**Start Date:** 2026-11-16
+
+#### Description
+Owner 2026-11-16: teams currently fill the Word "Incident Investigation Form – Template 2025 v1.0" by hand. Each team gets a **unique link per incident** — the admin lists recipient emails on the incident's Investigation Forms relation manager, **each person gets their OWN link by email**, the team shares ONE draft on a no-login page (`/investigation/{token}`), the **AI extracts the form's fields and asks for what's missing**, the investigator re-verifies and **consents** (the template's Statement of Truth, typed email), and submit renders **DOCX (the owner's template) + PDF** onto the incident's Supporting Documents.
+
+#### Key decisions
+- Typed email only (no OTP); AI suggests, never auto-submits.
+- AI runs through the **DingTalk agent's Go brain** (owner override 2026-11-16 "use dingtalk agent i mean") — `app/Services/Ai/GoAgentBrain.php`, NOT `AiTextService`.
+- Plain tokens never stored (sha256); reminders/resends rotate tokens; one submit closes all team links.
+- Editable email templates + requirements on EmailSettings → "Investigation Form"; auto reminders daily 08:30.
+
+#### Tasks
+- [x] Template prep: `resources/templates/investigation-form-v1.docx` — 60 `${section.field}` tokens, GRC row split (3 rows), summary answer paragraphs; generator self-check pins every token.
+- [x] Migration (2 tables) + models + `Incident` relations; `dateTime(3)` draft_updated_at + model `$dateFormat` ms write format (concurrency guard needs sub-second).
+- [x] `StoreInvestigationDocument` extraction (2 callers); `RequestInvestigationForm` (normalized emails, caps).
+- [x] Admin: Investigation Forms relation manager — request/resend/revoke/reissue/revoke-all, one-time copy link, status + docx/pdf download FKs.
+- [x] Public page: 4-step intake (source → AI fill → verify → consent), shared draft + concurrency warning, honeypot + rate limits + AI-call cap.
+- [x] `GoAgentBrain` + Go-side per-run `max_reply_chars` (tested); `InvestigationFormExtractor` (extract + verify, schema-validated output).
+- [x] Renderer: DOCX via TemplateProcessor (cloneRow lists, XML-escaped values) + PDF blade.
+- [x] EmailSettings section (expiry/recipients/reminders/prepare list/required fields/4 mail templates, all-or-nothing placeholder validation) + reminder command.
+- [x] Tests: +42 across 5 files (schema 8, renderer 8, intake 9, admin 10, reminders 7).
+- [ ] Manual Docker verification (2-email request → log check → shared draft → submit → downloads).
+- [ ] Prod `php artisan migrate --force` (owner-only guardrail).
+
+#### Progress Updates
+- 2026-11-16: Implementation complete; full suite green (see CLAUDE.md baseline); `InvestigationFormIntakeTest` pins the concurrency guard end-to-end.
+
 ### [PROJ-020] Incident list: one Export dropdown
 
 **Status:** Done
@@ -217,6 +292,7 @@ Interactive Q&A bot in DingTalk answering from dashboard data: @mention in a gro
 - [ ] Live smoke test (dev app creds; owner DMs bot, staffId captured) — In Progress
 - [ ] Owner: mint API token, grant `qyapi_robot_sendmsg` + card perms — Pending
 - [x] Group batching per sender + chat-created reminders (`schedule_reminder` / `cancel_reminder`, group or DM, message or task mode) — Done 2026-11-11
+- [x] Skills convention: per-family `skills/<name>/SKILL.md` (checklist + index in `dingtalk-agent/skills/README.md`, enforced by `TestSkillDocsCoverRegistry`) — Done 2026-11-16; the "auto-create skills" backlog item above = auto-GENERATING new skills, distinct from this docs convention
 - [ ] (Follow-up scope) DingTalk channel on `reminders:send-*`; auto-create skills; org directory sync (staffId ↔ dashboard user email) — Backlog
 
 #### Blockers
@@ -233,6 +309,7 @@ Interactive Q&A bot in DingTalk answering from dashboard data: @mention in a gro
 - 2026-11-11 (notion 403 diagnosis + fix): Prod `notion_*` calls 403'd while incident tools worked — root cause is the prod `dingtalk-agent` API token's `allowed_endpoints` (pre-PROJ-019 list, no `notion`); `CheckApiTokenAccess` rejects `api/v1/notion/*` before the controller runs, so the "invite the integration in Notion" theory the LLM replied with was wrong (NotionController only 503s/502s; Notion was never reached). Go-side fix: the dashboard client's 403 handler now passes the server's message through (`dashboard api forbidden (HTTP 403): <server msg> — tick the missing endpoint ability…`) instead of a hardcoded generic line that hid the cause; test-pinned in `TestDashboardErrorSurfacing` (asserts the server's "boom" body survives on 403). Full Go suite green (8 pkgs). **Owner action to unblock prod:** Filament → API Tokens → `dingtalk-agent` → tick `Notion (read-only docs)` in allowed endpoints (or clear the allowlist), then redeploy the agent (`docker compose up -d --build dingtalk-agent`) to pick up the clearer error text.
 - 2026-11-11 (later): Redeploy confirmed the clearer 403 text live (prod log 01:33:16 `notion_query_database` → "This token does not have permission to access this endpoint") — token tick still pending. Second gap fixed: raw database ids were never saved (the `notion_add_database` description said "only when the user explicitly asks", so the LLM's "sudah saya catat" lived only in 12h chat history; prod log showed `0 seed database(s)`). A raw id/URL now auto-saves to the catalog as `db-<first 8 hex>` after its first SUCCESSFUL query (failed queries save nothing, cataloged ids not duplicated, naming via `notion_add_database` replaces the `db-…` entry). `TestNotionQueryAutoSavesRawIDOnSuccess`; full Go suite green (8 pkgs).
 - 2026-11-11 (group batching + chat reminders): **Bug:** the batching worker was keyed by conversation only, so two members @mentioning within the 0.8s/2.5s window were merged into ONE request labeled "the user sent N messages", answered to whoever spoke last. Fix: a batch only takes messages from its first sender; another member's message closes it and becomes its own turn; group turns carry `[From <nick>]` so the shared history attributes questions; the misleading "added to the current task" follow-up ack removed (queued messages were always a separate turn). **Feature:** chat-created reminders — `schedule_reminder(when, mode, text)` / `cancel_reminder(id)`; when = 5-field cron / `YYYY-MM-DD HH:MM` / `in 30m` (WIB fixed +7, stdlib parser, no new dep); mode `message` posts text, `task` runs the text through the agent at fire time and posts the answer; group → `groupMessages/send`, DM → `batchSend` to the creator. Tools are context-free and the registry is shared by 4 concurrent turns, so the tool only parks a validated request under a random token; after the turn the bot claims tokens in ITS OWN turn's tool results and binds them to the callback's real conversation/sender (LLM never supplies a conversation id; claim-once; cancel scoped to owning chat). Limits: recurring ≥30 min apart, 20/chat, 1000 chars, task text through `InputGate`. Recurring >1h overdue at boot skipped; one-shots fire marked delayed; advance persisted before send (no double-fire). Active reminders listed in each user message of that chat. Constitution scope + `SchedulePrompt` updated so the model doesn't refuse scheduling. Not the system reminders: never decides "who's due" (one rule, one surface). Tests: `internal/schedule` (parser incl. Sunday 0/7, steps, lists, spam rejection, store lifecycle/persistence/caps, claim-once) + `reminders_test.go` (group senders not merged, chat→tool→bind→fire into the group→listed next turn, task mode DMs agent answer, stale recurring skipped, injection task text refused, EN/ID reminder phrasings pass the input gate); full Go suite + `-race` green. **Live check pending:** group push (`groupMessages/send`) not yet live-probed — first group reminder will tell; needs a redeploy.
+- 2026-11-12 (KB file ingest — branch `feature/kb-file-ingest`, worktree `../techrisk-dingtalk-kb`): KB is now writable from chat, not just searchable. (1) `kb.Index` gained synchronous `Save` + `ListDocs` + whole-doc `DeleteDoc` (Save takes the ingest slot; delete takes only the mutex — embedding network calls never block a delete). (2) Three new agent tools beside `search_knowledge`: `save_knowledge` ("remember this" → synchronous file + receipt), `list_knowledge` (titles + parts + chars + updated date, WIB), `delete_knowledge` (confirm-title-first contract in the description; wrong title errors with the list hint). Same `AGENT_KB_TOOLS` gate. (3) Vision: `LLM_VISION_MODEL`/`AI_VISION_MODEL` env (falls back to the chat model) + `llm.Client.Vision` — one-shot multimodal chat completion, content-parts wire format, data-URL image. (4) Pictures no longer silently dropped: msgtype `picture` parses defensively (all 4 known payload spellings), downloads (direct https URL allowlist-checked first, else downloadCode → messageFiles exchange), sniffed `image/*` via `http.DetectContentType`, transcribed, filed into the KB as `Picture from <nick> — YYYY-MM-DD HH:MM` (WIB) with a receipt + 300-char preview; user caption rides the vision prompt ("what's wrong in this screenshot?"). Pictures batch like files (own turn). (5) Scanned/image-only PDFs: extraction returns empty (not an error) and the bot replies "send the pages as pictures (🖼️) instead" — no agent call wasted. Full Go suite + `-race` green (13 pkgs). **Live risks (both degrade to readable chat errors):** real picture payload field spelling (fix = add one field name after a capture) and gateway vision support (fix = set `AI_VISION_MODEL` to a multimodal model). Merge pending final review.
 
 ---
 

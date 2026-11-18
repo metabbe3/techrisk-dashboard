@@ -2,14 +2,21 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"runtime/debug"
+	"strings"
 	"sync"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
+
+	"time"
+	"unicode/utf8"
 )
 
 const (
@@ -18,11 +25,49 @@ const (
 	MaxConcurrentTools = 4
 )
 
+type ctxKey string
+
+const (
+	TaskIDKey    ctxKey = "task_id"
+	MissionIDKey ctxKey = "mission_id"
+)
+
+// FromContext extracts task_id and mission_id from context.
+func FromContext(ctx context.Context) (taskID, missionID string) {
+	if ctx == nil {
+		return "", ""
+	}
+	if v, ok := ctx.Value(TaskIDKey).(string); ok {
+		taskID = v
+	}
+	if v, ok := ctx.Value(MissionIDKey).(string); ok {
+		missionID = v
+	}
+	return taskID, missionID
+}
+
+// LogPrefix returns a prefix string like "[task <id>] " if task_id or mission_id is in ctx.
+func LogPrefix(ctx context.Context) string {
+	taskID, missionID := FromContext(ctx)
+	if taskID != "" {
+		return fmt.Sprintf("[task %s] ", taskID)
+	}
+	if missionID != "" {
+		return fmt.Sprintf("[mission %s] ", missionID)
+	}
+	return ""
+}
+
 // Loop manages the iterative conversation cycle between user, LLM, and tools.
 type Loop struct {
 	llmClient     *llm.Client
 	registry      *tools.Registry
 	maxIterations int
+	role          string
+	// heavyKeywords are trigger phrases (config LLM_HEAVY_KEYWORDS) routing a
+	// whole turn to the heavy model from the first round — beside the
+	// existing failure escalation.
+	heavyKeywords []string
 	// SystemExtras, when set, appends dynamic context (e.g. remembered
 	// document knowledge) to the system prompt on every turn.
 	SystemExtras func() string
@@ -37,72 +82,100 @@ func NewLoop(llmClient *llm.Client, registry *tools.Registry, maxIterations int)
 		llmClient:     llmClient,
 		registry:      registry,
 		maxIterations: maxIterations,
+		role:          "solo",
 	}
+}
+
+// SetRole sets the mesh role ("solo", "leader", "worker").
+func (l *Loop) SetRole(role string) {
+	l.role = role
+}
+
+// Role returns the configured mesh role.
+func (l *Loop) Role() string {
+	return l.role
+}
+
+// SetHeavyKeywords sets the trigger phrases that proactively route a whole
+// turn to the heavy model (beside the failure escalation). Entries are
+// matched as case-insensitive substrings of the user text.
+func (l *Loop) SetHeavyKeywords(keywords []string) {
+	l.heavyKeywords = keywords
+}
+
+// heavyRequested reports whether the user text contains any trigger phrase.
+// Case-insensitive substring: "please ULTRATHINK this" routes heavy.
+func (l *Loop) heavyRequested(text string) bool {
+	if len(l.heavyKeywords) == 0 {
+		return false
+	}
+	t := strings.ToLower(text)
+	for _, k := range l.heavyKeywords {
+		if strings.Contains(t, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// HeavyTurn reports whether this user text would route the whole turn to the
+// heavy model (trigger phrase present AND a heavy model configured) — the bot
+// varies its acknowledgment on it, so both sides must agree on one decision.
+func (l *Loop) HeavyTurn(userText string) bool {
+	return l.heavyRequested(userText) && l.llmClient.HeavyModel() != ""
 }
 
 // Registry exposes the tool registry (e.g. the bot drains Notion reads from it).
 func (l *Loop) Registry() *tools.Registry { return l.registry }
 
+// With returns a copy of the loop running on a different registry (the
+// internal API subsets the shared registry per request). The receiver is
+// never mutated — copies are the pattern here (see runWithEscalation's retry).
+func (l *Loop) With(reg *tools.Registry) *Loop {
+	c := *l
+	c.registry = reg
+	return &c
+}
+
 type toolResult struct {
-	index      int
 	toolCallID string
 	name       string
 	content    string
 }
 
-// Run executes the agent cycle with a user message and returns the final assistant reply.
-// sysExtra (optional) is appended verbatim to the system prompt for this run only —
-// the per-sender learned profile travels through it.
-func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, error) {
-	return l.run(ctx, userText, history, nil, sysExtra)
+// Run executes the agent cycle with a user message and returns the final assistant reply
+// and the summed token usage of every LLM round it took. sysExtra (optional) is appended
+// verbatim to the system prompt for this run only — the per-sender learned profile
+// travels through it.
+func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, llm.Usage, string, error) {
+	return l.runWithEscalation(ctx, userText, history, nil, sysExtra)
 }
 
 // RunStreaming is Run with text deltas of the assistant's answers forwarded to
 // onDelta as they arrive. Tool-call reasoning rounds produce no deltas; only the
 // visible answer streams.
-func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, error) {
-	return l.run(ctx, userText, history, onDelta, sysExtra)
+func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, string, error) {
+	return l.runWithEscalation(ctx, userText, history, onDelta, sysExtra)
 }
 
-func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, error) {
-	var messages []llm.ChatMessage
-
-	// Ensure system prompt is first
-	hasSystem := false
+// run returns the model the round(s) actually ran on — heavy turns report the
+// heavy model, everything else the chat model (the dashboard's cost table was
+// logging every turn under the cheap model — audit round 5).
+func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string, heavy bool) (string, []llm.ChatMessage, llm.Usage, string, error) {
+	model := l.llmClient.Model()
+	if heavy && l.llmClient.HeavyModel() != "" {
+		model = l.llmClient.HeavyModel()
+	}
+	// The system prompt is rebuilt fresh EVERY turn and stripped from history —
+	// a persisted system message would pin a stale clock/sender profile/knowledge
+	// set into every later turn until the trim drops it.
+	messages := []llm.ChatMessage{{Role: "system", Content: l.buildSystemPrompt(sysExtra)}}
 	for _, m := range history {
 		if m.Role == "system" {
-			hasSystem = true
-			break
+			continue
 		}
+		messages = append(messages, m)
 	}
-	if !hasSystem {
-		sys := SystemPrompt
-		if l.registry.Has("web_search") {
-			sys += "\n\n" + WebResearchPrompt
-		}
-		if l.registry.Has("notion_search") {
-			sys += "\n\n" + NotionPrompt
-		}
-		if l.registry.Has("generate_pdf_report") {
-			sys += "\n\n" + DeliverablesPrompt
-		}
-		if l.registry.Has("schedule_reminder") {
-			sys += "\n\n" + SchedulePrompt
-		}
-		if l.SystemExtras != nil {
-			if extra := l.SystemExtras(); extra != "" {
-				sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
-			}
-		}
-		if sysExtra != "" {
-			sys += "\n\n" + sysExtra
-		}
-		messages = append(messages, llm.ChatMessage{
-			Role:    "system",
-			Content: sys,
-		})
-	}
-	messages = append(messages, history...)
 	// Frame the user message: injected instructions read as data, not commands.
 	messages = append(messages, llm.ChatMessage{
 		Role:    "user",
@@ -112,9 +185,14 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 	toolDefs := l.registry.GetDefinitions()
 	tail := llm.ChatMessage{Role: "system", Content: ConstitutionTail}
 
+	// Usage is summed across every LLM round of this run — the loop is shared
+	// across concurrent turns, so the accumulator lives in run scope.
+	var totalUsage llm.Usage
+
 	for iter := 0; iter < l.maxIterations; iter++ {
 		// Prune old tool results if context budget is exceeded (>60,000 chars)
 		PruneContextBudget(messages, MaxContextChars)
+		log.Printf("[agent] %siteration %d/%d", LogPrefix(ctx), iter+1, l.maxIterations)
 
 		// The constitution rides AFTER everything else on every call — the
 		// nearest instruction to the generation point, so nothing can step
@@ -122,72 +200,230 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		callMsgs := append(append([]llm.ChatMessage{}, messages...), tail)
 
 		var assistantMsg *llm.ChatMessage
+		var roundUsage llm.Usage
 		var err error
-		if onDelta != nil {
-			assistantMsg, err = l.llmClient.ChatCompletionStream(ctx, callMsgs, toolDefs, onDelta)
+		if heavy {
+			// Escalation retry: same tools/context on the smarter model.
+			assistantMsg, roundUsage, err = l.llmClient.ChatCompletionHeavy(ctx, callMsgs, toolDefs)
+		} else if onDelta != nil {
+			assistantMsg, roundUsage, err = l.llmClient.ChatCompletionStream(ctx, callMsgs, toolDefs, onDelta)
 		} else {
-			assistantMsg, err = l.llmClient.ChatCompletion(ctx, callMsgs, toolDefs)
+			assistantMsg, roundUsage, err = l.llmClient.ChatCompletion(ctx, callMsgs, toolDefs)
 		}
+		totalUsage = totalUsage.Add(roundUsage)
 		if err != nil {
-			return "", messages, fmt.Errorf("agent llm error: %w", err)
+			log.Printf("[agent] %sllm error on iteration %d: %v", LogPrefix(ctx), iter+1, err)
+			return "", messages, totalUsage, model, fmt.Errorf("agent llm error: %w", err)
 		}
 
 		messages = append(messages, *assistantMsg)
 
 		// If no tool calls requested, we have the final answer
 		if len(assistantMsg.ToolCalls) == 0 {
-			return assistantMsg.Content, messages, nil
+			return assistantMsg.Content, messages[1:], totalUsage, model, nil
 		}
 
-		// Parallel execution of tool calls (max 4 concurrent), preserving deterministic order
-		toolCalls := assistantMsg.ToolCalls
-		results := make([]toolResult, len(toolCalls))
-		sem := make(chan struct{}, MaxConcurrentTools)
-		var wg sync.WaitGroup
-
-		for i, tc := range toolCalls {
-			wg.Add(1)
-			go func(idx int, call llm.ToolCall) {
-				defer wg.Done()
-				sem <- struct{}{}
-				defer func() { <-sem }()
-
-				log.Printf("[agent] executing tool %s (id: %s) [worker]", call.Function.Name, call.ID)
-				output, err := l.registry.Execute(call.Function.Name, call.Function.Arguments)
-				if err != nil {
-					output = fmt.Sprintf("Error executing tool: %v", err)
-				}
-
-				// Tool result truncation (per-tool cap when registered — e.g.
-				// notion_read_page at 48k — else the 8000-byte default + footer)
-				truncated := TruncateToolOutput(output, l.registry.ResultCap(call.Function.Name))
-
-				// Secret redaction before adding to LLM context
-				redacted, _ := guardrail.Redact(truncated)
-
-				results[idx] = toolResult{
-					index:      idx,
-					toolCallID: call.ID,
-					name:       call.Function.Name,
-					content:    redacted,
-				}
-			}(i, tc)
-		}
-
-		wg.Wait()
-
-		// Append tool results in original slice index order
-		for _, res := range results {
-			messages = append(messages, llm.ChatMessage{
-				Role:       "tool",
-				ToolCallID: res.toolCallID,
-				Name:       res.name,
-				Content:    res.content,
-			})
+		messages = append(messages, l.execTools(ctx, assistantMsg.ToolCalls)...)
+		if ctx.Err() != nil {
+			return "", messages[1:], totalUsage, model, ctx.Err()
 		}
 	}
 
-	return "Reached maximum tool execution iterations without final conclusion. Please narrow your query.", messages, nil
+	// Iteration budget exhausted is an ERROR, not a final answer (audit
+	// 2026-11-12): returning it as a normal reply made callers persist the
+	// placeholder into history and report the turn as a success.
+	return "", messages[1:], totalUsage, model, &BudgetExhaustedError{Max: l.maxIterations}
+}
+
+// runWithEscalation runs the loop; when the chat model burns its tool
+// iteration budget without a final answer AND a heavy model is configured,
+// the whole turn is retried ONCE on the heavy model with a slimmer task
+// framing ("extract everything, then answer") — the smarter model tends to
+// converge where the fast one loops (audit 2026-11-12). The heavy retry is
+// capped to half the normal iteration budget so a bad night cannot burn
+// unlimited tokens.
+func (l *Loop) runWithEscalation(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, string, error) {
+	// Trigger phrases route proactively; without one (or without a heavy model
+	// configured — ChatCompletionHeavy would error every round) the chat model
+	// runs as usual. The failure escalation below still applies to a triggered
+	// turn: it retries on the SAME heavy model with the slimmer framing.
+	heavy := l.HeavyTurn(userText)
+	if heavy {
+		log.Printf("[agent] %strigger phrase routed this turn to the heavy model %q", LogPrefix(ctx), l.llmClient.HeavyModel())
+	}
+	reply, msgs, usage, model, err := l.run(ctx, userText, history, onDelta, sysExtra, heavy)
+	var budgetErr *BudgetExhaustedError
+	if err == nil || l.llmClient.HeavyModel() == "" || ctx.Err() != nil || !errors.As(err, &budgetErr) {
+		return reply, msgs, usage, model, err
+	}
+	log.Printf("[agent] %sescalating to heavy model %q after error: %v", LogPrefix(ctx), l.llmClient.HeavyModel(), err)
+	// No shared-state mutation: the retry runs on a shallow copy with half
+	// the iteration budget (audit round 4 — mutating l.maxIterations raced
+	// concurrent turns sharing this loop).
+	retry := *l
+	retry.maxIterations = max(l.maxIterations/2, 2)
+	reply2, msgs2, usage2, model2, err2 := retry.run(ctx, userText, history, onDelta, sysExtra+"\n[Retry on the primary model failed to converge within its tool budget. Be DECISIVE: gather at most the few facts you still need, then commit to a final answer.]", true)
+	usage = usage.Add(usage2) // Add, not two hand-picked fields — TotalTokens was silently lost
+	if err2 != nil {
+		return reply, msgs, usage, model, err // original error is the true story
+	}
+	// The usage is summed across both models; the cost belongs mostly to the
+	// heavy retry — report it as the model of record.
+	return reply2, msgs2, usage, model2, nil
+}
+
+// execTools runs one round of tool calls (max 4 concurrent) and returns the
+// tool messages in original call order.
+// BudgetExhaustedError is the ONE error that triggers heavy-model escalation:
+// a 429/5xx/network blip must not burn a 30-round heavy retry (audit round 5).
+type BudgetExhaustedError struct{ Max int }
+
+func (e *BudgetExhaustedError) Error() string {
+	return fmt.Sprintf("agent hit the %d-iteration tool budget without a final answer — narrow the query", e.Max)
+}
+
+func (l *Loop) execTools(ctx context.Context, toolCalls []llm.ToolCall) []llm.ChatMessage {
+	results := make([]toolResult, len(toolCalls))
+	var resultsMu sync.Mutex
+	sem := make(chan struct{}, MaxConcurrentTools)
+	var wg sync.WaitGroup
+
+	for i, tc := range toolCalls {
+		wg.Add(1)
+		go func(idx int, call llm.ToolCall) {
+			defer wg.Done()
+			// A panic in ANY child goroutine kills the whole process — the
+			// parent's recover cannot cross goroutine boundaries (audit
+			// round 4). Contain it here and surface it as a tool error.
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("[agent] %sPANIC in tool %s: %v\n%s", LogPrefix(ctx), call.Function.Name, r, debug.Stack())
+					resultsMu.Lock()
+					results[idx] = toolResult{
+						toolCallID: call.ID,
+						name:       call.Function.Name,
+						content:    fmt.Sprintf("Error: internal tool failure (%s): %v", call.Function.Name, r),
+					}
+					resultsMu.Unlock()
+				}
+			}()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			log.Printf("[agent] %sexecuting tool %s (id: %s) [worker]", LogPrefix(ctx), call.Function.Name, call.ID)
+			tools.NotifyToolProgress(ctx, call.Function.Name)
+			output, err := l.registry.Execute(ctx, call.Function.Name, call.Function.Arguments)
+			if err != nil {
+				output = fmt.Sprintf("Error executing tool: %v", err)
+			}
+
+			// Secret redaction FIRST: a secret straddling the truncation
+			// boundary loses its head/tail below the regex minimums and would
+			// survive redact-after-truncate (audit round 5).
+			redactedFull, _ := guardrail.Redact(output)
+
+			// Tool result truncation (per-tool cap when registered — e.g.
+			// notion_read_page at 48k — else the 8000-byte default + footer)
+			redacted := TruncateToolOutput(redactedFull, l.registry.ResultCap(call.Function.Name))
+
+			resultsMu.Lock()
+			results[idx] = toolResult{
+				toolCallID: call.ID,
+				name:       call.Function.Name,
+				content:    redacted,
+			}
+			resultsMu.Unlock()
+		}(i, tc)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-ctx.Done():
+		// remaining goroutines will finish on their own; results not yet gathered are considered timeout failures
+	}
+
+	out := make([]llm.ChatMessage, 0, len(results))
+	for idx, tc := range toolCalls {
+		resultsMu.Lock()
+		res := results[idx]
+		resultsMu.Unlock()
+		if res.toolCallID == "" {
+			res = toolResult{
+				toolCallID: tc.ID,
+				name:       tc.Function.Name,
+				content:    fmt.Sprintf("Error executing %s: context cancelled or timed out: %v", tc.Function.Name, ctx.Err()),
+			}
+		}
+		out = append(out, llm.ChatMessage{
+			Role:       "tool",
+			ToolCallID: res.toolCallID,
+			Name:       res.name,
+			Content:    res.content,
+		})
+	}
+	return out
+}
+
+// buildSystemPrompt assembles the system message fresh for this turn: base
+// prompt + one section per registered tool family + dynamic knowledge extras
+// + the current WIB clock.
+func (l *Loop) buildSystemPrompt(sysExtra string) string {
+	sys := SystemPrompt
+
+	switch l.role {
+	case "leader":
+		sys += "\n\n" + LeaderPrompt
+	case "worker":
+		sys += "\n\n" + WorkerPrompt
+	}
+
+	if l.registry.Has("web_search") {
+		sys += "\n\n" + WebResearchPrompt
+	}
+	if l.registry.Has("notion_search") {
+		sys += "\n\n" + NotionPrompt
+	}
+	if l.registry.Has("generate_pdf_report") {
+		sys += "\n\n" + DeliverablesPrompt
+	}
+	if l.registry.Has("schedule_reminder") {
+		sys += "\n\n" + SchedulePrompt
+	}
+	if l.registry.Has("watch_incident") {
+		sys += "\n\n" + WatchPrompt
+	}
+	if l.registry.Has("search_knowledge") {
+		sys += "\n\n" + KnowledgePrompt
+	}
+	if l.registry.Has("generate_external_rca") {
+		sys += "\n\n" + ExternalRCAPrompt
+	}
+	if l.registry.Has("get_dashboard_stats") {
+		sys += "\n\n" + StatsPrompt
+	}
+	if l.registry.Has("list_skills") {
+		sys += "\n\n" + SkillsPrompt
+	}
+	if l.SystemExtras != nil {
+		if extra := l.SystemExtras(); extra != "" {
+			sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
+		}
+	}
+	if sysExtra != "" {
+		sys += "\n\n" + sysExtra
+	}
+	// "since yesterday" and friends are unreliable without the clock —
+	// scheduled task-runs especially (they fire at any hour on any day).
+	// Hour granularity: a per-minute clock made the system prompt string
+	// unique every turn, defeating provider prompt caching (audit round 4).
+	sys += "\n\nCurrent date/time (hour precision): " + time.Now().In(schedule.WIB).Format("Mon 2006-01-02 15h MST")
+	return sys
 }
 
 // TruncateToolOutput caps output to maxBytes with a truncation notice.
@@ -197,6 +433,10 @@ func TruncateToolOutput(output string, maxBytes int) string {
 	}
 	if len(output) > maxBytes {
 		truncated := len(output) - maxBytes
+		// Back off to a rune boundary — a split rune is invalid UTF-8 in LLM context.
+		for maxBytes > 0 && !utf8.RuneStart(output[maxBytes]) {
+			maxBytes--
+		}
 		return output[:maxBytes] + fmt.Sprintf("\n...[truncated %d bytes]", truncated)
 	}
 	return output
@@ -207,27 +447,54 @@ func PruneContextBudget(messages []llm.ChatMessage, maxChars int) {
 	if maxChars <= 0 {
 		maxChars = MaxContextChars
 	}
-	for {
-		total := 0
-		for _, m := range messages {
-			total += len(m.Content)
-		}
-		if total <= maxChars {
-			break
-		}
-
-		// Find the oldest tool result not yet omitted
+	total := 0
+	for _, m := range messages {
+		total += len(m.Content)
+	}
+	for total > maxChars {
+		// Find the oldest tool result not yet omitted. A load_skill result is
+		// spared in this pass — it is the methodology the turn is following —
+		// and goes only via the no-other-result pass below.
 		found := false
 		for i := range messages {
-			if messages[i].Role == "tool" && messages[i].Content != "[tool result omitted]" {
+			if messages[i].Role == "tool" && messages[i].Content != "[tool result omitted]" && messages[i].Name != "load_skill" {
+				total -= len(messages[i].Content)
 				messages[i].Content = "[tool result omitted]"
 				found = true
 				break
 			}
 		}
 		if !found {
-			// No more tool results can be omitted
-			break
+			for i := range messages {
+				if messages[i].Role == "tool" && messages[i].Content != "[tool result omitted]" {
+					total -= len(messages[i].Content)
+					messages[i].Content = "[tool result omitted]"
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			// D6 fallback: no tool results left — blank the oldest user
+			// message except the last (the live question). Without this the
+			// request shipped over budget whenever a turn had no tool calls.
+			lastUser := -1
+			for i := range messages {
+				if messages[i].Role == "user" {
+					lastUser = i
+				}
+			}
+			for i := range messages {
+				if messages[i].Role == "user" && i != lastUser && messages[i].Content != "" {
+					total -= len(messages[i].Content)
+					messages[i].Content = ""
+					found = true
+					break
+				}
+			}
+			if !found {
+				break
+			}
 		}
 	}
 }

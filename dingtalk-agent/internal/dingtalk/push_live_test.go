@@ -18,6 +18,16 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 )
 
+// mustFileParam marshals the sampleFile payload or fails the probe.
+func mustFileParam(t *testing.T, mediaID, fileName string) string {
+	t.Helper()
+	b, err := sendFileParam(mediaID, fileName)
+	if err != nil {
+		t.Fatalf("msgParam: %v", err)
+	}
+	return b
+}
+
 func liveConfig(t *testing.T) *config.Config {
 	t.Helper()
 	for _, p := range []string{"../../dingtalk-agent.env", "../dingtalk-agent.env", "dingtalk-agent.env"} {
@@ -55,18 +65,18 @@ func TestLiveFileDMAttachment(t *testing.T) {
 	}
 	t.Logf("mediaId=%s", mediaID)
 
-	if err := SendFileDM(ctx, cfg, staff, mediaID, filepath.Base(path)); err != nil {
-		t.Fatalf("SendFileDM: %v", err)
+	if err := newOpenAPIClient(cfg).robotSend(ctx, "1", "", staff, "sampleFile", mustFileParam(t, mediaID, filepath.Base(path))); err != nil {
+		t.Fatalf("file DM send: %v", err)
 	}
 	t.Logf("file DM sent to %s — check the DingTalk DM for a downloadable attachment", staff)
 
 	if cid := os.Getenv("LIVE_DM_CID"); cid != "" {
-		if err := SendFileGroup(ctx, cfg, cid, mediaID, filepath.Base(path)); err != nil {
+		if err := newOpenAPIClient(cfg).robotSend(ctx, "2", cid, "", "sampleFile", mustFileParam(t, mediaID, filepath.Base(path))); err != nil {
 			t.Logf("group file send probe failed (scope or contract): %v", err)
 		} else {
 			t.Logf("group file send sent to %s — check the group for the attachment", cid)
 		}
-		if err := SendMarkdownGroup(ctx, cfg, cid, "probe", "**live probe** — group send capability test, safe to ignore."); err != nil {
+		if err := newOpenAPIClient(cfg).robotSend(ctx, "2", cid, "", "sampleMarkdown", `{"title":"probe","text":"**live probe** — group send capability test, safe to ignore."}`); err != nil {
 			t.Logf("group markdown send probe failed: %v", err)
 			return
 		}

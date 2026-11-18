@@ -1,7 +1,7 @@
 package tools
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
 	"regexp"
 	"strings"
@@ -18,8 +18,8 @@ var ScheduleTicket = regexp.MustCompile(`\[schedule-ticket: ([0-9a-f]{16})\]`)
 
 func (r *Registry) registerScheduleTools() {
 	r.pending = schedule.NewPending()
-	r.Register(scheduleReminderDef(), r.handleScheduleReminder)
-	r.Register(cancelReminderDef(), r.handleCancelReminder)
+	r.Register(scheduleReminderDef(), typed(r.handleScheduleReminder))
+	r.Register(cancelReminderDef(), typed(r.handleCancelReminder))
 }
 
 // SchedulePending exposes the parked requests to the bot (nil when disabled).
@@ -53,11 +53,7 @@ type scheduleArgs struct {
 	Text string `json:"text"`
 }
 
-func (r *Registry) handleScheduleReminder(argsJSON string) (string, error) {
-	var a scheduleArgs
-	if err := json.Unmarshal([]byte(argsJSON), &a); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
+func (r *Registry) handleScheduleReminder(_ context.Context, a scheduleArgs) (string, error) {
 	a.Text = strings.TrimSpace(a.Text)
 	switch a.Mode = strings.ToLower(strings.TrimSpace(a.Mode)); a.Mode {
 	case "":
@@ -97,11 +93,10 @@ func cancelReminderDef() llm.ToolDefinition {
 	}
 }
 
-func (r *Registry) handleCancelReminder(argsJSON string) (string, error) {
-	var a struct {
-		ID int `json:"id"`
-	}
-	if err := json.Unmarshal([]byte(argsJSON), &a); err != nil || a.ID < 1 {
+func (r *Registry) handleCancelReminder(_ context.Context, a struct {
+	ID int `json:"id"`
+}) (string, error) {
+	if a.ID < 1 {
 		return "", fmt.Errorf("id must be a positive reminder ID")
 	}
 	token := r.pending.Put(schedule.Request{CancelID: a.ID})

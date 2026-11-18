@@ -9,6 +9,7 @@ use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
 use App\Exports\IncidentsExport;
+use App\Filament\Statistics\IncidentStatsFooterData;
 use App\Models\Incident;
 use App\Models\ReportTemplate;
 use Carbon\Carbon;
@@ -244,14 +245,19 @@ class Reporting extends Page implements HasForms
         // Listing mirrors the dashboard (spec decision 9): sub-incidents are
         // hidden — their numbers roll up into the super (PROJ-022).
         $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value)
-            ->withoutSubIncidents();
+            ->withoutSubIncidents()
+            // Year access matches what the Incidents table shows — without it
+            // a year-restricted user saw every year's rows here.
+            ->applyUserYearAccess(auth()->user());
 
         if ($data['start_date']) {
             $query->where('incident_date', '>=', Carbon::parse($data['start_date']));
         }
 
         if ($data['end_date']) {
-            $query->where('incident_date', '<=', Carbon::parse($data['end_date']));
+            // endOfDay — a plain date compares midnight, dropping everything
+            // that happened ON the end date (same fix as DashboardFilter).
+            $query->where('incident_date', '<=', Carbon::parse($data['end_date'])->endOfDay());
         }
 
         if (! empty($data['incident_types'])) {
@@ -259,9 +265,11 @@ class Reporting extends Page implements HasForms
         }
 
         if (! empty($data['statuses'])) {
-            $query->whereHas('latestStatusUpdate', function ($q) use ($data) {
-                $q->whereIn('status', $data['statuses']);
-            });
+            // The incidents table's own status column — the old
+            // latestStatusUpdate check compared IncidentStatus values
+            // (Open/…/Completed) against the Kanban update vocabulary
+            // (Open/Investigation/…/Closed), so "Completed" matched ~nothing.
+            $query->whereIn('incident_status', $data['statuses']);
         }
 
         if (! empty($data['severities'])) {
@@ -277,20 +285,7 @@ class Reporting extends Page implements HasForms
             $metrics['avg_mttr'] = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr');
         }
         if (in_array('avg_mtbf', $data['metrics'] ?? [])) {
-            $mtbfQuery = (clone $query)->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->withoutOutliers()
-                ->withoutSubIncidents();
-            $mtbfCount = $mtbfQuery->count();
-            $avgMtbf = 0;
-            if ($mtbfCount > 1) {
-                $minDate = $mtbfQuery->min('incident_date');
-                $maxDate = $mtbfQuery->max('incident_date');
-                if ($minDate && $maxDate) {
-                    $totalDays = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay());
-                    $avgMtbf = round($totalDays / ($mtbfCount - 1), 2);
-                }
-            }
-            $metrics['avg_mtbf'] = $avgMtbf;
+            $metrics['avg_mtbf'] = round(IncidentStatsFooterData::avgMtbf($query), 2);
         }
         $this->metrics = $metrics;
 
@@ -302,6 +297,12 @@ class Reporting extends Page implements HasForms
                     $relations[] = explode('.', $column)[0];
                 }
             }
+        }
+
+        // The 'pic' column has no dot, but pic_names reads $incident->pics —
+        // without the eager load that is one query per row.
+        if (in_array('pic', $data['columns'] ?? [], true)) {
+            $relations[] = 'pics';
         }
 
         // Load incidents with eager loaded relations

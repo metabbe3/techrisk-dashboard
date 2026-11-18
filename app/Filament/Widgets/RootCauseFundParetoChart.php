@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
+use App\Enums\IncidentStatus;
 use App\Filament\Concerns\HasChartColors;
 use App\Models\Incident;
 use Filament\Widgets\ChartWidget;
@@ -44,6 +45,13 @@ class RootCauseFundParetoChart extends ChartWidget
 
         $pareto = Cache::remember($cacheKey, now()->addMinutes(15), fn () => $this->pareto());
 
+        // ponytail: start_date/end_date are declared but never wired (no
+        // dashboard-filter trait on this widget) — the chart is fixed to the
+        // current year and the dates in the cache key are constant null.
+        // Wire InteractsWithDashboardFilters + scope pareto() if/when the
+        // chart should follow the dashboard date filters (scope would then
+        // move — owner-visible numbers).
+
         return [
             'datasets' => [
                 [
@@ -76,7 +84,7 @@ class RootCauseFundParetoChart extends ChartWidget
         $rows = Incident::query()
             // Money surface (PROJ-022): sub fund loss still counts.
             ->aiCounts(withSubIncidents: true)
-            ->where('incident_status', 'Completed')
+            ->where('incident_status', IncidentStatus::Completed->value)
             ->whereYear('incident_date', now()->year)
             ->get(['fund_loss', 'root_cause_category']);
 

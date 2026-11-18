@@ -11,6 +11,7 @@ use App\Models\Setting;
 use App\Notifications\BaseNotification;
 use App\Notifications\FundLossUnsettledReminder;
 use App\Notifications\IncidentNotDoneReminder;
+use App\Notifications\StatusUpdateStaleReminder;
 use App\Support\ReminderMail;
 use Illuminate\Console\Command;
 
@@ -20,7 +21,12 @@ use Illuminate\Console\Command;
  *      age threshold.
  *   2. Fund loss unsettled — fund_status is Confirmed loss / Potential recovery
  *      with outstanding (potential - recovered) > 0.
- * Both lanes are throttled by incidents.last_reminded_at and gated by the
+ *   3. Status update stale — no status update on an incident older than 6
+ *      days (owner 2026-11-10: the email waits) or a last update that is
+ *      unsettled and older than 6 days. Rule lives on
+ *      Incident::statusUpdateReminderFlag() — same rule as the list flag,
+ *      minus the empty-case immediacy.
+ * All lanes are throttled by incidents.last_reminded_at and gated by the
  * Email Settings toggles + the global netcore_enabled kill-switch.
  * PIC-only (owner rule 2026-10-08): admins/team-leads are never emailed by
  * these lanes — no escalation path. One combined email per incident (all
@@ -30,7 +36,7 @@ class SendIncidentReminders extends Command
 {
     protected $signature = 'reminders:send-incidents';
 
-    protected $description = 'Send Netcore email reminders for not-done incidents and unsettled fund losses.';
+    protected $description = 'Send Netcore email reminders for not-done incidents, unsettled fund losses, and stale status updates.';
 
     public function handle(): int
     {
@@ -48,6 +54,10 @@ class SendIncidentReminders extends Command
 
         if (Setting::get('fund_loss_reminder_enabled', true)) {
             $this->sendFundLossReminders($interval);
+        }
+
+        if (Setting::get('status_update_reminder_enabled', true)) {
+            $this->sendStatusUpdateReminders($interval);
         }
 
         $this->info('Done.');
@@ -84,6 +94,26 @@ class SendIncidentReminders extends Command
         foreach ($incidents as $incident) {
             $notification = new FundLossUnsettledReminder($incident);
             $this->remindPics($incident, $notification, 'fund-loss reminder');
+        }
+    }
+
+    /**
+     * Eligibility is Incident::statusUpdateReminderFlag() (shared with the
+     * list flag, minus the empty-case immediacy) — evaluated in PHP because
+     * the empty case checks created_at and the stale case the update_date.
+     */
+    private function sendStatusUpdateReminders(int $interval): void
+    {
+        $incidents = $this->dueIncidents($interval)
+            ->whereNot('incident_status', IncidentStatus::Completed->value)
+            ->with(['statusUpdates' => fn ($query) => $query->orderByDesc('update_date')->orderByDesc('id')])
+            ->get()
+            ->filter(fn (Incident $incident) => $incident->statusUpdateReminderFlag() !== null);
+
+        $this->info("Found {$incidents->count()} incidents with stale status info.");
+
+        foreach ($incidents as $incident) {
+            $this->remindPics($incident, new StatusUpdateStaleReminder($incident), 'status-update reminder');
         }
     }
 

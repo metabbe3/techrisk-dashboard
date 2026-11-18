@@ -1,9 +1,11 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services;
 
 use App\Enums\IncidentClassification;
+use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Services\Ai\AiTextService;
 use App\Services\Ai\RagService;
@@ -147,8 +149,7 @@ class RecurrenceDetectionService
                     ])->toArray()
                     : [];
 
-                $pendingActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']))->count();
-                $overdueActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']) && $a['due_date'] && $a['due_date'] < now()->toDateString())->count();
+                [$pendingActions, $overdueActions] = self::actionCounts($actions);
 
                 return [
                     'id' => $sim['id'],
@@ -204,8 +205,7 @@ class RecurrenceDetectionService
                 ])->toArray()
                 : [];
 
-            $pendingActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']))->count();
-            $overdueActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']) && $a['due_date'] && $a['due_date'] < now()->toDateString())->count();
+            [$pendingActions, $overdueActions] = self::actionCounts($actions);
 
             $dimensions = $match['dimensions'] ?? [];
             $matchReasons = [];
@@ -231,6 +231,8 @@ class RecurrenceDetectionService
             return [
                 'id' => $match['id'],
                 'no' => $match['no'],
+                'title' => $match['title'] ?? $enriched?->title ?? '',
+                'root_cause' => Str::limit($enriched?->root_cause ?? '', 200),
                 'summary' => $match['summary'] ?? '',
                 'severity' => $match['severity'] ?? '',
                 'incident_date' => $match['incident_date'] ?? '',
@@ -276,7 +278,14 @@ class RecurrenceDetectionService
                 'date_from' => now()->subMonths(self::LOOKBACK_MONTHS)->toDateString(),
             ], limit: self::CANDIDATE_LIMIT);
 
-            return $ragResults->keyBy('incident_id')->map->relevance_score->toArray();
+            // Normalize raw MATCH…AGAINST relevance (unbounded, often 30–70)
+            // against the max, like SimilarIncidentService — a raw bonus
+            // drowned out category matching and produced 147/10 scores.
+            $max = (float) $ragResults->max('relevance_score') ?: 1.0;
+
+            return $ragResults
+                ->mapWithKeys(fn ($r) => [$r->incident_id => min((float) $r->relevance_score / $max, 1.0)])
+                ->toArray();
         } catch (\Throwable $e) {
             Log::warning('[RecurrenceDetection] RAG scoring failed', ['error' => $e->getMessage()]);
 
@@ -385,14 +394,19 @@ class RecurrenceDetectionService
             }
 
             $ragBonus = isset($ragScoreMap[$candidate->id])
-                ? (int) round($ragScoreMap[$candidate->id] * 2)
+                ? (int) round($ragScoreMap[$candidate->id] * 3)
                 : 0;
             if ($ragBonus > 0) {
                 $score += $ragBonus;
                 $matchReasons[] = 'text_similarity';
             }
 
-            if ($score >= self::SCORE_THRESHOLD) {
+            // Team, business category and severity only add weight — a match
+            // must share a root-cause signal (category, label, or text
+            // similarity) to count as a recurrence.
+            $qualifies = array_intersect($matchReasons, ['root_cause_category', 'labels', 'text_similarity']) !== [];
+
+            if ($score >= self::SCORE_THRESHOLD && $qualifies) {
                 $candidate->_score = $score;
                 $candidate->_match_reasons = $matchReasons;
                 $scored->push($candidate);
@@ -411,23 +425,43 @@ class RecurrenceDetectionService
                 'due_date' => is_string($a->due_date) ? $a->due_date : $a->due_date?->toDateString(),
             ])->toArray();
 
-            $pendingActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']))->count();
-            $overdueActions = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', ['Open', 'In Progress']) && $a['due_date'] && $a['due_date'] < now()->toDateString())->count();
+            [$pendingActions, $overdueActions] = self::actionCounts($actions);
 
             return [
                 'id' => $match->id,
                 'no' => $match->no,
+                'title' => $match->title,
+                'root_cause' => Str::limit($match->root_cause ?? '', 200),
                 'summary' => $match->summary ? Str::limit($match->summary, 150) : '',
                 'severity' => $match->severity?->value,
                 'incident_date' => $match->incident_date?->toDateString(),
                 'incident_status' => $match->incident_status?->value,
-                'score' => $match->_score,
+                'score' => min(10, $match->_score),
                 'match_reasons' => $match->_match_reasons,
                 'action_improvements' => $actions,
                 'pending_actions' => $pendingActions,
                 'overdue_actions' => $overdueActions,
             ];
         })->toArray();
+    }
+
+    /**
+     * ONE action-status rule for pending/overdue counts. Statuses are the enum
+     * values from ActionImprovement::openStatuses() ('pending'/'on_progress') —
+     * never hand-typed strings (Edit-Safety Rule 1).
+     *
+     * @return array{0: int, 1: int} [pending, overdue]
+     */
+    private static function actionCounts(array $actions): array
+    {
+        $open = ActionImprovement::openStatuses();
+        $today = now()->toDateString();
+
+        $pending = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', $open, true))->count();
+        $overdue = collect($actions)->filter(fn ($a) => in_array($a['status'] ?? '', $open, true)
+            && filled($a['due_date'] ?? null) && $a['due_date'] < $today)->count();
+
+        return [$pending, $overdue];
     }
 
     private function generateAiAnalysis(Incident $incident, array $matchData): string
@@ -446,7 +480,7 @@ You are analyzing incident recurrence patterns. Given a new incident and similar
 2. What pattern connects these incidents (shared root cause, same system, same team, etc.)
 3. What specific overdue/pending actions contributed to recurrence
 
-Format your response using markdown. Use **bold** for incident numbers and action titles. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers and action titles. Return a JSON object with "analysis" (markdown string) and "confidence" (high/medium/low) fields.
+Format your response using markdown. Use **bold** for incident numbers and action titles. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers and action titles. Ignore names and greetings in the text — people @-mentioned are reporters/PICs, NOT evidence of a shared cause; reason from root causes, categories and systems. Return a JSON object with "analysis" (markdown string) and "confidence" (high/medium/low) fields.
 PROMPT;
 
             $userMessage = "New incident: [{$incident->no}] {$incident->title}\n";
@@ -459,7 +493,9 @@ PROMPT;
             $userMessage .= "Similar past incidents:\n";
 
             foreach ($matchData as $i => $match) {
-                $userMessage .= ($i + 1).". [{$match['no']}] {$match['summary']}\n";
+                $userMessage .= ($i + 1).". [{$match['no']}] {$match['title']}\n";
+                $userMessage .= '   Root cause: '.($match['root_cause'] ?: 'N/A')."\n";
+                $userMessage .= '   Matched on: '.implode(', ', $match['match_reasons'])."\n";
                 $userMessage .= "   Status: {$match['incident_status']}, Severity: {$match['severity']}, Date: {$match['incident_date']}\n";
                 $userMessage .= "   Pending actions: {$match['pending_actions']}, Overdue: {$match['overdue_actions']}\n";
                 foreach ($match['action_improvements'] as $action) {
@@ -503,7 +539,7 @@ You are analyzing incident recurrence detected via AI similarity matching. Given
 2. Whether past remediation was incomplete (link to overdue/pending actions)
 3. What should be done differently
 
-Format your response using markdown. Use **bold** for incident numbers and key terms. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers. Return a JSON object with "analysis" (markdown string), "similarity_type" (deep/superficial), and "confidence" (high/medium/low) fields.
+Format your response using markdown. Use **bold** for incident numbers and key terms. Use bullet points for listing key findings. Keep it under 5 sentences. Be specific with incident numbers. Ignore names and greetings in the text — people @-mentioned are reporters/PICs, NOT evidence of a shared cause; reason from root causes, categories and systems. Return a JSON object with "analysis" (markdown string), "similarity_type" (deep/superficial), and "confidence" (high/medium/low) fields.
 PROMPT;
 
             $userMessage = "New incident: [{$incident->no}] {$incident->title}\n";
@@ -513,7 +549,8 @@ PROMPT;
             $userMessage .= "Similar past incidents:\n";
 
             foreach ($matchData as $i => $match) {
-                $userMessage .= ($i + 1).". [{$match['no']}] {$match['summary']}\n";
+                $userMessage .= ($i + 1).". [{$match['no']}] {$match['title']}\n";
+                $userMessage .= '   Root cause: '.($match['root_cause'] ?: 'N/A')."\n";
                 $userMessage .= "   Status: {$match['incident_status']}, Severity: {$match['severity']}, Date: {$match['incident_date']}\n";
                 $userMessage .= '   Similarity: '.round(($match['similarity'] ?? 0) * 100)."%\n";
             }

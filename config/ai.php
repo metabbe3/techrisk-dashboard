@@ -349,6 +349,16 @@ return [
         'corpus_inject_limit' => (int) env('AI_AGENT_CORPUS_INJECT_LIMIT', 6000),
     ],
 
+    // Go engine (DingTalk agent) internal endpoint. Shared secret in
+    // X-Agent-Token; compose network only — no public port. Timeout ladder:
+    // Go run ctx 360s < this 420s < nginx fastcgi_read_timeout 600 (nginx.conf:31)
+    // < job timeout 480s < worker 660s.
+    'go_agent' => [
+        'base_url' => env('GO_AGENT_BASE_URL', 'http://dingtalk-agent:9091'),
+        'token' => env('GO_AGENT_INTERNAL_TOKEN'),
+        'timeout' => (int) env('GO_AGENT_TIMEOUT', 420),
+    ],
+
     'max_tokens' => [
         'label_suggest' => (int) env('AI_MAX_TOKENS_LABELS', 512),
         'nl_search' => (int) env('AI_MAX_TOKENS_NL_SEARCH', 2048),

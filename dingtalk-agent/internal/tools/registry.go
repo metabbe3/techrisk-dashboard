@@ -1,17 +1,23 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"runtime/debug"
+	"sort"
 	"sync"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/kb"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
+	"techrisk-dashboard/dingtalk-agent/internal/watch"
 )
 
 // ToolHandler is a function that executes a tool with parsed JSON arguments.
-type ToolHandler func(argsJSON string) (string, error)
+type ToolHandler func(ctx context.Context, argsJSON string) (string, error)
 
 // Tool represents a registered agent tool.
 type Tool struct {
@@ -24,15 +30,19 @@ type Tool struct {
 
 // Registry manages the set of available tools and dispatches execution.
 type Registry struct {
-	mu      sync.RWMutex
-	tools   map[string]Tool
-	notion  *notionTools      // nil when the Notion tools are disabled
-	pending *schedule.Pending // parked reminder requests; nil without cfg
+	mu           sync.RWMutex
+	tools        map[string]Tool
+	notion       *notionTools      // nil when the Notion tools are disabled
+	dash         *dashboardClient  // nil without cfg — the watch poller sweeps through it
+	pending      *schedule.Pending // parked reminder requests; nil without cfg
+	watchPending *watch.Pending    // parked watch requests; nil without cfg
+	kbIndex      *kb.Index         // RAG knowledge base; nil until RegisterKnowledgeTools
 }
 
 // NewRegistry initializes the registry with the dashboard API tools, plus the
-// web research tools when enabled (AGENT_WEB_TOOLS=0 to revoke) and the
-// read-only Notion doc tools when enabled (AGENT_NOTION_TOOLS=0 to revoke).
+// reminder + incident-watch tools, the web research tools when enabled
+// (AGENT_WEB_TOOLS=0 to revoke) and the read-only Notion doc tools when
+// enabled (AGENT_NOTION_TOOLS=0 to revoke).
 func NewRegistry(cfg *config.Config) *Registry {
 	r := &Registry{
 		tools: make(map[string]Tool),
@@ -41,6 +51,7 @@ func NewRegistry(cfg *config.Config) *Registry {
 		r.registerDashboardTools(cfg)
 		r.registerGenerateTools(cfg)
 		r.registerScheduleTools()
+		r.registerWatchTools()
 		if cfg.WebToolsEnabled {
 			r.registerWebTools()
 		}
@@ -49,6 +60,30 @@ func NewRegistry(cfg *config.Config) *Registry {
 		}
 	}
 	return r
+}
+
+// Subset returns a copy of the registry holding only the tools whose name
+// satisfies keep. Shared clients (dash/notion/pending/watchPending/kbIndex)
+// are carried over, so handlers keep working on the subset. Used by the
+// internal API to offer each caller only the tools whose side effects that
+// path actually honours.
+func (r *Registry) Subset(keep func(name string) bool) *Registry {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	sub := &Registry{
+		tools:        make(map[string]Tool, len(r.tools)),
+		notion:       r.notion,
+		dash:         r.dash,
+		pending:      r.pending,
+		watchPending: r.watchPending,
+		kbIndex:      r.kbIndex,
+	}
+	for name, t := range r.tools {
+		if keep(name) {
+			sub.tools[name] = t
+		}
+	}
+	return sub
 }
 
 // Has reports whether a tool with that name is registered.
@@ -91,11 +126,12 @@ func (r *Registry) GetDefinitions() []llm.ToolDefinition {
 	for _, t := range r.tools {
 		defs = append(defs, t.Definition)
 	}
+	sort.Slice(defs, func(i, j int) bool { return defs[i].Function.Name < defs[j].Function.Name })
 	return defs
 }
 
 // Execute runs the named tool with the given JSON arguments.
-func (r *Registry) Execute(name, argsJSON string) (string, error) {
+func (r *Registry) Execute(ctx context.Context, name, argsJSON string) (string, error) {
 	r.mu.RLock()
 	tool, exists := r.tools[name]
 	r.mu.RUnlock()
@@ -108,11 +144,28 @@ func (r *Registry) Execute(name, argsJSON string) (string, error) {
 		argsJSON = "{}"
 	}
 
-	result, err := tool.Handler(argsJSON)
+	return executeGuarded(ctx, name, tool.Handler, argsJSON), nil
+}
+
+// executeGuarded runs a tool handler with a panic guard: a panicking handler
+// surfaces as error CONTENT (the same shape as a handler error) instead of
+// killing the process — chat, scheduled and mesh paths all dispatch through
+// this one seam, so one recover covers all of them.
+func executeGuarded(ctx context.Context, name string, h ToolHandler, argsJSON string) (out string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			// This recover runs BEFORE the loop's per-goroutine one, so this
+			// is the only place the stack trace reaches the operator log —
+			// without it a recurring panic is undebuggable (review 2026-11-18).
+			log.Printf("[tools] PANIC in tool %s: %v\n%s", name, rec, debug.Stack())
+			out = fmt.Sprintf("Error executing %s: internal panic: %v", name, rec)
+		}
+	}()
+	result, err := h(ctx, argsJSON)
 	if err != nil {
-		return fmt.Sprintf("Error executing %s: %v", name, err), nil
+		return fmt.Sprintf("Error executing %s: %v", name, err)
 	}
-	return result, nil
+	return result
 }
 
 // Helper to marshal JSON schema map
@@ -127,14 +180,14 @@ func schema(properties map[string]any, required []string) any {
 	return s
 }
 
-// rawSchema decodes a static JSON schema literal into a value that marshals as
-// a JSON OBJECT. Parameters must never be a raw string — json.Marshal
-// double-encodes it and the upstream 400s the WHOLE request
-// ("tools[N].function.parameters is invalid or missing", prod 2026-11-10).
-func rawSchema(s string) any {
-	var v any
-	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		panic("rawSchema: invalid literal: " + err.Error()) // static input; fail at boot
+// typed wraps a handler that wants its arguments pre-parsed into T, so each
+// tool doesn't repeat the same unmarshal + "invalid arguments" dance.
+func typed[T any](h func(context.Context, T) (string, error)) ToolHandler {
+	return func(ctx context.Context, argsJSON string) (string, error) {
+		var args T
+		if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
+			return fmt.Errorf("invalid arguments: %w", err).Error(), nil
+		}
+		return h(ctx, args)
 	}
-	return v
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
@@ -25,6 +26,33 @@ func sse(frames ...string) string {
 	return out + "data: [DONE]\n\n"
 }
 
+// A stream that ends without [DONE] must FAIL, not return partial text as a
+// successful answer (the 2026-11-11 fix: EOF-before-DONE looked like success).
+func TestStreamEndWithoutDoneFails(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: "+`{"choices":[{"delta":{"content":"partial ans"}}]}`+"\n\n") // connection dies, no [DONE]
+	})
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "[DONE]") {
+		t.Fatalf("missing [DONE] must error, got msg=%q err=%v", msg, err)
+	}
+}
+
+// finish_reason=length means the answer was cut mid-generation — tool-call
+// JSON truncated mid-way MUST NOT be executed.
+func TestStreamFinishReasonLengthFails(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sse(`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"search_incidents","arguments":"{\"query\":\"P1\""}}]}}]}`,
+			`{"choices":[{"delta":{},"finish_reason":"length"}]}`))
+	})
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	if err == nil || !strings.Contains(err.Error(), "length") {
+		t.Fatalf("finish_reason=length must error, got msg=%q err=%v", msg, err)
+	}
+}
+
 func TestChatCompletionStreamContent(t *testing.T) {
 	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
@@ -37,7 +65,7 @@ func TestChatCompletionStreamContent(t *testing.T) {
 	})
 
 	var got string
-	msg, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, func(d string) { got += d })
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, func(d string) { got += d })
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +89,7 @@ func TestChatCompletionStreamToolCalls(t *testing.T) {
 		))
 	})
 
-	msg, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	msg, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -82,7 +110,7 @@ func TestChatCompletionStreamErrorFrame(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(w, sse(`{"error":{"message":"rate limited"}}`))
 	})
-	if _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
+	if _, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
 		t.Fatal("expected error from stream error frame")
 	}
 }
@@ -91,7 +119,42 @@ func TestChatCompletionStreamHTTPError(t *testing.T) {
 	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":{"message":"bad key"}}`, http.StatusUnauthorized)
 	})
-	if _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
+	if _, _, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err == nil {
 		t.Fatal("expected error from HTTP 401")
+	}
+}
+
+// Usage arrives on the final SSE frame; absent usage = zero value.
+func TestChatCompletionStreamUsage(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sse(
+			`{"choices":[{"delta":{"content":"Hi"}}]}`,
+			`{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":4,"total_tokens":14}}`,
+		))
+	})
+
+	msg, usage, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if msg.Content != "Hi" {
+		t.Errorf("content = %q", msg.Content)
+	}
+	if usage != (Usage{PromptTokens: 10, CompletionTokens: 4, TotalTokens: 14}) {
+		t.Errorf("usage = %+v, want the final frame's usage", usage)
+	}
+}
+
+func TestChatCompletionStreamUsageAbsent(t *testing.T) {
+	client := streamClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, sse(`{"choices":[{"delta":{"content":"Hi"},"finish_reason":"stop"}]}`))
+	})
+
+	if _, usage, err := client.ChatCompletionStream(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil, nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	} else if usage != (Usage{}) {
+		t.Errorf("usage = %+v, want zero when the stream carries none", usage)
 	}
 }

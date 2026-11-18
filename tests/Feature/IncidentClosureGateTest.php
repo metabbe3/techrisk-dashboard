@@ -2,10 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Resources\IncidentResource\Pages\EditIncident;
+use App\Filament\Resources\IncidentResource\Pages\ListIncidents;
 use App\Models\Incident;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
+use Livewire\Livewire;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 /**
@@ -122,6 +127,66 @@ class IncidentClosureGateTest extends TestCase
 
         $this->expectException(ValidationException::class);
         $legacy->update(['incident_status' => 'Completed']); // re-entering: gated
+    }
+
+    /**
+     * BUG-035: the observer's ValidationException carries the bare key
+     * 'incident_status', but Filament renders errors by state path
+     * (data.incident_status / mountedTableActionsData.0.incident_status) —
+     * the save rolled back with NO visible message. The form must surface it.
+     */
+    private function manager(): User
+    {
+        foreach (['view incidents', 'manage incidents'] as $p) {
+            Permission::firstOrCreate(['name' => $p]);
+        }
+
+        return User::factory()->create()->givePermissionTo('view incidents', 'manage incidents');
+    }
+
+    public function test_edit_page_shows_the_gate_error_on_the_status_field(): void
+    {
+        $incident = $this->openIncident(['root_cause' => 'rc', 'stop_bleeding_at' => null]);
+
+        Livewire::actingAs($this->manager())
+            ->test(EditIncident::class, ['record' => $incident->getRouteKey()])
+            ->fillForm(['incident_status' => 'Completed'])
+            ->call('save')
+            ->assertHasFormErrors(['incident_status']);
+
+        $this->assertSame('Open', $incident->fresh()->incident_status?->value);
+    }
+
+    public function test_edit_page_completes_when_prerequisites_are_filled(): void
+    {
+        $incident = $this->openIncident(['root_cause' => null, 'stop_bleeding_at' => null]);
+
+        Livewire::actingAs($this->manager())
+            ->test(EditIncident::class, ['record' => $incident->getRouteKey()])
+            ->fillForm([
+                'incident_status' => 'Completed',
+                'root_cause' => 'bug in X',
+                'stop_bleeding_at' => now()->subDays(5)->setTime(10, 0)->format('Y-m-d H:i:s'),
+            ])
+            ->call('save')
+            ->assertHasNoFormErrors();
+
+        $this->assertSame('Completed', $incident->fresh()->incident_status?->value);
+    }
+
+    public function test_update_status_action_shows_the_gate_error(): void
+    {
+        $incident = $this->openIncident(['root_cause' => null, 'stop_bleeding_at' => null]);
+
+        Livewire::actingAs($this->manager())
+            ->test(ListIncidents::class)
+            ->callTableAction('update_status', $incident, [
+                'incident_status' => 'Completed',
+                'remark' => 'closing',
+            ])
+            ->assertHasTableActionErrors(['incident_status']);
+
+        $this->assertSame('Open', $incident->fresh()->incident_status?->value);
     }
 
     public function test_gate_message_names_the_missing_prerequisite(): void

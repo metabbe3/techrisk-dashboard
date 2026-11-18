@@ -19,6 +19,13 @@ use Illuminate\Support\Facades\App;
 class IncidentStatsFooterData
 {
     /**
+     * Preferred input: the table's own filtered query
+     * (`$livewire->getFilteredTableQuery()` — tab + filters + search), so the
+     * footer can never contradict the table it sits under (BUG-022). Without
+     * one, falls back to baseQuery() (request-derived date filters only) for
+     * callers with no table context — e.g. ExecutiveCalcSheet passes its own
+     * query, tests exercise baseQuery() directly.
+     *
      * @param  Builder<\App\Models\Incident>  $query
      */
     public function build(?Builder $query = null): array
@@ -32,22 +39,7 @@ class IncidentStatsFooterData
         // (money columns below keep the sub's fund loss).
         $totalCases = $query->clone()->withoutSubIncidents()->count();
 
-        $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->withoutSubIncidents();
-        $mtbfCount = $mtbfQuery->count();
-        $avgMtbf = 0;
-        if ($mtbfCount > 0) {
-            $minDate = $mtbfQuery->min('incident_date');
-            $maxDate = $mtbfQuery->max('incident_date');
-
-            if ($minDate && $maxDate) {
-                $min = Carbon::parse($minDate)->startOfDay();
-                $max = Carbon::parse($maxDate)->startOfDay();
-                $totalDays = $min->diffInDays($max);
-                $avgMtbf = $mtbfCount > 1 ? round($totalDays / ($mtbfCount - 1), 3) : 0;
-            }
-        }
+        $avgMtbf = round(self::avgMtbf($query), 3);
 
         // BUG-021: MySQL returns DECIMAL aggregates as strings (mysqlnd has no
         // native decimal type) — cast before round/abs or strict_types fatals.
@@ -65,9 +57,46 @@ class IncidentStatsFooterData
     }
 
     /**
-     * Default query mirrors ListIncidents table scope when no filtered
-     * query is supplied: incidents (non-Issue) with user year access,
-     * scoped by the SAME date filters the table applies.
+     * Span-based average MTBF (gaps between consecutive metric rows) — the
+     * ONE implementation every dashboard surface calls: the caller's scope
+     * (tab/fund-status/date filters) rides on the builder; the shared metric
+     * rules (METRIC_ELIGIBLE severities, Outlier rows excluded) apply here.
+     * UNROUNDED — callers keep their own display rounding (footer 3, AI 2,
+     * tiles raw via number_format), so consolidation never moves a digit.
+     *
+     * @param  Builder<\App\Models\Incident>  $query
+     */
+    public static function avgMtbf(Builder $query): float
+    {
+        $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
+            ->withoutSubIncidents(); // PROJ-022: subs roll up into their super — leave the metric average
+
+        $mtbfCount = $mtbfQuery->count();
+
+        if ($mtbfCount < 2) {
+            return 0.0;
+        }
+
+        $minDate = $mtbfQuery->min('incident_date');
+        $maxDate = $mtbfQuery->max('incident_date');
+
+        if (! $minDate || ! $maxDate) {
+            return 0.0;
+        }
+
+        $totalDays = Carbon::parse($minDate)->startOfDay()
+            ->diffInDays(Carbon::parse($maxDate)->startOfDay());
+
+        return $totalDays / ($mtbfCount - 1);
+    }
+
+    /**
+     * No-table-context fallback: incidents (non-Issue) with user year access,
+     * scoped by the request's date filters ONLY — no tab, no other filters
+     * (they are unknowable from the request here). The Incidents footer no
+     * longer lands here (BUG-022 fix passes the table's filtered query); the
+     * parity tests pin this fallback because BUG-018 built it deliberately.
      */
     private function baseQuery(): Builder
     {

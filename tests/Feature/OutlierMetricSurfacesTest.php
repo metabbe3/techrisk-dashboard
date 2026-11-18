@@ -136,6 +136,14 @@ class OutlierMetricSurfacesTest extends TestCase
         Permission::firstOrCreate(['name' => 'view incidents']);
         $user = User::factory()->create();
         $user->givePermissionTo('view incidents');
+        // Reporting now respects year access (scope parity with the table) —
+        // the seeded trio lives in 2035, so grant that year explicitly
+        // (forUser()'s firstOrCreate default is the CURRENT year).
+        \App\Models\UserAuditLogSetting::create([
+            'user_id' => $user->id,
+            'allowed_years' => ['2035'],
+            'can_view_all_logs' => false,
+        ]);
 
         $component = Livewire::actingAs($user)->test(Reporting::class)
             ->set('data.start_date', '2035-01-01')

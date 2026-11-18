@@ -8,7 +8,9 @@ use App\Enums\IncidentClassification;
 use App\Models\Incident;
 use App\Models\IncidentType;
 use App\Models\Setting;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -80,6 +82,12 @@ class NotionIssueSyncService
 
     public function __construct(private NotionMcpClient $notion) {}
 
+    /** Shared read helpers (row/untitled-block extraction, id parser) — one implementation with NotionReadService. */
+    protected function read(): NotionReadService
+    {
+        return new NotionReadService($this->notion);
+    }
+
     /**
      * @param  bool  $restoreDeleted  Full sync — also re-import Issues deleted
      *                                from the dashboard (their tombstones).
@@ -91,6 +99,27 @@ class NotionIssueSyncService
      * @return array{status: string, message: string, created: int, skipped: int, preview: ?string}
      */
     public function sync(bool $dryRun = false, bool $restoreDeleted = false, ?array $restorePageIds = null): array
+    {
+        // Manual "Sync now" vs the cron: withoutOverlapping is scheduler-only,
+        // so a button click during a scheduled run let two syncs interleave
+        // (unique page_id / generateIssueId are the only nets). One lock for
+        // every caller — dry runs included, they read the same live watermark.
+        $lock = Cache::lock('notion-issue-sync', 900);
+
+        try {
+            $lock->block(10);
+        } catch (LockTimeoutException) {
+            return $this->finish('failed', 'A Notion sync is already running — try again in a moment.', 0, 0, $dryRun);
+        }
+
+        try {
+            return $this->runSync($dryRun, $restoreDeleted, $restorePageIds);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function runSync(bool $dryRun, bool $restoreDeleted, ?array $restorePageIds): array
     {
         $targetId = Setting::get(self::WATCH_KEY);
 
@@ -282,7 +311,7 @@ class NotionIssueSyncService
      * the caller decides whether that counts as skipped. Shared by the main
      * window loop and deleted-issue recovery so the two cannot drift.
      */
-    protected function importRow(array $row, string $pageId, bool $dryRun, array &$lines): ?Incident
+    protected function importRow(array $row, string $pageId, bool $dryRun, array &$lines, bool $attachBody = true): ?Incident
     {
         $title = $row['Name'] ?? null;
 
@@ -313,8 +342,7 @@ class NotionIssueSyncService
 
         // The database's own severity column wins; the root-cause map is
         // the fallback for rows where nobody classified it yet.
-        $severity = NotionIssueMapper::mapClassificationToSeverity($row['classification'] ?? null)
-            ?? NotionIssueMapper::mapSeverityToCode((string) ($row['root_cause'] ?? 'G'));
+        $severity = NotionIssueMapper::severityForRow($row);
 
         // Atomic pair: a failed synced-page insert (unique page_id — the
         // manual sync racing the cron) must not leave an orphan Incident.
@@ -342,7 +370,11 @@ class NotionIssueSyncService
         // The page body (Summary/Root Cause/Timeline/Action Taken sections)
         // fills the Issue's content fields. Shared with the backfill command.
         // Never fatal: a failed fetch imports the row without content.
-        $this->fetchAndAttachBody($incident, $pageId);
+        // attachBody=false lets recoverDeletedIssues fetch OUTSIDE its DB
+        // transaction (an MCP fetch inside one pins connections).
+        if ($attachBody) {
+            $this->fetchAndAttachBody($incident, $pageId);
+        }
 
         return $incident;
     }
@@ -409,13 +441,7 @@ class NotionIssueSyncService
      */
     protected function unknownBlockIds(array $fetch, string $pageId): array
     {
-        $ids = $fetch['structured']['unknown_block_ids'] ?? [];
-
-        if (! is_array($ids)) {
-            $ids = [];
-        }
-
-        $ids = array_values(array_filter($ids, 'is_string'));
+        $ids = $this->read()->unknownBlockIds($fetch);
 
         if (! empty($fetch['structured']['truncated']) && $ids === []) {
             Log::warning('Notion issue sync: page truncated but no unknown_block_ids found — check the structured payload shape.', [
@@ -452,8 +478,7 @@ class NotionIssueSyncService
 
         // The database's own severity column wins; the root-cause map is
         // the fallback for rows where nobody classified it yet.
-        $severity = NotionIssueMapper::mapClassificationToSeverity($row['classification'] ?? null)
-            ?? NotionIssueMapper::mapSeverityToCode((string) ($row['root_cause'] ?? 'G'));
+        $severity = NotionIssueMapper::severityForRow($row);
 
         return ($row['Name'] ?? '?')." ({$incidentDate->toDateString()}, {$severity})";
     }
@@ -485,12 +510,44 @@ class NotionIssueSyncService
             return [];
         }
 
+        // ONE url-LIKE round-trip for all dangling tombstones — the picker
+        // renders them on page open, and a per-tombstone lookup
+        // (recoverDeletedIssues' run-time shape) is N round-trips for a modal.
+        // Server-side OR filter keeps the reply small (result caps).
+        $pageIds = NotionSyncedPage::query()->whereNull('incident_id')
+            ->pluck('page_id')->filter(fn (string $id) => ctype_xdigit($id))->values();
+        if ($pageIds->isEmpty()) {
+            return [];
+        }
+
+        $where = collect($pageIds)
+            ->map(fn (string $id) => sprintf("url LIKE '%%%s%%'", $id))
+            ->implode(' OR ');
+
+        $query = $this->notion->callToolDetailed('notion-query-data-sources', [
+            'data' => [
+                'data_source_urls' => [$collectionUrl],
+                'query' => sprintf('SELECT %s FROM "%s" WHERE %s', self::ROW_COLUMNS, $collectionUrl, $where),
+            ],
+        ]);
+
+        $rows = ($query === null || $query['isError'])
+            ? []
+            : ($this->read()->extractRows((string) $query['text']) ?? []);
+
         $options = [];
 
-        foreach (NotionSyncedPage::query()->whereNull('incident_id')->pluck('page_id') as $pageId) {
-            $row = $this->queryPageById($collectionUrl, $pageId);
+        foreach ($pageIds as $pageId) {
+            $row = null;
+            foreach ($rows as $candidate) {
+                if (str_contains((string) ($candidate['url'] ?? ''), $pageId)) {
+                    $row = $candidate;
 
-            if ($row === null || $row === [] || blank($row['Name'] ?? null) || $this->titleAlreadyExists((string) $row['Name'])) {
+                    break;
+                }
+            }
+
+            if ($row === null || blank($row['Name'] ?? null) || $this->titleAlreadyExists((string) $row['Name'])) {
                 continue;
             }
 
@@ -571,12 +628,23 @@ class NotionIssueSyncService
             }
 
             try {
-                $restored = DB::transaction(function () use ($page, $row, &$lines): bool {
+                // Body fetch OUTSIDE the transaction: the atomic pair is the
+                // tombstone-free + Incident/synced-page insert (importRow's
+                // own transaction); holding a DB transaction open across a
+                // seconds-long MCP fetch (usleep drain loop included) pins
+                // connections for every concurrent query.
+                $restored = DB::transaction(function () use ($page, $row, &$lines, &$restoredIncident): bool {
                     // Free the page ID first — importRow re-registers it.
                     NotionSyncedPage::where('page_id', $page->page_id)->whereNull('incident_id')->delete();
 
-                    return $this->importRow($row, $page->page_id, false, $lines) !== null;
+                    $restoredIncident = $this->importRow($row, $page->page_id, false, $lines, attachBody: false);
+
+                    return $restoredIncident !== null;
                 });
+
+                if ($restored && $restoredIncident) {
+                    $this->fetchAndAttachBody($restoredIncident, $page->page_id);
+                }
             } catch (\Throwable $e) {
                 $failed++;
 
@@ -911,7 +979,7 @@ class NotionIssueSyncService
      */
     protected function extractCollectionUrl(string $text): ?string
     {
-        return preg_match('/collection:\/\/[0-9a-f-]{36}/i', $text, $m) ? $m[0] : null;
+        return NotionReadService::collectionUrlFrom($text);
     }
 
     /**
@@ -919,19 +987,13 @@ class NotionIssueSyncService
      */
     protected function extractRows(string $text): ?array
     {
-        $decoded = json_decode($text, true);
-
-        if (! is_array($decoded) || ! is_array($decoded['results'] ?? null)) {
-            return null;
-        }
-
-        return array_values(array_filter($decoded['results'], fn ($row) => is_array($row)));
+        return $this->read()->extractRows($text);
     }
 
-    /** The trailing 32-hex ID of a Notion page URL. */
+    /** The 32-hex/UUID id inside a Notion URL — NotionReadService::bareId, the one parser (BUG-034 shape: bounded, last match). */
     protected function pageIdFromUrl(string $url): ?string
     {
-        return preg_match('/([a-f0-9]{32})/i', $url, $m) ? $m[1] : null;
+        return NotionReadService::bareId($url);
     }
 
     protected function parseDate(mixed $dateStart, mixed $createdTime): Carbon

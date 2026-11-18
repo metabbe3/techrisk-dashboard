@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
+use App\Enums\FundStatus;
 use App\Enums\IncidentClassification;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
@@ -32,7 +33,9 @@ class MttrMtbfTrendChart extends ChartWidget
             : 'MONTH(incident_date)';
         // v5: keyed on dashboard_cache_version — an Outlier re-tag bumps the
         // version (metrics job) and must invalidate this 15-minute cache too.
-        $cacheKey = 'mttr_mtbf_trend_v5_'.md5(json_encode([
+        // v6: MTTR series now scope by fund_status (matching the export
+        // tabs), not by MTTR sign.
+        $cacheKey = 'mttr_mtbf_trend_v6_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
@@ -48,19 +51,26 @@ class MttrMtbfTrendChart extends ChartWidget
                 $baseQuery->whereYear('incident_date', now()->year);
             }
 
-            // MTTR Non Fund Loss per month (minutes) — average of positive values
+            // MTTR Non Fund Loss per month (minutes) — the Non fundLoss
+            // scope, positive (minutes) bucket. Sign alone is NOT the
+            // scope: the calculator stores days-scale negative MTTR for
+            // every shouldCalculateMttrByDays() status, which are no tab's
+            // rows (owner one-logic rule 2026-11-16).
             $mttrNonFundData = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->withoutSubIncidents() // subs carry computed mttr (outliers don't) — they must leave the average
+                ->where('fund_status', FundStatus::NonFundLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('AVG(CASE WHEN mttr >= 0 THEN mttr ELSE NULL END) as avg_mttr'))
                 ->groupBy(DB::raw($monthExpr))
                 ->get()
                 ->keyBy('month');
 
-            // MTTR Fund Loss per month (days) — average of negative values (absolute)
+            // MTTR Fund Loss per month (days) — the Confirmed loss scope,
+            // negative (days) bucket.
             $mttrFundData = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->withoutSubIncidents()
+                ->where('fund_status', FundStatus::ConfirmedLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('AVG(CASE WHEN mttr < 0 THEN ABS(mttr) ELSE NULL END) as avg_mttr'))
                 ->groupBy(DB::raw($monthExpr))
                 ->get()
@@ -71,7 +81,7 @@ class MttrMtbfTrendChart extends ChartWidget
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->withoutOutliers()
                 ->withoutSubIncidents()
-                ->where('fund_status', 'Non fundLoss')
+                ->where('fund_status', FundStatus::NonFundLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw($monthExpr))
                 ->get();
@@ -92,7 +102,7 @@ class MttrMtbfTrendChart extends ChartWidget
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->withoutOutliers()
                 ->withoutSubIncidents()
-                ->where('fund_status', 'Confirmed loss')
+                ->where('fund_status', FundStatus::ConfirmedLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw($monthExpr))
                 ->get();

@@ -11,7 +11,8 @@ use Illuminate\Database\Eloquent\Builder;
 /**
  * Full-calendar-year MTBF gap sequence (IncidentTableExport semantics —
  * Custom preset + Quarterly Report tabs). All-Tabs sheets sequence per-tab
- * instead (SingleIncidentSheetExport); do not merge the two.
+ * through the SAME implementation now (SingleIncidentSheetExport passes its
+ * sheet query as mtbfScope) — one logic for all exports (owner 2026-11-16).
  */
 trait ComputesMtbfSequence
 {
@@ -24,6 +25,11 @@ trait ComputesMtbfSequence
      * gaps — excluded rows telescope over (owner report 2026-10-23: exports
      * scoped to Confirmed loss + Non fundLoss must reproduce the owner's
      * hand-made sheet, not the unfiltered chain). Null = legacy global scope.
+     * The scope is TRUSTED for classification/fund scope — only metric
+     * hygiene (severity eligibility + outliers + year window + ordering) is
+     * added here, mirroring IncidentStatsFooterData's convention; a scope
+     * already restricted to Issues (All Issues sheet) must not be
+     * re-restricted to non-Issues.
      */
     protected ?Builder $mtbfScope = null;
 
@@ -39,9 +45,12 @@ trait ComputesMtbfSequence
         $key = "export_all_{$year}";
 
         if (! isset($this->mtbfSequenceCache[$key])) {
-            $incidents = ($this->mtbfScope ? $this->mtbfScope->clone() : \App\Models\Incident::query())
+            $query = $this->mtbfScope
+                ? $this->mtbfScope->clone()
+                : \App\Models\Incident::query()->where('classification', '!=', IncidentClassification::Issue->value);
+
+            $incidents = $query
                 ->whereYear('incident_date', $year)
-                ->where('classification', '!=', IncidentClassification::Issue->value)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->withoutOutliers()
                 ->orderBy('incident_date')->orderBy('id')

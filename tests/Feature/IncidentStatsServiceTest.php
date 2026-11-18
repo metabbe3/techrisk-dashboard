@@ -16,8 +16,12 @@ class IncidentStatsServiceTest extends TestCase
         Incident::factory()->create([
             'classification' => 'Incident',
             'fund_status' => 'Non fundLoss',
+            'incident_status' => 'Completed',
             'fund_loss' => 1000,
             'incident_date' => now()->startOfYear()->addDays(10),
+            'stop_bleeding_at' => now()->startOfYear()->addDays(10)->addHours(2),
+            'root_cause' => 'Bad deploy',
+            'root_cause_category' => ['Deployment'],
         ]);
 
         // An Issue carrying fund_loss must not leak into the incident sum —

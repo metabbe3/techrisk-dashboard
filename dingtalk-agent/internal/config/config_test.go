@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -8,7 +9,7 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 	t.Helper()
 	// Neutralize knobs first: t.Setenv restores only at test END, so without this
 	// a value from an earlier sub-test leaks into later ones (empty = unset for getVal).
-	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN"} {
+	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN", "LLM_VISION_MODEL", "AI_VISION_MODEL", "LLM_HEAVY_KEYWORDS"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range set {
@@ -19,6 +20,21 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 		t.Fatalf("LoadFromFile: %v", err)
 	}
 	return cfg
+}
+
+func TestHeavyKeywordsSources(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "s", "DASHBOARD_API_TOKEN": "t",
+	}
+	// Default triggers, lowercased (even with no env set).
+	if cfg := loadEnv(t, base); !reflect.DeepEqual(cfg.HeavyKeywords, []string{"ultrathink", "deep research", "think hard"}) {
+		t.Errorf("default HeavyKeywords = %v", cfg.HeavyKeywords)
+	}
+	// Override: comma-separated, trimmed, empties dropped, lowercased.
+	cfg := loadEnv(t, with(base, "LLM_HEAVY_KEYWORDS", "Ultrathink , Deep Research ,, think hard"))
+	if want := []string{"ultrathink", "deep research", "think hard"}; !reflect.DeepEqual(cfg.HeavyKeywords, want) {
+		t.Errorf("override = %v, want %v", cfg.HeavyKeywords, want)
+	}
 }
 
 func TestDefaults(t *testing.T) {
@@ -142,5 +158,123 @@ func TestAutoLearnKillSwitch(t *testing.T) {
 	}
 	if cfg := loadEnv(t, base); !cfg.AutoLearn {
 		t.Error("auto-learning must default on")
+	}
+}
+
+func TestVisionModelSources(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "secret", "DASHBOARD_API_TOKEN": "tok",
+	}
+
+	cfg := loadEnv(t, withBase(base, map[string]string{"LLM_VISION_MODEL": "vision-a", "AI_VISION_MODEL": "vision-b"}))
+	if cfg.VisionModel != "vision-a" {
+		t.Errorf("VisionModel = %q, want vision-a (LLM_ wins)", cfg.VisionModel)
+	}
+
+	cfg = loadEnv(t, withBase(base, map[string]string{"AI_VISION_MODEL": "vision-b"}))
+	if cfg.VisionModel != "vision-b" {
+		t.Errorf("VisionModel = %q, want vision-b (AI_ fallback)", cfg.VisionModel)
+	}
+
+	cfg = loadEnv(t, base)
+	if cfg.VisionModel != "" {
+		t.Errorf("VisionModel = %q, want empty (client falls back to the chat model)", cfg.VisionModel)
+	}
+}
+
+func withBase(base, extra map[string]string) map[string]string {
+	out := map[string]string{}
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
+}
+
+func TestMeshConfig(t *testing.T) {
+	// 1. Defaults in solo mode
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "secret", "DASHBOARD_API_TOKEN": "tok",
+	}
+	cfg := loadEnv(t, base)
+	if cfg.MeshRole != "solo" {
+		t.Errorf("MeshRole = %q, want solo", cfg.MeshRole)
+	}
+	if cfg.MeshListen != ":7801" {
+		t.Errorf("MeshListen = %q, want :7801", cfg.MeshListen)
+	}
+	if cfg.TaskTimeout.Seconds() != 300 {
+		t.Errorf("TaskTimeout = %v, want 300s", cfg.TaskTimeout)
+	}
+	if cfg.MissionTimeout.Seconds() != 1800 {
+		t.Errorf("MissionTimeout = %v, want 1800s", cfg.MissionTimeout)
+	}
+	if cfg.SubtaskAttempts != 2 {
+		t.Errorf("SubtaskAttempts = %d, want 2", cfg.SubtaskAttempts)
+	}
+	if cfg.FanoutMax != 3 {
+		t.Errorf("FanoutMax = %d, want 3", cfg.FanoutMax)
+	}
+
+	// 2. Leader mode requires token
+	t.Setenv("GOAGENT_ROLE", "leader")
+	t.Setenv("GOAGENT_MESH_TOKEN", "")
+	if _, err := LoadFromFile("no-such.env"); err == nil {
+		t.Error("expected error for leader without GOAGENT_MESH_TOKEN")
+	}
+
+	t.Setenv("GOAGENT_MESH_TOKEN", "mesh-secret")
+	cfgLeader, err := LoadFromFile("no-such.env")
+	if err != nil {
+		t.Fatalf("unexpected error for valid leader: %v", err)
+	}
+	if cfgLeader.MeshRole != "leader" || cfgLeader.MeshToken != "mesh-secret" {
+		t.Errorf("unexpected leader config: %+v", cfgLeader)
+	}
+
+	// 3. Worker mode requires token and leader addr
+	t.Setenv("GOAGENT_ROLE", "worker")
+	t.Setenv("GOAGENT_MESH_TOKEN", "")
+	t.Setenv("GOAGENT_LEADER_ADDR", "")
+	if _, err := LoadFromFile("no-such.env"); err == nil {
+		t.Error("expected error for worker without token and leader addr")
+	}
+
+	t.Setenv("GOAGENT_MESH_TOKEN", "mesh-secret")
+	if _, err := LoadFromFile("no-such.env"); err == nil {
+		t.Error("expected error for worker without leader addr")
+	}
+
+	t.Setenv("GOAGENT_LEADER_ADDR", "http://127.0.0.1:7801")
+	t.Setenv("GOAGENT_WORKER_ID", "w-custom")
+	t.Setenv("GOAGENT_CAPABILITIES", "logs,dingtalk,incidents")
+	t.Setenv("GOAGENT_TASK_TIMEOUT", "120")
+	t.Setenv("GOAGENT_MISSION_TIMEOUT", "600")
+	t.Setenv("GOAGENT_SUBTASK_ATTEMPTS", "3")
+	t.Setenv("GOAGENT_FANOUT_MAX", "4")
+
+	cfgWorker, err := LoadFromFile("no-such.env")
+	if err != nil {
+		t.Fatalf("unexpected error for valid worker: %v", err)
+	}
+	if cfgWorker.MeshRole != "worker" || cfgWorker.WorkerID != "w-custom" {
+		t.Errorf("WorkerID = %q, want w-custom", cfgWorker.WorkerID)
+	}
+	if len(cfgWorker.Capabilities) != 3 || cfgWorker.Capabilities[1] != "dingtalk" {
+		t.Errorf("Capabilities = %v, want [logs, dingtalk, incidents]", cfgWorker.Capabilities)
+	}
+	if cfgWorker.TaskTimeout.Seconds() != 120 {
+		t.Errorf("TaskTimeout = %v, want 120s", cfgWorker.TaskTimeout)
+	}
+	if cfgWorker.MissionTimeout.Seconds() != 600 {
+		t.Errorf("MissionTimeout = %v, want 600s", cfgWorker.MissionTimeout)
+	}
+	if cfgWorker.SubtaskAttempts != 3 {
+		t.Errorf("SubtaskAttempts = %d, want 3", cfgWorker.SubtaskAttempts)
+	}
+	if cfgWorker.FanoutMax != 4 {
+		t.Errorf("FanoutMax = %d, want 4", cfgWorker.FanoutMax)
 	}
 }

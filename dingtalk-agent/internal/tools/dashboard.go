@@ -16,6 +16,7 @@ import (
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
+	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 )
 
 // dashboardClient issues GET requests against the read-only Laravel API.
@@ -25,11 +26,11 @@ type dashboardClient struct {
 	http  *http.Client
 }
 
-func newDashboardClient(cfg *config.Config) *dashboardClient {
+func newDashboardClient(cfg *config.Config, timeout time.Duration) *dashboardClient {
 	return &dashboardClient{
 		base:  cfg.DashboardAPIBase,
 		token: cfg.DashboardAPIToken,
-		http:  &http.Client{Timeout: 30 * time.Second},
+		http:  &http.Client{Timeout: timeout},
 	}
 }
 
@@ -50,29 +51,29 @@ type apiEnvelope struct {
 
 // get performs a GET on path (must start with "/") and returns the decoded envelope.
 func (c *dashboardClient) get(ctx context.Context, path string) (*apiEnvelope, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.token)
-
-	resp, err := c.http.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("dashboard api unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-
-	return c.decode(resp)
+	return c.request(ctx, http.MethodGet, path, nil)
 }
 
 // post performs a POST with a JSON payload on path and returns the decoded envelope.
 func (c *dashboardClient) post(ctx context.Context, path string, payload any) (*apiEnvelope, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
+	return c.request(ctx, http.MethodPost, path, payload)
+}
+
+// del performs a DELETE with a JSON payload on path (agent-schedules cancel).
+func (c *dashboardClient) del(ctx context.Context, path string, payload any) (*apiEnvelope, error) {
+	return c.request(ctx, http.MethodDelete, path, payload)
+}
+
+func (c *dashboardClient) request(ctx context.Context, method, path string, payload any) (*apiEnvelope, error) {
+	var body io.Reader
+	if payload != nil {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return nil, err
+		}
+		body = bytes.NewReader(data)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, bytes.NewReader(data))
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, body)
 	if err != nil {
 		return nil, err
 	}
@@ -156,7 +157,7 @@ func normalizeDate(name, val string) (string, error) {
 // (IncidentController silently ignores a lone bound): a missing side is filled in so the intended
 // range is never widened to all-time.
 func pairDates(start, end string) (string, string, error) {
-	today := time.Now().Format("2006-01-02")
+	today := time.Now().In(schedule.WIB).Format("2006-01-02")
 	switch {
 	case start != "" && end == "":
 		end = today
@@ -182,11 +183,47 @@ func pairDates(start, end string) (string, string, error) {
 }
 
 func (r *Registry) registerDashboardTools(cfg *config.Config) {
-	client := newDashboardClient(cfg)
+	client := newDashboardClient(cfg, 30*time.Second)
+	r.dash = client
 
-	r.Register(searchIncidentDef(), client.handleSearchIncidents)
-	r.Register(getIncidentDef(), client.handleGetIncident)
-	r.Register(getIncidentMarkdownDef(), client.handleGetIncidentMarkdown)
+	r.Register(searchIncidentDef(), typed(client.handleSearchIncidents))
+	r.Register(getIncidentDef(), typed(client.handleGetIncident))
+	// Post-mortems run 15-30KB; the 8KB default cap cut them mid-root-cause
+	// (audit round 4). 48k matches notion_read_page's large-doc allowance.
+	r.RegisterCapped(getIncidentMarkdownDef(), typed(client.handleGetIncidentMarkdown), 48<<10)
+	// Corpus pages are pre-capped at 100k chars server-side; 48k keeps the
+	// prompt budget in line with get_incident_markdown.
+	r.RegisterCapped(readCorpusPageDef(), typed(client.handleReadCorpusPage), 48<<10)
+	// Skill library + personas: server pre-caps bodies at 48k chars.
+	if cfg.SkillToolsEnabled {
+		r.RegisterCapped(listSkillsDef(), typed(client.handleListSkills), 48<<10)
+		r.RegisterCapped(loadSkillDef(), typed(client.handleLoadSkill), 48<<10)
+	}
+	r.Register(statsDef(), typed(client.handleGetDashboardStats))
+	r.Register(searchActionItemsDef(), typed(client.handleSearchActionItems))
+	r.Register(getActionItemDef(), typed(client.handleGetActionItem))
+	r.Register(getGovernanceKpisDef(), typed(client.handleGetGovernanceKpis))
+	r.Register(listReferenceDef(), typed(client.handleListReference))
+}
+
+// GetIncidentByNo fetches one incident's full JSON by its incident number
+// (the watch binder + poller use it to resolve and diff).
+func (c *dashboardClient) GetIncidentByNo(ctx context.Context, no string) (json.RawMessage, error) {
+	no, err := sanitizeRef(no)
+	if err != nil {
+		return nil, err
+	}
+	env, err := c.get(ctx, "/incidents-by-no/"+url.PathEscape(no))
+	if err != nil {
+		return nil, err
+	}
+	return env.Data, nil
+}
+
+// Search runs a raw GET (path with query string) and returns the envelope —
+// the watch poller's updated_since sweep uses it.
+func (c *dashboardClient) Search(ctx context.Context, path string) (*apiEnvelope, error) {
+	return c.get(ctx, path)
 }
 
 func searchIncidentDef() llm.ToolDefinition {
@@ -215,6 +252,7 @@ func searchIncidentDef() llm.ToolDefinition {
 					"search":                  map[string]any{"type": "string", "description": "Keyword (min 2 chars) matched against title, summary, and incident number"},
 					"start_date":              map[string]any{"type": "string", "description": "Range start (inclusive), YYYY-MM-DD"},
 					"end_date":                map[string]any{"type": "string", "description": "Range end (inclusive), YYYY-MM-DD"},
+					"updated_since":           map[string]any{"type": "string", "description": "Only rows UPDATED at/after this timestamp (RFC3339 or YYYY-MM-DD) — catches edits, unlike start/end_date which filter incident_date. Use for 'what changed since X' and digest windows"},
 					"min_fund_loss":           map[string]any{"type": "number", "description": "Minimum fund loss in IDR"},
 					"max_fund_loss":           map[string]any{"type": "number", "description": "Maximum fund loss in IDR"},
 					"min_potential_fund_loss": map[string]any{"type": "number", "description": "Minimum potential fund loss in IDR"},
@@ -238,6 +276,7 @@ type searchArgs struct {
 	Search           string   `json:"search"`
 	StartDate        string   `json:"start_date"`
 	EndDate          string   `json:"end_date"`
+	UpdatedSince     string   `json:"updated_since"`
 	MinFundLoss      *float64 `json:"min_fund_loss"`
 	MaxFundLoss      *float64 `json:"max_fund_loss"`
 	MinPotentialLoss *float64 `json:"min_potential_fund_loss"`
@@ -249,12 +288,7 @@ type searchArgs struct {
 const searchLimitCeiling = 100
 const searchLimitDefault = 20
 
-func (c *dashboardClient) handleSearchIncidents(argsJSON string) (string, error) {
-	var args searchArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
-
+func (c *dashboardClient) handleSearchIncidents(ctx context.Context, args searchArgs) (string, error) {
 	start, end, err := pairDates(args.StartDate, args.EndDate)
 	if err != nil {
 		return "", err
@@ -293,6 +327,7 @@ func (c *dashboardClient) handleSearchIncidents(argsJSON string) (string, error)
 	}
 	setIfNotEmpty("start_date", start)
 	setIfNotEmpty("end_date", end)
+	setIfNotEmpty("updated_since", args.UpdatedSince)
 	setNum := func(key string, v *float64) {
 		if v != nil && *v >= 0 {
 			q.Set(key, strconv.FormatFloat(*v, 'f', -1, 64))
@@ -303,17 +338,52 @@ func (c *dashboardClient) handleSearchIncidents(argsJSON string) (string, error)
 	setNum("min_potential_fund_loss", args.MinPotentialLoss)
 	setNum("max_potential_fund_loss", args.MaxPotentialLoss)
 
-	env, err := c.get(context.Background(), "/incidents?"+q.Encode())
+	env, err := c.get(ctx, "/incidents?"+q.Encode())
 	if err != nil {
 		return "", err
 	}
 
-	out := map[string]any{"meta": env.Meta, "data": json.RawMessage(env.Data)}
-	encoded, err := json.Marshal(out)
+	// Project list rows to the identity columns the model needs to PICK an
+	// incident — the raw Laravel payload (nested relations, audit timelines)
+	// was 25KB+ for 20 incidents and got shredded by the 8KB truncator
+	// mid-JSON (audit round 4). Full detail stays available via
+	// get_incident / get_incident_markdown once an incident is chosen.
+	trimmed, perr := projectIncidentList(env)
+	if perr != nil {
+		return "", perr
+	}
+	encoded, err := json.Marshal(trimmed)
 	if err != nil {
 		return "", err
 	}
 	return string(encoded), nil
+}
+
+// projectIncidentList reduces the raw /incidents envelope to meta + one
+// compact record per incident (incident_no, title, severity, status, dates,
+// losses). Keys MUST match IncidentListApiResource's emitted names — the 2026
+// keep-list drift (`no`/`title` vs the resource's `incident_no`/
+// `incident_title`) silently stripped the number from every search row and
+// left the external-RCA flow blocked asking the human for it (2026-11-16).
+func projectIncidentList(env *apiEnvelope) (map[string]any, error) {
+	var rows []map[string]any
+	if err := json.Unmarshal(env.Data, &rows); err != nil {
+		// Not a list shape (unexpected API change): fall back to raw passthrough
+		// rather than failing the turn.
+		return map[string]any{"meta": env.Meta, "data": json.RawMessage(env.Data)}, nil
+	}
+	keep := []string{"incident_no", "incident_title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id"}
+	out := make([]map[string]any, 0, len(rows))
+	for _, r := range rows {
+		m := map[string]any{}
+		for _, k := range keep {
+			if v, ok := r[k]; ok && v != nil {
+				m[k] = v
+			}
+		}
+		out = append(out, m)
+	}
+	return map[string]any{"meta": env.Meta, "data": out}, nil
 }
 
 func getIncidentDef() llm.ToolDefinition {
@@ -340,12 +410,7 @@ type getIncidentArgs struct {
 	ID *int   `json:"id"`
 }
 
-func (c *dashboardClient) handleGetIncident(argsJSON string) (string, error) {
-	var args getIncidentArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
-
+func (c *dashboardClient) handleGetIncident(ctx context.Context, args getIncidentArgs) (string, error) {
 	var path string
 	switch {
 	case args.ID != nil && *args.ID > 0:
@@ -360,7 +425,7 @@ func (c *dashboardClient) handleGetIncident(argsJSON string) (string, error) {
 		return "", fmt.Errorf("provide either no (incident number) or id (numeric)")
 	}
 
-	env, err := c.get(context.Background(), path)
+	env, err := c.get(ctx, path)
 	if err != nil {
 		return "", err
 	}
@@ -384,18 +449,13 @@ func getIncidentMarkdownDef() llm.ToolDefinition {
 	}
 }
 
-func (c *dashboardClient) handleGetIncidentMarkdown(argsJSON string) (string, error) {
-	var args getIncidentArgs
-	if err := json.Unmarshal([]byte(argsJSON), &args); err != nil {
-		return "", fmt.Errorf("invalid arguments: %w", err)
-	}
-
+func (c *dashboardClient) handleGetIncidentMarkdown(ctx context.Context, args getIncidentArgs) (string, error) {
 	no, err := sanitizeRef(args.No)
 	if err != nil {
 		return "", err
 	}
 
-	env, err := c.get(context.Background(), "/incidents-by-no/"+url.PathEscape(no)+"/markdown")
+	env, err := c.get(ctx, "/incidents-by-no/"+url.PathEscape(no)+"/markdown")
 	if err != nil {
 		return "", err
 	}
@@ -409,4 +469,99 @@ func (c *dashboardClient) handleGetIncidentMarkdown(argsJSON string) (string, er
 		return "", fmt.Errorf("failed to base64-decode incident markdown: %w", err)
 	}
 	return string(markdown), nil
+}
+
+// statsDef: aggregate dashboard metrics in one call — the tool the bot uses for
+// MTTR/MTBF/fund-loss/per-team questions instead of meta.total arithmetic.
+// List params are comma-separated strings (the `tags` pattern; nested JSON
+// array types 400 the upstream request).
+func statsDef() llm.ToolDefinition {
+	return llm.ToolDefinition{
+		Type: "function",
+		Function: llm.ToolFunctionDef{
+			Name: "get_dashboard_stats",
+			Description: "Official dashboard aggregate metrics in ONE call — no manual meta.total arithmetic. " +
+				"mode=summary (default) returns totalCases, avgMttrMins, avgMttrDays, avgMtbf, totalFundLoss, " +
+				"totalPotentialFundLoss, totalRecoveredFund for the filtered scope (already metric-eligible + " +
+				"outlier-excluded; the MTTR sign splits minutes vs days buckets; totalCases counts non-Issue rows " +
+				"including G/Non Incident — the dashboard footer's number). " +
+				"mode=by_dimension returns labels[]/values[] for metric x dimension. " +
+				"Use for MTTR this quarter, fund loss this year, incidents per team, top root causes, recovery rate.",
+			Parameters: schema(
+				map[string]any{
+					"mode":           map[string]any{"type": "string", "description": "summary (default) or by_dimension"},
+					"metric":         map[string]any{"type": "string", "description": "by_dimension metric: count, avg_mttr, avg_mttr_days, avg_mtbf, sum_fund_loss, sum_potential_fund_loss, sum_recovered_fund, recovery_rate"},
+					"dimension":      map[string]any{"type": "string", "description": "by_dimension dimension: monthly, quarterly, severity, incident_type, status, pic, label, business_category, root_cause_category, responsible_team, fund_status"},
+					"start_date":     map[string]any{"type": "string", "description": "Range start (inclusive), YYYY-MM-DD; a lone start means 'until today'"},
+					"end_date":       map[string]any{"type": "string", "description": "Range end (inclusive), YYYY-MM-DD"},
+					"severities":     map[string]any{"type": "string", "description": "Comma-separated severities: P1-P4, X1-X4, G, Non Incident"},
+					"incident_types": map[string]any{"type": "string", "description": "Comma-separated: Tech, Non-tech"},
+					"statuses":       map[string]any{"type": "string", "description": "Comma-separated: Open, In progress, Finalization, Completed"},
+					"fund_statuses":  map[string]any{"type": "string", "description": "Comma-separated: Non fundLoss, Confirmed loss, Potential recovery, Fully recovered, Non Tech Loss"},
+				},
+				nil,
+			),
+		},
+	}
+}
+
+type statsArgs struct {
+	Mode          string `json:"mode"`
+	Metric        string `json:"metric"`
+	Dimension     string `json:"dimension"`
+	StartDate     string `json:"start_date"`
+	EndDate       string `json:"end_date"`
+	Severities    string `json:"severities"`
+	IncidentTypes string `json:"incident_types"`
+	Statuses      string `json:"statuses"`
+	FundStatuses  string `json:"fund_statuses"`
+}
+
+func (c *dashboardClient) handleGetDashboardStats(ctx context.Context, args statsArgs) (string, error) {
+	start, end, err := pairDates(args.StartDate, args.EndDate)
+	if err != nil {
+		return "", err
+	}
+
+	mode := strings.TrimSpace(args.Mode)
+	if mode == "" {
+		mode = "summary"
+	}
+	if mode != "summary" && mode != "by_dimension" {
+		return "", fmt.Errorf("mode must be summary or by_dimension, got %q", mode)
+	}
+	if mode == "by_dimension" && (strings.TrimSpace(args.Metric) == "" || strings.TrimSpace(args.Dimension) == "") {
+		return "", fmt.Errorf("mode=by_dimension requires metric and dimension")
+	}
+
+	q := url.Values{}
+	q.Set("mode", mode)
+	if mode == "by_dimension" {
+		q.Set("metric", strings.TrimSpace(args.Metric))
+		q.Set("dimension", strings.TrimSpace(args.Dimension))
+	}
+	if start != "" {
+		q.Set("start_date", start)
+	}
+	if end != "" {
+		q.Set("end_date", end)
+	}
+	// Laravel array syntax: severities[]=P1&severities[]=P2
+	setList := func(key, val string) {
+		for _, v := range strings.Split(val, ",") {
+			if v = strings.TrimSpace(v); v != "" {
+				q.Add(key+"[]", v)
+			}
+		}
+	}
+	setList("severities", args.Severities)
+	setList("incident_types", args.IncidentTypes)
+	setList("statuses", args.Statuses)
+	setList("fund_statuses", args.FundStatuses)
+
+	env, err := c.get(ctx, "/stats?"+q.Encode())
+	if err != nil {
+		return "", err
+	}
+	return string(env.Data), nil
 }

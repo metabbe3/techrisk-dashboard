@@ -87,7 +87,10 @@ class GovernanceKpiService
      */
     public function registerCompletenessPct(): ?float
     {
-        $completed = $this->scoped()->where('incident_status', IncidentStatus::Completed->value)->get();
+        $completed = $this->scoped()
+            ->where('incident_status', IncidentStatus::Completed->value)
+            ->withExists('actionImprovements')
+            ->get();
         if ($completed->isEmpty()) {
             return null;
         }
@@ -98,7 +101,7 @@ class GovernanceKpiService
 
             return ($hasRca || $hasRcaCategory)
                 && $incident->stop_bleeding_at !== null
-                && $incident->actionImprovements()->exists();
+                && $incident->action_improvements_exists;
         })->count();
 
         return round($complete / $completed->count() * 100, 1);
@@ -152,11 +155,11 @@ class GovernanceKpiService
         ];
     }
 
-    /** All overdue pending action items (not just reminder-flagged rows). */
+    /** All overdue open action items (pending + on_progress — Rule A 2026-11-17). */
     public function overdueActionItemCount(): int
     {
         return ActionImprovement::query()
-            ->where('status', 'pending')
+            ->whereIn('status', ActionImprovement::openStatuses())
             ->whereDate('due_date', '<', today())
             ->count();
     }

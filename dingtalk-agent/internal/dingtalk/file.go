@@ -9,6 +9,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"techrisk-dashboard/dingtalk-agent/internal/tools"
+	"time"
 )
 
 // MaxFileDownloadBytes caps message-file downloads.
@@ -59,8 +63,37 @@ func (c *openAPIClient) messageFileDownloadURL(ctx context.Context, downloadCode
 	return out.DownloadURL, nil
 }
 
-// downloadMessageFile saves the upload into dir (caller deletes it when done)
-// and returns its local path.
+// pictureMessage is the Content payload of a msgtype="picture" callback. The
+// exact field spelling varies across DingTalk app versions and cannot be
+// verified offline (the SDK leaves Content raw) — accept every known one.
+type pictureMessage struct {
+	DownloadCode        string `json:"downloadCode"`
+	PictureDownloadCode string `json:"pictureDownloadCode"`
+	PictureDownloadURL  string `json:"pictureDownloadUrl"`
+	DownloadURL         string `json:"downloadUrl"`
+}
+
+func parsePictureMessage(raw any) (pictureMessage, bool) {
+	if raw == nil {
+		return pictureMessage{}, false
+	}
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return pictureMessage{}, false
+	}
+	var pm pictureMessage
+	if err := json.Unmarshal(data, &pm); err != nil {
+		return pictureMessage{}, false
+	}
+	ok := pm.DownloadCode != "" || pm.PictureDownloadCode != "" || pm.PictureDownloadURL != "" || pm.DownloadURL != ""
+	if !ok {
+		return pictureMessage{}, false
+	}
+	return pm, true
+}
+
+// downloadMessageFile exchanges a downloadCode and saves the upload into dir
+// (caller deletes it when done); returns its local path.
 func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir string) (string, error) {
 	dlURL, err := b.api.messageFileDownloadURL(ctx, fm.DownloadCode)
 	if err != nil {
@@ -69,11 +102,58 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 	if !fileURLAllowed(dlURL) {
 		return "", fmt.Errorf("download url rejected: %q", dlURL)
 	}
+
+	// Reject oversize UP FRONT: the 15MB LimitReader used to store a silently
+	// truncated document and the agent summarized half a file as if whole.
+	if fm.FileSize > MaxFileDownloadBytes {
+		return "", fmt.Errorf("file too large (%d bytes, max %d) — compress or split it", fm.FileSize, MaxFileDownloadBytes)
+	}
+	if fm.FileSize <= 0 {
+		return "", fmt.Errorf("file reports no size — download refused")
+	}
+
+	return b.downloadTo(ctx, dlURL, filepath.Base(fm.FileName), dir)
+}
+
+// downloadHTTPClient downloads DingTalk files with a hard timeout. The old
+// http.DefaultClient has NO timeout — a hung download server stuck the
+// goroutine forever while it held one of MaxConcurrentAgents sem slots;
+// four hung downloads deadlocked the whole bot (audit 2026-11-12).
+// The transport dials public IPs only (DNS rebinding + metadata endpoints),
+// and every redirect hop re-runs the allowlist — a 302 once could move the
+// download to any host.
+var downloadHTTPClient = &http.Client{
+	Timeout:       60 * time.Second,
+	Transport:     tools.GuardedTransport(),
+	CheckRedirect: fileDownloadRedirect,
+}
+
+// fileAllowLoopback opens the loopback branch of fileURLAllowed for tests
+// (httptest fixtures); production leaves it false.
+var fileAllowLoopback = false
+
+func fileDownloadRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	if !fileURLAllowed(req.URL.String()) {
+		return fmt.Errorf("redirect to non-allowlisted URL refused: %q", req.URL)
+	}
+	return nil
+}
+
+// downloadTo GETs dlURL and saves the bytes into dir under a randomized name
+// carrying name. Callers run fileURLAllowed first and own any declared-size
+// pre-check (picture payloads carry none); downloadTo enforces only the
+// post-download cap.
+func (b *Bot) downloadTo(ctx context.Context, dlURL, name, dir string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 90*time.Second) // belt-and-braces: client + ctx deadline
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
 	if err != nil {
 		return "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := downloadHTTPClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("download file: %w", err)
 	}
@@ -81,26 +161,79 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("download file: HTTP %d", resp.StatusCode)
 	}
-
-	name := filepath.Base(fm.FileName) // never trust a client path
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, name)
-	out, err := os.Create(path)
+	// os.CreateTemp: two uploads named report.docx in one chat overwrote each
+	// other mid-read.
+	out, err := os.CreateTemp(dir, "up-*-"+filepath.Base(name)) // never trust a client path
 	if err != nil {
 		return "", err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, io.LimitReader(resp.Body, MaxFileDownloadBytes)); err != nil {
+	path := out.Name()
+	if _, err := io.Copy(out, io.LimitReader(resp.Body, MaxFileDownloadBytes+1)); err != nil {
+		out.Close()
 		_ = os.Remove(path)
 		return "", err
+	}
+	if err := out.Close(); err != nil {
+		_ = os.Remove(path)
+		return "", err
+	}
+	if fi, err := os.Stat(path); err != nil || fi.Size() > MaxFileDownloadBytes {
+		_ = os.Remove(path)
+		return "", fmt.Errorf("file exceeds the %d byte limit", MaxFileDownloadBytes)
 	}
 	return path, nil
 }
 
-// fileURLWhitelisted guards against the API returning an unexpected host.
+// pictureDownloadURL resolves a picture's download URL: a direct https URL
+// from the payload when present (allowlist-checked like every download), else
+// the downloadCode exchange (picture codes ride the same messageFiles API;
+// if DingTalk ever refuses them, the direct-URL spelling covers the rest).
+func (b *Bot) pictureDownloadURL(ctx context.Context, pm pictureMessage) (string, error) {
+	for _, u := range []string{pm.PictureDownloadURL, pm.DownloadURL} {
+		if u != "" && fileURLAllowed(u) {
+			return u, nil
+		}
+	}
+	code := pm.PictureDownloadCode
+	if code == "" {
+		code = pm.DownloadCode
+	}
+	if code == "" {
+		return "", fmt.Errorf("picture message carries neither a download url nor a code")
+	}
+	dlURL, err := b.api.messageFileDownloadURL(ctx, code)
+	if err != nil {
+		return "", fmt.Errorf("get download url: %w", err)
+	}
+	if !fileURLAllowed(dlURL) {
+		return "", fmt.Errorf("download url rejected: %q", dlURL)
+	}
+	return dlURL, nil
+}
+
+// fileURLAllowed guards against the API returning an unexpected host —
+// https only: a plain-http download URL would carry the document in cleartext.
 func fileURLAllowed(raw string) bool {
 	u, err := url.Parse(raw)
-	return err == nil && (u.Scheme == "https" || u.Scheme == "http") && u.Host != ""
+	if err != nil || u.Scheme != "https" || u.Host == "" {
+		return false
+	}
+	// Defense-in-depth: download URLs come from the (signature-verified)
+	// stream payload, but a spoofed payload must not turn the bot into an
+	// HTTPS proxy for internal endpoints — only official DingTalk/Aliyun
+	// file hosts are fetchable (audit round 4).
+	host := strings.ToLower(u.Hostname())
+	// Loopback is a test-harness fixture only — production refuses it (SSRF).
+	if fileAllowLoopback && (host == "127.0.0.1" || host == "localhost" || host == "::1") {
+		return true
+	}
+	for _, suffix := range []string{"dingtalk.com", "dingtalkapps.com", "aliyuncs.com", "alicdn.com"} {
+		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }

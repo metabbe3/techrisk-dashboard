@@ -50,6 +50,7 @@ use App\Http\Controllers\Ai\WarRoomTemplateController;
 use App\Http\Controllers\DownloadActionEvidenceController;
 use App\Http\Controllers\DownloadDocumentController;
 use App\Http\Controllers\WeeklyReportExportController;
+use App\Livewire\InvestigationFormIntake;
 use App\Livewire\RequestAccessForm;
 use App\Services\Notion\NotionMcpClient;
 use Illuminate\Support\Facades\Route;
@@ -272,6 +273,9 @@ Route::get('/admin/weekly-report/export/{year}', WeeklyReportExportController::c
 
 // Access request form (public - Livewire component with Filament forms)
 Route::get('/request-access', RequestAccessForm::class)->name('request-access');
+
+// Investigation form intake (public no-login page, one unique token per recipient)
+Route::get('/investigation/{token}', InvestigationFormIntake::class)->name('investigation-form.intake');
 
 // Add this line
 Route::get('/documents/{record}/download', DownloadDocumentController::class)

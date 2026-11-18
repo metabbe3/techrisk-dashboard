@@ -1,11 +1,20 @@
 package dingtalk
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
+
+	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/llm"
 )
 
 func TestParseFileMessage(t *testing.T) {
@@ -60,14 +69,230 @@ func TestMessageFileDownloadURL(t *testing.T) {
 }
 
 func TestFileURLAllowed(t *testing.T) {
-	for _, ok := range []string{"https://a.com/x", "http://a.com/x"} {
+	oldLoop := fileAllowLoopback
+	fileAllowLoopback = true
+	defer func() { fileAllowLoopback = oldLoop }()
+	for _, ok := range []string{"https://a.dingtalk.com/x", "https://files.aliyuncs.com/y"} { // official hosts; http is cleartext — rejected
 		if !fileURLAllowed(ok) {
 			t.Errorf("%q should be allowed", ok)
 		}
 	}
-	for _, bad := range []string{"file:///etc/passwd", "ftp://a.com", "not a url", ""} {
+	for _, bad := range []string{"file:///etc/passwd", "ftp://a.com", "not a url", "", "http://a.com/x"} {
 		if fileURLAllowed(bad) {
 			t.Errorf("%q should be rejected", bad)
 		}
+	}
+}
+
+// Picture payloads vary across DingTalk app versions — every known spelling
+// parses; an empty payload is not a picture.
+func TestParsePictureMessage(t *testing.T) {
+	cases := []struct {
+		name    string
+		content map[string]any
+		want    pictureMessage
+	}{
+		{"pictureDownloadCode", map[string]any{"pictureDownloadCode": "pc1"}, pictureMessage{PictureDownloadCode: "pc1"}},
+		{"downloadCode", map[string]any{"downloadCode": "dc1"}, pictureMessage{DownloadCode: "dc1"}},
+		{"pictureDownloadUrl", map[string]any{"pictureDownloadUrl": "https://a/x.png"}, pictureMessage{PictureDownloadURL: "https://a/x.png"}},
+		{"downloadUrl", map[string]any{"downloadUrl": "https://a/x.png"}, pictureMessage{DownloadURL: "https://a/x.png"}},
+	}
+	for _, c := range cases {
+		pm, ok := parsePictureMessage(c.content)
+		if !ok || pm != c.want {
+			t.Errorf("%s: parse = %+v, %v; want %+v", c.name, pm, ok, c.want)
+		}
+	}
+	if _, ok := parsePictureMessage(map[string]any{"foo": "bar"}); ok {
+		t.Error("empty payload misdetected as picture")
+	}
+	if _, ok := parsePictureMessage(nil); ok {
+		t.Error("nil content misdetected as picture")
+	}
+}
+
+// pictureDownloadURL: https direct URLs pass through; plain http is refused;
+// a bare code resolves through the messageFiles exchange.
+func TestPictureDownloadURL(t *testing.T) {
+	b := &Bot{}
+	u, err := b.pictureDownloadURL(context.Background(), pictureMessage{DownloadURL: "https://files.example/x.png"})
+	if err == nil || u != "" { // non-DingTalk host: refused since the allowlist (audit round 4)
+		t.Fatalf("direct url: %q, %v", u, err)
+	}
+	if _, err := b.pictureDownloadURL(context.Background(), pictureMessage{DownloadURL: "https://static.dingtalk.com/x.png", DownloadCode: ""}); err != nil {
+		t.Fatal("plain-http direct url accepted")
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1.0/oauth2/accessToken" {
+			_, _ = w.Write([]byte(`{"accessToken":"tok","expireIn":3600}`))
+			return
+		}
+		if r.URL.Path != "/v1.0/robot/messageFiles/download" {
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if body["downloadCode"] != "pc9" {
+			t.Errorf("body = %v", body)
+		}
+		_, _ = w.Write([]byte(`{"downloadUrl":"https://files.dingtalk.com/y.png"}`))
+	}))
+	defer srv.Close()
+	b = &Bot{api: &openAPIClient{appKey: "appkey", host: srv.URL, httpClient: srv.Client()}}
+	u, err = b.pictureDownloadURL(context.Background(), pictureMessage{PictureDownloadCode: "pc9"})
+	if err != nil || u != "https://files.dingtalk.com/y.png" {
+		t.Fatalf("code branch: %q, %v", u, err)
+	}
+}
+
+// downloadTo saves the bytes under dir; oversize is refused with nothing left.
+func TestDownloadTo(t *testing.T) {
+	// httptest lives on 127.0.0.1: allow loopback and use a plain client —
+	// production's guarded transport refuses private dials by design.
+	oldLoop := fileAllowLoopback
+	fileAllowLoopback = true
+	defer func() { fileAllowLoopback = oldLoop }()
+	oldClient := downloadHTTPClient
+	downloadHTTPClient = &http.Client{Timeout: 30 * time.Second}
+	defer func() { downloadHTTPClient = oldClient }()
+
+	dir := t.TempDir()
+	payload := bytes.Repeat([]byte{0x89, 'P', 'N', 'G'}, 100)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(payload)
+	}))
+	defer srv.Close()
+	b := &Bot{}
+	path, err := b.downloadTo(context.Background(), srv.URL, "picture.png", dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("saved %d bytes, sent %d", len(got), len(payload))
+	}
+	_ = os.Remove(path)
+
+	big := bytes.Repeat([]byte{'x'}, MaxFileDownloadBytes+100)
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(big)
+	}))
+	defer srv2.Close()
+	path, err = b.downloadTo(context.Background(), srv2.URL, "big.bin", dir)
+	if err == nil {
+		t.Fatal("oversize download accepted")
+	}
+	if path != "" {
+		_ = os.Remove(path)
+		t.Fatal("oversize download left a file behind")
+	}
+}
+
+// visionOCR sends a text-less PDF to the vision model as a data URI; the
+// gateway's answer becomes the document text, and a refusal ("") keeps the
+// pictures-hint fallback. The wire format is image_url parts — whether the
+// configured gateway accepts application/pdf URIs is a deploy-time fact.
+func TestVisionOCRPdf(t *testing.T) {
+	var gotURI string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			Messages []struct {
+				Content []struct {
+					ImageURL struct {
+						URL string `json:"url"`
+					} `json:"image_url"`
+				} `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if len(body.Messages) > 0 && len(body.Messages[0].Content) > 1 {
+			gotURI = body.Messages[0].Content[1].ImageURL.URL
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{"content": "SCANNED PAGE TEXT"},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	b := &Bot{llm: llm.NewClient(&config.Config{LLMBaseURL: srv.URL + "/v1", LLMAPIKey: "k", LLMModel: "chat"})}
+	if got := b.visionOCR(context.Background(), []byte("pdf-bytes"), "kapal"); got != "SCANNED PAGE TEXT" {
+		t.Fatalf("ocr = %q", got)
+	}
+	if !strings.HasPrefix(gotURI, "data:application/pdf;base64,") {
+		t.Fatalf("pdf not sent as a data URI: %q", gotURI)
+	}
+
+	// Gateway refuses PDFs → "" → the caller keeps the pictures hint.
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":{"message":"pdf not supported"}}`, http.StatusBadRequest)
+	}))
+	defer srv2.Close()
+	b = &Bot{llm: llm.NewClient(&config.Config{LLMBaseURL: srv2.URL + "/v1", LLMAPIKey: "k", LLMModel: "chat"})}
+	if got := b.visionOCR(context.Background(), []byte("pdf-bytes"), ""); got != "" {
+		t.Fatalf("refused OCR must return empty: %q", got)
+	}
+}
+
+// A download that redirects OFF the allowlist must be refused — the redirect
+// hop re-runs fileURLAllowed (and the client dials public IPs only).
+func TestDownloadToBlocksOffAllowlistRedirect(t *testing.T) {
+	hitFinal := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/final" {
+			hitFinal = true
+			_, _ = w.Write([]byte("exfiltrated"))
+			return
+		}
+		http.Redirect(w, r, "/final", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	b := &Bot{}
+	if _, err := b.downloadTo(context.Background(), srv.URL+"/start", "x.bin", t.TempDir()); err == nil {
+		t.Error("redirect to a non-allowlisted URL must be refused")
+	}
+	if hitFinal {
+		t.Error("the redirected request was actually fetched")
+	}
+}
+
+// Loopback in the allowlist is a test-harness convenience only — production
+// must refuse it (SSRF hardening).
+func TestFileURLAllowedRefusesLoopbackByDefault(t *testing.T) {
+	if fileURLAllowed("https://127.0.0.1/x") {
+		t.Error("loopback must be refused by default")
+	}
+	if fileURLAllowed("https://localhost/x") {
+		t.Error("localhost must be refused by default")
+	}
+}
+
+// The KB replaces by title, so two uploaders' same-named files used to
+// silently overwrite each other. The minted KB title keeps the file name,
+// separates uploaders, and stays stable per sender (a re-upload by the same
+// person replaces their own copy — the update path, audit round 5).
+func TestFileKBTitleDisambiguatesUploaders(t *testing.T) {
+	a := &chatbot.BotCallbackDataModel{SenderStaffId: "sa", SenderNick: "Nicholas", MsgId: "m1"}
+	b := &chatbot.BotCallbackDataModel{SenderStaffId: "sb", SenderNick: "Bob", MsgId: "m2"}
+
+	ta, tb := fileKBTitle(a, "report.pdf"), fileKBTitle(b, "report.pdf")
+	if ta == tb {
+		t.Fatalf("two uploaders' same-named files must not share a KB title: %q", ta)
+	}
+	if again := fileKBTitle(a, "report.pdf"); again != ta {
+		t.Fatalf("same sender must keep the title (re-upload replaces): %q vs %q", ta, again)
+	}
+	if !strings.Contains(ta, "report.pdf") {
+		t.Errorf("title must keep the file name: %q", ta)
 	}
 }

@@ -57,7 +57,7 @@ class ActionImprovementResource extends Resource
     public static function table(Table $table): Table
     {
         $overdue = fn ($query) => $query
-            ->where('status', ActionImprovement::STATUS_PENDING)
+            ->whereIn('status', ActionImprovement::openStatuses())
             ->whereDate('due_date', '<', today());
 
         return $table
@@ -123,14 +123,15 @@ class ActionImprovementResource extends Resource
                     ->date()
                     ->placeholder('TBD')
                     ->sortable()
-                    // Overdue = danger; pending TBD = warning (tracked, not
+                    // Overdue = danger (open work past due — pending OR
+                    // on_progress); open TBD = warning (tracked, not
                     // forgotten — nothing else ever surfaces them).
-                    ->color(fn ($record): string => $record->status === ActionImprovement::STATUS_PENDING
+                    ->color(fn ($record): string => $record->isOpenWork()
                         && $record->due_date?->isBefore(today()) ? 'danger'
-                        : ($record->status === ActionImprovement::STATUS_PENDING && $record->due_date === null ? 'warning' : 'default'))
-                    ->weight(fn ($record): string => $record->status === ActionImprovement::STATUS_PENDING
+                        : ($record->isOpenWork() && $record->due_date === null ? 'warning' : 'default'))
+                    ->weight(fn ($record): string => $record->isOpenWork()
                         && $record->due_date?->isBefore(today()) ? 'bold' : 'normal')
-                    ->description(fn ($record): ?string => $record->status === ActionImprovement::STATUS_PENDING
+                    ->description(fn ($record): ?string => $record->isOpenWork()
                         && $record->due_date?->isBefore(today()) ? 'overdue' : null),
                 TextColumn::make('pic_email')
                     ->badge()
@@ -173,13 +174,7 @@ class ActionImprovementResource extends Resource
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->options([
-                        ActionImprovement::STATUS_DRAFT => 'Draft',
-                        ActionImprovement::STATUS_PENDING => 'Pending',
-                        ActionImprovement::STATUS_DONE => 'Done',
-                        ActionImprovement::STATUS_CANCELLED => 'Cancelled',
-                        ActionImprovement::STATUS_TBD => 'TBD (to be discussed)',
-                    ]),
+                    ->options(ActionImprovementFormSchema::statusOptions()),
                 SelectFilter::make('priority')
                     ->options(array_combine(ActionImprovement::PRIORITIES, array_map('ucfirst', ActionImprovement::PRIORITIES))),
                 TernaryFilter::make('overdue')
@@ -187,7 +182,7 @@ class ActionImprovementResource extends Resource
                         $overdue,
                         fn ($query) => $query
                             ->where(fn ($q) => $q
-                                ->where('status', '!=', ActionImprovement::STATUS_PENDING)
+                                ->whereNotIn('status', ActionImprovement::openStatuses())
                                 ->orWhereDate('due_date', '>=', today())
                                 ->orWhereNull('due_date')), // TBD can't be past due
                     ),

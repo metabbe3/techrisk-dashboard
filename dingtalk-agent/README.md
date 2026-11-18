@@ -19,7 +19,8 @@ Upstream commit: `b71ae8ee0b3d0874f4e20bead1b30ad8a7793446` (MIT).
 |---|---|
 | Kept (module path rewritten) | agent loop (8 iterations, 4-concurrent tool pool, 8 KB tool-result truncation, 60 K token pruning), guardrails (`secretredact`, `replyfilter`), OpenAI-compatible LLM client |
 | Deleted | telegram package, logengine, commandguard, pathguard, all 8 local-machine tools, `AllowShell` plumbing |
-| Added | `internal/dingtalk` (stream handler, @mention strip, allowlist, history+TTL, dedup, AI-card streaming, DM push), `internal/tools/dashboard.go` (3 read-only tools), env config, Dockerfile |
+| Added | `internal/dingtalk` (stream handler, @mention strip, allowlist, history+TTL, dedup, AI-card streaming, DM push), `internal/tools/dashboard.go` (4 read-only tools), env config, Dockerfile |
+| Ported (GoMesh v0.5 parity) | `internal/mesh/` (proto, queue, server, client, meshtools), GoMesh/1.1 leader/worker orchestration protocol with Phase 1 reliability/safety and Phase 2 observability (parity with GoAgent 394c3e2) |
 
 The reply guardrail runs on **every** streamed card frame and the final card;
 the fallback webhook reply gets the same filter. Tool errors are returned to
@@ -33,6 +34,13 @@ design, kept.
 | `search_incidents` | `GET /incidents` | counts via `limit=1` + `meta.total`; single-sided dates auto-paired; limit capped at 100 |
 | `get_incident` | `GET /incidents-by-no/{no}` or `/incidents/{id}` | path segment sanitized to `[A-Za-z0-9_-]` |
 | `get_incident_markdown` | `GET /incidents-by-no/{no}/markdown` | base64-decoded for AI ingestion |
+| `get_dashboard_stats` | `GET /stats` | dashboard's own aggregates (one-logic rule): `mode=summary` → totalCases / avgMttrMins / avgMttrDays / avgMtbf / fund totals; `mode=by_dimension` → metric × dimension `labels[]/values[]`; list params comma-separated |
+| `search_action_items` | `GET /action-improvements` | cross-incident action search: default open work, `overdue=1` = the governance definition; meta.total for counts; rows carry incident_no |
+| `get_action_item` | `GET /action-improvements/{id}` | one action item's full record |
+| `get_governance_kpis` | `GET /governance` | governance/PDR KPIs verbatim from GovernanceKpiService (zero new math); `series=1` adds lag_by_quarter |
+| `list_reference` | `GET /labels` `/incident-types` `/categories` | filter vocabularies — call before guessing search_incidents values |
+| `list_skills` | `GET /skills` | dashboard skill library + persona catalog (metadata only; `domain=role` entries are `role-<role_key>` personas) |
+| `load_skill` | `GET /skills/{name}` | one skill body / persona system prompt + attached skill NAMES; 48k-capped; `AGENT_SKILL_TOOLS` |
 | `web_search` | DuckDuckGo HTML (keyless) | top 6 results, title + snippet + link |
 | `web_fetch` | any public http(s) page | **SSRF-guarded** (dialer blocks loopback/private/link-local post-DNS), 256 KiB cap, tags stripped, ~7k chars |
 
@@ -46,12 +54,21 @@ chars.
 |---|---|---|
 | `DINGTALK_CLIENT_ID` / `DINGTALK_CLIENT_SECRET` | yes | DingTalk Open Platform app |
 | `DINGTALK_ALLOWLIST` | no | **empty = everyone** (access gated by the DingTalk app's visibility range); comma staffIds to narrow further |
-| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown` |
+| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `stats`, `agent-schedules`, `agent-runs`, `skills`, `governance`, `action-improvements` |
 | `DASHBOARD_API_BASE` | no | `http://nginx/api/v1` (compose) |
+| `AGENT_INTERNAL_ADDR` | no | `:9091` — internal listener (the dashboard's Go engine POSTs `/internal/run` here); compose-network only |
+| `AGENT_INTERNAL_TOKEN` | no | shared secret — **must equal** the dashboard `.env`'s `GO_AGENT_INTERNAL_TOKEN`; empty = listener disabled |
+| `AGENT_TURN_REPORTS` | no | 1 — POST every chat turn (input/output/tokens/latency) to `/api/v1/agent-runs` under the synthetic "DingTalk Bot (chat turns)" agent; `0`/`off` silences it |
 | `LLM_BASE_URL` | no | `AI_API_BASE_URL` → gateway default |
 | `LLM_API_KEY` | no | `AI_API_KEY` (dashboard .env — compose maps it) |
 | `LLM_MODEL` | no | `AI_API_DEFAULT_MODEL` (placeholder values ignored) → **`glm-5.3-flashx`** |
 | `LLM_MAX_TOKENS` | no | `AI_WAR_ROOM_MAX_OUTPUT_TOKENS` → 16384; `0` omits `max_tokens` (escape hatch if a model rejects it) |
+| `LLM_EMBEDDING_MODEL` | no | `AI_EMBEDDING_MODEL` → **`text-embedding-3-large`** — RAG knowledge-base embeddings (the key needs access to it) |
+| `LLM_VISION_MODEL` | no | `AI_VISION_MODEL` → the chat model — image-reading model used to transcribe pictures sent to the bot (set it if the chat model isn't multimodal) |
+| `LLM_HEAVY_MODEL` | no | *(empty)* — the smarter model for model tiers: failure-escalated turns retry on it once, and any trigger phrase (see `LLM_HEAVY_KEYWORDS`) routes the whole turn to it proactively. Empty = tiers off |
+| `LLM_HEAVY_KEYWORDS` | no | `ultrathink,deep research,think hard` — case-insensitive substrings of the user text that route that whole turn to `LLM_HEAVY_MODEL` ("**ultrathink**: root-cause this spike"). Without a heavy model the triggers do nothing |
+| `AGENT_KB_TOOLS` | no | 1 — `search_knowledge`/`save_knowledge`/`list_knowledge`/`delete_knowledge` RAG over chat-uploaded documents and pictures; `0`/`off` unregisters the tools and the index |
+| `AGENT_SKILL_TOOLS` | no | 1 — `list_skills`/`load_skill` over the dashboard skill library (Filament → Skills) + War Room personas (`role-<key>`); `0`/`off` unregisters both. Token needs the `skills` endpoint |
 | `AGENT_MAX_ITER` | no | 60 tool-call iterations (Hermes parity) |
 | `AGENT_WEB_TOOLS` | no | 1 — keyless web research; `0`/`off`/`false`/`no` unregisters both web tools |
 | `AGENT_NOTION_TOOLS` | no | 1 — read-only Notion doc tools (below); `0`/`off`/`false`/`no` unregisters all four |
@@ -61,6 +78,16 @@ chars.
 | `DINGTALK_BOT_NAMES` | no | `Risk Agent` — strips whole-name @mentions in groups |
 | `DINGTALK_DATA_DIR` | no | `data` — auto save/auto recall: who chatted (`users.jsonl`) + conversation history (`history.json`) survive restarts |
 | `HISTORY_TTL` | no | 12h per-conversation memory (last 12 messages) |
+| `GOAGENT_ROLE` | no | `solo` — operating mode: `solo` (DingTalk bot only), `leader` (cluster coordinator), or `worker` (cluster task executor) |
+| `GOAGENT_MESH_LISTEN` | no | `:7801` — TCP listen address when running as leader |
+| `GOAGENT_MESH_TOKEN` | yes (leader/worker) | *(empty)* — shared secret token for GoMesh JSON-RPC authentication (`X-Mesh-Token`) |
+| `GOAGENT_LEADER_ADDR` | yes (worker) | *(empty)* — leader base URL for worker connections (e.g. `http://127.0.0.1:7801`) |
+| `GOAGENT_WORKER_ID` | no | `hostname-pid` — unique worker node identifier |
+| `GOAGENT_CAPABILITIES`| no | *(empty)* — comma-separated capability tags (e.g. `dingtalk,incidents,reports`) |
+| `GOAGENT_TASK_TIMEOUT`| no | `300s` — maximum execution duration for a single subtask before sweep/requeue |
+| `GOAGENT_MISSION_TIMEOUT`| no | `1800s` — maximum total lifecycle for a distributed mission before cancellation |
+| `GOAGENT_SUBTASK_ATTEMPTS`| no | `2` — maximum execution attempts per subtask before marking permanent failure |
+| `GOAGENT_FANOUT_MAX` | no | `3` — maximum parallel sub-agents spawned on iteration budget exhaustion (`0` = off) |
 
 Local dev: copy values into `dingtalk-agent.env` (git-ignored; loaded
 automatically). Compose maps root `.env`'s `AI_API_*` → `LLM_*`.
@@ -78,8 +105,11 @@ means changing `DINGTALK_MODEL`/env, not the AI Settings page.
    proactive DMs; card streaming (`Card.Instance.Write` /
    `Card.Streaming.Write`) for typewriter replies — without card perms the bot
    still answers via webhook fallback.
-3. **API token**: Filament → API Tokens → `dingtalk-agent` with the three
-   abilities above → `DASHBOARD_API_TOKEN`.
+3. **API token**: Filament → API Tokens → `dingtalk-agent` with the abilities
+   above (incl. `skills`, `governance`, `action-improvements`) →
+   `DASHBOARD_API_TOKEN`.
+   Then set the same shared secret in root `.env` as `DINGTALK_INTERNAL_TOKEN`
+   **and** `GO_AGENT_INTERNAL_TOKEN`, and `GO_AGENT_BASE_URL=http://dingtalk-agent:9091`.
 4. **Allowlist**: leave empty, have each user DM/mention the bot once, copy the
    `staffId` from the deny log (`denied sender staffId=…`), set
    `DINGTALK_ALLOWLIST`.
@@ -99,11 +129,62 @@ docs, summary clamped) → **the downloaded file is deleted from disk** in a
 deferred remove, success or failure. Only summaries persist, never the file.
 
 - Formats: txt, md, csv, json, log, xml (plain); docx (zip → document.xml →
-  tag-strip); pdf (`ledongthuc/pdf`, pure Go — scanned/image PDFs yield "no
-  extractable text").
+  tag-strip); pdf (`ledongthuc/pdf`, pure Go). A scanned/image-only PDF has no
+  text layer — the bot replies asking for the pages as pictures instead of
+  erroring.
 - Caps: 15 MB download, 48,000 chars to the LLM, 2,000-char knowledge summary.
-- Pictures/audio/video are not handled in v1 (they arrive as other msgtypes
-  and are ignored).
+- Pictures are handled (msgtype `picture`): downloaded, transcribed by the
+  vision model, and filed into the RAG KB with a chat receipt (next section).
+  Audio/video remain ignored.
+
+### Knowledge base (RAG over uploaded documents)
+
+Every ingested document is also embedded into a vector index — so SOP answers
+come from the document text, not from a summary's memory of it. Four chat
+tools ride the same index (`AGENT_KB_TOOLS`):
+
+- `search_knowledge` answers procedure/SOP questions by embedding the query
+  and returning the top-6 most similar passages (cosine), each labeled with
+  its document and part number; the agent is instructed to quote them.
+- `save_knowledge` files text from chat ("remember this…") under a title —
+  synchronous: the receipt means it is already searchable. Filing under an
+  existing title replaces it.
+- `list_knowledge` lists every document (title, parts, ~chars, last update).
+- `delete_knowledge` removes one document by its exact title (the agent is
+  instructed to confirm the title first). Anyone in the chat may file/delete
+  — the KB is a team surface.
+
+### Pictures → knowledge base (vision)
+
+Send the bot a picture (DM or group @mention) and it replies
+"🖼️ Read the picture and filed it…" with a preview: the image is downloaded
+(direct https URL from the payload when present, else downloadCode →
+`messageFiles/download` exchange; https-only, 15 MB cap), sniffed `image/*`
+via `http.DetectContentType`, transcribed by the vision model (content-parts
+wire format), and saved into the KB. A caption sent with the picture rides
+the transcription prompt ("what's wrong in this screenshot?"). Titles are
+`Picture from <nick> — <ts> (<msgId>)` — unique per message.
+`AI_VISION_MODEL`/`LLM_VISION_MODEL` set the image-reading model; empty falls
+back to the chat model. Two live risks, both degrading to readable chat
+errors: an unrecognized picture payload spelling (fix = add the field name in
+`file.go` after a live capture) and a chat model that cannot see images
+(fix = set `AI_VISION_MODEL`).
+
+- Index: `<DataDir>/kb.jsonl` (one JSON chunk per line). Chunks are 900 runes
+  with 100 overlap, ≤150 chunks per document, ≤1000 chunks total (oldest
+  document evicted whole at the cap). Brute-force in-memory scan — fine at
+  this size.
+- Embeddings: gateway `/v1/embeddings`, model from `LLM_EMBEDDING_MODEL` →
+  `AI_EMBEDDING_MODEL` → **`text-embedding-3-large`** (same as the dashboard's
+  `config/ai.php` default; the key must have access to it — the agent's local
+  key does not). Array input is tried first, with automatic fallback to one
+  request per chunk if the gateway rejects arrays.
+- Re-embed: changing the model re-embeds every stored chunk in the background
+  at boot (old vectors serve searches meanwhile).
+- Failure mode: if embedding fails (no key access, gateway down), `Ingest`
+  logs and the doc degrades to summary-only knowledge — uploads and answers
+  never break.
+- `AGENT_KB_TOOLS=0` turns the whole feature off (no index, no tool).
 
 ## Notion (read-only workspace docs)
 
@@ -179,6 +260,14 @@ deps; ≤20 slides, heading + bullets per slide). Files land in
 `<DataDir>/exports/<yyyymmdd-hhmmss>-<slug>.{pdf,pptx}` and the tool result
 embeds a ticket `[generated-file: exports/<name>]`.
 
+Third generative tool: `generate_external_rca(incident_no, summary, problem,
+root_cause, actions, chronology)` fills the **partner-facing external RCA
+Word template** (`internal/tools/templates/external-rca.docx`, the approved
+05 Nov 2026 format) — report date = record's incident_date + 1 day; the model
+must show the draft and get the requester's CONFIRMATION first; wording rules
+(neutral, non-technical, no blame) live in `ExternalRCAPrompt`. Full doc:
+[skills/external-rca/SKILL.md](skills/external-rca/SKILL.md).
+
 After a completed turn, `deliverGenerated` scans the final reply for tickets:
 each file is uploaded via the **legacy media API**
 (`POST https://oapi.dingtalk.com/media/upload?access_token=…&type=file`,
@@ -216,28 +305,153 @@ kerja jam 8:30 kirim ringkasan action improvement overdue ke grup ini". These
 are **not** the system reminders above: they never decide who is due; a `task`
 reminder reads the dashboard API like any chat question does.
 
+**Storage and dispatch live in the dashboard** (unification, 2026-11-12): each
+chat reminder is an `AiAgent` row (visible/editable/cancellable in Filament →
+AI Agents), fired by the dashboard's scheduler and executed through the normal
+agent pipeline — a `task` reminder runs through this agent's tool loop via the
+internal listener, a `message` reminder is delivered as-is. The local
+`schedules.json` store and the 30s Go scheduler loop are retired.
+
 | Piece | Where |
 |---|---|
 | `schedule_reminder(when, mode, text)` / `cancel_reminder(id)` | `internal/tools/schedule.go` |
-| cron/one-shot parser, store (`<DataDir>/schedules.json`), pending handoff | `internal/schedule/` |
-| bind to chat, 30s scheduler loop, group/DM delivery | `internal/dingtalk/reminders.go` |
+| cron/one-shot parser + pending handoff (grammar stays Go-owned) | `internal/schedule/` |
+| dashboard `agent-schedules` API client (create/list/cancel) | `internal/tools/scheduleapi.go` |
+| bind to chat + group/DM delivery | `internal/dingtalk/reminders.go` (ticket claiming) · `internal/dingtalk/push.go` (all sends) |
+| storage + dispatch (`AiAgent` rows, `run_at`/cron) | dashboard — `AgentScheduleController`, `DispatchDueAiAgentsCommand` |
 
-- **when** (WIB, fixed UTC+7): 5-field cron (`0 9 * * 1`, `30 8 * * 1-5`), one-shot `YYYY-MM-DD HH:MM`, or `in 30m` / `in 2h`.
-- **mode**: `message` posts the text; `task` runs the text through the agent at fire time (fresh context, same guardrails) and posts the answer.
+- **when** (WIB, fixed UTC+7): 5-field cron (`0 9 * * 1`, `30 8 * * 1-5`), one-shot `YYYY-MM-DD HH:MM`, or `in 30m` / `in 2h`. The Go side validates the grammar; a cron passes through verbatim, a one-shot arrives as a resolved `run_at`.
+- **mode**: `message` = Static engine, text delivered as-is; `task` = Go engine, the text runs through the agent's tool loop at fire time and the answer is posted.
 - **delivery**: created in a group → `groupMessages/send` into that group; in a DM → `oToMessages/batchSend` to the creator.
 - **binding is Go-side, never LLM-side**: the tool only validates and parks the request under a random token; after the turn the bot claims tokens found in *its own turn's* tool results and binds them to the callback's real conversation + sender. A prompt cannot aim a reminder at another chat, concurrent turns cannot steal each other's requests, and a claimed token never re-applies. Cancel only works from the owning conversation.
 - **limits**: recurring ≥30 min apart, 20 per chat, text ≤1000 chars, task text must pass `InputGate`.
-- **downtime**: a recurring reminder >1h overdue at boot is skipped to its next run; a one-shot still fires, marked delayed. A run is persisted as advanced *before* sending, so a crash never double-fires.
-- **listing**: active reminders are appended to each user message in that chat (`[Active reminders in this chat: …]`), so "what reminders do we have?" / "cancel #3" work.
-- Group delivery needs the same robot send permission as DMs, and the bot must still be in the group.
+- **failure**: the dashboard down at create time fails closed — "⚠️ Reminder not saved: …"; nothing is stored silently. One-shots that fail at fire time retry after 5 minutes, up to 3 tries.
+- **listing**: active reminders are fetched from the dashboard per turn and appended to each user message in that chat (`[Active reminders in this chat: …]`), so "what reminders do we have?" / "cancel #3" work; a dashboard outage just skips the block, never the turn.
 
 **Group batching** (same release): rapid messages are merged only when they come
 from the **same sender**; a different member's message closes the batch and gets
 its own turn. Group messages carry a `[From <nick>]` prefix so the shared
 history knows who asked what. DMs are unchanged (parallel, max 4 agent runs).
 
+## Incident status watches
+
+"Alert us when this incident's status changes" — per-incident watches created
+from chat. Uses the same ticket-binding contract as reminders (Go-side only;
+the LLM never sees a conversation ID).
+
+| Piece | Where |
+|---|---|
+| `watch_incident(no)` / `unwatch_incident(id)` | `internal/tools/watch.go` |
+| watch store (`<DataDir>/watches.json`), pending handoff | `internal/watch/` |
+| bind to chat, 60s status sweep, change reports | `internal/dingtalk/watches.go` |
+
+- **Binding**: the tool parks the request under a random `[watch-ticket: …]`
+  token; the bot claims tokens from its own turn's tool results, resolves the
+  incident via `GET /incidents-by-no/{no}` (title + current status), stores the
+  watch, and appends "👁 Watching …" with the confirmed watch ID.
+- **Polling**: one sweep per 60s tick regardless of watch count — a single
+  `GET /incidents?updated_since=<tick+5s slack>&limit=100`; watched numbers
+  whose `incident_status` changed fire one agent task turn each ("report which
+  project and all relevant information"), delivered via the same
+  group-with-DM-fallback path as reminders. The new status is persisted
+  *before* the report fires, so a crash never double-reports.
+  *ponytail:* a status that flips A→B→A within one 60s window is missed.
+- **Limits**: 20 watches per chat, one watch per incident per chat;
+  `unwatch_incident` only works from the chat that created the watch. Active
+  watches are appended to each user message in that chat.
+- Depends on the Laravel `updated_since` filter (row update time) — see
+  `docs/reference/dependency-map.md`.
+
+## Mesh Mode (GoMesh/1.1)
+
+GoMesh is an HTTP/1.1 JSON-RPC 2.0 distributed orchestration protocol with constant-time token authentication (`X-Mesh-Token`), capability-based task routing, long-poll dispatch, and persistent JSONL event replay.
+
+This fork features complete GoMesh v0.5 parity with [GoAgent](https://github.com/metabbe3/GoAgent) (commit `394c3e2`), sharing identical environment variables and wire protocols for seamless cross-cluster interoperability (e.g. a GoAgent leader node can orchestrate dingtalk-agent worker followers).
+
+```
+ [Leader: GoAgent or dingtalk-agent] (:7801)
+                    │
+   ┌────────────────┴────────────────┐
+   │ long-poll: GET /nexttask?id=... │
+   │ report & heartbeat: POST /rpc   │
+   ▼                                 ▼
+[Worker A: GoAgent]           [Worker B: dingtalk-agent]
+Capabilities: [logs, shell]   Capabilities: [dingtalk, incidents]
+```
+
+### Protocol Summary & Endpoints
+
+- **Authentication**: Constant-time token verification via `X-Mesh-Token`; wire protocol version negotiation via `X-Mesh-Proto: 1` (`GoMesh/1.1`).
+- **Leader JSON-RPC (`POST /rpc`)**:
+  - `mesh.register`: Register worker ID and capabilities (`heartbeat_sec: 30`, poll endpoint `/nexttask`). Re-registering workers send `known_tasks` (task IDs currently executing); the response's `lost_tasks` lists tasks no longer tracked by the leader after a reboot/requeue, ordering local aborts to prevent duplicate runs.
+  - `mesh.heartbeat`: Worker liveness heartbeat; returns `tasks_pending` count and `abort_tasks` list for timed-out or cancelled missions.
+  - `mesh.add_mission`: Direct programmatic mission submission (1..50 subtasks) with capability targeting.
+  - `mesh.report`: Worker reports subtask completion or failure with execution metrics (iterations, elapsed time). All payloads are sanitized via guardrail secret redaction prior to transmission.
+  - `mesh.get_mission_result`: Returns a mission's persisted final answer (`final_result`) and status — used for recovery after leader restarts.
+  - `mesh.list_missions`: Query recent missions with optional `status` filter and `limit` (default 20, max 100); returns mission metadata and aggregate subtask status counters.
+  - `mesh.list_tasks`: Query all subtasks for a specific mission (`mission_id`), returning goal, status, assigned worker, attempt count, assigned timestamp, and result truncated to 200 characters.
+- **Task Dequeue (`GET /nexttask?id=<worker_id>`)**:
+  - Long-poll holding up to 50 seconds. Returns HTTP 200 with task payload when matching task arrives, or HTTP 204 No Content on poll timeout.
+  - Requeue on dispatch failure: if client disconnects while the leader is writing the response, the task is immediately requeued instead of getting stuck in-flight.
+- **Cluster Observability (`GET /statusz`)**:
+  - Protected by `X-Mesh-Token` (HTTP 401 Unauthorized if missing/invalid).
+  - Returns cluster snapshot JSON: leader uptime in seconds, worker counts (`total`, `alive`, `dead`), queue depth (`pending`, `in_flight`, `active_missions`), and detailed per-worker statistics (`in_flight`, `completed`, `failed`, `requeued`, `status`, `last_seen`).
+
+### Leader Orchestration Tools (LLM)
+
+When operating with `GOAGENT_ROLE=leader`, the coordinator exposes distributed orchestration tools directly to the model:
+- `delegate_task`: Decompose a complex objective into independent subtasks with capability requirements.
+- `list_workers`: Query registered cluster nodes, capabilities, in-flight loads, and liveness.
+- `mission_status`: Retrieve full lifecycle state and subtask results for an active mission.
+- `cancel_mission`: Cancel an active or pending mission and signal aborts to assigned workers.
+- `collect_results`: Aggregate and format findings from completed subtasks.
+- `set_mission_result`: Persist the leader's final synthesized answer into the durable event log.
+- `mesh_info`: Thread-safe cluster summary (role, protocol version, listen address, worker count, queue depth).
+
+### Reliability & Safety Guarantees (v0.5 Parity)
+
+- **P0 Race & Ownership Fixes**: Thread-safe queue statistics (`q.Stats()`), strict report ownership checking (`report.WorkerID == task.AssignedTo`), and idempotent client termination (`sync.Once`).
+- **Dead Worker Sweeper & Abort Recording**: Workers missing heartbeats (>90s) are marked dead; their in-flight tasks are requeued, and abort entries are recorded so a resurrected worker cannot poison state with late reports.
+- **Crash Recovery & Compaction**: Append-only event-sourcing (`state.jsonl`) with synchronous flush. Replay uses streaming line processing (`bufio.Reader` with 1 MB line buffer) to eliminate OOM risks. Log compaction triggers automatically when log exceeds 8 MB and ≥1000 events have occurred.
+- **Auto-Fanout**: Workers exhausting iteration budgets decompose goals into up to `GOAGENT_FANOUT_MAX` parallel sub-agents with divided deadlines and recursion protection.
+- **Task-ID Log Correlation**: Execution contexts carry `task_id` and `mission_id`, prepending `[task <id>] ` to all agent logs for distributed traceability.
+- **Defense-in-Depth Safety**: Secrets in error messages are redacted before mesh reporting; task goals are scanned for prompt injections and wrapped with `FrameDocumentContent` untrusted data boundaries.
+
 ## Testing
 
 `go vet ./... && go test ./...` — all tests hermetic (httptest fakes for the
-LLM SSE stream, DingTalk OpenAPI, dashboard API). No Laravel changes; the
-1045-test baseline is untouched.
+LLM SSE stream, DingTalk OpenAPI, dashboard API, embeddings). Laravel side:
+the agent depends on the v1 API's `updated_since` filter, covered by
+`tests/Feature/Api/IncidentUpdatedSinceTest.php` (part of the 1166-test
+baseline in the main repo).
+
+## Structure notes (post-sweep 2026-11-12)
+
+- `internal/util` — shared primitives: `Pending[T]` (16-hex ticket tokens —
+  the format `[0-9a-f]{16}` in the tool descriptions requires), `Cut(s, n)`
+  (rune-safe truncation), `LoadJSON`/`AtomicWrite`/`ReadJSONL`.
+- `internal/dingtalk/push.go` owns ALL outbound sends: `robotSend` (one group /
+  DM send, reused client — no per-send token round-trip), `deliverMedia`,
+  `deliverMarkdown`. `SendMarkdownDM` (main.go's digest push) is the only
+  exported entry.
+- `internal/dingtalk/reminders.go` — ticket claiming (`claimTickets[T]`), the
+  generic behind both schedule and watch binding.
+- `internal/tools/scheduleapi.go` — the dashboard `agent-schedules` client
+  (renamed from `schedules.go`; the grammar lives in `internal/schedule`,
+  the tool in `schedule.go`).
+- `internal/dingtalk/stream.go` — `stripMention` is unexported (package API
+  surface only); `defaultOpenAPIHost` likewise. `MaxConcurrentAgents` /
+  `MaxFileDownloadBytes` are exported (GoMesh v0.5 interop).
+
+## Skills convention
+
+- `skills/<family>/SKILL.md` documents every tool family — registration,
+  prompt surface, constitution, gates, tests, gotchas. **Adding a new tool
+  family: follow the 9-step checklist in
+  [`skills/README.md`](skills/README.md)**; `TestSkillDocsCoverRegistry`
+  fails until the new tool is documented there.
+- `internal/llm` — `UsagePtr` is the single usage-to-pointer helper;
+  `client.go`'s stream validates the end (EOF before `[DONE]` → error,
+  `finish_reason=length` → error) instead of returning a silent truncation.
+- `internal/guardrail` — `FilterReplyCap` is the reply-filter entry point
+  (`FilterReply` wrapper deleted).

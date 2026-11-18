@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Exports\Sheets;
 
 use App\Enums\IncidentClassification;
+use App\Exports\Concerns\ComputesMtbfSequence;
 use App\Exports\Concerns\WritesSeverityFooter;
 use Maatwebsite\Excel\Concerns\FromQuery;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
@@ -19,6 +20,7 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 
 class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, WithHeadings, WithMapping, WithTitle
 {
+    use ComputesMtbfSequence;
     use WritesSeverityFooter;
 
     private $query;
@@ -27,13 +29,19 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
 
     private $metricType;
 
-    private array $mtbfCache = []; // instance, NOT static — static froze the sequence across requests in long-lived FPM workers (prod bug 2026-09-30)
-
     public function __construct($query, string $title, string $metricType)
     {
         $this->query = $query;
         $this->title = $title;
         $this->metricType = $metricType;
+        // Shared chain implementation (owner one-logic rule 2026-11-16).
+        // NOT the sheet's own query — it carries row-membership clauses
+        // (whereNotNull mttr/mtbf + outliers) that must never scope the
+        // sequence (the old private impl chained ALL eligible Issues of
+        // the year; missing stored metrics still anchored gaps). The scope
+        // pins classification = Issue; the trait adds metric hygiene.
+        $this->mtbfScope = \App\Models\Incident::query()
+            ->where('classification', IncidentClassification::Issue->value);
     }
 
     public function query()
@@ -71,34 +79,15 @@ class IssuesMetricSheetExport implements FromQuery, ShouldAutoSize, WithEvents, 
     }
 
     /**
-     * Gap sequence over the year's eligible Issues, same convention as the
-     * other sheets (2026-09-30 reconciliation): first of the year has no
-     * predecessor → null (renders '-'), so the column's average equals
-     * span/(n-1) and the bottom is the mean of the displayed column.
+     * Gap sequence over the year's eligible Issues via the shared
+     * ComputesMtbfSequence implementation (same convention as every other
+     * sheet): first of the year has no predecessor → null (renders '-'),
+     * so the column's average equals span/(n-1) and the bottom is the mean
+     * of the displayed column.
      */
     private function computeIssueMtbf($incident): ?int
     {
-        $year = $incident->incident_date->year;
-        $key = "export_issues_{$year}";
-
-        if (! isset($this->mtbfCache[$key])) {
-            $incidents = \App\Models\Incident::whereYear('incident_date', $year)
-                ->where('classification', IncidentClassification::Issue->value)
-                ->whereIn('severity', \App\Enums\Severity::METRIC_ELIGIBLE)
-                ->withoutOutliers()
-                ->orderBy('incident_date')->orderBy('id')
-                ->get(['id', 'incident_date']);
-
-            $this->mtbfCache[$key] = [];
-            foreach ($incidents as $i => $inc) {
-                $this->mtbfCache[$key][$inc->id] = $i === 0
-                    ? null
-                    : (int) $incidents[$i - 1]->incident_date->startOfDay()
-                        ->diffInDays($inc->incident_date->startOfDay());
-            }
-        }
-
-        return $this->mtbfCache[$key][$incident->id] ?? null;
+        return $this->mtbfSequenceValue($incident);
     }
 
     public function registerEvents(): array

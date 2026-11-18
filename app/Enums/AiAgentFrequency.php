@@ -12,12 +12,14 @@ enum AiAgentFrequency: string
 
     case Manual = 'Manual';
     case Cron = 'Cron';
+    case Once = 'Once';
 
     public function color(): string
     {
         return match ($this) {
             self::Manual => 'gray',
             self::Cron => 'info',
+            self::Once => 'success',
         };
     }
 }

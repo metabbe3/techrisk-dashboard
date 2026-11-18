@@ -7,12 +7,17 @@ import (
 	"archive/zip"
 	"bytes"
 	"fmt"
+	"html"
 	"io"
 	"path"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	pdf "github.com/ledongthuc/pdf"
+	"github.com/xuri/excelize/v2"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // MaxExtractChars caps what is fed to the LLM from one file.
@@ -20,19 +25,95 @@ const MaxExtractChars = 48_000
 
 var tagRe = regexp.MustCompile(`<[^>]*>`)
 
+// tableCellBreaks: a newline directly followed by the next cell's tab —
+// i.e. the last paragraph break inside a cell — becomes a space.
+// (Go regexp has no lookahead; implemented in collapseCellBreaks instead.)
+func collapseCellBreaks(s string) string {
+	for strings.Contains(s, "\n\t") {
+		s = strings.ReplaceAll(s, "\n\t", " \t")
+	}
+	return s
+}
+
 // ExtractText returns the textual content of a document by filename
-// extension. Supported: .txt .md .csv .json .log .xml (plain), .docx, .pdf.
+// extension. Supported: .txt .md .csv .json .log .xml (plain), .docx, .xlsx, .pdf.
 func ExtractText(filename string, data []byte) (string, error) {
 	switch strings.ToLower(path.Ext(filename)) {
 	case ".txt", ".md", ".csv", ".json", ".log", ".xml", "":
 		return string(data), nil
 	case ".docx":
 		return extractDocx(data)
+	case ".xlsx":
+		return extractXlsx(data)
 	case ".pdf":
 		return extractPdf(data)
 	default:
-		return "", fmt.Errorf("unsupported file type %q (supported: txt, md, csv, json, log, xml, docx, pdf)", path.Ext(filename))
+		return "", fmt.Errorf("unsupported file type %q (supported: txt, md, csv, json, log, xml, docx, xlsx, pdf)", path.Ext(filename))
 	}
+}
+
+// extractXlsx reads every sheet row-by-row ("Sheet: name" headers, tab-separated
+// cells, empty rows dropped). Excel is the most common incident attachment in
+// risk ops and used to hard-fail as "unsupported" (audit 2026-11-12).
+// xlsxUnzipSizeLimit bounds the UNZIPPED workbook size at open time —
+// excelize's default is 16 GB, so a small compressed zip bomb expanded
+// unbounded before the row caps ever ran (audit round 5).
+var xlsxUnzipSizeLimit int64 = 64 << 20
+
+// maxScannedRowsPerSheet bounds every iter.Next() call, blanks included — the
+// content cap alone let a 10M-blank-row sheet burn 10M Columns() calls
+// before any content row was even reached.
+var maxScannedRowsPerSheet = 200_000
+
+func extractXlsx(data []byte) (string, error) {
+	f, err := excelize.OpenReader(bytes.NewReader(data), excelize.Options{UnzipSizeLimit: xlsxUnzipSizeLimit})
+	if err != nil {
+		return "", fmt.Errorf("open xlsx: %w", err)
+	}
+	defer f.Close()
+	var sb strings.Builder
+	// Streaming row iterator with hard caps: GetRows materialized the WHOLE
+	// sheet into memory — a sparse sheet with millions of empty rows could
+	// exhaust the heap (audit round 4).
+	const maxRowsPerSheet = 5000
+	for _, sheet := range f.GetSheetList() {
+		iter, err := f.Rows(sheet)
+		if err != nil {
+			continue // unreadable sheet: keep the rest
+		}
+		fmt.Fprintf(&sb, "Sheet: %s\n", sheet)
+		n, scanned := 0, 0
+		for iter.Next() {
+			scanned++
+			if n >= maxRowsPerSheet || scanned >= maxScannedRowsPerSheet {
+				bound := maxRowsPerSheet
+				if scanned >= maxScannedRowsPerSheet {
+					bound = maxScannedRowsPerSheet // the blank-row bound is what fired
+				}
+				fmt.Fprintf(&sb, "...[sheet truncated at %d rows]\n", bound)
+				break
+			}
+			row, _ := iter.Columns()
+			joined := strings.TrimRight(strings.Join(row, "	"), "	")
+			if strings.TrimSpace(joined) == "" {
+				continue
+			}
+			sb.WriteString(joined)
+			sb.WriteByte('\n')
+			if sb.Len() > MaxExtractChars {
+				fmt.Fprintf(&sb, "...[extraction capped at %d chars]\n", MaxExtractChars)
+				return strings.TrimSpace(sb.String()), nil
+			}
+			n++
+		}
+		iter.Close() // releases the sheet's temp resources (never closed before)
+		sb.WriteByte('\n')
+	}
+	out := strings.TrimSpace(sb.String())
+	if out == "" {
+		return "", fmt.Errorf("xlsx has no readable cells (sheet may be charts-only)")
+	}
+	return out, nil
 }
 
 // extractDocx pulls word/document.xml out of the OOXML zip and strips tags.
@@ -55,10 +136,18 @@ func extractDocx(data []byte) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		// Paragraph boundaries become newlines, then drop every tag.
+		// Paragraph boundaries become newlines, table cells become tab-
+		// separated rows (a raw cell strip used to glue "Cell1Cell2" together),
+		// then drop every tag and resolve XML entities — "&amp;" used to land
+		// in the prompt raw.
 		withBreaks := strings.ReplaceAll(string(xml), "</w:p>", "\n")
+		withBreaks = strings.ReplaceAll(withBreaks, "</w:tc>", "	")
+		withBreaks = strings.ReplaceAll(withBreaks, "</w:tr>", "\n")
 		text := tagRe.ReplaceAllString(withBreaks, "")
-		return strings.TrimSpace(text), nil
+		// Inside a table cell, paragraph breaks collapse to a space so the
+		// row stays one tab-separated line ("Alpha\n	Beta" → "Alpha Beta	").
+		text = collapseCellBreaks(text)
+		return strings.TrimSpace(html.UnescapeString(text)), nil
 	}
 	return "", fmt.Errorf("docx has no word/document.xml")
 }
@@ -83,15 +172,20 @@ func extractPdf(data []byte) (string, error) {
 	}
 	out := strings.TrimSpace(sb.String())
 	if out == "" {
-		return "", fmt.Errorf("no extractable text in pdf (scanned/image pdfs are not supported)")
+		// Scanned/image-only PDF parses but has no text layer — empty text,
+		// not an error; the caller owns the "send pages as pictures" message.
+		// ponytail: scanned PDFs out of scope; OCR or per-page image fallback if this bites.
+		return "", nil
 	}
 	return out, nil
 }
 
 // Truncate clamps extracted text to MaxExtractChars with an explicit marker.
 func Truncate(s string) string {
-	if len(s) <= MaxExtractChars {
+	// Rune-counted, matching util.Cut's rune cut: the byte-length check gave
+	// 48k-rune CJK text (144k bytes) a "truncated" marker with nothing cut.
+	if utf8.RuneCountInString(s) <= MaxExtractChars {
 		return s
 	}
-	return s[:MaxExtractChars] + "\n…[truncated]"
+	return util.Cut(s, MaxExtractChars) + "\n…[truncated]"
 }

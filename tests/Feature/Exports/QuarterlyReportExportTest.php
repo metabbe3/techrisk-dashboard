@@ -172,8 +172,9 @@ class QuarterlyReportExportTest extends TestCase
     {
         // Owner report 2026-10-23: an export scoped to Fund Status =
         // Confirmed loss + Non fundLoss must reproduce the owner's hand-made
-        // sheet (~7,6 for 2026) — the sequence telescopes over the rows the
-        // filter excluded, instead of using the unfiltered chain (~3,8).
+        // sheet — the All Cases sequence telescopes over the rows the filter
+        // excluded. Fund tabs were on that baseline chain too until the owner
+        // reversed it 2026-11-16: they now sequence their OWN rows.
         // 2039 chain: A Jan 10 Confirmed, B Jan 20 Fully recovered (excluded),
         // E Jan 25 Confirmed, D Jan 28 Non fundLoss, C Jan 30 Confirmed.
         $make = fn (string $date, array $attrs = []) => Incident::factory()->createQuietly(array_merge([
@@ -200,10 +201,18 @@ class QuarterlyReportExportTest extends TestCase
         $this->assertSame(3, $allCases->map($d)[2]);
         $this->assertSame(2, $allCases->map($c)[2]);
 
-        // Fund Loss tab (rows A, E, C only): C reads 2 (D still counts in the
-        // sequence) — the full-filtered-set sequence, not a per-tab one (5).
+        // Fund Loss tab (rows A, E, C only) sequences its OWN rows now
+        // (owner 2026-11-16): C reads 5 (E→C), not the baseline-chain 2
+        // that counted D — a Non fundLoss row — as its predecessor.
         $fundLoss = $sheets[array_search('Fund Loss', $titles, true)];
-        $this->assertSame(2, $fundLoss->map($c)[2], 'case tabs share the full-filtered-set sequence, not per-tab gaps');
+        $this->assertSame('-', $fundLoss->map($a)[2]);
+        $this->assertSame(15, $fundLoss->map($e)[2]);
+        $this->assertSame(5, $fundLoss->map($c)[2], 'Fund Loss tab sequences its own rows');
+
+        // Non Fund Loss tab (row D only): its first row has no predecessor
+        // ON THE TAB — '-' now, not the baseline-chain 3.
+        $nonFundLoss = $sheets[array_search('Non Fund Loss', $titles, true)];
+        $this->assertSame('-', $nonFundLoss->map($d)[2], 'Non Fund Loss tab sequences its own rows');
 
         // Footer Avg MTBF = mean of the displayed column ('-' drops out):
         // (15 + 3 + 2) / 3 — reconciles to scoped span/(n-1) = 20/3.

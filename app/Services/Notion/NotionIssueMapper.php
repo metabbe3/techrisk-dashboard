@@ -72,6 +72,18 @@ class NotionIssueMapper
         }
     }
 
+    /**
+     * One severity rule for a synced row: the database's own severity column
+     * wins; the root-cause map is the fallback for rows nobody classified
+     * yet. Import (importRow) and the operator preview (describeRow) used to
+     * duplicate this pair.
+     */
+    public static function severityForRow(array $row): string
+    {
+        return self::mapClassificationToSeverity($row['classification'] ?? null)
+            ?? self::mapSeverityToCode((string) ($row['root_cause'] ?? 'G'));
+    }
+
     /** Map Notion root-cause classifications to severity codes. */
     public static function mapSeverityToCode(string $classification): string
     {

@@ -280,6 +280,9 @@
 
                                 {{-- PIC Avatar or Unassigned + Date + Fund Status --}}
                                 <div class="flex items-center gap-2 flex-wrap">
+                                    {{-- Block form, NOT @php(): the expression form is a Laravel Blade
+                                         landmine — storePhpBlocks()' regex treats @php( as a block opener
+                                         and swallows the next @endphp, mangling every directive after it. --}}
                                     @php $firstPic = $incident->pics->first(); @endphp
                                     @if($firstPic)
                                         <span class="inline-flex items-center gap-1.5" title="{{ $firstPic->name }}">

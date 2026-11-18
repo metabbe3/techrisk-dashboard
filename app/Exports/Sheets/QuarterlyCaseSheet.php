@@ -25,8 +25,11 @@ use PhpOffice\PhpSpreadsheet\Style\Fill;
 /**
  * One case tab of the Quarterly Report (All Cases / Recovered Cases /
  * Fund Loss / Non Fund Loss) — the owner's hand-made quarterly report
- * columns, fixed. MTBF uses the full-year gap sequence (the report reads
- * as one table), not the per-tab sequence of the All Tabs export.
+ * columns, fixed. MTBF sequences: All Cases / Recovered Cases / quarter
+ * tabs use the full-year baseline chain (the report reads as one table);
+ * the Fund Loss / Non Fund Loss tabs sequence their OWN rows (owner
+ * 2026-11-16) via the mtbfScope they pass. All-Tabs export sheets are
+ * per-tab too — different preset, do not merge.
  */
 class QuarterlyCaseSheet implements FromQuery, ShouldAutoSize, WithColumnFormatting, WithEvents, WithHeadings, WithMapping, WithTitle
 {
@@ -38,10 +41,12 @@ class QuarterlyCaseSheet implements FromQuery, ShouldAutoSize, WithColumnFormatt
     private string $title;
 
     /**
-     * @param  Builder|null  $mtbfScope  full-filtered-set builder the MTBF
-     *                                   sequence runs over — NOT this tab's
-     *                                   own query (report reads as one table;
-     *                                   tab constraints must not shrink gaps).
+     * @param  Builder|null  $mtbfScope  builder the MTBF sequence runs over —
+     *                                   the baseline set for All Cases /
+     *                                   Recovered Cases / quarter tabs, this
+     *                                   tab's own query for Fund Loss / Non
+     *                                   Fund Loss (owner 2026-11-16). Null =
+     *                                   whole-table legacy scope.
      */
     public function __construct($query, string $title, ?Builder $mtbfScope = null)
     {

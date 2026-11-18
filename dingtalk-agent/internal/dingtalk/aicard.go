@@ -18,8 +18,8 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 )
 
-// DefaultOpenAPIHost is DingTalk's China OpenAPI endpoint (the SDK default).
-const DefaultOpenAPIHost = "https://api.dingtalk.com"
+// defaultOpenAPIHost is DingTalk's China OpenAPI endpoint (the SDK default).
+const defaultOpenAPIHost = "https://api.dingtalk.com"
 
 // aiCardTemplate is DingTalk's standard AI markdown card ("打字机" typewriter card):
 // flowStatus 1 processing → 2 inputing → 3 finished / 5 failed.
@@ -46,7 +46,7 @@ type openAPIClient struct {
 func newOpenAPIClient(cfg *config.Config) *openAPIClient {
 	host := cfg.DingTalkOpenAPIHost
 	if host == "" {
-		host = DefaultOpenAPIHost
+		host = defaultOpenAPIHost
 	}
 	return &openAPIClient{
 		appKey:     cfg.DingTalkClientID,
@@ -143,19 +143,17 @@ type aiCard struct {
 
 // newAICard creates and delivers an AI card to the message's conversation.
 // Mirrors the official SDK flow: POST /v1.0/card/instances, then /deliver.
-func newAICard(ctx context.Context, client *openAPIClient, m *chatbot.BotCallbackDataModel, title string) (*aiCard, error) {
+func newAICard(ctx context.Context, client *openAPIClient, m *chatbot.BotCallbackDataModel) (*aiCard, error) {
 	// outTrackId: stable unique id derived from the message (same recipe as the official SDKs).
 	factor := fmt.Sprintf("%s_%s_%s_%s", m.SenderStaffId, m.SenderCorpId, m.ConversationId, m.MsgId)
 	sum := sha256.Sum256([]byte(factor + time.Now().Format(time.RFC3339Nano)))
 	outTrackID := hex.EncodeToString(sum[:])
 
 	paramMap := map[string]string{
-		"msgContent": "",
-		"msgTitle":   title,
-		"sys_full_json_obj": marshalJSON(map[string]any{
-			"order": []string{"msgTitle", "msgContent"},
-		}),
-		"flowStatus": fmt.Sprintf("%d", flowStatusProcessing),
+		"msgContent":        "",
+		"msgTitle":          "Risk Agent",
+		"sys_full_json_obj": sysFullJSONObj,
+		"flowStatus":        fmt.Sprintf("%d", flowStatusProcessing),
 	}
 
 	createBody := map[string]any{
@@ -204,31 +202,26 @@ func (a *aiCard) finish(ctx context.Context, content string) error {
 	return a.putCardData(ctx, content, flowStatusFinished)
 }
 
-// fail marks the card failed (flowStatus=5).
-func (a *aiCard) fail(ctx context.Context) error {
-	return a.putCardData(ctx, "", flowStatusFailed)
+// failWith marks the card failed (flowStatus=5) with a visible reason — an
+// empty failed card reads as "finished" to the user (#27: fail+finish pair).
+func (a *aiCard) failWith(ctx context.Context, text string) error {
+	return a.putCardData(ctx, text, flowStatusFailed)
 }
 
 func (a *aiCard) putCardData(ctx context.Context, content string, flowStatus int) error {
 	return a.client.do(ctx, http.MethodPut, "/v1.0/card/instances", map[string]any{
 		"outTrackId": a.outTrackID,
 		"cardData": map[string]any{"cardParamMap": map[string]string{
-			"msgContent": content,
-			"sys_full_json_obj": marshalJSON(map[string]any{
-				"order": []string{"msgTitle", "msgContent"},
-			}),
-			"flowStatus": fmt.Sprintf("%d", flowStatus),
+			"msgContent":        content,
+			"sys_full_json_obj": sysFullJSONObj,
+			"flowStatus":        fmt.Sprintf("%d", flowStatus),
 		}},
 	})
 }
 
-func marshalJSON(v any) string {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return "{}"
-	}
-	return string(data)
-}
+// sysFullJSONObj is the card's fixed ordering hint — every send carries the
+// same value, so it is a const (the marshalJSON helper lived for this alone).
+const sysFullJSONObj = `{"order":["msgTitle","msgContent"]}`
 
 // newGUID is a random RFC-4122-ish v4 uuid (only used as a streaming request id).
 func newGUID() string {

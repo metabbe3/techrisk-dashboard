@@ -17,14 +17,20 @@ class ActionImprovement extends Model implements Auditable
     use \OwenIt\Auditing\Auditable;
 
     /**
-     * Status lifecycle: draft (AI-suggested) → pending → done | cancelled.
-     * 'tbd' ("TBD / to be discussed") is a parking state like draft/cancelled:
-     * no decision yet on whether/how to do it — excluded from reminders and
-     * every pending-gated metric. Distinct from due_date = null ("TBD" date).
+     * Status lifecycle: draft (AI-suggested) → pending → on_progress →
+     * done | cancelled. 'on_progress' (owner 2026-11-17) is accepted AND
+     * started, not finished — open work that rides every pending-gated
+     * surface (reminders, escalation, overdue tiles, KPI, AI context).
+     * 'tbd' ("TBD / to be discussed") is a parking state like
+     * draft/cancelled: no decision yet on whether/how to do it — excluded
+     * from reminders and every pending-gated metric. Distinct from
+     * due_date = null ("TBD" date).
      */
     public const STATUS_DRAFT = 'draft';
 
     public const STATUS_PENDING = 'pending';
+
+    public const STATUS_ON_PROGRESS = 'on_progress';
 
     public const STATUS_DONE = 'done';
 
@@ -32,7 +38,24 @@ class ActionImprovement extends Model implements Auditable
 
     public const STATUS_TBD = 'tbd';
 
-    public const STATUSES = [self::STATUS_DRAFT, self::STATUS_PENDING, self::STATUS_DONE, self::STATUS_CANCELLED, self::STATUS_TBD];
+    public const STATUSES = [self::STATUS_DRAFT, self::STATUS_PENDING, self::STATUS_ON_PROGRESS, self::STATUS_DONE, self::STATUS_CANCELLED, self::STATUS_TBD];
+
+    /**
+     * Open work (Rule A, owner 2026-11-17): pending + on_progress ride every
+     * pending-gated surface together — reminders, escalation, overdue tiles,
+     * KPI, AI context, overdue filters. ONE list: every gate uses this, never
+     * a hand-typed pair (BUG-005/006/007 rule 1/3).
+     */
+    public static function openStatuses(): array
+    {
+        return [self::STATUS_PENDING, self::STATUS_ON_PROGRESS];
+    }
+
+    /** Record-level twin of openStatuses() — display ternaries, action visibility. */
+    public function isOpenWork(): bool
+    {
+        return in_array($this->status, self::openStatuses(), true);
+    }
 
     /** Priority — optional everywhere, default low (owner rule 2026-10-14). */
     public const PRIORITIES = ['low', 'medium', 'high', 'critical'];

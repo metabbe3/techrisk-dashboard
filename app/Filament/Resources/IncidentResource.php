@@ -27,6 +27,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -212,6 +213,18 @@ class IncidentResource extends Resource
                                             ->required()
                                             ->default('Open')
                                             ->live()
+                                            // BUG-035: mirror the observer gate as a field rule so the
+                                            // error renders here instead of a silent rollback.
+                                            ->rule(fn (Get $get, ?Incident $record) => function (string $attribute, mixed $value, \Closure $fail) use ($get, $record): void {
+                                                $status = $value instanceof IncidentStatus ? $value : IncidentStatus::tryFrom((string) $value);
+                                                if ($status !== IncidentStatus::Completed || $record?->incident_status === IncidentStatus::Completed) {
+                                                    return;
+                                                }
+                                                $error = Incident::closureGateError($get('root_cause'), $get('root_cause_category'), $get('stop_bleeding_at'));
+                                                if ($error !== null) {
+                                                    $fail($error.' (Timeline / Root Cause tabs)');
+                                                }
+                                            })
                                             ->helperText('Completing requires a root cause and a stop bleeding time (closure gate, RD-2).'),
                                         Select::make('incident_source')
                                             ->options(['Internal' => 'Internal', 'External' => 'External'])
@@ -234,10 +247,10 @@ class IncidentResource extends Resource
                             Section::make('Incident Dates')
                                 ->icon('heroicon-o-calendar')
                                 ->schema([
-                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required()->maxDate(now()),
-                                    DateTimePicker::make('discovered_at')->afterOrEqual('incident_date'),
-                                    DateTimePicker::make('stop_bleeding_at')->afterOrEqual('incident_date'),
-                                    DateTimePicker::make('entry_date_tech_risk')->required()->maxDate(now()),
+                                    DateTimePicker::make('incident_date')->label('Occurred Time')->required()->maxDate(now())->native(false)->seconds(false),
+                                    DateTimePicker::make('discovered_at')->afterOrEqual('incident_date')->native(false)->seconds(false),
+                                    DateTimePicker::make('stop_bleeding_at')->afterOrEqual('incident_date')->native(false)->seconds(false),
+                                    DateTimePicker::make('entry_date_tech_risk')->required()->maxDate(now())->native(false)->seconds(false),
                                     Select::make('detected_via')
                                         ->label('Detected Via')
                                         ->options(DetectedVia::options())
@@ -362,7 +375,7 @@ class IncidentResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'superIncident:id,no,title']))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'superIncident:id,no,title', 'statusUpdates' => fn ($u) => $u->orderByDesc('update_date')->orderByDesc('id')]))
             ->modifyQueryUsing(fn (Builder $query) => $query->withCount('subIncidents')) // PROJ-022 chevron/badge visibility
             // PROJ-022 (owner 2026-11-16): the super's money display is the
             // family total — carry the sub sums in one query so the money
@@ -418,13 +431,16 @@ class IncidentResource extends Resource
 
                         $tab = app('activeTab') ?? request()->query('activeTab', 'All Cases');
                         $year = $record->incident_date->year;
-                        // Version in the key: a dashboard_cache_version bump (metrics
-                        // recalculation) invalidates this 1-hour cache for free.
-                        $cacheKey = "mtbf_{$tab}_{$year}_v".Cache::get('dashboard_cache_version', 0);
+                        // v2 in the key: the chain now drops non-metric rows
+                        // (METRIC_ELIGIBLE) and renders '-' on the year's
+                        // first row — old cached maps served dayOfYear.
+                        // A dashboard_cache_version bump invalidates for free.
+                        $cacheKey = "mtbf_{$tab}_{$year}_v2_".Cache::get('dashboard_cache_version', 0);
 
                         $mtbf = Cache::remember($cacheKey, now()->addHour(), function () use ($tab, $year) {
                             $query = Incident::whereYear('incident_date', $year)
                                 ->where('classification', '!=', IncidentClassification::Issue->value)
+                                ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                                 ->withoutOutliers()
                                 ->orderBy('incident_date')->orderBy('id');
 
@@ -444,10 +460,15 @@ class IncidentResource extends Resource
                             };
 
                             $incidents = $query->get(['id', 'incident_date']);
+                            // Export chain semantics (one logic, owner
+                            // 2026-11-16): first of the year renders '-', so
+                            // the column's mean = span/(n-1) like every
+                            // footer. G/Non Incident rows are not in the
+                            // chain (METRIC_ELIGIBLE) and render '-' too.
                             $result = [];
                             foreach ($incidents as $i => $inc) {
                                 $result[$inc->id] = $i === 0
-                                    ? $inc->incident_date->dayOfYear
+                                    ? '-'
                                     : (int) $incidents[$i - 1]->incident_date->startOfDay()
                                         ->diffInDays($inc->incident_date->startOfDay());
                             }
@@ -455,12 +476,20 @@ class IncidentResource extends Resource
                             return $result;
                         });
 
-                        return $mtbf[$record->id] ?? 0;
+                        return $mtbf[$record->id] ?? '-';
                     })
                     ->formatStateUsing(fn (int|string $state): string => is_int($state) ? number_format($state) : $state)
                     ->sortable(query: fn (Builder $query, string $direction) => $query->orderBy('incident_date', $direction)),
                 TextColumn::make('severity')->badge()->color(fn (?Severity $state): string => $state?->color() ?? 'gray')->sortable()->width('80px'),
                 TextColumn::make('incident_status')->badge()->color(fn (?IncidentStatus $state): string => $state?->color() ?? 'gray')->sortable()->width('100px'),
+                // Owner rule (2026-11-09/10): status-update freshness flag —
+                // rule lives on Incident::statusUpdateFlag() (shared with
+                // the reminder email lane so the two cannot drift).
+                TextColumn::make('follow_up')
+                    ->label('Status update')
+                    ->badge()
+                    ->color(fn (?string $state): string => $state === Incident::FLAG_NEED_UPDATE ? 'danger' : 'warning')
+                    ->state(fn (Incident $record): ?string => $record->statusUpdateFlag()),
                 TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
                 TextColumn::make('pics.name')->label('PIC')->badge()->toggleable()->width('100px'),
                 TextColumn::make('incident_date')->dateTime()->sortable()->width('100px'),
@@ -734,6 +763,18 @@ class IncidentResource extends Resource
                                 ->label('Status')
                                 ->options(IncidentStatus::options())
                                 ->required()
+                                // BUG-035: this modal has no RCA/stop-bleed fields — check the record.
+                                ->rule(fn (Incident $record) => function (string $attribute, mixed $value, \Closure $fail) use ($record): void {
+                                    // State arrives as the enum here (record-bound modal), a string on the page.
+                                    $status = $value instanceof IncidentStatus ? $value : IncidentStatus::tryFrom((string) $value);
+                                    if ($status !== IncidentStatus::Completed || $record->incident_status === IncidentStatus::Completed) {
+                                        return;
+                                    }
+                                    $error = Incident::closureGateError($record->root_cause, $record->root_cause_category, $record->stop_bleeding_at);
+                                    if ($error !== null) {
+                                        $fail($error.' Use Edit to add it first.');
+                                    }
+                                })
                                 ->default(fn (Incident $record) => $record->incident_status),
                             Forms\Components\Textarea::make('remark')
                                 ->label('Notes')
@@ -864,6 +905,8 @@ class IncidentResource extends Resource
         // footer lives INSIDE the table's horizontal scroll container.
         // It renders as the IncidentListSummary header widget on the list
         // page instead — above the tabs, never moving with the table.
+        // (Main's BUG-022 filtered-query fix rides along in the widget:
+        // IncidentListSummary now passes getFilteredTableQuery().)
     }
 
     public static function getRelations(): array
@@ -871,6 +914,7 @@ class IncidentResource extends Resource
         return [
             RelationManagers\StatusUpdatesRelationManager::class,
             RelationManagers\InvestigationDocumentsRelationManager::class,
+            RelationManagers\InvestigationFormsRelationManager::class,
             RelationManagers\AuditsRelationManager::class,
             RelationManagers\ActionImprovementsRelationManager::class,
             RelationManagers\WarRoomSessionsRelationManager::class,
