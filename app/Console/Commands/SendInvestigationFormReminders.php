@@ -8,6 +8,7 @@ use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
 use App\Services\InvestigationForm\InvestigationFormSettings;
 use App\Support\InvestigationFormMailFactory;
+use App\Support\MailSettings;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
@@ -25,6 +26,15 @@ class SendInvestigationFormReminders extends Command
 
     public function handle(): int
     {
+        // Email kill-switch: every send rotates the token, so a suppressed
+        // email would KILL the recipient's working link without a new one
+        // arriving. Skip the whole lane, token untouched.
+        if (! MailSettings::enabled()) {
+            $this->info('Email suppressed (netcore_enabled=false) — links left untouched.');
+
+            return self::SUCCESS;
+        }
+
         if (! InvestigationFormSettings::remindersEnabled()) {
             $this->info('Reminders are off.');
 

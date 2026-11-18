@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Notifications;
 
 class ActionImprovementAssigned extends ActionImprovementNotification
@@ -13,10 +14,11 @@ class ActionImprovementAssigned extends ActionImprovementNotification
     public function toMail(object $notifiable): \Illuminate\Notifications\Messages\MailMessage
     {
         return $this->buildActionMailMessage(
-            'Action Improvement Assigned: '.$this->actionImprovement->title,
-            [],
-            $notifiable,
-            'Please complete this action improvement before the due date.'
+            subject: '[Assigned] '.$this->actionImprovement->title.' — ['.$this->actionImprovement->incident->no.']',
+            headline: 'Action improvement assigned',
+            intro: 'A new action improvement has been assigned to you on the incident below. Please review the detail and start the work.',
+            closingLine: 'Please complete this action improvement before the due date.',
+            notifiable: $notifiable,
         );
     }
 

@@ -89,10 +89,12 @@ class InvestigationFormsRelationManager extends RelationManager
                             auth()->user(),
                         );
 
+                        $emailOff = ! \App\Support\MailSettings::enabled();
+
                         foreach ($result['mailed'] as $email => $link) {
                             Notification::make()
-                                ->title('Link emailed to '.$email)
-                                ->body('One-time copy fallback if mail is down:')
+                                ->title($emailOff ? 'Email is OFF — copy the link for '.$email : 'Link emailed to '.$email)
+                                ->body($emailOff ? 'The global email kill-switch is on. Copy this one-time link and share it directly:' : 'One-time copy fallback if mail is down:')
                                 ->actions([
                                     NotificationAction::make('copy')
                                         ->url($link, shouldOpenInNewTab: false)
@@ -144,10 +146,11 @@ class InvestigationFormsRelationManager extends RelationManager
 
                         ['mail' => $mail, 'link' => $link] = InvestigationFormMailFactory::requestMail($record, $plain, null);
                         Mail::to($record->email)->queue($mail);
+                        $emailOff = ! \App\Support\MailSettings::enabled();
 
                         Notification::make()
-                            ->title('Link rotated and re-emailed to '.$record->email)
-                            ->body('One-time copy fallback if mail is down:')
+                            ->title($emailOff ? 'Email is OFF — copy the link for '.$record->email : 'Link rotated and re-emailed to '.$record->email)
+                            ->body($emailOff ? 'The global email kill-switch is on. Copy this one-time link and share it directly:' : 'One-time copy fallback if mail is down:')
                             ->actions([NotificationAction::make('copy')->url($link)->button()])
                             ->success()
                             ->persistent()
@@ -191,7 +194,7 @@ class InvestigationFormsRelationManager extends RelationManager
                             Mail::to($recipient->email)->queue($mail);
 
                             Notification::make()
-                                ->title('Reissued link emailed to '.$recipient->email)
+                                ->title(! \App\Support\MailSettings::enabled() ? 'Email is OFF — copy the link for '.$recipient->email : 'Reissued link emailed to '.$recipient->email)
                                 ->actions([NotificationAction::make('copy')->url($link)->button()])
                                 ->success()
                                 ->persistent()

@@ -12,6 +12,7 @@ use App\Notifications\BaseNotification;
 use App\Notifications\FundLossUnsettledReminder;
 use App\Notifications\IncidentNotDoneReminder;
 use App\Notifications\StatusUpdateStaleReminder;
+use App\Support\MailSettings;
 use App\Support\ReminderMail;
 use Illuminate\Console\Command;
 
@@ -40,7 +41,7 @@ class SendIncidentReminders extends Command
 
     public function handle(): int
     {
-        if (! Setting::get('netcore_enabled', true)) {
+        if (! MailSettings::enabled()) {
             $this->info('Email reminders disabled (netcore_enabled=false).');
 
             return self::SUCCESS;

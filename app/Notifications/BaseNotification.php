@@ -43,16 +43,56 @@ abstract class BaseNotification extends Notification implements ShouldQueue
         ], $overrides);
     }
 
+    /**
+     * Branded (HTML) email through the shared layout
+     * (emails/notification.blade.php). Every portal notification renders
+     * through here — the white card + indigo header look.
+     *
+     * @param  array<int, string>  $lines  paragraphs; **bold** supported
+     * @param  array<string, string>  $details  label => value rows
+     */
+    protected function brandedMessage(
+        string $subject,
+        string $headline,
+        array $lines = [],
+        ?string $intro = null,
+        array $details = [],
+        ?string $actionText = null,
+        ?string $actionUrl = null,
+        ?object $notifiable = null,
+        ?string $secondaryText = null,
+        ?string $secondaryUrl = null,
+    ): MailMessage {
+        return (new MailMessage)
+            ->subject($subject)
+            ->view('emails.notification', [
+                'greeting' => $notifiable !== null ? 'Hello '.$notifiable->name.',' : null,
+                'headline' => $headline,
+                'intro' => $intro,
+                'lines' => $lines,
+                'details' => $details,
+                'actionText' => $actionText,
+                'actionUrl' => $actionUrl,
+                'secondaryText' => $secondaryText,
+                'secondaryUrl' => $secondaryUrl,
+            ]);
+    }
+
+    /**
+     * Simple lines + one button — the workhorse for the trigger-style
+     * notifications (status changed, PIC assigned, announcements, …).
+     *
+     * @param  array<int, string>  $lines
+     */
     protected function buildMailMessage(string $subject, array $lines, string $actionUrl, string $actionText = 'View Incident', ?object $notifiable = null): MailMessage
     {
-        $mail = (new MailMessage)
-            ->subject($subject)
-            ->greeting('Hello '.$notifiable?->name.',');
-
-        foreach ($lines as $line) {
-            $mail->line($line);
-        }
-
-        return $mail->action($actionText, $actionUrl);
+        return $this->brandedMessage(
+            subject: $subject,
+            headline: $subject,
+            lines: $lines,
+            actionText: $actionText,
+            actionUrl: $actionUrl,
+            notifiable: $notifiable,
+        );
     }
 }

@@ -157,7 +157,14 @@ class RunAiAgentJob implements ShouldQueue
 
             if ($agent->notify_email) {
                 try {
-                    Mail::raw($result->success ? (string) $result->text : 'Agent run failed: '.(string) $result->error, function ($message) use ($agent, $result): void {
+                    Mail::send('emails.notification', [
+                        'headline' => "AI agent '{$agent->name}' ".($result->success ? 'completed' : 'failed'),
+                        'intro' => $result->success
+                            ? 'The scheduled agent run finished. Its output follows.'
+                            : 'The scheduled agent run failed. The error follows.',
+                        'bodyHtml' => nl2br(e(Str::limit((string) ($result->success ? $result->text : $result->error), 5000))),
+                        'actionUrl' => null,
+                    ], function ($message) use ($agent, $result): void {
                         $message->to($agent->notify_email)
                             ->subject("AI Agent '{$agent->name}' — ".($result->success ? 'completed' : 'failed'));
                     });
