@@ -188,7 +188,7 @@ func main() {
 				log.Printf("[mesh] task goal flagged as potential injection — framed as data")
 				goal = guardrail.FrameDocumentContent("mesh_task", goal)
 			}
-			reply, _, _, err := agentLoop.Run(taskCtx, goal, nil, "")
+			reply, _, _, _, err := agentLoop.Run(taskCtx, goal, nil, "")
 			return reply, err
 		}
 

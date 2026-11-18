@@ -457,6 +457,13 @@ func (b *Bot) runBatch(batch []chatTask) {
 	if m.ConversationType == "2" { // group: shared history must say who asked what
 		text = fmt.Sprintf("[From %s]\n%s", m.SenderNick, text)
 	}
+	// Reminders/watches context rides in the SYSTEM prompt, not the user
+	// message: appended reminder TEXT is not user speech, and a trigger
+	// phrase inside one used to route every turn of this chat to the heavy
+	// model (both the ack gate and the loop match the user text — audit
+	// round 5). System-prompt context is rebuilt every turn, never persisted
+	// into history.
+	meta := ""
 	if b.schedAPI != nil {
 		items, err := b.schedAPI.List(context.Background(), m.ConversationId)
 		switch {
@@ -467,7 +474,7 @@ func (b *Bot) runBatch(batch []chatTask) {
 			for _, it := range items {
 				rs.WriteString("\n- " + it.Describe())
 			}
-			text += "\n\n[Active reminders in this chat:" + rs.String() + "]"
+			meta = "[Active reminders in this chat:" + rs.String() + "]"
 		}
 	}
 	if ws := b.watches.List(m.ConversationId); len(ws) > 0 {
@@ -475,7 +482,10 @@ func (b *Bot) runBatch(batch []chatTask) {
 		for _, it := range ws {
 			rs.WriteString("\n- " + it.Describe())
 		}
-		text += "\n\n" + watchListHeader + rs.String() + "]"
+		if meta != "" {
+			meta += "\n\n"
+		}
+		meta += watchListHeader + rs.String() + "]"
 	}
 
 	ack := "👌 On it — working on that…"
@@ -495,7 +505,7 @@ func (b *Bot) runBatch(batch []chatTask) {
 	b.sem <- struct{}{}
 	defer func() { <-b.sem }()
 	// One sink per turn: concurrent turns no longer share the Notion-reads buffer.
-	b.process(tools.WithNotionSink(b.rootCtx), m, text, ack)
+	b.process(tools.WithNotionSink(b.rootCtx), m, text, ack, meta)
 }
 
 // processFile handles a chat-uploaded document: download, extract text,
@@ -550,7 +560,7 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 
 	content := fmt.Sprintf("[The user attached the document %q. Its text follows.]\n\n%s\n\n[End of document. User instruction: %s]",
 		fm.FileName, ingest.Truncate(text), orDefault(caption, "Summarize this document."))
-	reply := b.process(ctx, m, content, "") // file path already acked at Handle time
+	reply := b.process(ctx, m, content, "", "") // file path already acked at Handle time
 
 	if b.store != nil && reply != "" {
 		b.rememberKnowledge(memory.KnowledgeEntry{
@@ -656,7 +666,7 @@ func visionPrompt(caption string) string {
 // process runs one agent turn and returns the guarded reply text ("" on failure).
 // ack, when non-empty, is webhoked as an instant receipt on the fallback path
 // (when the AI card is unavailable, nothing else signals "task accepted").
-func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text, ack string) string {
+func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text, ack, meta string) string {
 	if b.store != nil { // auto save who chats
 		if err := b.store.AppendUser(memory.UserRecord{
 			StaffID: m.SenderStaffId, Nick: m.SenderNick,
@@ -667,6 +677,12 @@ func (b *Bot) process(ctx context.Context, m *chatbot.BotCallbackDataModel, text
 	}
 
 	sysExtra := b.profilePrompt(m.SenderStaffId)
+	if meta != "" {
+		if sysExtra != "" {
+			sysExtra += "\n\n"
+		}
+		sysExtra += meta
+	}
 
 	// Preferred path: a streaming AI card (typewriter). If the card cannot be
 	// created (missing card permission, API hiccup) fall back to a one-shot
@@ -844,15 +860,15 @@ func (b *Bot) summarizeNotionReads(ctx context.Context, nick string, reads []too
 func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string, card *aiCard) (string, error) {
 	writer := newCardWriter(card)
 	started := time.Now()
-	reply, newHistory, usage, err := b.loop.RunStreaming(ctx, text, b.takeHistory(m.ConversationId), writer.onDelta, sysExtra)
+	reply, newHistory, usage, modelUsed, err := b.loop.RunStreaming(ctx, text, b.takeHistory(m.ConversationId), writer.onDelta, sysExtra)
 	if err != nil {
-		b.reportTurn(m, text, "", usage, time.Since(started), err.Error())
+		b.reportTurn(m, text, "", usage, modelUsed, time.Since(started), err.Error())
 		return "", err
 	}
 
 	// card.finish pushes the final frame itself — an extra flush here rewrote
 	// the same content.
-	return b.finalize(m, text, reply, newHistory, usage, started), nil
+	return b.finalize(m, text, reply, newHistory, usage, modelUsed, started), nil
 }
 
 func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string) string {
@@ -862,20 +878,20 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 			log.Printf("[dingtalk] panic in agent loop: %v", r)
 			b.reply(ctx, m, "Sorry, something went wrong while processing that request.")
 			b.learnNotion(ctx, m) // same leak as the error branch: a panic mid-turn must not strand its reads
-			b.reportTurn(m, text, "", llm.Usage{}, time.Since(started), fmt.Sprintf("panic: %v", r))
+			b.reportTurn(m, text, "", llm.Usage{}, "", time.Since(started), fmt.Sprintf("panic: %v", r))
 		}
 	}()
 
-	reply, newHistory, usage, err := b.loop.Run(ctx, text, b.takeHistory(m.ConversationId), sysExtra)
+	reply, newHistory, usage, modelUsed, err := b.loop.Run(ctx, text, b.takeHistory(m.ConversationId), sysExtra)
 	if err != nil {
 		log.Printf("[dingtalk] agent loop error (conversation %s): %v", m.ConversationId, err)
 		b.reply(ctx, m, "Sorry, that request failed. Please try again in a moment.")
 		b.learnNotion(ctx, m) // reads made before the failure drain here — else the NEXT turn's sender inherits them
-		b.reportTurn(m, text, "", usage, time.Since(started), err.Error())
+		b.reportTurn(m, text, "", usage, modelUsed, time.Since(started), err.Error())
 		return ""
 	}
 
-	filtered := b.finalize(m, text, reply, newHistory, usage, started)
+	filtered := b.finalize(m, text, reply, newHistory, usage, modelUsed, started)
 	filtered = b.deliverGenerated(ctx, m, filtered)
 	b.reply(ctx, m, filtered)
 	if m.ConversationType != "2" {
@@ -887,7 +903,7 @@ func (b *Bot) processPlain(ctx context.Context, m *chatbot.BotCallbackDataModel,
 
 // finalize is the shared tail of a successful turn: persist history, guard the
 // reply, bind parked reminder/watch tickets, report the turn.
-func (b *Bot) finalize(m *chatbot.BotCallbackDataModel, text, reply string, newHistory []llm.ChatMessage, usage llm.Usage, started time.Time) string {
+func (b *Bot) finalize(m *chatbot.BotCallbackDataModel, text, reply string, newHistory []llm.ChatMessage, usage llm.Usage, modelUsed string, started time.Time) string {
 	// Redact secrets in BOTH directions before persisting: history used to be
 	// saved raw (before FilterReplyCap ran) and replayed to the model every
 	// later turn (audit round 4).
@@ -901,14 +917,14 @@ func (b *Bot) finalize(m *chatbot.BotCallbackDataModel, text, reply string, newH
 	}
 	filtered = b.applySchedules(m, newHistory, filtered)
 	filtered = b.applyWatches(m, newHistory, filtered)
-	b.reportTurn(m, text, filtered, usage, time.Since(started), "")
+	b.reportTurn(m, text, filtered, usage, modelUsed, time.Since(started), "")
 	return filtered
 }
 
 // reportTurn fires the async dashboard turn report for a finished chat turn —
 // best-effort, never blocks the reply. Called on both the success and the
 // failure path so Agent Runs shows failures too.
-func (b *Bot) reportTurn(m *chatbot.BotCallbackDataModel, userText, assistantText string, usage llm.Usage, elapsed time.Duration, errMsg string) {
+func (b *Bot) reportTurn(m *chatbot.BotCallbackDataModel, userText, assistantText string, usage llm.Usage, modelUsed string, elapsed time.Duration, errMsg string) {
 	if !b.cfg.AgentTurnReports {
 		return
 	}
@@ -923,7 +939,7 @@ func (b *Bot) reportTurn(m *chatbot.BotCallbackDataModel, userText, assistantTex
 		Nick:             m.SenderNick,
 		UserText:         util.CutEllipsis(redUser, 2000),
 		AssistantText:    util.CutEllipsis(redAssistant, 8000),
-		Model:            b.llm.Model(),
+		Model:            modelUsed,
 		Usage:            llm.UsagePtr(usage),
 		ResponseTimeMs:   elapsed.Milliseconds(),
 		Error:            errMsg,

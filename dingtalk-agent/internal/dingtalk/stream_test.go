@@ -1024,7 +1024,7 @@ func TestRefusalLogAndTurnReportAreRedacted(t *testing.T) {
 
 	bot2cfg := &config.Config{AgentTurnReports: true, DashboardAPIBase: srv.URL, DashboardAPIToken: "t"}
 	bot2 := &Bot{cfg: bot2cfg, llm: llm.NewClient(bot2cfg)}
-	bot2.reportTurn(dmMsg("s1", ""), "user text with "+secret, "answer with "+secret, llm.Usage{}, time.Second, "")
+	bot2.reportTurn(dmMsg("s1", ""), "user text with "+secret, "answer with "+secret, llm.Usage{}, "", time.Second, "")
 
 	waitDeadline := time.Now().Add(3 * time.Second)
 	for time.Now().Before(waitDeadline) {

@@ -133,7 +133,7 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 		// The dashboard's System prompt rides as sysExtra (appended to the
 		// loop's own system prompt) — history is never trusted to carry one.
 		turnCtx := tools.WithNotionSink(runCtx)
-		reply, _, usage, err := runLoop.Run(turnCtx, req.Text, nil, req.System)
+		reply, _, usage, modelUsed, err := runLoop.Run(turnCtx, req.Text, nil, req.System)
 		tools.TakeNotionReads(turnCtx) // a scheduled run must not leak reads into the next chat turn
 		if err != nil {
 			return internalRunResult{
@@ -171,7 +171,7 @@ func (b *Bot) runInternal(ctx context.Context, req internalRunRequest) internalR
 		return internalRunResult{
 			OK:             true,
 			Output:         filtered,
-			Model:          b.llm.Model(),
+			Model:          modelUsed,
 			Usage:          llm.UsagePtr(usage),
 			ResponseTimeMs: time.Since(started).Milliseconds(),
 			Delivered:      delivered,

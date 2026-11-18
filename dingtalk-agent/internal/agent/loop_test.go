@@ -79,7 +79,7 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, _, err := agentLoop.Run(context.Background(), "list current directory", nil, "")
+	finalText, messages, _, _, err := agentLoop.Run(context.Background(), "list current directory", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -188,7 +188,7 @@ func TestParallelToolCallsDeterministicOrder(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, _, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil, "")
+	finalText, messages, _, _, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -289,7 +289,7 @@ func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
 	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
 	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
 
-	if _, _, _, err := agentLoop.Run(context.Background(), "hi", nil,
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "hi", nil,
 		"## About the user you are replying to\n- prefers Indonesian\n"); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -353,7 +353,7 @@ func TestRunSumsUsageAcrossIterations(t *testing.T) {
 		reg, 5,
 	)
 
-	_, _, usage, err := agentLoop.Run(context.Background(), "hi", nil, "")
+	_, _, usage, _, err := agentLoop.Run(context.Background(), "hi", nil, "")
 	if err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -397,7 +397,7 @@ func TestCurrentDateTimeInSystemPrompt(t *testing.T) {
 
 	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
 	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
-	if _, _, _, err := agentLoop.Run(context.Background(), "hi", nil, ""); err != nil {
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "hi", nil, ""); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 }
@@ -488,7 +488,7 @@ func TestLoopToolContextTimeout(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, _, err := agentLoop.Run(ctx, "run slow", nil, "")
+	_, _, _, _, err := agentLoop.Run(ctx, "run slow", nil, "")
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -540,7 +540,7 @@ func TestHeavyKeywordRoutesToHeavyModel(t *testing.T) {
 	)
 	agentLoop.SetHeavyKeywords([]string{"ultrathink"})
 
-	if _, _, _, err := agentLoop.Run(context.Background(), "ultrathink: analyze the spike", nil, ""); err != nil {
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "ultrathink: analyze the spike", nil, ""); err != nil {
 		t.Fatalf("triggered run failed: %v", err)
 	}
 	for i, m := range models {
@@ -553,7 +553,7 @@ func TestHeavyKeywordRoutesToHeavyModel(t *testing.T) {
 	}
 	models = nil
 
-	if _, _, _, err := agentLoop.Run(context.Background(), "plain question", nil, ""); err != nil {
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "plain question", nil, ""); err != nil {
 		t.Fatalf("plain run failed: %v", err)
 	}
 	for i, m := range models {
@@ -679,7 +679,7 @@ func TestToolResultRedactedBeforeTruncation(t *testing.T) {
 	)
 	loop := NewLoop(llm.NewClient(cfg), reg, 5)
 
-	_, messages, _, err := loop.Run(context.Background(), "run leaky", nil, "")
+	_, messages, _, _, err := loop.Run(context.Background(), "run leaky", nil, "")
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -719,7 +719,7 @@ func TestEscalationOnlyOnBudgetExhaustion(t *testing.T) {
 	reg := tools.NewRegistry(nil)
 	loop := NewLoop(llm.NewClient(cfg), reg, 5)
 
-	_, _, _, err := loop.runWithEscalation(context.Background(), "hi", nil, nil, "")
+	_, _, _, _, err := loop.runWithEscalation(context.Background(), "hi", nil, nil, "")
 	if err == nil || !strings.Contains(err.Error(), "rate limited") {
 		t.Fatalf("expected the original 429 error, got: %v", err)
 	}

@@ -32,6 +32,10 @@ type fakeWatchAPI struct {
 	pushes       []map[string]any // batchSend + groupMessages bodies
 	pushPath     []string
 
+	toolResults   []string         // tool-result messages the LLM received
+	offeredTools  []string         // tool names the LLM was offered per turn
+	callsSchedule bool             // LLM answers the turn with a schedule_reminder tool call
+
 	dashboardStatus int
 }
 
@@ -43,12 +47,34 @@ func newFakeWatchAPI(t *testing.T) *fakeWatchAPI {
 		case strings.Contains(r.URL.Path, "chat/completions"):
 			var req struct {
 				Messages []llm.ChatMessage `json:"messages"`
+				Tools    []struct {
+					Function struct {
+						Name string `json:"name"`
+					} `json:"function"`
+				} `json:"tools"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
 			last := req.Messages[len(req.Messages)-2]
 			f.mu.Lock()
 			f.chats = append(f.chats, last.Content)
+			for _, tl := range req.Tools {
+				f.offeredTools = append(f.offeredTools, tl.Function.Name)
+			}
 			f.mu.Unlock()
+			if f.callsSchedule && last.Role == "tool" {
+				f.mu.Lock()
+				f.toolResults = append(f.toolResults, last.Content)
+				f.mu.Unlock()
+			}
+			if f.callsSchedule && last.Role != "tool" {
+				_ = json.NewEncoder(w).Encode(llm.ChatResponse{Choices: []llm.ChatChoice{{
+					Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{
+						ID: "c1", Type: "function",
+						Function: llm.FunctionCall{Name: "schedule_reminder", Arguments: `{"when":"0 9 * * 1","mode":"message","text":"leak"}`},
+					}}}, FinishReason: "tool_calls",
+				}}})
+				return
+			}
 			_ = json.NewEncoder(w).Encode(llm.ChatResponse{Choices: []llm.ChatChoice{{
 				Message: llm.ChatMessage{Role: "assistant", Content: "watch report: project QRIS payment gateway"}, FinishReason: "stop",
 			}}})
@@ -114,6 +140,40 @@ func newWatchBot(t *testing.T, f *fakeWatchAPI, dataDir string) *Bot {
 	}
 	reg := tools.NewRegistry(cfg)
 	return NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), reg, 4), llm.NewClient(cfg))
+}
+
+// A watch fire must not offer the chat-only side-effect tools: nothing claims
+// a reminder/watch created by a fire (applySchedules runs in the chat turn
+// handler only) and fireWatch's delivery is markdown-only, so generated-file
+// tickets would reach the chat raw. The task path in internalapi.go already
+// Subsets the same tools off — fireWatch now does too (audit round 5).
+func TestWatchFireTurnExcludesChatOnlyTools(t *testing.T) {
+	f := newFakeWatchAPI(t)
+	f.callsSchedule = true
+	bot := newWatchBot(t, f, "")
+	it, err := bot.watches.Add(watch.Item{ConversationID: "cid-group", ConversationType: "2", StaffID: "s1", IncidentNo: "20261101_IN_0042"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	bot.sem <- struct{}{} // fireWatch releases the caller-acquired slot
+	bot.fireWatch(context.Background(), it, "Open", "Closed")
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, tr := range f.toolResults {
+		if strings.Contains(tr, "[schedule-ticket:") {
+			t.Errorf("watch fire executed schedule_reminder — its ticket parks forever (nothing claims it): %q", tr)
+		}
+	}
+	for _, name := range f.offeredTools {
+		if name == "schedule_reminder" || name == "watch_incident" || strings.HasPrefix(name, "generate_") {
+			t.Errorf("watch turn offered chat-only tool %q", name)
+		}
+	}
+	if len(f.offeredTools) == 0 {
+		t.Fatal("no tools offered at all — probe broken")
+	}
 }
 
 func dmMsg(staff, text string) *chatbot.BotCallbackDataModel {

@@ -147,18 +147,25 @@ type toolResult struct {
 // and the summed token usage of every LLM round it took. sysExtra (optional) is appended
 // verbatim to the system prompt for this run only — the per-sender learned profile
 // travels through it.
-func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
+func (l *Loop) Run(ctx context.Context, userText string, history []llm.ChatMessage, sysExtra string) (string, []llm.ChatMessage, llm.Usage, string, error) {
 	return l.runWithEscalation(ctx, userText, history, nil, sysExtra)
 }
 
 // RunStreaming is Run with text deltas of the assistant's answers forwarded to
 // onDelta as they arrive. Tool-call reasoning rounds produce no deltas; only the
 // visible answer streams.
-func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
+func (l *Loop) RunStreaming(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, string, error) {
 	return l.runWithEscalation(ctx, userText, history, onDelta, sysExtra)
 }
 
-func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string, heavy bool) (string, []llm.ChatMessage, llm.Usage, error) {
+// run returns the model the round(s) actually ran on — heavy turns report the
+// heavy model, everything else the chat model (the dashboard's cost table was
+// logging every turn under the cheap model — audit round 5).
+func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string, heavy bool) (string, []llm.ChatMessage, llm.Usage, string, error) {
+	model := l.llmClient.Model()
+	if heavy && l.llmClient.HeavyModel() != "" {
+		model = l.llmClient.HeavyModel()
+	}
 	// The system prompt is rebuilt fresh EVERY turn and stripped from history —
 	// a persisted system message would pin a stale clock/sender profile/knowledge
 	// set into every later turn until the trim drops it.
@@ -206,26 +213,26 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 		totalUsage = totalUsage.Add(roundUsage)
 		if err != nil {
 			log.Printf("[agent] %sllm error on iteration %d: %v", LogPrefix(ctx), iter+1, err)
-			return "", messages, totalUsage, fmt.Errorf("agent llm error: %w", err)
+			return "", messages, totalUsage, model, fmt.Errorf("agent llm error: %w", err)
 		}
 
 		messages = append(messages, *assistantMsg)
 
 		// If no tool calls requested, we have the final answer
 		if len(assistantMsg.ToolCalls) == 0 {
-			return assistantMsg.Content, messages[1:], totalUsage, nil
+			return assistantMsg.Content, messages[1:], totalUsage, model, nil
 		}
 
 		messages = append(messages, l.execTools(ctx, assistantMsg.ToolCalls)...)
 		if ctx.Err() != nil {
-			return "", messages[1:], totalUsage, ctx.Err()
+			return "", messages[1:], totalUsage, model, ctx.Err()
 		}
 	}
 
 	// Iteration budget exhausted is an ERROR, not a final answer (audit
 	// 2026-11-12): returning it as a normal reply made callers persist the
 	// placeholder into history and report the turn as a success.
-	return "", messages[1:], totalUsage, &BudgetExhaustedError{Max: l.maxIterations}
+	return "", messages[1:], totalUsage, model, &BudgetExhaustedError{Max: l.maxIterations}
 }
 
 // runWithEscalation runs the loop; when the chat model burns its tool
@@ -235,7 +242,7 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 // converge where the fast one loops (audit 2026-11-12). The heavy retry is
 // capped to half the normal iteration budget so a bad night cannot burn
 // unlimited tokens.
-func (l *Loop) runWithEscalation(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
+func (l *Loop) runWithEscalation(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, string, error) {
 	// Trigger phrases route proactively; without one (or without a heavy model
 	// configured — ChatCompletionHeavy would error every round) the chat model
 	// runs as usual. The failure escalation below still applies to a triggered
@@ -244,10 +251,10 @@ func (l *Loop) runWithEscalation(ctx context.Context, userText string, history [
 	if heavy {
 		log.Printf("[agent] %strigger phrase routed this turn to the heavy model %q", LogPrefix(ctx), l.llmClient.HeavyModel())
 	}
-	reply, msgs, usage, err := l.run(ctx, userText, history, onDelta, sysExtra, heavy)
+	reply, msgs, usage, model, err := l.run(ctx, userText, history, onDelta, sysExtra, heavy)
 	var budgetErr *BudgetExhaustedError
 	if err == nil || l.llmClient.HeavyModel() == "" || ctx.Err() != nil || !errors.As(err, &budgetErr) {
-		return reply, msgs, usage, err
+		return reply, msgs, usage, model, err
 	}
 	log.Printf("[agent] %sescalating to heavy model %q after error: %v", LogPrefix(ctx), l.llmClient.HeavyModel(), err)
 	// No shared-state mutation: the retry runs on a shallow copy with half
@@ -255,12 +262,14 @@ func (l *Loop) runWithEscalation(ctx context.Context, userText string, history [
 	// concurrent turns sharing this loop).
 	retry := *l
 	retry.maxIterations = max(l.maxIterations/2, 2)
-	reply2, msgs2, usage2, err2 := retry.run(ctx, userText, history, onDelta, sysExtra+"\n[Retry on the primary model failed to converge within its tool budget. Be DECISIVE: gather at most the few facts you still need, then commit to a final answer.]", true)
+	reply2, msgs2, usage2, model2, err2 := retry.run(ctx, userText, history, onDelta, sysExtra+"\n[Retry on the primary model failed to converge within its tool budget. Be DECISIVE: gather at most the few facts you still need, then commit to a final answer.]", true)
 	usage = usage.Add(usage2) // Add, not two hand-picked fields — TotalTokens was silently lost
 	if err2 != nil {
-		return reply, msgs, usage, err // original error is the true story
+		return reply, msgs, usage, model, err // original error is the true story
 	}
-	return reply2, msgs2, usage, nil
+	// The usage is summed across both models; the cost belongs mostly to the
+	// heavy retry — report it as the model of record.
+	return reply2, msgs2, usage, model2, nil
 }
 
 // execTools runs one round of tool calls (max 4 concurrent) and returns the

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"log"
 	"net/url"
 	"strconv"
@@ -174,8 +175,16 @@ func (b *Bot) fireSweepRows(ctx context.Context, byNo map[string][]watch.Item, r
 // delivers the change report — same flow as a task-mode scheduled reminder.
 func (b *Bot) fireWatch(ctx context.Context, it watch.Item, old, new string) {
 	defer func() { <-b.sem }() // no defer used to mean a panic leaked the slot forever
+	// Same Subset as the task path (internalapi.go): reminder/watch tickets are
+	// claimed by the chat turn handler only — a fire that creates one parks it
+	// forever — and fireWatch's delivery is markdown-only, so generate_* tickets
+	// would reach the chat raw instead of uploading. Family prompts drop
+	// automatically with the tools.
+	runLoop := b.loop.With(b.loop.Registry().Subset(func(name string) bool {
+		return name != "schedule_reminder" && name != "watch_incident" && !strings.HasPrefix(name, "generate_")
+	}))
 	turnCtx := tools.WithNotionSink(ctx)
-	reply, _, _, err := b.loop.Run(turnCtx,
+	reply, _, _, _, err := runLoop.Run(turnCtx,
 		fmt.Sprintf("[Watch #%d — incident %s status changed %s → %s — report which project and all relevant information about this incident now. Do not create or cancel reminders or watches.]",
 			it.ID, it.IncidentNo, old, new),
 		nil, "")

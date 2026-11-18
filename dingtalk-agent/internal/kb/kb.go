@@ -300,8 +300,13 @@ func (ix *Index) Search(ctx context.Context, query string, k int) ([]chunk, erro
 		}
 		// Keyword rescue: vec-less chunks always, and embedded chunks the
 		// cosine floor excluded (exact identifiers are where cosine fails).
+		// The rescue honors a score floor on the same 0..1 scale as cosine —
+		// otherwise any chunk sharing ONE 2-char token with the query slipped
+		// back under the 0.35 cosine bar (audit round 5).
 		if s == 0 {
-			s = keywordScore(query, c.Text)
+			if ks := keywordScore(query, c.Text); ks >= minKeywordScore {
+				s = ks
+			}
 		}
 		if s > 0 {
 			all = append(all, scored{c, s})
@@ -464,6 +469,9 @@ func docSum(doc string) uint32 {
 // "no match" is the honest result (audit round 4).
 const minCosine = 0.35
 
+// minKeywordScore floors the keyword rescue, same 0..1 scale as cosine.
+const minKeywordScore = minCosine
+
 // keywordScore = the fraction of query tokens found in text; 0 = no match.
 // Tokens: lowercase latin word tokens (len ≥ 2 — Indonesian/English words,
 // numbers) and CJK character bigrams (CJK has no word boundaries). Both
@@ -490,13 +498,28 @@ func keywordScore(query, text string) float64 {
 	return float64(matched) / float64(len(qt))
 }
 
+// stopwords: filler words that carry no discriminative weight — a query of
+// nothing but these must score 0, not 1/3 against any document. Kept small
+// and deliberate (EN + ID); CJK bigrams need none.
+var stopwords = map[string]struct{}{
+	"the": {}, "a": {}, "an": {}, "and": {}, "or": {}, "of": {}, "to": {},
+	"in": {}, "on": {}, "for": {}, "with": {}, "is": {}, "are": {}, "was": {},
+	"were": {}, "be": {}, "at": {}, "by": {}, "it": {}, "this": {}, "that": {},
+	"from": {}, "as": {},
+	"yang": {}, "ke": {}, "di": {}, "dan": {}, "atau": {}, "dari": {},
+	"untuk": {}, "dengan": {}, "adalah": {}, "itu": {}, "ini": {}, "pada": {},
+	"dalam": {}, "oleh": {},
+}
+
 func keywordTokens(s string) []string {
 	var toks []string
 	var word []rune
 	var prevCJK rune
 	flush := func() {
 		if len(word) >= 2 {
-			toks = append(toks, string(word))
+			if _, stop := stopwords[string(word)]; !stop {
+				toks = append(toks, string(word))
+			}
 		}
 		word = word[:0]
 	}

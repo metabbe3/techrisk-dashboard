@@ -202,7 +202,10 @@ func TestMixedCorpusSearch(t *testing.T) {
 	}
 	emb.err = nil
 
-	hits, err := ix.Search(context.Background(), "alpha beta restart", 6)
+	// Query words the keyword doc shares 2 of 3 ("beta shutdown" = 0.667) —
+	// above the keyword floor; a 1-of-3 overlap (0.33) must NOT rescue since
+	// minKeywordScore = minCosine (TestKeywordRescueFloorAndStopwords).
+	hits, err := ix.Search(context.Background(), "alpha beta shutdown", 6)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,4 +449,46 @@ func (d deadlineProbe) Embed(ctx context.Context, inputs []string) ([][]float32,
 		out[i] = []float32{1, 0}
 	}
 	return out, nil
+}
+
+// The keyword rescue used to serve any chunk sharing ONE 2-char token with
+// the query — undoing the 0.35 cosine floor for vec-less and floor-excluded
+// chunks alike. Stopwords drop filler tokens; a score floor on the same
+// 0..1 scale as cosine keeps weak one-of-many matches out while exact
+// identifiers still rescue (audit round 5).
+func TestKeywordRescueFloorAndStopwords(t *testing.T) {
+	ix := NewIndex(t.TempDir(), "", nil) // keyword-only: the rescue is the only signal
+	if err := ix.Save(context.Background(), "SOP.pdf", "database restart procedure nightly"); err != nil {
+		t.Fatal(err)
+	}
+
+	// One content token of three (0.33): below the floor, not served.
+	hits, _ := ix.Search(context.Background(), "database timeout escalation", 6)
+	if len(hits) != 0 {
+		t.Fatalf("one-of-three match must stay under the floor: %+v", hits)
+	}
+
+	// Two of two: served.
+	hits, _ = ix.Search(context.Background(), "database restart", 6)
+	if len(hits) != 1 {
+		t.Fatalf("strong match must be served: %+v", hits)
+	}
+
+	// Pure stopwords: nothing to match on — no hits, not 1/3 noise.
+	if err := ix.Save(context.Background(), "Stop.pdf", "the and yang ke di"); err != nil {
+		t.Fatal(err)
+	}
+	hits, _ = ix.Search(context.Background(), "the and yang", 6)
+	if len(hits) != 0 {
+		t.Fatalf("stopword-only query must not match: %+v", hits)
+	}
+
+	// Exact identifiers still rescue: 1 of 2 = 0.5 ≥ floor.
+	if err := ix.Save(context.Background(), "INC.pdf", "incident 20261101 0042 gateway down"); err != nil {
+		t.Fatal(err)
+	}
+	hits, _ = ix.Search(context.Background(), "0042 status", 6)
+	if len(hits) != 1 {
+		t.Fatalf("identifier rescue broken: %+v", hits)
+	}
 }
