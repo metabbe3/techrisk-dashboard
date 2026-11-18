@@ -64,6 +64,7 @@ func main() {
 	toolRegistry := tools.NewRegistry(cfg)
 	agentLoop := agent.NewLoop(llmClient, toolRegistry, cfg.MaxIterations)
 	agentLoop.SetRole(cfg.MeshRole)
+	agentLoop.SetHeavyKeywords(cfg.HeavyKeywords)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()

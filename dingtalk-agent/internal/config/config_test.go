@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"testing"
 )
 
@@ -8,7 +9,7 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 	t.Helper()
 	// Neutralize knobs first: t.Setenv restores only at test END, so without this
 	// a value from an earlier sub-test leaks into later ones (empty = unset for getVal).
-	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN", "LLM_VISION_MODEL", "AI_VISION_MODEL"} {
+	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN", "LLM_VISION_MODEL", "AI_VISION_MODEL", "LLM_HEAVY_KEYWORDS"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range set {
@@ -19,6 +20,21 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 		t.Fatalf("LoadFromFile: %v", err)
 	}
 	return cfg
+}
+
+func TestHeavyKeywordsSources(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "s", "DASHBOARD_API_TOKEN": "t",
+	}
+	// Default triggers, lowercased (even with no env set).
+	if cfg := loadEnv(t, base); !reflect.DeepEqual(cfg.HeavyKeywords, []string{"ultrathink", "deep research", "think hard"}) {
+		t.Errorf("default HeavyKeywords = %v", cfg.HeavyKeywords)
+	}
+	// Override: comma-separated, trimmed, empties dropped, lowercased.
+	cfg := loadEnv(t, with(base, "LLM_HEAVY_KEYWORDS", "Ultrathink , Deep Research ,, think hard"))
+	if want := []string{"ultrathink", "deep research", "think hard"}; !reflect.DeepEqual(cfg.HeavyKeywords, want) {
+		t.Errorf("override = %v, want %v", cfg.HeavyKeywords, want)
+	}
 }
 
 func TestDefaults(t *testing.T) {

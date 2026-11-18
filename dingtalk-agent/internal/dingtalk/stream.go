@@ -454,6 +454,15 @@ func (b *Bot) runBatch(batch []chatTask) {
 	if len(batch) > 1 {
 		ack = fmt.Sprintf("👌 Got %d messages — working on them together…", len(batch))
 	}
+	// Heavy-tier turn: its own ack tells the sender the smarter model took
+	// over (named by their DingTalk nickname). Heavy answers arrive whole
+	// (non-streaming), so the ack sets that expectation too.
+	if b.loop.HeavyTurn(text) {
+		ack = "🧠 On it — switching to the smarter model for this one…"
+		if m.SenderNick != "" {
+			ack = "🧠 Okay " + m.SenderNick + " — switching to the smarter model for this one…"
+		}
+	}
 
 	b.sem <- struct{}{}
 	defer func() { <-b.sem }()
