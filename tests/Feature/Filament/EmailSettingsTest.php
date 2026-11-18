@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Filament;
 
-use App\Filament\Pages\EmailSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Models\Setting;
 use App\Models\User;
 use App\Support\MailSettings;
@@ -43,7 +43,7 @@ class EmailSettingsTest extends TestCase
     public function test_saving_from_fields_persists_and_applies_immediately(): void
     {
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.netcore_enabled', true)
             ->set('data.api_key', 'key-123')
             ->set('data.from_address', 'noreply-techrisk@dana.id')
@@ -69,7 +69,7 @@ class EmailSettingsTest extends TestCase
         // The user's symptom "I saved it but the field shows Example again"
         // would be a mount() read of a null setting.
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->assertSet('data.from_name', 'Technichal Risk')
             ->assertSet('data.from_address', 'noreply-techrisk@dana.id');
     }
@@ -77,18 +77,18 @@ class EmailSettingsTest extends TestCase
     public function test_status_panel_reflects_configuration(): void
     {
         // No key -> not active
-        $html = Livewire::actingAs($this->manager())->test(EmailSettings::class)->html();
+        $html = Livewire::actingAs($this->manager())->test(SystemSettings::class)->html();
         $this->assertStringContainsString('No API key', $html);
 
         // Enabled + key -> active
         Setting::set('netcore_enabled', true);
         Setting::set('netcore_api_key', 'key-123');
-        $html = Livewire::actingAs($this->manager())->test(EmailSettings::class)->html();
+        $html = Livewire::actingAs($this->manager())->test(SystemSettings::class)->html();
         $this->assertStringContainsString('Active', $html);
 
         // Toggle off -> suppressed
         Setting::set('netcore_enabled', false);
-        $html = Livewire::actingAs($this->manager())->test(EmailSettings::class)->html();
+        $html = Livewire::actingAs($this->manager())->test(SystemSettings::class)->html();
         $this->assertStringContainsString('Suppressed', $html);
     }
 
@@ -97,7 +97,7 @@ class EmailSettingsTest extends TestCase
         Setting::set('netcore_api_key', 'real-secret-key-42');
 
         $html = Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->html();
 
         $this->assertStringContainsString('real-secret-key-42', $html, 'owner must be able to see the saved key');
@@ -108,7 +108,7 @@ class EmailSettingsTest extends TestCase
         Setting::set('netcore_api_key', 'old-key');
 
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.api_key', '')
             ->call('save');
 
@@ -121,7 +121,7 @@ class EmailSettingsTest extends TestCase
         Http::fake(['*' => Http::response(['status' => 'success'])]);
 
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.test_to', 'owner@dana.id')
             ->call('sendTestEmail')
             ->assertNotified('Test email sent');
@@ -144,7 +144,7 @@ class EmailSettingsTest extends TestCase
         Http::fake(['*' => Http::response(['message' => 'Sender domain not approved'], 500)]);
 
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.test_to', 'owner@dana.id')
             ->call('sendTestEmail');
 
@@ -165,7 +165,7 @@ class EmailSettingsTest extends TestCase
             ['uuid' => 'other-uuid-2', 'connection' => 'redis', 'queue' => 'default', 'payload' => '{}', 'exception' => 'SomeOtherWorker exploded', 'failed_at' => $now],
         ]);
 
-        $html = Livewire::actingAs($this->manager())->test(EmailSettings::class)->html();
+        $html = Livewire::actingAs($this->manager())->test(SystemSettings::class)->html();
 
         $this->assertStringContainsString('netcore-uuid-1', $html);
         $this->assertStringContainsString('domain blocked', $html);
@@ -179,7 +179,7 @@ class EmailSettingsTest extends TestCase
         config(['mail.default' => 'log']);
 
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.test_to', 'owner@dana.id')
             ->call('sendTestEmail')
             ->assertNotified('Test email not sent');
@@ -188,7 +188,7 @@ class EmailSettingsTest extends TestCase
     public function test_investigation_form_settings_save_and_unknown_placeholders_rejected(): void
     {
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.investigation_form_expiry_days', 21)
             ->set('data.investigation_form_request_subject', 'Fill the form for {incident_no}')
             ->set('data.investigation_form_request_body', 'Link: {link} team {team} {bogus_token}')
@@ -201,7 +201,7 @@ class EmailSettingsTest extends TestCase
         $this->assertNull(\App\Models\Setting::where('key', 'investigation_form_request_subject')->first());
 
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.investigation_form_expiry_days', 21)
             ->set('data.investigation_form_request_subject', 'Fill the form for {incident_no}')
             ->set('data.investigation_form_reminder_body', '{days_left} days left')
@@ -217,7 +217,7 @@ class EmailSettingsTest extends TestCase
         $defaults = \App\Services\InvestigationForm\InvestigationFormSettings::requiredFields();
 
         Livewire::actingAs($this->manager())
-            ->test(EmailSettings::class)
+            ->test(SystemSettings::class)
             ->set('data.investigation_form_required_fields', ['header.incident_name', 'chronology'])
             ->call('save')
             ->assertHasNoErrors();

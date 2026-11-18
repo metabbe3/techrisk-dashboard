@@ -2,7 +2,7 @@
 
 namespace Tests\Unit\Services\Notion;
 
-use App\Filament\Pages\NotionSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Models\Setting;
 use App\Services\Notion\NotionMcpClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -188,7 +188,7 @@ class NotionMcpClientTest extends TestCase
         $this->assertSame('old-access', $client->accessToken());
         // …but the state is now honest: reconnect required.
         $this->assertTrue($client->needsReconnect());
-        $this->assertStringContainsString('Reconnect required', app(NotionSettings::class)->connectionStatus());
+        $this->assertStringContainsString('Reconnect required', app(SystemSettings::class)->connectionStatus());
     }
 
     public function test_storing_fresh_tokens_clears_the_reconnect_flag(): void

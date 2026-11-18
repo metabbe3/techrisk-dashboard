@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Notion;
 
-use App\Filament\Pages\NotionSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Models\User;
 use App\Services\Notion\NotionMcpClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -92,7 +92,7 @@ class NotionOauthRoutesTest extends TestCase
         $response = $this->actingAs($admin)
             ->get(route('mcp.oauth.notion.callback', ['code' => 'auth-code', 'state' => $state]));
 
-        $response->assertRedirect(NotionSettings::getUrl());
+        $response->assertRedirect(SystemSettings::getUrl(['tab' => 'notion']));
         $this->assertTrue(app(NotionMcpClient::class)->connected());
     }
 
@@ -109,7 +109,7 @@ class NotionOauthRoutesTest extends TestCase
         $response = $this->actingAs($admin)
             ->get(route('mcp.oauth.notion.callback', ['error' => 'access_denied']));
 
-        $response->assertRedirect(NotionSettings::getUrl());
+        $response->assertRedirect(SystemSettings::getUrl(['tab' => 'notion']));
         $this->assertStringContainsString(
             'access_denied',
             (string) collect(session('filament.notifications', []))->pluck('body')->implode(' '),
@@ -128,6 +128,6 @@ class NotionOauthRoutesTest extends TestCase
         $response = $this->actingAs($admin)
             ->get(route('mcp.oauth.notion.callback', ['code' => 'auth-code', 'state' => 'whatever']));
 
-        $response->assertRedirect(NotionSettings::getUrl());
+        $response->assertRedirect(SystemSettings::getUrl(['tab' => 'notion']));
     }
 }

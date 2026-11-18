@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Notion;
 
+use App\Filament\Pages\SystemSettings;
 use GuzzleHttp\Psr7\Request;
 use GuzzleHttp\Psr7\Response;
 use Illuminate\Contracts\Debug\ExceptionHandler;
@@ -18,7 +19,7 @@ use Tests\TestCase;
  * Two guards: a scoped Guzzle global middleware that raises the connect phase
  * for every request to the Notion MCP host, and an exception renderer that
  * turns any remaining connection failure on the OAuth routes into a redirect
- * back to NotionSettings (the same shape the OAuthException renderer already
+ * back to SystemSettings' Notion tab (the same shape the OAuthException renderer already
  * gives denied-consent / expired-state failures).
  */
 class McpOauthConnectFailureTest extends TestCase
@@ -60,6 +61,6 @@ class McpOauthConnectFailureTest extends TestCase
         // A friendly redirect to the settings page (notification included) —
         // not the raw 500 the operator saw on 2026-11-10.
         $this->assertSame(302, $response->getStatusCode());
-        $this->assertSame(url('/admin/notion-settings'), $response->headers->get('Location'));
+        $this->assertSame(SystemSettings::getUrl(['tab' => 'notion']), $response->headers->get('Location'));
     }
 }

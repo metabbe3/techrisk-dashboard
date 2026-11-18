@@ -132,7 +132,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     ->persistent()
                     ->send();
 
-                return redirect(\App\Filament\Pages\NotionSettings::getUrl());
+                return redirect(\App\Filament\Pages\SystemSettings::getUrl(['tab' => 'notion']));
             }
         });
 
@@ -149,7 +149,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     ->persistent()
                     ->send();
 
-                return redirect(\App\Filament\Pages\NotionSettings::getUrl());
+                return redirect(\App\Filament\Pages\SystemSettings::getUrl(['tab' => 'notion']));
             }
         });
 

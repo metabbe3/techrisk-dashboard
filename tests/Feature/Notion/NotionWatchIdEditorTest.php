@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Notion;
 
-use App\Filament\Pages\NotionSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Notion\NotionIssueSyncService;
@@ -46,10 +46,12 @@ class NotionWatchIdEditorTest extends TestCase
         // Owner 2026-10-30: Change, Sync now, and Preview sit on the same
         // horizontal line — one Filament Actions row, not two stacked rows.
         // PROJ-018 added a second row for the "Investigation pages" section;
-        // this section's row must stay a single one (a split here makes it 3
-        // and still fails).
+        // this section's row must stay a single one. PROJ-025 merged the
+        // settings pages: the AI tab's Sync-from-Gateway/Health actions row
+        // also renders (hidden) in the page HTML — a watch-row split would
+        // push this to 4 and still fail.
         $this->assertSame(
-            2,
+            3,
             substr_count($this->settingsPage()->html(), 'fi-fo-actions'),
         );
     }
@@ -160,6 +162,13 @@ class NotionWatchIdEditorTest extends TestCase
         $user = User::factory()->create();
         $user->givePermissionTo('manage api tokens');
 
-        return Livewire::actingAs($user)->test(NotionSettings::class);
+        // PROJ-025 merged the settings pages — view the Notion tab (the
+        // page-level Save button is hidden there; Notion edits ride the
+        // Change -> Save flows only). Query params must ride withQueryParams:
+        // the initial test render makes a FRESH request, so mutating
+        // request()->query on the outer test request is lost.
+        return Livewire::withQueryParams(['tab' => 'notion'])
+            ->actingAs($user)
+            ->test(SystemSettings::class);
     }
 }

@@ -1,6 +1,6 @@
 <?php
 
-use App\Filament\Pages\NotionSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Http\Controllers\Ai\AiSearchController;
 use App\Http\Controllers\Ai\AnalyzeRootCauseController;
 use App\Http\Controllers\Ai\AnalyzeTrendsController;
@@ -314,7 +314,7 @@ Route::get('/docs.postman', function () {
 Mcp::oAuthRoutesFor('notion', function (string $client, TokenSet $token) {
     app(NotionMcpClient::class)->storeTokens($token);
 
-    return redirect(NotionSettings::getUrl());
+    return redirect(SystemSettings::getUrl(['tab' => 'notion']));
 }, middleware: ['web', 'auth', 'can:manage api tokens']);
 
 // Microsoft (Entra ID) SSO. New emails are JIT-created role-less; the existing
