@@ -123,9 +123,15 @@ func NewBot(cfg *config.Config, loop *agent.Loop, llmClient *llm.Client) *Bot {
 	}
 	// RAG knowledge base over chat-uploaded documents (SOPs etc.). The index
 	// also backs picture filing — it exists whenever KB tools are on, loop or
-	// not (a picture turn needs no agent loop).
+	// not (a picture turn needs no agent loop). EMBEDDING_MODEL=none runs the
+	// KB fully keyword-only (no embed spend); a runtime embed failure degrades
+	// to keyword inside kb anyway, so documents always land.
 	if cfg.KBToolsEnabled {
-		b.know = kb.NewIndex(cfg.DataDir, cfg.EmbeddingModel, b.llm)
+		var embed kb.Embedder
+		if cfg.EmbeddingModel != "" && cfg.EmbeddingModel != "none" {
+			embed = b.llm
+		}
+		b.know = kb.NewIndex(cfg.DataDir, cfg.EmbeddingModel, embed)
 		if loop != nil {
 			loop.Registry().RegisterKnowledgeTools(b.know)
 		}
@@ -481,10 +487,19 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 		return
 	}
 	if strings.TrimSpace(text) == "" {
-		// Empty text also covers empty txt/docx. Scanned PDFs are out of scope
-		// (owner decision) — point the user at the picture path that DOES work.
-		b.reply(ctx, m, fmt.Sprintf("I couldn't read any text from **%s** — it looks like a scanned or image-only file. Send the pages as pictures (🖼️) instead and I'll read those.", fm.FileName))
-		return
+		// Empty text also covers empty txt/docx. For a PDF with no extractable
+		// text (scanned/image-only), try the vision model as OCR (owner request
+		// 2026-11-17, revisiting the old out-of-scope call); the picture-path
+		// hint stays the fallback when the gateway refuses PDFs.
+		ocr := ""
+		if strings.EqualFold(filepath.Ext(fm.FileName), ".pdf") {
+			ocr = b.visionOCR(ctx, raw, caption)
+		}
+		if ocr == "" {
+			b.reply(ctx, m, fmt.Sprintf("I couldn't read any text from **%s** — it looks like a scanned or image-only file. Send the pages as pictures (🖼️) instead and I'll read those.", fm.FileName))
+			return
+		}
+		text = ocr
 	}
 
 	content := fmt.Sprintf("[The user attached the document %q. Its text follows.]\n\n%s\n\n[End of document. User instruction: %s]",
@@ -501,6 +516,22 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 	if b.know != nil {
 		b.know.Ingest(fm.FileName, text)
 	}
+}
+
+// visionOCR transcribes a text-less (scanned) PDF via the vision model — the
+// LLM is the OCR engine, no embedding involved. "" = gateway refused it
+// (unsupported data-URI mime); the caller keeps the pictures-hint fallback.
+func (b *Bot) visionOCR(ctx context.Context, raw []byte, caption string) string {
+	if b.llm == nil {
+		return ""
+	}
+	prompt := visionPrompt(orDefault(caption, "Transcribe the full text of this document."))
+	ocr, err := b.llm.Vision(ctx, prompt, raw, "application/pdf")
+	if err != nil || ocr == "" {
+		log.Printf("[dingtalk] pdf OCR failed: %v", err)
+		return ""
+	}
+	return strings.TrimSpace(ocr)
 }
 
 // processPicture handles a chat-sent picture: fetch it, transcribe it via the

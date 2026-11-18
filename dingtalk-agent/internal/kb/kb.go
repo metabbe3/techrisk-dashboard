@@ -26,6 +26,10 @@ const (
 	embedBatchSize = 16
 	// file path persistence, one JSON object per line.
 	fileName = "kb.jsonl"
+	// keywordModel marks chunks stored WITHOUT vectors (no embedder
+	// configured, or the embed endpoint failed) — searchable by term overlap,
+	// re-embedded to vectors at the next boot when an embedder exists.
+	keywordModel = "keyword"
 )
 
 // Window + caps are vars so tests can shrink them. Eviction ties on TS are
@@ -97,7 +101,11 @@ func (ix *Index) load() {
 }
 
 // needsRebuild reports whether stored chunks were embedded by a different model.
+// No embedder = nothing to rebuild into.
 func (ix *Index) needsRebuild() bool {
+	if ix.embed == nil {
+		return false
+	}
 	for _, c := range ix.chunks {
 		if c.Model != ix.model {
 			return true
@@ -176,16 +184,29 @@ func (ix *Index) ingestNow(ctx context.Context, doc, text string) error {
 	if len(chunks) == 0 {
 		return fmt.Errorf("no text to index")
 	}
-	vecs, err := ix.embedAll(ctx, chunks)
-	if err != nil {
-		return err
+	// Embed when possible; an unavailable embedder or failed embed call
+	// degrades to keyword-only storage — the document still lands (it used to
+	// error, losing the picture transcription and file text entirely).
+	vecs, embedErr := ix.tryEmbedAll(ctx, chunks)
+	model := ix.model
+	if vecs == nil {
+		if embedErr != nil {
+			log.Printf("[kb] embed unavailable for %s (%v) — storing keyword-only", doc, embedErr)
+		} else {
+			log.Printf("[kb] no embedder configured — storing %s keyword-only", doc)
+		}
+		model = keywordModel
 	}
 
 	sum := docSum(doc)
 	now := time.Now().UnixNano()
 	newChunks := make([]chunk, len(chunks))
 	for i, t := range chunks {
-		newChunks[i] = chunk{Doc: doc, Sum: sum, Seq: i, Text: t, Vec: vecs[i], Model: ix.model, TS: now}
+		var vec []float32
+		if vecs != nil {
+			vec = vecs[i]
+		}
+		newChunks[i] = chunk{Doc: doc, Sum: sum, Seq: i, Text: t, Vec: vec, Model: model, TS: now}
 	}
 
 	ix.mu.Lock()
@@ -222,23 +243,33 @@ func (ix *Index) evictOldestLocked() {
 	ix.chunks = kept
 }
 
-// Search embeds the query and returns the top-k chunks by cosine similarity.
-// An embed failure is surfaced as an error — it is NOT "no documents".
+// Search embeds the query and returns the top-k chunks by cosine similarity,
+// with term-overlap scoring as the fallback: an absent embedder or a failed
+// query embed scores every chunk by keyword, and a chunk stored keyword-only
+// (Vec nil) is keyword-scored even in a mixed index. A chunk with no positive
+// score is not served — "no match" stays the honest result.
 func (ix *Index) Search(ctx context.Context, query string, k int) ([]chunk, error) {
 	ix.mu.RLock()
 	total := len(ix.chunks)
 	ix.mu.RUnlock()
-	if total == 0 || ix.embed == nil {
+	if total == 0 {
 		return nil, nil
 	}
-	vecs, err := ix.embed.Embed(ctx, []string{query})
-	if err != nil {
-		return nil, fmt.Errorf("knowledge-base query embed failed: %w", err)
+
+	// One query embed, best effort.
+	embedded := false
+	var q []float32
+	if ix.embed != nil {
+		vecs, err := ix.embed.Embed(ctx, []string{query})
+		switch {
+		case err != nil:
+			log.Printf("[kb] query embed failed (%v) — keyword fallback", err)
+		case len(vecs) != 1:
+			log.Printf("[kb] query embed: want 1 vector, got %d — keyword fallback", len(vecs))
+		default:
+			q, embedded = vecs[0], true
+		}
 	}
-	if len(vecs) != 1 {
-		return nil, fmt.Errorf("knowledge-base query embed: want 1 vector, got %d", len(vecs))
-	}
-	q := vecs[0]
 
 	ix.mu.RLock()
 	defer ix.mu.RUnlock()
@@ -248,21 +279,30 @@ func (ix *Index) Search(ctx context.Context, query string, k int) ([]chunk, erro
 	}
 	all := make([]scored, 0, len(ix.chunks))
 	for _, c := range ix.chunks {
-		all = append(all, scored{c, cosine(q, c.Vec)})
+		s := 0.0
+		if embedded && len(c.Vec) > 0 {
+			if cs := cosine(q, c.Vec); cs >= minCosine {
+				s = cs
+			}
+		}
+		// Keyword rescue: vec-less chunks always, and embedded chunks the
+		// cosine floor excluded (exact identifiers are where cosine fails).
+		if s == 0 {
+			s = keywordScore(query, c.Text)
+		}
+		if s > 0 {
+			all = append(all, scored{c, s})
+		}
+	}
+	if len(all) == 0 {
+		return nil, nil
 	}
 	sort.Slice(all, func(i, j int) bool { return all[i].s > all[j].s })
-	// Similarity floor: without it the top-k of an unrelated corpus still
-	// got served (6 random chunks) and the model answered from noise —
-	// "no match" is the honest result (audit round 4).
-	const minCosine = 0.35
-	out := make([]chunk, 0, k)
+	if len(all) > k {
+		all = all[:k]
+	}
+	out := make([]chunk, 0, len(all))
 	for _, s := range all {
-		if len(out) >= k {
-			break
-		}
-		if s.s < minCosine {
-			break // sorted descending — everything after is worse
-		}
 		out = append(out, s.c)
 	}
 	return out, nil
@@ -332,6 +372,16 @@ func (ix *Index) DeleteDoc(doc string) (int, bool) {
 	return n, true
 }
 
+// tryEmbedAll returns (nil, nil) when no embedder is configured; embeds
+// otherwise, passing the error through (the caller degrades to keyword-only
+// storage instead of failing the push).
+func (ix *Index) tryEmbedAll(ctx context.Context, texts []string) ([][]float32, error) {
+	if ix.embed == nil {
+		return nil, nil
+	}
+	return ix.embedAll(ctx, texts)
+}
+
 // embedAll embeds texts in batches of embedBatchSize.
 func (ix *Index) embedAll(ctx context.Context, texts []string) ([][]float32, error) {
 	out := make([][]float32, 0, len(texts))
@@ -394,6 +444,70 @@ func chunkText(doc, text string) []string {
 func docSum(doc string) uint32 {
 	h := sha256.Sum256([]byte(doc))
 	return uint32(h[0]) | uint32(h[1])<<8 | uint32(h[2])<<16 | uint32(h[3])<<24
+}
+
+// minCosine is the cosine similarity floor: without it the top-k of an
+// unrelated corpus still got served and the model answered from noise —
+// "no match" is the honest result (audit round 4).
+const minCosine = 0.35
+
+// keywordScore = the fraction of query tokens found in text; 0 = no match.
+// Tokens: lowercase latin word tokens (len ≥ 2 — Indonesian/English words,
+// numbers) and CJK character bigrams (CJK has no word boundaries). Both
+// score on the same 0..1 scale as cosine, so a mixed index merges in one
+// ranking.
+func keywordScore(query, text string) float64 {
+	qt := keywordTokens(query)
+	if len(qt) == 0 {
+		return 0
+	}
+	tt := make(map[string]struct{}, 64)
+	for _, t := range keywordTokens(text) {
+		tt[t] = struct{}{}
+	}
+	matched := 0
+	for _, t := range qt {
+		if _, ok := tt[t]; ok {
+			matched++
+		}
+	}
+	if matched == 0 {
+		return 0
+	}
+	return float64(matched) / float64(len(qt))
+}
+
+func keywordTokens(s string) []string {
+	var toks []string
+	var word []rune
+	var prevCJK rune
+	flush := func() {
+		if len(word) >= 2 {
+			toks = append(toks, string(word))
+		}
+		word = word[:0]
+	}
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case isCJK(r):
+			flush()
+			if prevCJK != 0 {
+				toks = append(toks, string([]rune{prevCJK, r}))
+			}
+			prevCJK = r
+		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
+			word = append(word, r)
+		default:
+			flush()
+			prevCJK = 0
+		}
+	}
+	flush()
+	return toks
+}
+
+func isCJK(r rune) bool {
+	return r >= 0x3400 && r <= 0x9FFF
 }
 
 // cosine of two vectors (assumes equal length).

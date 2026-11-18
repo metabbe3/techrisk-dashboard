@@ -7,7 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
+
+	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/llm"
 )
 
 func TestParseFileMessage(t *testing.T) {
@@ -170,5 +174,56 @@ func TestDownloadTo(t *testing.T) {
 	if path != "" {
 		_ = os.Remove(path)
 		t.Fatal("oversize download left a file behind")
+	}
+}
+
+// visionOCR sends a text-less PDF to the vision model as a data URI; the
+// gateway's answer becomes the document text, and a refusal ("") keeps the
+// pictures-hint fallback. The wire format is image_url parts — whether the
+// configured gateway accepts application/pdf URIs is a deploy-time fact.
+func TestVisionOCRPdf(t *testing.T) {
+	var gotURI string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/chat/completions" {
+			http.NotFound(w, r)
+			return
+		}
+		var body struct {
+			Messages []struct {
+				Content []struct {
+					ImageURL struct {
+						URL string `json:"url"`
+					} `json:"image_url"`
+				} `json:"content"`
+			} `json:"messages"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		if len(body.Messages) > 0 && len(body.Messages[0].Content) > 1 {
+			gotURI = body.Messages[0].Content[1].ImageURL.URL
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message": map[string]any{"content": "SCANNED PAGE TEXT"},
+			}},
+		})
+	}))
+	defer srv.Close()
+
+	b := &Bot{llm: llm.NewClient(&config.Config{LLMBaseURL: srv.URL + "/v1", LLMAPIKey: "k", LLMModel: "chat"})}
+	if got := b.visionOCR(context.Background(), []byte("pdf-bytes"), "kapal"); got != "SCANNED PAGE TEXT" {
+		t.Fatalf("ocr = %q", got)
+	}
+	if !strings.HasPrefix(gotURI, "data:application/pdf;base64,") {
+		t.Fatalf("pdf not sent as a data URI: %q", gotURI)
+	}
+
+	// Gateway refuses PDFs → "" → the caller keeps the pictures hint.
+	srv2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, `{"error":{"message":"pdf not supported"}}`, http.StatusBadRequest)
+	}))
+	defer srv2.Close()
+	b = &Bot{llm: llm.NewClient(&config.Config{LLMBaseURL: srv2.URL + "/v1", LLMAPIKey: "k", LLMModel: "chat"})}
+	if got := b.visionOCR(context.Background(), []byte("pdf-bytes"), ""); got != "" {
+		t.Fatalf("refused OCR must return empty: %q", got)
 	}
 }
