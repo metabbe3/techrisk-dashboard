@@ -25,7 +25,7 @@ class AiWorkflowResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Workflows';
 
-    protected static ?int $navigationSort = 94;
+    protected static ?int $navigationSort = 7;
 
     protected static ?string $navigationGroup = 'AI';
 

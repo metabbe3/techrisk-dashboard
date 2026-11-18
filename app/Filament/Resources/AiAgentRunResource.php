@@ -32,7 +32,7 @@ class AiAgentRunResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Agent Runs';
 
-    protected static ?int $navigationSort = 91;
+    protected static ?int $navigationSort = 4;
 
     protected static ?string $navigationGroup = 'AI';
 

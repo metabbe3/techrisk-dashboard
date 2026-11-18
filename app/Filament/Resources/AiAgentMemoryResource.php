@@ -24,7 +24,7 @@ class AiAgentMemoryResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Agent Memory';
 
-    protected static ?int $navigationSort = 93;
+    protected static ?int $navigationSort = 6;
 
     protected static ?string $navigationGroup = 'AI';
 

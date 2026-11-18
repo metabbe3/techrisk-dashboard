@@ -31,7 +31,7 @@ class AiAgentResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Agents';
 
-    protected static ?int $navigationSort = 90;
+    protected static ?int $navigationSort = 3;
 
     protected static ?string $navigationGroup = 'AI';
 
