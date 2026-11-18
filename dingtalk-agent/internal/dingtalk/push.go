@@ -182,7 +182,7 @@ func (c *openAPIClient) uploadRobotMedia(ctx context.Context, path string) (stri
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("media upload failed: %w", err)
+		return "", fmt.Errorf("media upload failed: %w", errSansURL(err))
 	}
 	defer resp.Body.Close()
 
@@ -198,4 +198,14 @@ func (c *openAPIClient) uploadRobotMedia(ctx context.Context, path string) (stri
 		return "", fmt.Errorf("media upload rejected (HTTP %d): errcode=%d %s", resp.StatusCode, out.Errcode, out.Errmsg)
 	}
 	return out.MediaID, nil
+}
+
+// errSansURL strips *url.Error's URL context: the upload URL carries the
+// access_token as a query param and url.Error prints it verbatim.
+func errSansURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) {
+		return ue.Err
+	}
+	return err
 }

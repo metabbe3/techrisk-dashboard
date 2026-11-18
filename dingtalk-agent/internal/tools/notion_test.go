@@ -327,3 +327,24 @@ func TestNotionResultCaps(t *testing.T) {
 		t.Errorf("ResultCap(notion_search) = %d, want 0 (default)", got)
 	}
 }
+
+// A Notion page is untrusted content (anyone with portal access can write
+// there) — reads must arrive framed as DATA, like web_fetch output.
+func TestNotionReadPageFramed(t *testing.T) {
+	reg, _ := newNotionTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
+		envelope(w, map[string]any{"title": "PRD", "content": "# PRD\nbody text", "truncated": false}, nil)
+	})
+	ctx := WithNotionSink(context.Background())
+	out, err := reg.Execute(ctx, "notion_read_page", `{"id_or_url":"pg1"}`)
+	if err != nil {
+		t.Fatalf("read_page: %v", err)
+	}
+	if !strings.Contains(out, "[document content from") || !strings.Contains(out, "[end of document content]") {
+		t.Errorf("notion page is not framed: %s", out)
+	}
+	// The recorded excerpt stays raw (dashboard note, not LLM context).
+	reads := TakeNotionReads(ctx)
+	if len(reads) != 1 || !strings.Contains(reads[0].Excerpt, "body text") {
+		t.Errorf("read excerpt wrong: %+v", reads)
+	}
+}

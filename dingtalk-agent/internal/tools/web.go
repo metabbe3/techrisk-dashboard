@@ -67,6 +67,12 @@ func blockedIP(a netip.Addr) bool {
 // guardedTransport resolves + dials only public IPs (Control fires post-DNS,
 // pre-connect, covering redirects and DNS rebinding).
 func guardedTransport() *http.Transport {
+	return GuardedTransport()
+}
+
+// GuardedTransport is the exported form: shared by the file downloader so
+// message-file GETs also refuse private/loopback dials.
+func GuardedTransport() *http.Transport {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
 		Control: func(_, addr string, _ syscall.RawConn) error {
@@ -145,7 +151,8 @@ func (w *webTools) handleWebSearch(ctx context.Context, args webSearchArgs) (str
 	for i, res := range results {
 		fmt.Fprintf(&sb, "%d. %s\n   %s\n   %s\n", i+1, res.title, res.link, res.snippet)
 	}
-	return selfTruncate(sb.String()), nil
+	// Snippets quote arbitrary pages — same framing as web_fetch.
+	return guardrail.FrameDocumentContent("web search", selfTruncate(sb.String())), nil
 }
 
 type ddgResult struct{ title, link, snippet string }

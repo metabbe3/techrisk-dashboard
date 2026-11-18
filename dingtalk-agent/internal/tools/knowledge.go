@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/kb"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
@@ -66,7 +67,8 @@ func (r *Registry) handleSearchKnowledge(ctx context.Context, a struct {
 	}
 	var sb strings.Builder
 	for i, h := range hits {
-		fmt.Fprintf(&sb, "### match %d — %s (part %d)\n%s\n\n", i+1, h.Doc, h.Seq+1, h.Text)
+		fmt.Fprintf(&sb, "### match %d — %s (part %d)\n%s\n\n", i+1, h.Doc, h.Seq+1,
+			guardrail.FrameDocumentContent("knowledge base hit "+h.Doc, h.Text))
 	}
 	return sb.String(), nil
 }

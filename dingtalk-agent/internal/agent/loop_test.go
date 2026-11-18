@@ -638,3 +638,60 @@ func TestLogContextCorrelation(t *testing.T) {
 		t.Errorf("unexpected prefix: %q", p)
 	}
 }
+
+// A secret cut by the byte-truncator loses its head/tail below the redaction
+// regexes' minimum lengths — redact BEFORE truncating, not after.
+func TestToolResultRedactedBeforeTruncation(t *testing.T) {
+	// Pad so the secret straddles the truncation boundary.
+	// Pad so a partial GitHub PAT straddles the truncation boundary: after a
+	// byte cut only "ghp_AAA" survives — too short for the PAT regex, so
+	// redact-after-truncate leaves it in context; redact-before catches it.
+	padding := strings.Repeat("A", 7994)
+	output := padding + " ghp_AAAABBBBCCCCDDDDeee tail"
+
+	step := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step++
+		var resp llm.ChatResponse
+		if step == 1 {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{
+					ID: "call_1", Type: "function",
+					Function: llm.FunctionCall{Name: "leaky", Arguments: `{}`},
+				}}},
+				FinishReason: "tool_calls",
+			}}}
+		} else {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", Content: "done"}, FinishReason: "stop",
+			}}}
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
+	reg := tools.NewRegistry(nil)
+	reg.Register(
+		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "leaky", Description: "leaks"}},
+		func(ctx context.Context, argsJSON string) (string, error) { return output, nil },
+	)
+	loop := NewLoop(llm.NewClient(cfg), reg, 5)
+
+	_, messages, _, err := loop.Run(context.Background(), "run leaky", nil, "")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	found := false
+	for _, m := range messages {
+		if m.Role == "tool" {
+			found = true
+			if strings.Contains(m.Content, "ghp_") {
+				t.Errorf("partial PAT survived truncation+redaction: %q", m.Content[max(0, len(m.Content)-80):])
+			}
+		}
+	}
+	if !found {
+		t.Error("no tool result in history")
+	}
+}

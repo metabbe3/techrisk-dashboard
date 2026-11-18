@@ -297,12 +297,14 @@ func (l *Loop) execTools(ctx context.Context, toolCalls []llm.ToolCall) []llm.Ch
 				output = fmt.Sprintf("Error executing tool: %v", err)
 			}
 
+			// Secret redaction FIRST: a secret straddling the truncation
+			// boundary loses its head/tail below the regex minimums and would
+			// survive redact-after-truncate (audit round 5).
+			redactedFull, _ := guardrail.Redact(output)
+
 			// Tool result truncation (per-tool cap when registered — e.g.
 			// notion_read_page at 48k — else the 8000-byte default + footer)
-			truncated := TruncateToolOutput(output, l.registry.ResultCap(call.Function.Name))
-
-			// Secret redaction before adding to LLM context
-			redacted, _ := guardrail.Redact(truncated)
+			redacted := TruncateToolOutput(redactedFull, l.registry.ResultCap(call.Function.Name))
 
 			resultsMu.Lock()
 			results[idx] = toolResult{

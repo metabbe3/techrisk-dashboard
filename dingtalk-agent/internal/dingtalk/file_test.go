@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
@@ -66,6 +67,9 @@ func TestMessageFileDownloadURL(t *testing.T) {
 }
 
 func TestFileURLAllowed(t *testing.T) {
+	oldLoop := fileAllowLoopback
+	fileAllowLoopback = true
+	defer func() { fileAllowLoopback = oldLoop }()
 	for _, ok := range []string{"https://a.dingtalk.com/x", "https://files.aliyuncs.com/y"} { // official hosts; http is cleartext — rejected
 		if !fileURLAllowed(ok) {
 			t.Errorf("%q should be allowed", ok)
@@ -142,6 +146,15 @@ func TestPictureDownloadURL(t *testing.T) {
 
 // downloadTo saves the bytes under dir; oversize is refused with nothing left.
 func TestDownloadTo(t *testing.T) {
+	// httptest lives on 127.0.0.1: allow loopback and use a plain client —
+	// production's guarded transport refuses private dials by design.
+	oldLoop := fileAllowLoopback
+	fileAllowLoopback = true
+	defer func() { fileAllowLoopback = oldLoop }()
+	oldClient := downloadHTTPClient
+	downloadHTTPClient = &http.Client{Timeout: 30 * time.Second}
+	defer func() { downloadHTTPClient = oldClient }()
+
 	dir := t.TempDir()
 	payload := bytes.Repeat([]byte{0x89, 'P', 'N', 'G'}, 100)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -225,5 +238,39 @@ func TestVisionOCRPdf(t *testing.T) {
 	b = &Bot{llm: llm.NewClient(&config.Config{LLMBaseURL: srv2.URL + "/v1", LLMAPIKey: "k", LLMModel: "chat"})}
 	if got := b.visionOCR(context.Background(), []byte("pdf-bytes"), ""); got != "" {
 		t.Fatalf("refused OCR must return empty: %q", got)
+	}
+}
+
+// A download that redirects OFF the allowlist must be refused — the redirect
+// hop re-runs fileURLAllowed (and the client dials public IPs only).
+func TestDownloadToBlocksOffAllowlistRedirect(t *testing.T) {
+	hitFinal := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/final" {
+			hitFinal = true
+			_, _ = w.Write([]byte("exfiltrated"))
+			return
+		}
+		http.Redirect(w, r, "/final", http.StatusFound)
+	}))
+	defer srv.Close()
+
+	b := &Bot{}
+	if _, err := b.downloadTo(context.Background(), srv.URL+"/start", "x.bin", t.TempDir()); err == nil {
+		t.Error("redirect to a non-allowlisted URL must be refused")
+	}
+	if hitFinal {
+		t.Error("the redirected request was actually fetched")
+	}
+}
+
+// Loopback in the allowlist is a test-harness convenience only — production
+// must refuse it (SSRF hardening).
+func TestFileURLAllowedRefusesLoopbackByDefault(t *testing.T) {
+	if fileURLAllowed("https://127.0.0.1/x") {
+		t.Error("loopback must be refused by default")
+	}
+	if fileURLAllowed("https://localhost/x") {
+		t.Error("localhost must be refused by default")
 	}
 }

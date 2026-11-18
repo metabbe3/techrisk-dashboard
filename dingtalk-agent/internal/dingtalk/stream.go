@@ -237,8 +237,10 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 	// Hard input gate: injection / off-topic asks are refused here, in Go,
 	// before any LLM call is spent.
 	if refusal := guardrail.InputGate(text); refusal != "" {
+		// Redact before logging: the refused text can carry PII/credentials.
+		refused, _ := guardrail.Redact(text)
 		log.Printf("[dingtalk] input gate refused message from %s (%s): %q",
-			m.SenderNick, m.SenderStaffId, util.CutEllipsis(text, 120))
+			m.SenderNick, m.SenderStaffId, util.CutEllipsis(refused, 120))
 		b.reply(ctx, m, refusal)
 		return nil, nil
 	}
@@ -879,13 +881,17 @@ func (b *Bot) reportTurn(m *chatbot.BotCallbackDataModel, userText, assistantTex
 	if !b.cfg.AgentTurnReports {
 		return
 	}
+	// Redact BEFORE the dashboard DB: user text can carry PII/credentials
+	// (audit round 5 — the refusal log and this report logged raw text).
+	redUser, _ := guardrail.Redact(userText)
+	redAssistant, _ := guardrail.Redact(assistantText)
 	tools.ReportTurnAsync(b.cfg, tools.TurnReport{
 		ConversationID:   m.ConversationId,
 		ConversationType: m.ConversationType,
 		StaffID:          m.SenderStaffId,
 		Nick:             m.SenderNick,
-		UserText:         util.CutEllipsis(userText, 2000),
-		AssistantText:    util.CutEllipsis(assistantText, 8000),
+		UserText:         util.CutEllipsis(redUser, 2000),
+		AssistantText:    util.CutEllipsis(redAssistant, 8000),
 		Model:            b.llm.Model(),
 		Usage:            llm.UsagePtr(usage),
 		ResponseTimeMs:   elapsed.Milliseconds(),
