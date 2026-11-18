@@ -397,10 +397,14 @@ The 2026-11-12 audit of `dingtalk-agent/` (BUG-029 in lesson-learned covers the
 Wave-2 fixes actually shipped) also produced a **crash** list the owner chose to
 DEFER. Recorded here so the next sweep starts from it, not from zero:
 
-1. **Tool panic kills the bot** — `tools/registry.go` `Execute` has no recover;
-   each tool runs on its own goroutine so no caller-side recover can catch it.
-   Fix when picked up: named returns + `defer recover()` → error string. Covers
-   fpdf internals + every future tool.
+1. ~~**Tool panic kills the bot**~~ — **RESOLVED 2026-11-18, twice over**: the
+   agent loop gained a per-goroutine `recover` with a stack-trace log
+   (commit 8c385ed, 2026-11-17 — the "no caller-side recover" note was stale
+   the moment it shipped), and `Registry.Execute` now recovers at the seam
+   too (`executeGuarded`, logs `PANIC in tool <name>` + `debug.Stack()` and
+   returns error content) so direct callers (tests, future seams) can't
+   crash the process either. Original fix sketch — named returns + defer
+   recover → error string — is exactly what shipped.
 2. **Agent panic on the card path kills the bot** — the only `recover` in
    `stream.go` lives in `processPlain`; `processStreaming` (card path),
    `processFile` goroutine and `go b.fireWatch` have none.

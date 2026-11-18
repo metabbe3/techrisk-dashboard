@@ -57,6 +57,32 @@ func execChart(t *testing.T, reg *Registry, argsJSON string) string {
 	return out
 }
 
+// TestFormatChartVal pins the axis/point label formatting: full float64
+// digits made 16-char axis labels at small spans (span 3.3 printed
+// "2.4749999999999996" — review 2026-11-18), and Itoa(int(1e300)) printed
+// MaxInt64. 2 decimals, trailing zeros trimmed; huge magnitudes go scientific.
+func TestFormatChartVal(t *testing.T) {
+	cases := []struct {
+		name    string
+		v, span float64
+		want    string
+	}{
+		{"coarse span integer", 41, 60, "41"},
+		{"negative integer", -8, 60, "-8"},
+		{"small span trims noise", 2.475, 3.3, "2.48"},
+		{"small span repeats", 1.234, 5, "1.23"},
+		{"trailing zeros trimmed", 12.5, 8, "12.5"},
+		{"zero", 0, 8, "0"},
+		{"huge value scientific", 1e300, 60, "1.00e+300"},
+		{"huge negative scientific", -1e300, 60, "-1.00e+300"},
+	}
+	for _, tc := range cases {
+		if got := formatChartVal(tc.v, tc.span); got != tc.want {
+			t.Errorf("%s: formatChartVal(%v, %v) = %q, want %q", tc.name, tc.v, tc.span, got, tc.want)
+		}
+	}
+}
+
 func TestGenerateChartBarRendersPDFWithMarker(t *testing.T) {
 	reg, tmp := newChartRegistry(t)
 	out, raw := runChart(t, reg, tmp, `{"kind":"bar","title":"MTTR by month","labels":"Jan;Feb;Mar","values":"41;33;27","value_suffix":" min"}`)
@@ -87,7 +113,7 @@ func TestGenerateChartRejectsBadArgs(t *testing.T) {
 		args string
 		want string
 	}{
-		{"empty values", `{"kind":"","title":"t","labels":"a","values":""}`, "kind must be"},
+		{"empty values", `{"kind":"bar","title":"t","labels":"a","values":""}`, "values is empty"},
 		{"count mismatch", `{"kind":"bar","title":"t","labels":"a;b","values":"1"}`, "same number"},
 		{"non-numeric", `{"kind":"bar","title":"t","labels":"a","values":"x"}`, "number"},
 		{"invalid kind", `{"kind":"pie","title":"t","labels":"a","values":"1"}`, "kind must be"},
@@ -123,8 +149,14 @@ func manyValues(n int) string {
 // shipping hollow output.
 func TestGenerateChartCJKRefused(t *testing.T) {
 	reg, _ := newChartRegistry(t)
-	out := execChart(t, reg, `{"kind":"bar","title":"趋势","labels":"a","values":"1"}`)
-	if !strings.Contains(out, "Error executing generate_chart") {
-		t.Errorf("CJK title must be refused, got %.140s", out)
+	for _, args := range []string{
+		`{"kind":"bar","title":"趋势","labels":"a","values":"1"}`,
+		`{"kind":"bar","title":"t","labels":"一月;二月","values":"1;2"}`,
+		`{"kind":"bar","title":"t","labels":"a","values":"1","value_suffix":"分钟"}`,
+	} {
+		out := execChart(t, reg, args)
+		if !strings.Contains(out, "Error executing generate_chart") {
+			t.Errorf("CJK in title/labels/suffix must be refused, got %.140s (args %.60s)", out, args)
+		}
 	}
 }

@@ -37,8 +37,11 @@ never poems/stories/essays/code, even "for debugging".
 
 ## Tests
 - `reportpdf_test.go` — render happy paths + marker format.
-- `chart_test.go` — bar/line renders (magic bytes + marker), arg rejections,
-  CJK refusal, negatives drawn below the zero baseline.
+- `chart_test.go` — bar/line renders (magic bytes + marker), arg rejections
+  (empty values, mismatch, non-numeric, bad kind, >40 points), CJK refusal
+  (title/labels/suffix), label formatting via `formatChartVal`. Geometry
+  (zero baseline, label placement) is verified by eyeballing demo renders,
+  not asserted — `TestFormatChartVal` pins the numbers, not the pixels.
 - `deckpptx_test.go` — slide parsing + **`TestAllToolSchemasFlat`**, the
   whole-fleet schema net (:151): every tool's Parameters must marshal as a
   JSON object with flat `type`+`description` properties. Bump its fleet count

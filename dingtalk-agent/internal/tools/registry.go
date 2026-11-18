@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"runtime/debug"
 	"sort"
 	"sync"
 
@@ -152,6 +154,10 @@ func (r *Registry) Execute(ctx context.Context, name, argsJSON string) (string, 
 func executeGuarded(ctx context.Context, name string, h ToolHandler, argsJSON string) (out string) {
 	defer func() {
 		if rec := recover(); rec != nil {
+			// This recover runs BEFORE the loop's per-goroutine one, so this
+			// is the only place the stack trace reaches the operator log —
+			// without it a recurring panic is undebuggable (review 2026-11-18).
+			log.Printf("[tools] PANIC in tool %s: %v\n%s", name, rec, debug.Stack())
 			out = fmt.Sprintf("Error executing %s: internal panic: %v", name, rec)
 		}
 	}()

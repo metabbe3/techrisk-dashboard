@@ -18,6 +18,7 @@ import (
 
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 const maxChartPoints = 40
@@ -85,7 +86,7 @@ func handleGenerateChart(dir, kind, title, labelsCSV, valuesCSV, suffix string) 
 	if err != nil {
 		return "", err
 	}
-	if err := renderChartPDF(path, kind, title, labels, values, strings.TrimSpace(suffix)); err != nil {
+	if err := renderChartPDF(path, kind, title, labels, values, suffix); err != nil {
 		return "", err
 	}
 	rel, _ := filepath.Rel(dir, path)
@@ -126,12 +127,34 @@ func splitChartNumbers(csv string) ([]float64, error) {
 	return out, nil
 }
 
+// formatChartVal renders an axis/point label: 2 decimals with trailing zeros
+// trimmed — full float64 digits printed 16-char axis labels at small spans
+// (review 2026-11-18); coarse spans (≥10) keep the integer look; magnitudes
+// beyond int64 go scientific so the int conversion can't overflow.
+func formatChartVal(v, span float64) string {
+	if math.Abs(v) >= 1e15 {
+		return strconv.FormatFloat(v, 'e', 2, 64)
+	}
+	if span >= 10 {
+		return strconv.Itoa(int(math.Round(v)))
+	}
+	s := strconv.FormatFloat(v, 'f', 2, 64)
+	if i := strings.IndexByte(s, '.'); i >= 0 {
+		if frac := strings.TrimRight(s[i+1:], "0"); frac != "" {
+			return s[:i] + "." + frac
+		}
+		return s[:i]
+	}
+	return s
+}
+
 // renderChartPDF draws one chart per A4 page: title block, y grid with value
 // labels, a zero baseline (MTTR goes NEGATIVE on the elapsed-days convention),
 // bars or a line, values printed at each point, x labels.
 // ponytail: single-series only — a second series (legend, colors) when a real
 // ask needs it.
 func renderChartPDF(path, kind, title string, labels []string, values []float64, suffix string) error {
+	suffix = sanitizePDF(suffix) // unit rides every label — strip unrenderables once here
 	pdf := fpdf.New("P", "mm", "A4", "")
 	pdf.SetMargins(18, 16, 18)
 	pdf.AddPage()
@@ -168,12 +191,7 @@ func renderChartPDF(path, kind, title string, labels []string, values []float64,
 	span := maxv - minv
 
 	y := func(v float64) float64 { return plotB - (v-minv)/span*(plotB-plotT) }
-	fmtVal := func(v float64) string {
-		if span < 10 {
-			return strconv.FormatFloat(v, 'f', -1, 64)
-		}
-		return strconv.Itoa(int(math.Round(v)))
-	}
+	fmtVal := func(v float64) string { return formatChartVal(v, span) }
 	suffixOf := func(v float64) string {
 		s := fmtVal(v)
 		if suffix != "" {
@@ -251,6 +269,9 @@ func renderChartPDF(path, kind, title string, labels []string, values []float64,
 		if i%every != 0 {
 			continue
 		}
+		// Long labels overlap neighbours and run off the right margin —
+		// truncate to roughly the slot width (Arial 7pt ≈ 1.5mm/char).
+		l = util.Cut(l, max(4, int(slot*float64(every)/1.5)))
 		w := slot*float64(every) - 1
 		if w < 8 {
 			w = 8
