@@ -208,6 +208,7 @@ services:
       LLM_HEAVY_MODEL: ${DINGTALK_HEAVY_MODEL:-}
       LLM_HEAVY_KEYWORDS: ${DINGTALK_HEAVY_KEYWORDS:-}
       AGENT_WEB_TOOLS: ${DINGTALK_WEB_TOOLS:-1}
+      AGENT_SKILL_TOOLS: ${DINGTALK_SKILL_TOOLS:-1}
       DASHBOARD_API_BASE: http://nginx/api/v1
       # Internal listener (dashboard's Go engine POSTs /internal/run here) —
       # reachable only inside the compose network; empty token = disabled.
