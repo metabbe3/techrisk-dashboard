@@ -61,21 +61,23 @@ class ActionImprovementsOverview extends BaseWidget
                 ->groupBy('status')
                 ->pluck('count', 'status');
 
-            $pendingCount = $results[ActionImprovement::STATUS_PENDING] ?? 0;
+            $pendingCount = ($results[ActionImprovement::STATUS_PENDING] ?? 0)
+                + ($results[ActionImprovement::STATUS_ON_PROGRESS] ?? 0);
             $doneCount = $results[ActionImprovement::STATUS_DONE] ?? 0;
 
             // PROJ-014: overdue aging aligned with the escalation ladder —
-            // same "pending + past due" semantics as governance
+            // same "open work + past due" semantics as governance
             // overdueActionItemCount(), plus escalated rows separately.
+            // Open work = pending + on_progress (owner 2026-11-17, Rule A).
             $aging = $scoped()
                 ->selectRaw('
-                    COUNT(CASE WHEN status = ? AND due_date < ? THEN 1 END) as overdue,
-                    COUNT(CASE WHEN status = ? AND due_date < ? AND escalation_level > 0 THEN 1 END) as escalated,
-                    COUNT(CASE WHEN status = ? AND due_date IS NULL THEN 1 END) as tbd
+                    COUNT(CASE WHEN status IN (?, ?) AND due_date < ? THEN 1 END) as overdue,
+                    COUNT(CASE WHEN status IN (?, ?) AND due_date < ? AND escalation_level > 0 THEN 1 END) as escalated,
+                    COUNT(CASE WHEN status IN (?, ?) AND due_date IS NULL THEN 1 END) as tbd
                 ', [
-                    ActionImprovement::STATUS_PENDING, today()->toDateString(),
-                    ActionImprovement::STATUS_PENDING, today()->toDateString(),
-                    ActionImprovement::STATUS_PENDING,
+                    ActionImprovement::STATUS_PENDING, ActionImprovement::STATUS_ON_PROGRESS, today()->toDateString(),
+                    ActionImprovement::STATUS_PENDING, ActionImprovement::STATUS_ON_PROGRESS, today()->toDateString(),
+                    ActionImprovement::STATUS_PENDING, ActionImprovement::STATUS_ON_PROGRESS,
                 ])
                 ->first();
             $overdueCount = (int) ($aging->overdue ?? 0);

@@ -155,11 +155,11 @@ class GovernanceKpiService
         ];
     }
 
-    /** All overdue pending action items (not just reminder-flagged rows). */
+    /** All overdue open action items (pending + on_progress — Rule A 2026-11-17). */
     public function overdueActionItemCount(): int
     {
         return ActionImprovement::query()
-            ->where('status', ActionImprovement::STATUS_PENDING)
+            ->whereIn('status', ActionImprovement::openStatuses())
             ->whereDate('due_date', '<', today())
             ->count();
     }

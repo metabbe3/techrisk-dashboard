@@ -280,13 +280,21 @@ class ActionImprovementOnProgressTest extends TestCase
         ]);
 
         $service = app(\App\Services\Ai\ChatContextService::class);
-        $ctx = \Closure::bind(
+
+        // The summary surface counts the row; the risk surface lists it.
+        $summary = \Closure::bind(
             fn () => $this->getExecutiveSummaryContext(),
             $service,
             \App\Services\Ai\ChatContextService::class,
         )();
+        $this->assertStringContainsString('Overdue action improvements: 1', $summary);
 
-        $this->assertStringContainsString('### Overdue Actions (1)', $ctx);
-        $this->assertStringContainsString('Started and late', $ctx);
+        $risk = \Closure::bind(
+            fn () => $this->getRiskContext(),
+            $service,
+            \App\Services\Ai\ChatContextService::class,
+        )();
+        $this->assertStringContainsString('### Overdue Actions (1)', $risk);
+        $this->assertStringContainsString('Started and late', $risk);
     }
 }

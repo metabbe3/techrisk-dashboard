@@ -40,6 +40,23 @@ class ActionImprovement extends Model implements Auditable
 
     public const STATUSES = [self::STATUS_DRAFT, self::STATUS_PENDING, self::STATUS_ON_PROGRESS, self::STATUS_DONE, self::STATUS_CANCELLED, self::STATUS_TBD];
 
+    /**
+     * Open work (Rule A, owner 2026-11-17): pending + on_progress ride every
+     * pending-gated surface together — reminders, escalation, overdue tiles,
+     * KPI, AI context, overdue filters. ONE list: every gate uses this, never
+     * a hand-typed pair (BUG-005/006/007 rule 1/3).
+     */
+    public static function openStatuses(): array
+    {
+        return [self::STATUS_PENDING, self::STATUS_ON_PROGRESS];
+    }
+
+    /** Record-level twin of openStatuses() — display ternaries, action visibility. */
+    public function isOpenWork(): bool
+    {
+        return in_array($this->status, self::openStatuses(), true);
+    }
+
     /** Priority — optional everywhere, default low (owner rule 2026-10-14). */
     public const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
