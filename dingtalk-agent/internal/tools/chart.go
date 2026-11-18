@@ -72,8 +72,10 @@ func handleGenerateChart(dir, kind, title, labelsCSV, valuesCSV, suffix string) 
 	if err != nil {
 		return "", err
 	}
-	if len(labels) != len(values) {
-		return "", fmt.Errorf("labels and values must have the same number of items (%d labels vs %d values)", len(labels), len(values))
+	// Compare the RAW field counts: interior blanks dropped on either side
+	// above would re-pair the series silently, so mismatched positions error.
+	if len(splitChartParts(labelsCSV)) != len(splitChartParts(valuesCSV)) {
+		return "", fmt.Errorf("labels and values must have the same number of items, no interior blanks (%d labels vs %d values, blanks counted)", len(splitChartParts(labelsCSV)), len(splitChartParts(valuesCSV)))
 	}
 	title = orDefaultStr(title, "Chart")
 	// Same CJK gate as generate_pdf_report: core fonts cannot render CJK and
@@ -93,24 +95,36 @@ func handleGenerateChart(dir, kind, title, labelsCSV, valuesCSV, suffix string) 
 	return fmt.Sprintf("Chart PDF created: %s — tell the user the chart was generated and sent to their DM. Include this marker verbatim in your reply: "+GeneratedFileMarker, rel, rel), nil
 }
 
+// splitChartParts splits on ';' dropping only TRAILING empties — an interior
+// blank would silently RE-PAIR the later labels onto the earlier values
+// ("A;;B" + "1;2" charted A=1, B=2), so an interior blank errors instead.
+func splitChartParts(csv string) []string {
+	parts := strings.Split(csv, ";")
+	for len(parts) > 0 && strings.TrimSpace(parts[len(parts)-1]) == "" {
+		parts = parts[:len(parts)-1]
+	}
+	return parts
+}
+
 func splitChartStrings(csv string) []string {
 	var out []string
-	for _, p := range strings.Split(csv, ";") {
+	for _, p := range splitChartParts(csv) {
 		p = strings.TrimSpace(p)
-		if p != "" {
-			out = append(out, p)
+		if p == "" {
+			continue // caller (length equality) owns the interior-blank error
 		}
+		out = append(out, p)
 	}
 	return out
 }
 
 func splitChartNumbers(csv string) ([]float64, error) {
-	fields := strings.Split(csv, ";")
+	fields := splitChartParts(csv)
 	var out []float64
 	for _, p := range fields {
 		p = strings.TrimSpace(p)
 		if p == "" {
-			continue
+			continue // caller (length equality) owns the interior-blank error
 		}
 		v, err := strconv.ParseFloat(p, 64)
 		if err != nil || math.IsNaN(v) || math.IsInf(v, 0) {

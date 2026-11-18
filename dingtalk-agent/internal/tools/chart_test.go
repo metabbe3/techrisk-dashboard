@@ -160,3 +160,16 @@ func TestGenerateChartCJKRefused(t *testing.T) {
 		}
 	}
 }
+
+// Interior blanks silently RE-PAIR labels onto values: "A;;B" + "1;2" dropped
+// the blank on both sides and charted A=1, B=2 — the user's positions shifted.
+// Interior blanks must error; a TRAILING blank is still tolerated (LLMs emit
+// trailing semicolons constantly).
+func TestChartBlankInteriorValuesError(t *testing.T) {
+	if _, err := handleGenerateChart(t.TempDir(), "bar", "T", "A;;B", "1;2", ""); err == nil {
+		t.Error("interior blank in both CSVs re-paired silently — want an error")
+	}
+	if _, err := handleGenerateChart(t.TempDir(), "bar", "T", "A;B;", "1;2;", ""); err != nil {
+		t.Errorf("trailing blanks must stay tolerated, got: %v", err)
+	}
+}

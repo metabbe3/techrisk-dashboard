@@ -492,3 +492,27 @@ func TestKeywordRescueFloorAndStopwords(t *testing.T) {
 		t.Fatalf("identifier rescue broken: %+v", hits)
 	}
 }
+
+// D5: chunk boundaries snap to whitespace — a hard rune cut used to split
+// words mid-token, splitting one term across two chunks and weakening both
+// their keyword vectors.
+func TestChunkTextSnapsToWhitespace(t *testing.T) {
+	oldSize, oldOverlap := chunkSize, chunkOverlap
+	defer func() { chunkSize, chunkOverlap = oldSize, oldOverlap }()
+	chunkSize, chunkOverlap = 25, 0
+
+	text := strings.Repeat("abcdefghij ", 10) // words of 10 + space, 110 runes
+	got := chunkText("d.pdf", text)
+	if len(got) < 2 {
+		t.Fatalf("want multiple chunks, got %d", len(got))
+	}
+	at := 0
+	for i, c := range got {
+		at += len([]rune(c))
+		// A snapped chunk ends WITH the space, so the rune BEFORE the
+		// boundary must be one — that is the word boundary.
+		if i < len(got)-1 && at < len([]rune(text)) && []rune(text)[at-1] != ' ' {
+			t.Errorf("chunk %d cut mid-word (rune before boundary %q)", i, []rune(text)[at-1])
+		}
+	}
+}

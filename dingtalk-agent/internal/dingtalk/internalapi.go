@@ -52,6 +52,11 @@ type internalRunResult struct {
 // NewInternalMux serves the internal listener: POST /internal/run only.
 func NewInternalMux(b *Bot) *http.ServeMux {
 	mux := http.NewServeMux()
+	// Unauthenticated: the supervisor probe must not need a token (audit round 5).
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
 	mux.HandleFunc("/internal/run", func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
 			if rec := recover(); rec != nil {

@@ -262,6 +262,13 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 		return nil, nil
 	}
 
+	// Help fast-path: a capability ask answered from a canned text with zero
+	// LLM spend (B6, audit round 5).
+	if help, ok := helpFastPath(text); ok {
+		b.reply(ctx, m, help)
+		return nil, nil
+	}
+
 	// File uploads: download → extract text → summarize/knowledge → delete file.
 	// Only real file messages — pictures/audio also carry downloadCode but are
 	// not documents. Routed through the SAME per-conversation worker as text so
@@ -272,6 +279,15 @@ func (b *Bot) Handle(ctx context.Context, m *chatbot.BotCallbackDataModel) ([]by
 				m.SenderNick, m.SenderStaffId, m.ConversationId, fm.FileName)
 			b.reply(ctx, m, fmt.Sprintf("📥 Got **%s** — reading it now…", fm.FileName))
 			b.enqueue(m, text, &fm, nil)
+			return nil, nil
+		}
+	}
+
+	// Pictures with the KB disabled used to vanish silently (B7) — one honest
+	// line instead of silence.
+	if m.Msgtype == "picture" && b.know == nil {
+		if _, ok := parsePictureMessage(m.Content); ok {
+			b.reply(ctx, m, "🖼️ Picture reading is disabled on this bot (knowledge tools are off). Send it as text and I can work with it.")
 			return nil, nil
 		}
 	}
@@ -354,31 +370,35 @@ func (b *Bot) conversationWorker(convoID string, ch chan chatTask) {
 		}
 		batch := []chatTask{first}
 
-		// Debounce: close the batch after a quiet gap, or a hard deadline.
-		quiet := time.NewTimer(batchQuietWait)
-		hardStop := time.NewTimer(batchMaxWait)
-	collect:
-		for {
-			select {
-			case t := <-ch:
-				// Batching is keyed on BOTH sender ids — either differing means
-				// a different person (SenderStaffId is empty for external
-				// users, SenderId for test payloads). A file upload or picture
-				// always runs as its own turn.
-				if t.m.SenderId != first.m.SenderId || t.m.SenderStaffId != first.m.SenderStaffId || t.file != nil || first.file != nil || t.pic != nil || first.pic != nil {
-					carry = &t
+		// A file or picture first task runs IMMEDIATELY — the sender already
+		// waited on the upload; the 800ms quiet wait was pure latency (B3).
+		if first.file == nil && first.pic == nil {
+			// Debounce: close the batch after a quiet gap, or a hard deadline.
+			quiet := time.NewTimer(batchQuietWait)
+			hardStop := time.NewTimer(batchMaxWait)
+		collect:
+			for {
+				select {
+				case t := <-ch:
+					// Batching is keyed on BOTH sender ids — either differing means
+					// a different person (SenderStaffId is empty for external
+					// users, SenderId for test payloads). A file upload or picture
+					// always runs as its own turn.
+					if t.m.SenderId != first.m.SenderId || t.m.SenderStaffId != first.m.SenderStaffId || t.file != nil || t.pic != nil {
+						carry = &t
+						break collect
+					}
+					batch = append(batch, t)
+					quiet.Reset(batchQuietWait)
+				case <-quiet.C:
+					break collect
+				case <-hardStop.C:
 					break collect
 				}
-				batch = append(batch, t)
-				quiet.Reset(batchQuietWait)
-			case <-quiet.C:
-				break collect
-			case <-hardStop.C:
-				break collect
 			}
+			quiet.Stop()
+			hardStop.Stop()
 		}
-		quiet.Stop()
-		hardStop.Stop()
 
 		b.runBatch(batch)
 	}
@@ -859,6 +879,10 @@ func (b *Bot) summarizeNotionReads(ctx context.Context, nick string, reads []too
 // (throttled — one API push per flushInterval, not one per token).
 func (b *Bot) processStreaming(ctx context.Context, m *chatbot.BotCallbackDataModel, text, sysExtra string, card *aiCard) (string, error) {
 	writer := newCardWriter(card)
+	// B1: tool starts surface in the card — "🔍 <tool>…" until the next
+	// answer delta flushes over it. Ephemeral by construction: flush always
+	// pushes the full accumulated content.
+	ctx = tools.WithToolProgress(ctx, writer.status)
 	started := time.Now()
 	reply, newHistory, usage, modelUsed, err := b.loop.RunStreaming(ctx, text, b.takeHistory(m.ConversationId), writer.onDelta, sysExtra)
 	if err != nil {
@@ -1053,6 +1077,13 @@ func newCardWriter(card *aiCard) *cardWriter {
 	return &cardWriter{card: card}
 }
 
+// status shows a one-tool-start status line in the card; the next answer
+// delta flush replaces it (B1, audit round 5).
+func (w *cardWriter) status(toolName string) {
+	label := strings.ReplaceAll(toolName, "_", " ")
+	_ = w.card.stream(context.Background(), "🔍 "+label+"…")
+}
+
 func (w *cardWriter) onDelta(delta string) {
 	w.mu.Lock()
 	w.content += delta
@@ -1181,6 +1212,21 @@ func (b *Bot) takeHistory(conversationID string) []llm.ChatMessage {
 }
 
 func (b *Bot) saveHistory(conversationID string, messages []llm.ChatMessage) {
+	// Keep the DIALOG, not the reasoning trace: intermediate tool rounds
+	// (assistant-with-tool_calls + tool results) used to eat the 12-message
+	// window in a single turn, wiping the conversation context follow-up
+	// questions need (B2, audit round 5). The final answer stays.
+	dialog := make([]llm.ChatMessage, 0, len(messages))
+	for _, msg := range messages {
+		if msg.Role == "tool" {
+			continue
+		}
+		if msg.Role == "assistant" && len(msg.ToolCalls) > 0 {
+			continue
+		}
+		dialog = append(dialog, msg)
+	}
+	messages = dialog
 	if len(messages) > historyKeepMsgs {
 		messages = messages[len(messages)-historyKeepMsgs:]
 		// A history starting on a tool result (orphaned from its tool_calls)
@@ -1249,4 +1295,21 @@ func stripMention(text string, botNames []string) string {
 func plainText(s string) string {
 	r := strings.NewReplacer("*", "", "_", "", "`", "", "#", "", "[", "", "]", "")
 	return r.Replace(s)
+}
+
+
+// helpFastPath answers the canned capability blurb for help asks — no LLM
+// turn is spent (B6, audit round 5). Matched on the whole message so a real
+// question containing the word "menu" still reaches the agent.
+func helpFastPath(text string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(text), "/"))) {
+	case "help", "bantuan", "menu", "bisa apa":
+		return "**What I can do** / *Yang bisa saya bantu*:\n" +
+			"• Incidents: search, stats, detail, post-mortem PDF / Cari & statistik insiden\n" +
+			"• Reminders & watches: e.g. \"remind us every Monday 9am to review open P1s\", \"watch INC-42\" / pengingat & pemantauan insiden\n" +
+			"• Actions & governance: overdue action items, KPIs / action item overdue & KPI governance\n" +
+			"• Knowledge: upload a document (or picture) and ask about it / unggah dokumen lalu tanyakan isinya\n" +
+			"• Reports: charts, PPTX decks, PDF reports / grafik, deck, laporan PDF", true
+	}
+	return "", false
 }

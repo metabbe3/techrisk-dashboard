@@ -446,15 +446,33 @@ func chunkText(doc, text string) []string {
 		return []string{string(runes)}
 	}
 	var out []string
-	for start := 0; start < len(runes) && len(out) < maxChunksPerDoc; start += chunkSize - chunkOverlap {
+	for start := 0; start < len(runes) && len(out) < maxChunksPerDoc; {
 		end := start + chunkSize
 		if end > len(runes) {
 			end = len(runes)
+		}
+		// Snap the cut to whitespace: a hard rune split put half a word in
+		// one chunk and half in the next, splitting the very terms the
+		// keyword scoring matches on (audit round 5). The next chunk starts
+		// from the snapped end (minus the overlap), so starts land on word
+		// boundaries too.
+		if end < len(runes) {
+			for back := end - 1; back > start && end-back < 64; back-- {
+				if runes[back] == ' ' || runes[back] == '\n' || runes[back] == '\t' {
+					end = back + 1
+					break
+				}
+			}
 		}
 		out = append(out, string(runes[start:end]))
 		if end == len(runes) {
 			break
 		}
+		next := end - chunkOverlap
+		if next <= start {
+			next = start + 1 // a collapsed snap must still advance
+		}
+		start = next
 	}
 	return out
 }

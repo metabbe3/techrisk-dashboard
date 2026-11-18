@@ -1,7 +1,10 @@
 package tools
 
 import (
+	"bytes"
+	"compress/zlib"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,4 +93,56 @@ func TestEnsureRenderableRejectsCJK(t *testing.T) {
 	if err := ensureRenderable("\u98ce\u9669\u62a5\u544a"); err == nil {
 		t.Errorf("CJK text must be rejected, got nil")
 	}
+}
+
+// Em dashes must reach the PDF as cp1252 \x97 (via the translator), not raw
+// UTF-8 — un-translated, every viewer renders E2 80 94 as "â€"". The date
+// line's suffix and bold-split segments both used to skip tr().
+func TestPDFEmDashTranslatedNotMojibake(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "d.pdf")
+	md := "A **bold — dash** paragraph.\n\nSecond line — with a dash."
+	if err := renderMarkdownPDF(path, "Dash — Report", md); err != nil {
+		t.Fatalf("renderMarkdownPDF: %v", err)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var text []byte // all successfully inflated content streams, concatenated
+	for i := 0; i+8 < len(data); {
+		start := indexFrom(data, []byte("stream"), i)
+		if start < 0 {
+			break
+		}
+		end := indexFrom(data, []byte("endstream"), start)
+		if end < 0 {
+			break
+		}
+		body := data[start+len("stream") : end]
+		body = bytes.TrimLeft(body, "\r\n")
+		if zr, err := zlib.NewReader(bytes.NewReader(body)); err == nil {
+			out, _ := io.ReadAll(zr)
+			text = append(text, out...)
+			zr.Close()
+		}
+		i = end + len("endstream")
+	}
+	if len(text) == 0 {
+		t.Fatal("no inflateable content streams found — probe broken")
+	}
+	if bytes.Contains(text, []byte("\xe2\x80\x94")) {
+		t.Error("raw UTF-8 em dash in the PDF stream — renders as mojibake")
+	}
+	if !bytes.Contains(text, []byte("\x97")) {
+		t.Error("no cp1252 em dash in the PDF stream — the dash was dropped, not translated")
+	}
+}
+
+func indexFrom(hay, needle []byte, from int) int {
+	idx := bytes.Index(hay[from:], needle)
+	if idx < 0 {
+		return -1
+	}
+	return from + idx
 }

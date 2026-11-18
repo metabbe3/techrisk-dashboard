@@ -3,6 +3,7 @@ package dingtalk
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -450,5 +451,24 @@ func TestInternalRunUnboundOmitsGenerateTools(t *testing.T) {
 		if strings.HasPrefix(n, "generate_") {
 			t.Errorf("generate tool %q offered on an unbound internal run", n)
 		}
+	}
+}
+
+// GET /healthz answers 200 ok with no auth — the supervisor's probe must not
+// need a token, and a dead listener must look different from a live one.
+func TestInternalHealthz(t *testing.T) {
+	f := newFakeInternalAPI(t)
+	bot := newInternalBot(t, f)
+	srv := httptest.NewServer(NewInternalMux(bot))
+	defer srv.Close()
+
+	resp, err := http.Get(srv.URL + "/healthz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK || string(body) != "ok" {
+		t.Errorf("healthz = %d %q, want 200 ok", resp.StatusCode, body)
 	}
 }

@@ -311,6 +311,7 @@ func (l *Loop) execTools(ctx context.Context, toolCalls []llm.ToolCall) []llm.Ch
 			defer func() { <-sem }()
 
 			log.Printf("[agent] %sexecuting tool %s (id: %s) [worker]", LogPrefix(ctx), call.Function.Name, call.ID)
+			tools.NotifyToolProgress(ctx, call.Function.Name)
 			output, err := l.registry.Execute(ctx, call.Function.Name, call.Function.Arguments)
 			if err != nil {
 				output = fmt.Sprintf("Error executing tool: %v", err)
@@ -459,8 +460,26 @@ func PruneContextBudget(messages []llm.ChatMessage, maxChars int) {
 			}
 		}
 		if !found {
-			// No more tool results can be omitted
-			break
+			// D6 fallback: no tool results left — blank the oldest user
+			// message except the last (the live question). Without this the
+			// request shipped over budget whenever a turn had no tool calls.
+			lastUser := -1
+			for i := range messages {
+				if messages[i].Role == "user" {
+					lastUser = i
+				}
+			}
+			for i := range messages {
+				if messages[i].Role == "user" && i != lastUser && messages[i].Content != "" {
+					total -= len(messages[i].Content)
+					messages[i].Content = ""
+					found = true
+					break
+				}
+			}
+			if !found {
+				break
+			}
 		}
 	}
 }

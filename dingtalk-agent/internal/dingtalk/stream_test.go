@@ -809,8 +809,12 @@ func TestHandlePictureDispatches(t *testing.T) {
 	}
 	time.Sleep(150 * time.Millisecond)
 	mu.Lock()
-	if len(replyBodies) != before {
-		t.Errorf("KB-off bot answered a picture: %v", replyBodies[before:])
+	// KB-off pictures are no longer SILENT (B7, audit round 5): exactly one
+	// honest notice, and no download/LLM work behind it.
+	if len(replyBodies) != before+1 {
+		t.Errorf("KB-off picture: want exactly 1 notice reply, got %d (%v)", len(replyBodies)-before, replyBodies[before:])
+	} else if !strings.Contains(replyBodies[before], "disabled") {
+		t.Errorf("KB-off picture notice wrong: %v", replyBodies[before])
 	}
 	mu.Unlock()
 }

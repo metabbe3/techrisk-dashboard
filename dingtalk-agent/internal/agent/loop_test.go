@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -731,5 +732,85 @@ func TestEscalationOnlyOnBudgetExhaustion(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&cheapCalls); got == 0 {
 		t.Error("cheap model never called")
+	}
+}
+
+// D6: with NO tool results to omit, PruneContextBudget used to give up and
+// ship an over-budget request — it now falls back to blanking the oldest
+// USER message (never the last one; users carry no tool_calls).
+func TestPruneContextBudgetFallsBackToUserMessages(t *testing.T) {
+	long := strings.Repeat("x", 600)
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: strings.Repeat("s", 600)},
+		{Role: "user", Content: long},
+		{Role: "assistant", Content: long},
+		{Role: "user", Content: "current question"},
+	}
+	PruneContextBudget(msgs, 1500)
+	if msgs[1].Content != "" {
+		t.Errorf("oldest user message not blanked: %d chars", len(msgs[1].Content))
+	}
+	if msgs[3].Content != "current question" {
+		t.Errorf("the live question was touched: %q", msgs[3].Content)
+	}
+	if msgs[0].Content == "" || msgs[2].Content == "" {
+		t.Error("system/assistant messages must survive the user-fallback")
+	}
+}
+
+// B1: tools report their START to a ctx-keyed progress hook — the AI card
+// shows "checking X…" instead of a 30s black hole during multi-tool turns.
+func TestToolProgressHookFires(t *testing.T) {
+	step := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step++
+		var resp llm.ChatResponse
+		if step == 1 {
+			resp = llm.ChatResponse{
+				Choices: []llm.ChatChoice{{
+					Message: llm.ChatMessage{
+						Role: "assistant",
+						ToolCalls: []llm.ToolCall{{
+							ID:       "call_1",
+							Type:     "function",
+							Function: llm.FunctionCall{Name: "probe_tool", Arguments: "{}"},
+						}},
+					},
+					FinishReason: "tool_calls",
+				}},
+			}
+		} else {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", Content: "done"}, FinishReason: "stop",
+			}}}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	reg := tools.NewRegistry(nil)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "probe_tool"}},
+		func(ctx context.Context, _ string) (string, error) { return "ok", nil })
+
+	agentLoop := NewLoop(
+		llm.NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}),
+		reg, 4,
+	)
+	var names []string
+	var mu sync.Mutex
+	ctx := tools.WithToolProgress(context.Background(), func(name string) {
+		mu.Lock()
+		names = append(names, name)
+		mu.Unlock()
+	})
+	_, _, _, _, err := agentLoop.Run(ctx, "run it", nil, "")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(names) == 0 || names[0] != "probe_tool" {
+		t.Errorf("progress hook not fired with the tool name: %v", names)
 	}
 }

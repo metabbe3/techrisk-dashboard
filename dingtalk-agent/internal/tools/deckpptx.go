@@ -99,7 +99,9 @@ func renderDeck(path, title string, slides []deckSlide) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	// f.Close is checked, not deferred: a failed Close on a just-written file
+	// means a truncated PPTX shipped as success (audit round 5).
+	defer func() { _ = f.Close() }() // error path safety net (double close is a no-op error)
 
 	zw := zip.NewWriter(f)
 	write := func(name, body string) error {
@@ -136,7 +138,10 @@ func renderDeck(path, title string, slides []deckSlide) error {
 			return err
 		}
 	}
-	return zw.Close()
+	if err := zw.Close(); err != nil {
+		return err
+	}
+	return f.Close()
 }
 
 // xmlEsc escapes XML text content. Package var — a fresh Replacer per call
