@@ -2136,3 +2136,36 @@ The raw alternative `whereIn(DB::raw('YEAR(col)'), $years)` fails on SQLite ("no
 - [x] `IncidentYearAccessScopeTest::test_multi_year_allowed_years_see_every_granted_year` + `ApiAuditLogYearAccessTest` (multi-year + admin-default pins) — were RED on the old code, now green.
 - [x] Full suite 1338 / 5,356 green (7 known reverb errors only, Docker down).
 - [ ] Any future multi-value `where*Date/whereYear` call: pass scalars one per `orWhere*`, never an array — the array form is a silent head-flatten, not an IN.
+## DingTalk agent audit round 5 — 25 verified defects fixed across P0–P3 (2026-11-18)
+
+Branch `fix/dingtalk-agent-audit-round5`, commits `05b3b0a` (P2 batch 2b) + `40b072e` (P3 batch) + the two earlier P1/P2 batches. Full defect table lives in `dingtalk-agent/IMPROVE-BRAINSTORM.md` (STATUS section); this entry records only the transferable lessons.
+
+### The defects that matter (by lesson, not by number)
+
+**Export-path escape (P0, data leak).** `safeExportPath` joined the LLM's ticket to `DataDir`, not `DataDir/exports` — a `[generated-file: history.json]` reply (steerable by injected text in any uploaded doc/Notion page/web page) resolved and DM'd the bot's own KB, user profiles, or token store. Fix: join under the exports dir AND require the cleaned path to keep that prefix. Lesson: **an LLM-supplied filename is user input; validate it against a directory allowlist, not against string blacklists.**
+
+**Inbox send-after-unlock race (P0, message loss).** `enqueue` captured the worker channel under the lock but sent after unlocking; the idle worker could delete the inbox and exit in that gap — the message acked, never processed. Fix: send while holding the lock (channel send is non-blocking). Lesson: **"capture under lock, use after unlock" is a race, not a pattern** — the check and the use must share the lock. Found by line-reading the idle path, not by `-race` (the loser goroutine had already exited).
+
+**Reminder context poisoned the heavy trigger (P2, cost).** `HeavyTurn` matched trigger phrases against the final LLM input, which has the active-reminders list appended — a reminder whose TEXT said "deep research" routed every turn of that chat to the heavy model forever. Fix: match the raw user message only. Lesson: **when a gate must judge "what the user said", feed it exactly what the user said**, not the assembled prompt that happens to also contain tool/reminder content.
+
+**Turn reports logged the wrong model (P2, cost visibility).** `run()` always reported `b.llm.Model()`; heavy-escalated turns were billed in the cost table under the cheap model. Fix: `run`/`runWithEscalation` return the model actually used. Companion fix: escalation now fires only on a typed budget-exhaustion error, not any LLM error (one 429 no longer buys a 30-round heavy run).
+
+**Secret redaction gaps (P1).** The key-value regex missed `"password": "x"` (JSON quote between key and colon), `LLM_API_KEY=` (`\b` doesn't fire after `_`), and `postgresql://` URLs; `*url.Error` in the media-upload path prints full URLs including `access_token=`. Fix: redact before truncate (a secret cut at a truncation boundary falls under the regex minimums), redact input-gate refusals and turn reports, allowlist download hosts with redirect re-checking. Lesson: **redact at the boundary where the string leaves the process, and redact BEFORE any length-based transformation** — order matters.
+
+**Embeddings path `/v1/v1/` (P2, silent degradation).** Chat posts `<base>/chat/completions`, embeddings posted `<base>/v1/embeddings`; with a base URL that already ends in `/v1` the KB silently fell back to keyword-only search. Fix: `/embeddings` + fail loudly on non-200. Lesson: **a silent fallback in a retrieval path must announce itself** — it did, in a README footnote, for weeks.
+
+**Fail-open quota (P2).** The 20-reminder cap was skipped when `List` errored — the only brake on a looping tool minting cron jobs. Fix: refuse on error. Lesson: **a limit that cannot be verified must refuse, not assume.**
+
+**KB overwrites + keyword rescue (P2).** Docs were keyed by file-NAME hash (two users' `report.pdf` overwrote each other) and the keyword rescue returned any chunk sharing one 2-char token, undoing the 0.35 cosine floor. Fix: content-hash keys, stopword set, keyword floor.
+
+**excelize iterator traps (P3).** `Rows()` iterators never Closed (leak), blank rows bypassed the row cap (only non-blank counted), `UnzipSizeLimit` default is 16 GB. Fix: close, count scanned rows, 64 MB unzip limit. Lesson: **a cap that counts only "interesting" rows is not a cap** — count what you scan.
+
+**History starvation (P3, quality).** The 12-message history window counted tool rounds, so one busy turn evicted all dialog. Fix: keep dialog only (drop tool messages and assistant messages carrying tool_calls).
+
+**Prune fallback (P3).** `PruneContextBudget` gave up when only the last user message remained; now it blanks older user messages before giving up — a loaded skill (Track B `load_skill`) is additionally protected from first-pass eviction.
+
+### Prevention Checklist
+- [x] New pins per fix (heavy-trigger two-leg test, unzip-limit, interior-blank chart error, redaction cases, escalation-on-budget-only, export-path rejection); full Go suite green + `-race` on `internal/dingtalk`, `internal/agent`, `internal/tools`, `internal/kb`.
+- [x] `IMPROVE-BRAINSTORM.md` STATUS table reflects final state, incl. deliberate skips (aicard single-flight, knowledge.jsonl compaction, deep bilingualization — each with a reason).
+- [ ] Audit lesson itself: this round found 25 defects by line-reading, all in code that had a green test suite — **test suites prove the paths that exist; only reading finds the paths that interact** (races, fallbacks, gates fed the wrong string).
+- [ ] When appending context to LLM input (reminders, docs), enumerate every gate that reads that input and decide whether the gate should see the appendix too.
