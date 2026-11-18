@@ -200,6 +200,10 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 		r.RegisterCapped(loadSkillDef(), typed(client.handleLoadSkill), 48<<10)
 	}
 	r.Register(statsDef(), typed(client.handleGetDashboardStats))
+	r.Register(searchActionItemsDef(), typed(client.handleSearchActionItems))
+	r.Register(getActionItemDef(), typed(client.handleGetActionItem))
+	r.Register(getGovernanceKpisDef(), typed(client.handleGetGovernanceKpis))
+	r.Register(listReferenceDef(), typed(client.handleListReference))
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number

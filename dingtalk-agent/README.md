@@ -35,6 +35,10 @@ design, kept.
 | `get_incident` | `GET /incidents-by-no/{no}` or `/incidents/{id}` | path segment sanitized to `[A-Za-z0-9_-]` |
 | `get_incident_markdown` | `GET /incidents-by-no/{no}/markdown` | base64-decoded for AI ingestion |
 | `get_dashboard_stats` | `GET /stats` | dashboard's own aggregates (one-logic rule): `mode=summary` → totalCases / avgMttrMins / avgMttrDays / avgMtbf / fund totals; `mode=by_dimension` → metric × dimension `labels[]/values[]`; list params comma-separated |
+| `search_action_items` | `GET /action-improvements` | cross-incident action search: default open work, `overdue=1` = the governance definition; meta.total for counts; rows carry incident_no |
+| `get_action_item` | `GET /action-improvements/{id}` | one action item's full record |
+| `get_governance_kpis` | `GET /governance` | governance/PDR KPIs verbatim from GovernanceKpiService (zero new math); `series=1` adds lag_by_quarter |
+| `list_reference` | `GET /labels` `/incident-types` `/categories` | filter vocabularies — call before guessing search_incidents values |
 | `list_skills` | `GET /skills` | dashboard skill library + persona catalog (metadata only; `domain=role` entries are `role-<role_key>` personas) |
 | `load_skill` | `GET /skills/{name}` | one skill body / persona system prompt + attached skill NAMES; 48k-capped; `AGENT_SKILL_TOOLS` |
 | `web_search` | DuckDuckGo HTML (keyless) | top 6 results, title + snippet + link |
@@ -50,7 +54,7 @@ chars.
 |---|---|---|
 | `DINGTALK_CLIENT_ID` / `DINGTALK_CLIENT_SECRET` | yes | DingTalk Open Platform app |
 | `DINGTALK_ALLOWLIST` | no | **empty = everyone** (access gated by the DingTalk app's visibility range); comma staffIds to narrow further |
-| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `stats`, `agent-schedules`, `agent-runs`, `skills` |
+| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `stats`, `agent-schedules`, `agent-runs`, `skills`, `governance`, `action-improvements` |
 | `DASHBOARD_API_BASE` | no | `http://nginx/api/v1` (compose) |
 | `AGENT_INTERNAL_ADDR` | no | `:9091` — internal listener (the dashboard's Go engine POSTs `/internal/run` here); compose-network only |
 | `AGENT_INTERNAL_TOKEN` | no | shared secret — **must equal** the dashboard `.env`'s `GO_AGENT_INTERNAL_TOKEN`; empty = listener disabled |
@@ -101,8 +105,9 @@ means changing `DINGTALK_MODEL`/env, not the AI Settings page.
    proactive DMs; card streaming (`Card.Instance.Write` /
    `Card.Streaming.Write`) for typewriter replies — without card perms the bot
    still answers via webhook fallback.
-3. **API token**: Filament → API Tokens → `dingtalk-agent` with the six
-   abilities above (incl. `skills`) → `DASHBOARD_API_TOKEN`.
+3. **API token**: Filament → API Tokens → `dingtalk-agent` with the abilities
+   above (incl. `skills`, `governance`, `action-improvements`) →
+   `DASHBOARD_API_TOKEN`.
    Then set the same shared secret in root `.env` as `DINGTALK_INTERNAL_TOKEN`
    **and** `GO_AGENT_INTERNAL_TOKEN`, and `GO_AGENT_BASE_URL=http://dingtalk-agent:9091`.
 4. **Allowlist**: leave empty, have each user DM/mention the bot once, copy the
