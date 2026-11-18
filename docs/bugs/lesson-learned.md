@@ -2005,3 +2005,27 @@ Every pasted Notion link failed with "could not be read". Diagnostic surfacing o
 - [x] When one consumer of a shared service works and another fails on the same input, diff the INPUTS the two send before theorizing about permissions.
 - [x] Never normalize (strip separators) before extracting a token from a structured string — extract first, with boundaries.
 - [x] Swallowed upstream errors hide the cause: surfacing Notion's reply is what turned this from "sharing?" guesswork into a one-line diagnosis.
+
+---
+
+### [BUG-035] - Reminder emails sent for Issue-classified records (no classification gate on the reminder lanes)
+
+**Date:** 2026-11-18
+**Discovered By:** Owner, first production run of the status-update lane ("the email still send for issue too not incident only")
+**Severity:** Low (wrong-target reminder; one prod email to a downgraded issue's PICs)
+**Status:** Resolved
+
+### Description
+After the status-update reminder lane shipped, its email fired for a record classified `Issue` — specifically a case raised as an issue, upgraded to Incident, then downgraded back to Issue after it failed the incident requirements. Other Issues had (so far) received nothing, which made the bug look like a downgrade-handling problem rather than what it was.
+
+### Root Cause
+`SendIncidentReminders::dueIncidents()` — the shared query under ALL three lanes (not-done, fund-loss, status-update) — never filtered `classification`. The `incidents` table holds both classifications, so any Issue old/bare enough to satisfy a lane's conditions was reminded. The downgrade was a red herring: the record's age (created back when it was raised) plus its lack of status updates simply made it the FIRST Issue to trip the status-update lane's empty case. Same latent hole in the other two lanes, just not yet triggered in prod.
+
+### Fix
+One shared-scope line: `dueIncidents()` filters `classification = IncidentClassification::Incident->value` — every lane inherits it (enum case, edit-safety rule 1). Test: `test_issues_get_no_reminders_from_any_lane` builds an Issue that satisfies all three lanes at once and asserts nothing is sent and `last_reminded_at` stays null.
+
+### Prevention Checklist
+- [x] A new command over a table that holds multiple classifications must state its classification scope explicitly — "Incident" in the class name is not a filter.
+- [x] When one member of a class (the downgraded issue) misbehaves and its peers don't, suspect a latent hole that age/data shape merely hasn't exposed — check the shared query, not the lifecycle transition.
+- [x] `IncidentFactory` randomizes classification: any test that needs a lane to FIRE must pin `classification = Incident` (now defaulted in the test helper), or it flakes 50% once a classification gate exists.
+- [x] Rule written down: business-rules.md "Reminder emails are incident-only" + dependency-map ReminderMail row.
