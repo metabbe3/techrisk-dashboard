@@ -69,18 +69,10 @@ class AdminPanelProvider extends PanelProvider
             // item px-2 + a 1.5rem icon needs 5.5rem to render full-size.
             ->collapsedSidebarWidth('5.5rem')
             ->sidebarCollapsibleOnDesktop()
-            // Owner 2026-11-17 (DANA HR reference): the collapsed sidebar's
-            // expand control is a PIN — hover already expands it temporarily,
-            // so this button's one job is "make the expand permanent". (A
-            // plain string would drop into src="" as an image PATH; the alias
-            // must receive an Htmlable for raw SVG.)
-            ->icons([
-                'panels::sidebar.expand-button' => new \Illuminate\Support\HtmlString(
-                    '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-6 w-6">'
-                    .'<path stroke-linecap="round" stroke-linejoin="round" d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/>'
-                    .'</svg>'
-                ),
-            ])
+            // Owner 2026-11-18: the collapsed rail's expand control is the
+            // DANA logo itself — the brandLogo wrapper is CSS-promoted into
+            // the collapsed header (app.css); the pin lives only on the
+            // temporary expand state (SIDEBAR_NAV_START hook below).
             ->databaseNotifications()
             ->globalSearch(true)
             ->path('admin')
@@ -133,16 +125,15 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::AUTH_LOGIN_FORM_AFTER,
                 fn (): string => view('auth.microsoft-sso')->render(),
             )
-            // Owner 2026-11-17 (RISE reference): the collapsed sidebar shows
-            // no logo, so the brand parks at the start of the blue topbar
-            // while the sidebar is closed — expanded, the sidebar header
-            // carries the brand and the topbar copy hides (Alpine x-show).
+            // Owner 2026-11-18: when the sidebar is collapsed the DANA logo
+            // lives in the RAIL header (app.css promotes the brandLogo
+            // wrapper there) — the topbar shows the brand copy TEXT ONLY,
+            // no second logo beside the rail's.
             ->renderHook(
                 PanelsRenderHook::TOPBAR_START,
                 // x-cloak hides the copy until Alpine registers the sidebar
                 // store (Filament's JS) — no flash on expanded desktop loads.
                 fn (): string => '<a href="'.filament()->getHomeUrl().'" class="fi-topbar-brand" x-cloak x-show="! $store.sidebar.isOpen">'
-                    .'<img src="'.asset('images/favicon.png').'?v=3" alt="DANA logo" class="h-8 w-8">'
                     .'<span>TechRisk Portal</span>'
                     .'</a>',
             )

@@ -36,16 +36,20 @@ class SidebarBehaviorTest extends TestCase
     }
 
     /**
-     * The expand control's icon is a PIN (click = permanent expand), not a
-     * plain chevron toggle — overridden via the panels::sidebar.expand-button
-     * icon alias (Lucide "pin" path, the only icon rendered from that alias).
+     * Owner 2026-11-18: when the sidebar is collapsed the DANA logo lives in
+     * the rail header (CSS promotes the existing brand wrapper there) — the
+     * topbar brand copy is TEXT ONLY, no second logo beside the rail's.
      */
-    public function test_the_collapsed_sidebar_expand_control_is_a_pin_icon(): void
+    public function test_the_topbar_brand_copy_carries_no_logo_image(): void
     {
-        $this->actingAs($this->adminUser())
-            ->get('/admin')
-            ->assertSuccessful()
-            ->assertSeeHtml('M9 10.76', false);
+        $response = $this->actingAs($this->adminUser())
+            ->get('/admin');
+        $response->assertSuccessful()
+            ->assertSeeHtml('fi-topbar-brand', false);
+
+        preg_match('/<a[^>]*fi-topbar-brand.*?<\/a>/s', (string) $response->getContent(), $m);
+        $this->assertNotEmpty($m, 'the topbar brand anchor must render');
+        $this->assertStringNotContainsString('<img', $m[0]);
     }
 
     private function adminUser(): User

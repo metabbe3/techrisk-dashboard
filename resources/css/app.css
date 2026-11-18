@@ -2809,11 +2809,23 @@
     margin: 0 !important;
 }
 
-/* Collapsed rail: NO logo — Filament's default behavior (owner 2026-11-17:
-   "untuk side bar collapse tidak jadi ada logo dana"). Filament x-shows the
-   logo wrapper off and centers the expand chevron; the narrow white strip in
-   the RISE reference carries only the chevron, while the brand moves to the
-   blue topbar (see .fi-topbar-brand injection in AdminPanelProvider). */
+/* Collapsed rail: the expand control IS the DANA logo (owner 2026-11-18 —
+   supersedes the earlier "no logo in the rail"). Alpine x-show hides the
+   brand wrapper with an inline display:none; !important author rules beat
+   that, so the wrapper comes back as a centered mark-only block. The pin
+   appears only on the temporary expand (fi-tr-pin-btn), so the rail carries
+   just the logo. */
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div[x-show] {
+        display: flex !important;
+        justify-content: center;
+        width: 100%;
+    }
+    .fi-sidebar:not(.fi-sidebar-open) .fi-logo span { display: none; }
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {
+        display: none !important;
+    }
+}
 
 /* RISE reference: the topmost bar is a solid DANA-blue bar spanning the page
    width, white text/icons, the brand parked at its start whenever the
@@ -2825,8 +2837,10 @@
     --tw-ring-shadow: 0 0 #0000;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
+/* Owner 2026-11-18: a hardcoded deep tone, NOT var(--tr-dana-700) — the
+   dark ramp shifts one step LIGHTER (#0673c9), which renders bright. */
 :root.dark .fi-topbar nav {
-    background-color: var(--tr-dana-700);
+    background-color: #0f426f;
     border-bottom-color: rgba(0, 0, 0, 0.4);
 }
 .fi-topbar nav .fi-icon-btn,
