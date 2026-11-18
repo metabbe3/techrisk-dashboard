@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Console\Commands;
 
 use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Models\Incident;
 use App\Models\Setting;
@@ -142,7 +143,11 @@ class SendIncidentReminders extends Command
      */
     private function dueIncidents(int $interval)
     {
-        return Incident::with('pics')
+        // Reminder emails are incident-only (owner 2026-11-18) — the table
+        // also holds Issue rows, which no lane may email.
+        return Incident::query()
+            ->where('classification', IncidentClassification::Incident->value)
+            ->with('pics')
             ->where(function ($query) use ($interval) {
                 $query->whereNull('last_reminded_at')
                     ->orWhere('last_reminded_at', '<=', now()->subDays(max($interval, 1)));
