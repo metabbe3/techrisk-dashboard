@@ -1041,3 +1041,78 @@ func TestRefusalLogAndTurnReportAreRedacted(t *testing.T) {
 	}
 	t.Fatal("turn report never posted")
 }
+
+// Turns must run on the bot's cancellable root ctx, not context.Background():
+// after Drain gives up, main can cancel hung turns instead of letting them
+// race process teardown (audit round 5).
+func TestCancelTurnsAbortsInFlightTurn(t *testing.T) {
+	started := make(chan struct{})
+	testDone := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.Contains(r.URL.Path, "chat/completions"):
+			close(started) // the request is on the wire
+			// Hold the LLM call until the test ends. ⚠ the server NEVER sees
+			// a client cancel for a request with an unread body (verified in
+			// isolation: r.Context().Done() fires for bodyless POSTs only),
+			// so the assertion watches the CLIENT error log instead.
+			<-testDone
+		case strings.Contains(r.URL.Path, "/v1.0/card/instances"):
+			w.WriteHeader(http.StatusForbidden) // force the webhook (processPlain) path
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{}`))
+		}
+	}))
+	t.Cleanup(func() { close(testDone); srv.CloseClientConnections(); srv.Close() })
+	cfg := &config.Config{
+		LLMBaseURL: srv.URL, LLMAPIKey: "k", LLMModel: "m",
+		DashboardAPIBase: srv.URL, DashboardAPIToken: "t",
+		DingTalkOpenAPIHost: srv.URL, DingTalkClientID: "robot", DataDir: t.TempDir(),
+	}
+	bot := NewBot(cfg, agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(cfg), 4), llm.NewClient(cfg))
+
+	var logBuf lockedBuffer
+	log.SetOutput(&logBuf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	m := dmMsg("s1", "hello")
+	m.SessionWebhook = srv.URL + "/webhook"
+	go bot.runBatch([]chatTask{{m: m, text: "hello"}})
+	select { // wait until the LLM call is actually on the wire
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("turn never reached the LLM call")
+	}
+
+	bot.CancelTurns()
+	// The turn dies only if it runs on the bot's root ctx (context.Background()
+	// turns hang until process teardown). The dead turn's error text is the
+	// observable: "agent llm error: ... context canceled".
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if strings.Contains(logBuf.String(), "context canceled") {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("no turn error after CancelTurns — turns are not bound to a cancellable ctx")
+}
+
+// lockedBuffer: log.SetOutput target safe against the poll loop.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}

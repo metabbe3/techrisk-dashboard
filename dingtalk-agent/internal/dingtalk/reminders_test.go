@@ -35,6 +35,7 @@ type fakeReminderAPI struct {
 	// dashboard agent-schedules state
 	rows         map[string][]map[string]any // conversation_id → saved rows
 	schedPosts   []map[string]any            // POST /agent-schedules bodies
+	schedPostAttempts int                      // POSTs attempted incl. failures (fail-closed pin)
 	schedCancels []struct {                  // DELETE calls
 		no   string
 		body map[string]any
@@ -93,6 +94,7 @@ func newFakeReminderAPI(t *testing.T) *fakeReminderAPI {
 		case r.URL.Path == "/api/v1/agent-schedules" && r.Method == http.MethodPost:
 			f.mu.Lock()
 			f.schedAuth = append(f.schedAuth, r.Header.Get("Authorization"))
+			f.schedPostAttempts++ // counted before the fail check: a refused save must never even ATTEMPT Create
 			fail := f.failSchedules
 			f.mu.Unlock()
 			if fail {
@@ -120,8 +122,14 @@ func newFakeReminderAPI(t *testing.T) *fakeReminderAPI {
 		case r.URL.Path == "/api/v1/agent-schedules" && r.Method == http.MethodGet:
 			f.mu.Lock()
 			f.schedAuth = append(f.schedAuth, r.Header.Get("Authorization"))
-			rows := append([]map[string]any{}, f.rows[r.URL.Query().Get("conversation_id")]...)
+			fail := f.failSchedules
 			f.mu.Unlock()
+			if fail {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{}`))
+				return
+			}
+			rows := append([]map[string]any{}, f.rows[r.URL.Query().Get("conversation_id")]...)
 			_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "status": "success", "message": "OK", "data": rows})
 		case strings.HasPrefix(r.URL.Path, "/api/v1/agent-schedules/") && r.Method == http.MethodDelete:
 			var body map[string]any
@@ -405,5 +413,27 @@ func TestDeliverMarkdownGroupErrorFallsBackToDM(t *testing.T) {
 	}
 	if !strings.Contains(p, "check the P1s") || !strings.Contains(p, "group delivery failed") {
 		t.Errorf("DM fallback body wrong: %s", p)
+	}
+}
+
+// A List error must refuse the save (fail-closed): the 20-reminder quota is
+// the only brake on a looping query minting cron jobs, so an unverifiable
+// quota must not fall through to Create.
+func TestReminderCapFailsClosed(t *testing.T) {
+	f := newFakeReminderAPI(t)
+	bot := newReminderBot(t, f, "")
+	f.mu.Lock()
+	f.failSchedules = true
+	f.mu.Unlock()
+
+	m := &chatbot.BotCallbackDataModel{ConversationId: "c", SenderStaffId: "s", SenderNick: "N"}
+	out := bot.bindSchedule(m, schedule.Request{When: "0 9 * * *", Mode: schedule.ModeTask, Text: "check"})
+	if !strings.Contains(out, "not saved") {
+		t.Errorf("List error must refuse the save, got: %s", out)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.schedPostAttempts != 0 {
+		t.Errorf("Create must not fire when the quota check errored: %d attempts", f.schedPostAttempts)
 	}
 }

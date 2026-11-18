@@ -250,3 +250,37 @@ func TestSweepPagesBeyondLimit(t *testing.T) {
 		}
 	}
 }
+
+// Shutdown must not leave the poller blocked on a full semaphore: a cancelled
+// poller ctx gives up the slot attempt instead of queueing one more turn
+// behind Drain (audit round 5).
+func TestSweepFireAbortsOnCancelledContext(t *testing.T) {
+	f := newFakeWatchAPI(t)
+	bot := newWatchBot(t, f, t.TempDir())
+	f.mu.Lock()
+	f.sweep = []map[string]any{{"incident_no": "N001", "incident_status": "Resolved"}}
+	f.mu.Unlock()
+	it, err := bot.watches.Add(watch.Item{
+		IncidentNo: "N001", Title: "t", LastStatus: "Open",
+		ConversationID: "cid-dm", ConversationType: "1", StaffID: "s1", Nick: "Nicholas",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < MaxConcurrentAgents; i++ {
+		bot.sem <- struct{}{} // fill every slot
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	go func() {
+		bot.fireSweepRows(ctx, map[string][]watch.Item{"N001": {it}},
+			[]sweepRow{{No: "N001", Status: "Resolved"}})
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("fireSweepRows blocked on a full sem with a cancelled ctx — poller fights Drain")
+	}
+}

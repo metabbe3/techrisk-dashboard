@@ -256,12 +256,38 @@ func (c *Client) postJSON(ctx context.Context, path string, payload any, accept 
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http request failed: %w", err)
+	for attempt := 0; ; attempt++ {
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("http request failed: %w", err)
+		}
+		// One gateway blip must not kill a run: retry 429/5xx twice with a
+		// short backoff. Only safe pre-stream — the body is not yet consumed.
+		if (resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500) &&
+			attempt < len(llmRetryDelays) {
+			io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<20))
+			resp.Body.Close()
+			time.Sleep(llmRetryDelays[attempt])
+			// Rebuild the request: a consumed Body cannot be re-sent.
+			req, err = http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, bytes.NewReader(data))
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Content-Type", "application/json")
+			if accept != "" {
+				req.Header.Set("Accept", accept)
+			}
+			if c.apiKey != "" {
+				req.Header.Set("Authorization", "Bearer "+c.apiKey)
+			}
+			continue
+		}
+		return resp, nil
 	}
-	return resp, nil
 }
+
+// llmRetryDelays is the 429/5xx backoff ladder (var: tests shrink it).
+var llmRetryDelays = []time.Duration{750 * time.Millisecond, 2 * time.Second}
 
 // apiError builds the error for a non-2xx response: the gateway's structured
 // error message when parseable, else the rune-safe capped body — a chatty
@@ -283,7 +309,8 @@ func (c *Client) doCompletion(ctx context.Context, reqBody ChatRequest) (*ChatMe
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
+	// ponytail: 8MiB cap — a runaway gateway body must not OOM the bot.
+	bodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, Usage{}, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -299,6 +326,12 @@ func (c *Client) doCompletion(ctx context.Context, reqBody ChatRequest) (*ChatMe
 
 	if len(chatResp.Choices) == 0 {
 		return nil, Usage{}, fmt.Errorf("llm returned no choices in response")
+	}
+
+	// A "length" finish means max_tokens cut the response: a truncated tool
+	// call or OCR page used to pass as a complete answer (audit round 5).
+	if chatResp.Choices[0].FinishReason == "length" {
+		return nil, chatResp.Usage.resolved(), fmt.Errorf("llm response cut off by max_tokens (finish_reason=length)")
 	}
 
 	return &chatResp.Choices[0].Message, chatResp.Usage.resolved(), nil
@@ -376,12 +409,15 @@ func (c *Client) embedCall(ctx context.Context, inputs []string) ([][]float32, e
 	if len(inputs) > 1 {
 		input = inputs
 	}
-	resp, err := c.postJSON(ctx, "/v1/embeddings", map[string]any{"model": c.embedModel, "input": input}, "")
+	// No "/v1" prefix: bases end in /v1 already (the chat path posts
+	// {base}/chat/completions the same way) — "/v1/embeddings" produced
+	// /v1/v1/embeddings and KB silently went keyword-only.
+	resp, err := c.postJSON(ctx, "/embeddings", map[string]any{"model": c.embedModel, "input": input}, "")
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, err
 	}

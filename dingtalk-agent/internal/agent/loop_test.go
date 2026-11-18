@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -693,5 +694,42 @@ func TestToolResultRedactedBeforeTruncation(t *testing.T) {
 	}
 	if !found {
 		t.Error("no tool result in history")
+	}
+}
+
+// A 429/5xx/network blip must NOT burn a 30-round heavy-model retry — only
+// iteration-budget exhaustion escalates.
+func TestEscalationOnlyOnBudgetExhaustion(t *testing.T) {
+	var cheapCalls, heavyCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Model == "heavy" {
+			atomic.AddInt32(&heavyCalls, 1)
+		} else {
+			atomic.AddInt32(&cheapCalls, 1)
+		}
+		http.Error(w, `{"error":{"message":"rate limited"}}`, http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{LLMBaseURL: srv.URL, LLMAPIKey: "k", LLMModel: "cheap", HeavyModel: "heavy"}
+	reg := tools.NewRegistry(nil)
+	loop := NewLoop(llm.NewClient(cfg), reg, 5)
+
+	_, _, _, err := loop.runWithEscalation(context.Background(), "hi", nil, nil, "")
+	if err == nil || !strings.Contains(err.Error(), "rate limited") {
+		t.Fatalf("expected the original 429 error, got: %v", err)
+	}
+	// Count by MODEL: the cheap call legitimately retries the 429 ladder
+	// (client.go), so total hits exceed 1 — but escalation to the heavy
+	// model must never fire for a non-budget error.
+	if got := atomic.LoadInt32(&heavyCalls); got != 0 {
+		t.Errorf("429 escalated to the heavy model: %d heavy calls, want 0", got)
+	}
+	if got := atomic.LoadInt32(&cheapCalls); got == 0 {
+		t.Error("cheap model never called")
 	}
 }

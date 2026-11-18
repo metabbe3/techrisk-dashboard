@@ -74,6 +74,12 @@ type Bot struct {
 	inboxMu sync.Mutex
 	inboxes map[string]chan chatTask // per-conversation batching workers
 
+	// Root ctx for agent turns: Background until cancelled, so main can abort
+	// hung turns AFTER Drain gives up (turns on context.Background() could
+	// only be waited on — audit round 5).
+	rootCtx    context.Context
+	rootCancel context.CancelFunc
+
 	sem chan struct{}
 
 	digestMu sync.Mutex // single-flight guard for mergeKnowledgeDigest (knowledgedigest.go)
@@ -101,6 +107,7 @@ func NewBot(cfg *config.Config, loop *agent.Loop, llmClient *llm.Client) *Bot {
 	for _, id := range cfg.DingTalkAllowlist {
 		allowed[id] = struct{}{}
 	}
+	rootCtx, rootCancel := context.WithCancel(context.Background())
 	b := &Bot{
 		cfg:      cfg,
 		loop:     loop,
@@ -111,6 +118,7 @@ func NewBot(cfg *config.Config, loop *agent.Loop, llmClient *llm.Client) *Bot {
 		history:  make(map[string]historyEntry),
 		seen:     make(map[string]time.Time),
 		inboxes:  make(map[string]chan chatTask),
+		rootCtx:  rootCtx, rootCancel: rootCancel,
 		sem:      make(chan struct{}, MaxConcurrentAgents),
 		schedAPI: tools.NewScheduleAPI(cfg),   // dashboard agent-schedules API (10s client)
 		watches:  watch.NewStore(cfg.DataDir), // "" = memory-only
@@ -194,6 +202,15 @@ func (b *Bot) acquire(ctx context.Context) bool {
 		return true
 	case <-ctx.Done():
 		return false
+	}
+}
+
+// CancelTurns aborts every in-flight agent turn (they run on the bot's root
+// ctx): called after Drain gives up so hung turns stop racing process
+// teardown — audit round 5.
+func (b *Bot) CancelTurns() {
+	if b.rootCancel != nil {
+		b.rootCancel()
 	}
 }
 
@@ -409,11 +426,12 @@ func (b *Bot) runBatch(batch []chatTask) {
 	}()
 	m := batch[len(batch)-1].m
 
-	// A file upload runs alone through the same concurrency gate.
+	// A file upload runs alone through the same concurrency gate. Turns run
+	// on the bot's cancellable root ctx, not Background (audit round 5).
 	if len(batch) == 1 && batch[0].file != nil {
 		b.sem <- struct{}{}
 		defer func() { <-b.sem }()
-		b.processFile(context.Background(), m, *batch[0].file, batch[0].text)
+		b.processFile(b.rootCtx, m, *batch[0].file, batch[0].text)
 		return
 	}
 
@@ -421,7 +439,7 @@ func (b *Bot) runBatch(batch []chatTask) {
 	if len(batch) == 1 && batch[0].pic != nil {
 		b.sem <- struct{}{}
 		defer func() { <-b.sem }()
-		b.processPicture(context.Background(), m, *batch[0].pic, batch[0].text)
+		b.processPicture(b.rootCtx, m, *batch[0].pic, batch[0].text)
 		return
 	}
 
@@ -477,7 +495,7 @@ func (b *Bot) runBatch(batch []chatTask) {
 	b.sem <- struct{}{}
 	defer func() { <-b.sem }()
 	// One sink per turn: concurrent turns no longer share the Notion-reads buffer.
-	b.process(tools.WithNotionSink(context.Background()), m, text, ack)
+	b.process(tools.WithNotionSink(b.rootCtx), m, text, ack)
 }
 
 // processFile handles a chat-uploaded document: download, extract text,

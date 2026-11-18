@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"runtime/debug"
@@ -224,7 +225,7 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 	// Iteration budget exhausted is an ERROR, not a final answer (audit
 	// 2026-11-12): returning it as a normal reply made callers persist the
 	// placeholder into history and report the turn as a success.
-	return "", messages[1:], totalUsage, fmt.Errorf("agent hit the %d-iteration tool budget without a final answer — narrow the query", l.maxIterations)
+	return "", messages[1:], totalUsage, &BudgetExhaustedError{Max: l.maxIterations}
 }
 
 // runWithEscalation runs the loop; when the chat model burns its tool
@@ -244,7 +245,8 @@ func (l *Loop) runWithEscalation(ctx context.Context, userText string, history [
 		log.Printf("[agent] %strigger phrase routed this turn to the heavy model %q", LogPrefix(ctx), l.llmClient.HeavyModel())
 	}
 	reply, msgs, usage, err := l.run(ctx, userText, history, onDelta, sysExtra, heavy)
-	if err == nil || l.llmClient.HeavyModel() == "" || ctx.Err() != nil {
+	var budgetErr *BudgetExhaustedError
+	if err == nil || l.llmClient.HeavyModel() == "" || ctx.Err() != nil || !errors.As(err, &budgetErr) {
 		return reply, msgs, usage, err
 	}
 	log.Printf("[agent] %sescalating to heavy model %q after error: %v", LogPrefix(ctx), l.llmClient.HeavyModel(), err)
@@ -263,6 +265,14 @@ func (l *Loop) runWithEscalation(ctx context.Context, userText string, history [
 
 // execTools runs one round of tool calls (max 4 concurrent) and returns the
 // tool messages in original call order.
+// BudgetExhaustedError is the ONE error that triggers heavy-model escalation:
+// a 429/5xx/network blip must not burn a 30-round heavy retry (audit round 5).
+type BudgetExhaustedError struct{ Max int }
+
+func (e *BudgetExhaustedError) Error() string {
+	return fmt.Sprintf("agent hit the %d-iteration tool budget without a final answer — narrow the query", e.Max)
+}
+
 func (l *Loop) execTools(ctx context.Context, toolCalls []llm.ToolCall) []llm.ChatMessage {
 	results := make([]toolResult, len(toolCalls))
 	var resultsMu sync.Mutex

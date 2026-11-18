@@ -2,6 +2,7 @@ package dingtalk
 
 import (
 	"context"
+	"sync"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -41,13 +42,16 @@ func TestSendMarkdownDM(t *testing.T) {
 // failure wraps in *url.Error, whose Error() prints the whole URL — the token
 // used to ride into the central log.
 func TestUploadErrorHidesToken(t *testing.T) {
+	var mu sync.Mutex
 	var tokenSeen string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Path, "accessToken") {
 			_, _ = w.Write([]byte(`{"accessToken":"sekret-token","expireIn":7200}`))
 			return
 		}
+		mu.Lock()
 		tokenSeen = r.URL.RawQuery
+		mu.Unlock()
 		// RST the connection mid-upload: the client surfaces a *url.Error.
 		conn, _, _ := w.(http.Hijacker).Hijack()
 		_ = conn.Close()
@@ -66,7 +70,10 @@ func TestUploadErrorHidesToken(t *testing.T) {
 	if strings.Contains(err.Error(), "sekret-token") || strings.Contains(err.Error(), "access_token") {
 		t.Errorf("error leaks the token: %v", err)
 	}
-	if tokenSeen == "" {
+	mu.Lock()
+	reached := tokenSeen != ""
+	mu.Unlock()
+	if !reached {
 		t.Error("upload must have reached the server")
 	}
 }

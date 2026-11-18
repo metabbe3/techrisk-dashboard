@@ -152,8 +152,11 @@ func (b *Bot) fireSweepRows(ctx context.Context, byNo map[string][]watch.Item, r
 			// Acquire the agent slot BEFORE spawning (watch fires used to
 			// release b.sem without ever acquiring it: the release either
 			// hung forever on an empty sem or STOLE a live turn's slot —
-			// audit round 4).
-			b.sem <- struct{}{}
+			// audit round 4). A cancelled poller ctx gives up instead of
+			// queueing one more turn behind Drain (audit round 5).
+			if !b.acquire(ctx) {
+				return
+			}
 			go func(it watch.Item, old, new string) {
 				// A watch that just fired reports on a DETACHED ctx: the
 				// status is already persisted, and a deploy's SIGTERM used
