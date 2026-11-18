@@ -419,6 +419,20 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []ChatMessage, too
 	return c.doCompletion(ctx, reqBody)
 }
 
+// ChatCompletionUncapped is ChatCompletion WITHOUT the chat max_tokens budget:
+// MaxTokens stays the zero value, so `omitempty` drops the field from the wire
+// and the provider uses its default. For background synthesis jobs (knowledge
+// digest merge) — a thinking model handed the chat budget can spend all of it
+// on reasoning and return empty content.
+func (c *Client) ChatCompletionUncapped(ctx context.Context, messages []ChatMessage, tools []ToolDefinition) (*ChatMessage, Usage, error) {
+	reqBody := ChatRequest{
+		Model:    c.model,
+		Messages: messages,
+		Tools:    tools,
+	}
+	return c.doCompletion(ctx, reqBody)
+}
+
 // visionPart is one content part of a multimodal message (OpenAI wire format).
 type visionPart struct {
 	Type     string          `json:"type"` // "text" | "image_url"

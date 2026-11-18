@@ -1,8 +1,10 @@
 package dingtalk
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,14 +20,41 @@ import (
 )
 
 // promptCapture is a mutex-guarded view of the last system+user prompt the
-// fake LLM saw.
+// fake LLM saw, plus whether that request carried a max_tokens budget.
 type promptCapture struct {
-	mu sync.Mutex
-	v  string
+	mu        sync.Mutex
+	v         string
+	maxTokens *float64 // nil = the wire request had NO max_tokens field
 }
 
 func (p *promptCapture) set(s string) { p.mu.Lock(); p.v = s; p.mu.Unlock() }
 func (p *promptCapture) get() string  { p.mu.Lock(); defer p.mu.Unlock(); return p.v }
+
+func (p *promptCapture) setMaxTokens(n *float64) { p.mu.Lock(); p.maxTokens = n; p.mu.Unlock() }
+func (p *promptCapture) maxTokensSeen() *float64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.maxTokens
+}
+
+// logCapture is a mutex-guarded log sink: the boot backfill goroutine and the
+// test's own merge call both log through it, so reads stay race-free.
+type logCapture struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *logCapture) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *logCapture) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
 
 // digestBot builds a bot over dir with the digest flag on and a fake LLM that
 // always replies with `reply` and records its last prompt in `cap`.
@@ -33,9 +62,11 @@ func digestBot(t *testing.T, dir string, reply string, cap *promptCapture) *Bot 
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Messages []llm.ChatMessage `json:"messages"`
+			Messages  []llm.ChatMessage `json:"messages"`
+			MaxTokens *float64          `json:"max_tokens"`
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
+		cap.setMaxTokens(req.MaxTokens)
 		if len(req.Messages) > 0 {
 			cap.set(req.Messages[0].Content + "\n" + req.Messages[len(req.Messages)-1].Content)
 		}
@@ -52,6 +83,13 @@ func digestBot(t *testing.T, dir string, reply string, cap *promptCapture) *Bot 
 		KnowledgeDigest: true,
 	}
 	return NewBot(cfg, nil, llm.NewClient(cfg))
+}
+
+// captureLogs swaps the package log sink for lc until the test ends.
+func captureLogs(lc *logCapture) func() {
+	old := log.Writer()
+	log.SetOutput(lc)
+	return func() { log.SetOutput(old) }
 }
 
 // seedKnowledge writes knowledge.jsonl directly — the raw layer as prod has it
@@ -346,5 +384,113 @@ func TestPromptShowsNewRawEntriesWhenMergeFails(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "fresh stampede pattern") {
 		t.Errorf("new raw entry hidden by the stale digest:\n%.300s", prompt)
+	}
+}
+
+// TestDigestSaveRefusalLogsDiagnostics (prod 2026-11-18: "empty digest refused"
+// fired twice with zero explanation). An empty model reply must log WHY it was
+// refused: the batch context, the raw length, and — when the model returned
+// nothing at all — the model name + completion tokens, so the next reader can
+// tell a thinking-model budget burn from a provider outage.
+func TestDigestSaveRefusalLogsDiagnostics(t *testing.T) {
+	dir := t.TempDir()
+	seedKnowledge(t, dir, []string{"a.pdf"}, []string{"fact one"})
+
+	lc := &logCapture{}
+	defer captureLogs(lc)()
+	cap := &promptCapture{}
+	bot := digestBot(t, dir, "", cap) // the LLM returned NOTHING
+	bot.mergeKnowledgeDigest()
+
+	logs := lc.String()
+	for _, want := range []string{
+		"empty digest refused (raw reply 0 chars)",
+		"[0/1 known docs]",
+		"EMPTY content",
+		"model m",
+		"completion_tokens=0",
+	} {
+		if !strings.Contains(logs, want) {
+			t.Errorf("refusal log missing %q:\n%s", want, logs)
+		}
+	}
+	if bot.store.DigestCovered() != 0 {
+		t.Errorf("refused merge advanced the cursor: %d", bot.store.DigestCovered())
+	}
+}
+
+// TestDigestSaveRefusalLogsPreviewForUnusableReply: a non-empty reply that
+// normalizes to zero lines must log its sanitized preview, so a junk reply is
+// visible in the log without re-running the merge.
+func TestDigestSaveRefusalLogsPreviewForUnusableReply(t *testing.T) {
+	tests := []struct {
+		name    string
+		reply   string
+		wantRaw int
+	}{
+		{"symbol-only", "***", 3},
+		{"whitespace-only", "  \n\t ", 5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			seedKnowledge(t, dir, []string{"a.pdf"}, []string{"fact one"})
+
+			lc := &logCapture{}
+			defer captureLogs(lc)()
+			cap := &promptCapture{}
+			bot := digestBot(t, dir, tc.reply, cap)
+			bot.mergeKnowledgeDigest()
+
+			logs := lc.String()
+			if !strings.Contains(logs, fmt.Sprintf("raw reply %d chars", tc.wantRaw)) {
+				t.Errorf("log missing raw length %d:\n%s", tc.wantRaw, logs)
+			}
+			if !strings.Contains(logs, "unusable reply") {
+				t.Errorf("log missing unusable-reply detail:\n%s", logs)
+			}
+			if bot.store.DigestCovered() != 0 {
+				t.Errorf("refused merge advanced the cursor: %d", bot.store.DigestCovered())
+			}
+		})
+	}
+}
+
+// TestDigestMergeOmitsMaxTokensOnTheWire (owner 2026-11-18: "i think the max
+// token is to small ? doesnt need max token ?"): the digest merge is a
+// synthesis job, not a chat reply — it must NOT inherit the chat max_tokens
+// budget (LLM_MAX_TOKENS), which a thinking model can burn entirely on
+// reasoning, producing the empty replies the guard keeps refusing.
+func TestDigestMergeOmitsMaxTokensOnTheWire(t *testing.T) {
+	dir := t.TempDir()
+	seedKnowledge(t, dir, []string{"a.pdf"}, []string{"fact one"})
+
+	cap := &promptCapture{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			MaxTokens *float64 `json:"max_tokens"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		cap.setMaxTokens(req.MaxTokens)
+		resp := llm.ChatResponse{Choices: []llm.ChatChoice{{
+			Message: llm.ChatMessage{Role: "assistant", Content: "- [2026-01-01] a.pdf — merged fact"}, FinishReason: "stop",
+		}}}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfg := &config.Config{
+		LLMBaseURL: srv.URL, LLMAPIKey: "k", LLMModel: "m", DataDir: dir,
+		KnowledgeDigest: true, LLMMaxTokens: 100, // prod carries a chat budget
+	}
+	bot := NewBot(cfg, nil, llm.NewClient(cfg))
+	bot.mergeKnowledgeDigest()
+
+	if seen := cap.maxTokensSeen(); seen != nil {
+		t.Errorf("digest merge sent max_tokens=%v on the wire — merge must not inherit the chat budget", *seen)
+	}
+	if bot.store.DigestCovered() != 1 {
+		t.Fatalf("merge did not advance the cursor: %d", bot.store.DigestCovered())
 	}
 }

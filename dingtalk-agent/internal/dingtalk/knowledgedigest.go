@@ -79,7 +79,11 @@ func (b *Bot) mergeKnowledgeDigest() {
 				e.Time.In(schedule.WIB).Format("2006-01-02"), e.File, summary)
 		}
 
-		reply, _, err := b.llm.ChatCompletion(context.Background(), []llm.ChatMessage{
+		// Uncapped on purpose (owner 2026-11-18): the merge is a synthesis
+		// job — the chat max_tokens budget (LLM_MAX_TOKENS) can be burned
+		// entirely by a thinking model's reasoning, which is exactly the
+		// empty-reply refusal seen on prod. The provider default applies.
+		reply, usage, err := b.llm.ChatCompletionUncapped(context.Background(), []llm.ChatMessage{
 			{Role: "system", Content: digestSystemPrompt},
 			{Role: "user", Content: fmt.Sprintf(
 				"EXISTING DIGEST:\n%s\n\nNEW DOCUMENT SUMMARIES (oldest first):\n%s",
@@ -90,7 +94,17 @@ func (b *Bot) mergeKnowledgeDigest() {
 			return
 		}
 		if err := b.store.SaveKnowledgeDigest(reply.Content, covered+len(batch)); err != nil {
-			log.Printf("[dingtalk] digest save failed (cursor not advanced, will retry): %v", err)
+			var detail string
+			if reply.Content == "" {
+				detail = fmt.Sprintf("EMPTY content from model %s (completion_tokens=%d) — "+
+					"check LLM_MODEL/max_tokens: a thinking model may spend its whole budget on reasoning",
+					b.cfg.LLMModel, usage.CompletionTokens)
+			} else {
+				detail = fmt.Sprintf("unusable reply (%d chars), preview: %s",
+					len(reply.Content), strings.Join(strings.Fields(reply.Content), " "))
+			}
+			log.Printf("[dingtalk] digest save failed (cursor not advanced, will retry) [%d/%d known docs]: %v — %s",
+				covered, len(entries), err, detail)
 			return
 		}
 	}

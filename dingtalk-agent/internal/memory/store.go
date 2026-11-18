@@ -5,7 +5,7 @@ package memory
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -145,7 +145,7 @@ func (s *Store) SaveKnowledgeDigest(text string, covered int) error {
 		lines = append(lines, "- "+util.Cut(ln, MaxDigestLineLen))
 	}
 	if len(lines) == 0 {
-		return errors.New("empty digest refused — never wipe compiled memory")
+		return fmt.Errorf("empty digest refused (raw reply %d chars) — never wipe compiled memory", len(text))
 	}
 	if len(lines) > MaxDigestLines {
 		lines = lines[len(lines)-MaxDigestLines:] // keep the newest
