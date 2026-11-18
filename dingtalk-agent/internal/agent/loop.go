@@ -407,6 +407,9 @@ func (l *Loop) buildSystemPrompt(sysExtra string) string {
 	if l.registry.Has("get_dashboard_stats") {
 		sys += "\n\n" + StatsPrompt
 	}
+	if l.registry.Has("list_skills") {
+		sys += "\n\n" + SkillsPrompt
+	}
 	if l.SystemExtras != nil {
 		if extra := l.SystemExtras(); extra != "" {
 			sys += "\n\n## Knowledge (documents users shared earlier)\n" + extra
@@ -449,14 +452,26 @@ func PruneContextBudget(messages []llm.ChatMessage, maxChars int) {
 		total += len(m.Content)
 	}
 	for total > maxChars {
-		// Find the oldest tool result not yet omitted
+		// Find the oldest tool result not yet omitted. A load_skill result is
+		// spared in this pass — it is the methodology the turn is following —
+		// and goes only via the no-other-result pass below.
 		found := false
 		for i := range messages {
-			if messages[i].Role == "tool" && messages[i].Content != "[tool result omitted]" {
+			if messages[i].Role == "tool" && messages[i].Content != "[tool result omitted]" && messages[i].Name != "load_skill" {
 				total -= len(messages[i].Content)
 				messages[i].Content = "[tool result omitted]"
 				found = true
 				break
+			}
+		}
+		if !found {
+			for i := range messages {
+				if messages[i].Role == "tool" && messages[i].Content != "[tool result omitted]" {
+					total -= len(messages[i].Content)
+					messages[i].Content = "[tool result omitted]"
+					found = true
+					break
+				}
 			}
 		}
 		if !found {

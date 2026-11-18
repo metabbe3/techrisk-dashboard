@@ -26,6 +26,7 @@ type Config struct {
 	LLMMaxTokens         int               // max output tokens (War Room parity); 0 = omit the field
 	WebToolsEnabled      bool              // web_search / web_fetch registered for the LLM
 	NotionToolsEnabled   bool              // read-only Notion doc tools registered for the LLM
+	SkillToolsEnabled    bool              // list_skills / load_skill over the dashboard skill library
 	NotionDatabases      map[string]string // named Notion databases (NAME=<id>), seed for the agent's catalog
 	AutoLearn            bool              // per-user preference profiles extracted from conversations
 	MaxReplyChars        int               // reply cap before truncation (DingTalk markdown size)
@@ -355,6 +356,7 @@ func LoadFromFile(envPath string) (*Config, error) {
 		LLMMaxTokens:         maxTokens,
 		WebToolsEnabled:      webTools,
 		NotionToolsEnabled:   notionTools,
+		SkillToolsEnabled:    loadBool(getVal, "AGENT_SKILL_TOOLS", true),
 		NotionDatabases:      notionDBs,
 		AutoLearn:            autoLearn,
 		MaxReplyChars:        maxReply,

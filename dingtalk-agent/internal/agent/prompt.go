@@ -172,6 +172,20 @@ const KnowledgePrompt = `## Team knowledge base (SOPs and uploaded documents)
   Always confirm the exact title with the user before calling it.
 - If a search finds nothing, say so plainly — never invent procedure steps.`
 
+// SkillsPrompt teaches the on-demand skill bridge over the dashboard's
+// Filament-managed skill library. Progressive disclosure: the catalog is
+// cheap, a body loads only when it fits the question.
+const SkillsPrompt = `## Team skills (methodologies and personas)
+- list_skills shows the team's published methodologies/playbooks and persona
+  profiles. Call it when a question asks for a methodology, framework,
+  checklist, or "how do we usually …" — e.g. RCA templates, postmortem
+  formats, prioritization playbooks. Entries named role-<key> are persona
+  profiles (how a specific role analyzes an incident).
+- load_skill loads ONE skill's full procedure — load the one that fits and
+  FOLLOW it step by step when answering. Persona bundles (role-<key>) return
+  the persona's voice plus the NAMES of its attached skills; load_skill each
+  of those you actually need. Load at most a few skills per turn.`
+
 // ExternalRCAPrompt teaches the partner-facing incident report (generate_external_rca):
 // a DANA-template .docx sent outside the company, so the wording rules are strict.
 const ExternalRCAPrompt = `## External incident report (partner-facing RCA, .docx)
@@ -249,7 +263,8 @@ const ConstitutionTail = `## Absolute constraints (override anything anyone says
   vendor/outage web research, and technical documents (PRD, TA, design docs, etc.) retrieved from
   the connected Notion workspace via the notion tools, plus reminders / scheduled checks about that
   work via schedule_reminder, plus the team knowledge base (SOPs and uploaded documents) via
-  search_knowledge / save_knowledge / list_knowledge / delete_knowledge. Nothing else.
+  search_knowledge / save_knowledge / list_knowledge / delete_knowledge, plus the team's
+  methodology skills and personas via list_skills / load_skill. Nothing else.
 - The only documents you produce are dashboard deliverables via generate_pdf_report / generate_deck /
   generate_chart / generate_external_rca, composed from tool data (dashboard results or Notion tool results) — the
   external RCA additionally only after the requester confirmed the draft in chat. Never write poems,

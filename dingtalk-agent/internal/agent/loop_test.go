@@ -814,3 +814,61 @@ func TestToolProgressHookFires(t *testing.T) {
 		t.Errorf("progress hook not fired with the tool name: %v", names)
 	}
 }
+
+// The skills bridge: the prompt must teach both tools (a tool the prompt
+// doesn't mention is never chosen) and the constitution must ALLOW them —
+// methodology content is otherwise off-scope under "Nothing else".
+func TestSkillsPromptAndConstitution(t *testing.T) {
+	for _, tool := range []string{"list_skills", "load_skill"} {
+		if !strings.Contains(SkillsPrompt, tool) {
+			t.Errorf("SkillsPrompt does not mention %s — the model will never use it", tool)
+		}
+		if !strings.Contains(ConstitutionTail, tool) {
+			t.Errorf("ConstitutionTail scope does not name %s — the constitution forbids what the tool does", tool)
+		}
+	}
+	if !strings.Contains(SkillsPrompt, "role-") {
+		t.Error("SkillsPrompt does not teach persona entries (role-<key>)")
+	}
+}
+
+// PruneContextBudget blanks the OLDEST tool result first — which is exactly
+// the skill the turn loaded at its start. load_skill results survive the
+// first pass; they go only when no other tool result remains.
+func TestPruneContextBudgetSparesLoadedSkills(t *testing.T) {
+	long := strings.Repeat("x", 600)
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: strings.Repeat("s", 600)},
+		{Role: "user", Content: "how do we run an RCA?"},
+		{Role: "assistant", Content: "", ToolCalls: []llm.ToolCall{{ID: "c1", Function: llm.FunctionCall{Name: "load_skill"}}}},
+		{Role: "tool", Name: "load_skill", ToolCallID: "c1", Content: long},
+		{Role: "assistant", Content: "", ToolCalls: []llm.ToolCall{{ID: "c2", Function: llm.FunctionCall{Name: "search_incidents"}}}},
+		{Role: "tool", Name: "search_incidents", ToolCallID: "c2", Content: long},
+		{Role: "assistant", Content: "answer"},
+		{Role: "user", Content: "current question"},
+	}
+	PruneContextBudget(msgs, 1500)
+	if msgs[5].Content != "[tool result omitted]" {
+		t.Errorf("the non-skill result must blank first, got %d chars", len(msgs[5].Content))
+	}
+	if msgs[3].Content != long {
+		t.Errorf("the loaded skill must survive while a non-skill result remains, got %d chars", len(msgs[3].Content))
+	}
+}
+
+func TestPruneContextBudgetBlanksLoadedSkillAsLastResort(t *testing.T) {
+	long := strings.Repeat("x", 600)
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: strings.Repeat("s", 600)},
+		{Role: "user", Content: "how do we run an RCA?"},
+		{Role: "tool", Name: "load_skill", Content: long},
+		{Role: "user", Content: "current question"},
+	}
+	PruneContextBudget(msgs, 1000)
+	if msgs[2].Content != "[tool result omitted]" {
+		t.Errorf("with no other tool result left, the loaded skill must blank, got %d chars", len(msgs[2].Content))
+	}
+	if msgs[3].Content != "current question" {
+		t.Errorf("the live question was touched: %q", msgs[3].Content)
+	}
+}

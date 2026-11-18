@@ -21,6 +21,7 @@ func newTestRegistry(t *testing.T, handler http.HandlerFunc) (*Registry, *httpte
 	cfg := &config.Config{
 		DashboardAPIBase:  server.URL,
 		DashboardAPIToken: "test-token",
+		SkillToolsEnabled: true,
 	}
 	return NewRegistry(cfg), server
 }

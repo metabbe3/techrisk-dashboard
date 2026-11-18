@@ -194,6 +194,11 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	// Corpus pages are pre-capped at 100k chars server-side; 48k keeps the
 	// prompt budget in line with get_incident_markdown.
 	r.RegisterCapped(readCorpusPageDef(), typed(client.handleReadCorpusPage), 48<<10)
+	// Skill library + personas: server pre-caps bodies at 48k chars.
+	if cfg.SkillToolsEnabled {
+		r.RegisterCapped(listSkillsDef(), typed(client.handleListSkills), 48<<10)
+		r.RegisterCapped(loadSkillDef(), typed(client.handleLoadSkill), 48<<10)
+	}
 	r.Register(statsDef(), typed(client.handleGetDashboardStats))
 }
 
