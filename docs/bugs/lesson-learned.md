@@ -2074,7 +2074,28 @@ One round-trip: a single `url LIKE '%id1%' OR url LIKE '%id2%' …` query (serve
 - [x] `NotionIssueSyncServiceTest` restorableIssues tests still green (the shared-mock falls through on the combined query).
 - [x] Batch reads for UI lists; per-item reads only where per-item failure isolation is the point (a background restore must survive one bad tombstone).
 - [x] When replacing N queries with one bulk read over a capped channel, keep a server-side WHERE — an unfiltered bulk read trades a latency bug for a silent-truncation bug.
-## BUG-038 — Board View 500 on prod: `@php(...)` expression form mixed with block `@php…@endphp` breaks Blade compilation (2026-11-18)
+## BUG-039 — Recurrence panel wrong on every axis: hand-typed statuses, unbounded relevance, starved AI prompt, stale results (2026-11-18)
+
+### Symptom
+Incident 20261116_IN_7846's "Recurrence Detected" panel: scores of 147/10 and 130/10 (scale is /10), the top "recurrence" was a P1 trade-drop incident unrelated to the unsettled-transaction fund-loss incident, and the AI analysis claimed "0 pending/overdue actions" on all matches while reasoning from who was @-mentioned in the text.
+
+### Root Cause — four independent defects in `RecurrenceDetectionService`
+1. **Hand-typed status strings (Edit-Safety Rule 1 repeat).** Pending/overdue counts filtered actions against `['Open', 'In Progress']`; real statuses are `pending`/`on_progress` (`ActionImprovement::openStatuses()`). A `whereNotIn`-style no-op: every count was 0, so the AI was told there were no open actions anywhere and concluded "nothing contributed".
+2. **Raw MATCH…AGAINST relevance used as a bounded bonus.** `ragBonus = round(relevance_score * 2)` — but `relevance_score` is unbounded MySQL fulltext relevance (30–70 typical). A wordy unrelated incident scored 140+ points of "text similarity", drowning category matching and producing 147/10. `SimilarIncidentService` and `HybridIncidentRetriever` already normalize by max — this service didn't.
+3. **AI prompt starved.** Each match was fed only `Str::limit(summary, 150)` — for these incidents the summary IS the email greeting ("Dear Tech Risk Team, mas @Kevin…"). No title, no root cause, no match reason → the model reasoned from names. The data was already loaded in `SIMILARITY_COLUMNS`; it just wasn't passed on.
+4. **Detection ran once, at creation+30s, when root cause is still empty.** `recurrence_data !== null` then blocked any re-run forever — the analysis could only reflect a half-filled incident.
+
+### Fix
+One `actionCounts()` helper on `ActionImprovement::openStatuses()`; RAG normalized by max (bonus 0–3); score capped `min(10, …)`; a match must share a real signal (root_cause_category / labels / text_similarity) — team+severity alone no longer qualifies; prompts get `[no] title — root cause — matched on: …` plus an explicit "names are reporters, not evidence" rule; re-detect via `DetectRecurrenceJob(force: true)` when `root_cause`/`root_cause_category` change.
+
+**Observer write trap (new):** the first fix nulled `recurrence_data` + `saveQuietly()` inside `IncidentObserver::updated()` — that silently broke `GovernanceKpiServiceTest::test_rca_within_5_days_uses_audit_trail`. Saving inside `updated()` syncs the model's dirty state BEFORE the OwenIt auditing observer runs, so the `root_cause` audit entry came back empty and `rcaWithinFiveDays()` (which reads `audits.new_values.root_cause`) lost coverage. Rule: **`updated()` must not write to the model** — re-detect is signaled via a force flag on the job, the null-guard stays in the job.
+
+### Prevention Checklist
+- [x] `tests/Unit/Services/RecurrenceDetectionServiceTest` (8 tests): open-status counts, raw-relevance normalization + score cap, team+severity-only no longer flags, category/label overlap flags, title/root_cause carried for the prompt, observer re-detect on root_cause edit, no re-detect on team-only edit.
+- [x] Re-running an incident's detection is the owner-run backfill: `php artisan incidents:backfill-recurrence --force` (prod guardrail — writes to prod DB).
+- [ ] Never hand-type action status strings; `ActionImprovement::openStatuses()` is the ONE map (same lesson as the 2026-11-18 on_progress batch).
+- [ ] Never save the model inside an observer hook that other observers audit after; pass intent forward (job flag), don't mutate.
+
 
 ### Symptom
 `/admin/incidents/board` → red Filament 500, `Parse error: syntax error, unexpected token "@"`. Governance 500 on prod (techrisk.paas.dana.id) was a separate surface (schema drift — see Prevention) but reported together.

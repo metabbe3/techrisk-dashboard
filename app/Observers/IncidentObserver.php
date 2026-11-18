@@ -159,8 +159,14 @@ class IncidentObserver
             ));
         }
 
-        // Dispatch recurrence detection when categories change and not yet analyzed
-        if ($incident->wasChanged(['root_cause_category', 'business_category', 'responsible_team'])
+        // Root cause filled/changed later → the original analysis is stale.
+        // Re-detect via a force-flagged job (owner 2026-11-18). NO write here:
+        // saving inside updated() syncs the model's dirty state before the
+        // auditing observer runs, and the root_cause audit entry would come
+        // back empty (GovernanceKpiService::rcaWithinFiveDays reads it).
+        if ($incident->wasChanged(['root_cause', 'root_cause_category'])) {
+            DetectRecurrenceJob::dispatch($incident, force: true);
+        } elseif ($incident->wasChanged(['business_category', 'responsible_team'])
             && $incident->recurrence_data === null) {
             DetectRecurrenceJob::dispatch($incident);
         }
