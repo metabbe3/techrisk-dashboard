@@ -142,11 +142,24 @@ func (r *Registry) Execute(ctx context.Context, name, argsJSON string) (string, 
 		argsJSON = "{}"
 	}
 
-	result, err := tool.Handler(ctx, argsJSON)
+	return executeGuarded(ctx, name, tool.Handler, argsJSON), nil
+}
+
+// executeGuarded runs a tool handler with a panic guard: a panicking handler
+// surfaces as error CONTENT (the same shape as a handler error) instead of
+// killing the process — chat, scheduled and mesh paths all dispatch through
+// this one seam, so one recover covers all of them.
+func executeGuarded(ctx context.Context, name string, h ToolHandler, argsJSON string) (out string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			out = fmt.Sprintf("Error executing %s: internal panic: %v", name, rec)
+		}
+	}()
+	result, err := h(ctx, argsJSON)
 	if err != nil {
-		return fmt.Sprintf("Error executing %s: %v", name, err), nil
+		return fmt.Sprintf("Error executing %s: %v", name, err)
 	}
-	return result, nil
+	return result
 }
 
 // Helper to marshal JSON schema map

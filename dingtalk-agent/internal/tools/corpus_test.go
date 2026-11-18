@@ -5,8 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"techrisk-dashboard/dingtalk-agent/internal/config"
 )
 
 // TestReadCorpusPageRejectsUnsafePaths pins the client-side guard: every bad
@@ -44,9 +47,41 @@ func TestReadCorpusPageRejectsUnsafePaths(t *testing.T) {
 	}
 }
 
+// TestReadCorpusPageRealBasePath reproduces prod: DashboardAPIBase already
+// ends in "/api/v1" (compose: http://nginx/api/v1), so the tool's path
+// literal must be "/corpus" — the old "/v1/corpus" produced /api/v1/v1/corpus,
+// a 404 in prod that the old tests missed because they used a bare server.URL.
+func TestReadCorpusPageRealBasePath(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/corpus" {
+			t.Errorf("unexpected path: %s (want /api/v1/corpus)", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("path"); got != "topics/index.md" {
+			t.Errorf("unexpected query path: %q", got)
+		}
+		envelope(w, map[string]any{"path": "topics/index.md", "content": "# Index\n", "truncated": false, "chars": 8}, nil)
+	}))
+	t.Cleanup(server.Close)
+
+	cfg := &config.Config{
+		DashboardAPIBase:  server.URL + "/api/v1",
+		DashboardAPIToken: "test-token",
+	}
+	reg := NewRegistry(cfg)
+
+	args, _ := json.Marshal(map[string]string{"path": "topics/index.md"})
+	out, err := reg.Execute(context.Background(), "read_corpus_page", string(args))
+	if err != nil {
+		t.Fatalf("read_corpus_page failed: %v", err)
+	}
+	if !strings.Contains(out, "# Index") {
+		t.Errorf("content not served: %.120s", out)
+	}
+}
+
 func TestReadCorpusPageFetchesFromAPI(t *testing.T) {
 	reg, _ := newTestRegistry(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/corpus" {
+		if r.URL.Path != "/corpus" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if got := r.URL.Query().Get("path"); got != "topics/payments.md" {
