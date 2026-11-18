@@ -87,3 +87,17 @@ func TestTruncate(t *testing.T) {
 		t.Fatalf("short text altered: %q", got)
 	}
 }
+
+// Truncate's cap check used BYTE length while the cut is RUNE-based — a
+// 48,000-rune CJK string is 144,000 bytes, so the "truncated" marker landed
+// on text nothing was cut from (audit round 5).
+func TestTruncateMarkerOnlyOnRealCut(t *testing.T) {
+	s := strings.Repeat("风", MaxExtractChars)
+	if got := Truncate(s); got != s {
+		t.Errorf("48k-rune CJK string got a truncation marker though nothing was cut")
+	}
+	long := s + "tail"
+	if got := Truncate(long); !strings.HasSuffix(got, "…[truncated]") || strings.Contains(got, "tail") {
+		t.Errorf("over-cap text not cut: len=%d", len([]rune(got)))
+	}
+}

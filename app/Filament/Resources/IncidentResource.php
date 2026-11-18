@@ -26,6 +26,7 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
+use Filament\Forms\Get;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn;
@@ -146,6 +147,18 @@ class IncidentResource extends Resource
                                             ->required()
                                             ->default('Open')
                                             ->live()
+                                            // BUG-035: mirror the observer gate as a field rule so the
+                                            // error renders here instead of a silent rollback.
+                                            ->rule(fn (Get $get, ?Incident $record) => function (string $attribute, mixed $value, \Closure $fail) use ($get, $record): void {
+                                                $status = $value instanceof IncidentStatus ? $value : IncidentStatus::tryFrom((string) $value);
+                                                if ($status !== IncidentStatus::Completed || $record?->incident_status === IncidentStatus::Completed) {
+                                                    return;
+                                                }
+                                                $error = Incident::closureGateError($get('root_cause'), $get('root_cause_category'), $get('stop_bleeding_at'));
+                                                if ($error !== null) {
+                                                    $fail($error.' (Timeline / Root Cause tabs)');
+                                                }
+                                            })
                                             ->helperText('Completing requires a root cause and a stop bleeding time (closure gate, RD-2).'),
                                         Select::make('incident_source')
                                             ->options(['Internal' => 'Internal', 'External' => 'External'])
@@ -641,6 +654,18 @@ class IncidentResource extends Resource
                                 ->label('Status')
                                 ->options(IncidentStatus::options())
                                 ->required()
+                                // BUG-035: this modal has no RCA/stop-bleed fields — check the record.
+                                ->rule(fn (Incident $record) => function (string $attribute, mixed $value, \Closure $fail) use ($record): void {
+                                    // State arrives as the enum here (record-bound modal), a string on the page.
+                                    $status = $value instanceof IncidentStatus ? $value : IncidentStatus::tryFrom((string) $value);
+                                    if ($status !== IncidentStatus::Completed || $record->incident_status === IncidentStatus::Completed) {
+                                        return;
+                                    }
+                                    $error = Incident::closureGateError($record->root_cause, $record->root_cause_category, $record->stop_bleeding_at);
+                                    if ($error !== null) {
+                                        $fail($error.' Use Edit to add it first.');
+                                    }
+                                })
                                 ->default(fn (Incident $record) => $record->incident_status),
                             Forms\Components\Textarea::make('remark')
                                 ->label('Notes')

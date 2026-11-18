@@ -233,7 +233,14 @@ class Incident extends Model implements Auditable
         $settings = \App\Models\UserAuditLogSetting::forUser($user);
 
         if (! $settings->can_view_all_logs && ! empty($settings->allowed_years)) {
-            $query->whereYear('incident_date', $settings->allowed_years);
+            // whereYear(col, $array) does NOT build an IN — Laravel flattens the
+            // array to its head, silently binding only the FIRST year. OR the
+            // years one by one instead (compiles on MySQL and SQLite alike).
+            $query->where(function ($w) use ($settings) {
+                foreach ($settings->allowed_years as $year) {
+                    $w->orWhereYear('incident_date', (int) $year);
+                }
+            });
         }
     }
 
@@ -377,6 +384,25 @@ class Incident extends Model implements Auditable
     public function latestStatusUpdate(): HasOne
     {
         return $this->hasOne(StatusUpdate::class)->latestOfMany();
+    }
+
+    /**
+     * Closure gate rule (PROJ-011 Wave 2, RD-2): the error for moving INTO
+     * Completed, or null when allowed. ONE source for the observer backstop
+     * and the Filament field rules — BUG-035: the observer's exception alone
+     * never renders in Filament (bare key vs the field's state path).
+     */
+    public static function closureGateError(mixed $rootCause, mixed $rootCauseCategory, mixed $stopBleedingAt): ?string
+    {
+        if (blank($stopBleedingAt)) {
+            return 'Cannot complete: stop bleeding time is still missing. Fill it in before completing.';
+        }
+
+        if (blank($rootCause) && empty($rootCauseCategory)) {
+            return 'Cannot complete: root cause is still missing. Fill it in before completing.';
+        }
+
+        return null;
     }
 
     public function investigationDocuments(): HasMany

@@ -35,10 +35,13 @@ type fakeReminderAPI struct {
 	// dashboard agent-schedules state
 	rows         map[string][]map[string]any // conversation_id → saved rows
 	schedPosts   []map[string]any            // POST /agent-schedules bodies
+	schedPostAttempts int                      // POSTs attempted incl. failures (fail-closed pin)
 	schedCancels []struct {                  // DELETE calls
 		no   string
 		body map[string]any
 	}
+	models        []string         // model each chat/completions request carried
+	systems       []string         // system prompt per chat/completions request
 	schedAuth     []string         // Authorization header per agent-schedules call
 	failSchedules bool             // 500 every agent-schedules call
 	turnReports   []map[string]any // POST /agent-runs bodies
@@ -52,10 +55,19 @@ func newFakeReminderAPI(t *testing.T) *fakeReminderAPI {
 		case strings.Contains(r.URL.Path, "chat/completions"):
 			var req struct {
 				Messages []llm.ChatMessage `json:"messages"`
+				Model    string            `json:"model"`
 			}
 			_ = json.NewDecoder(r.Body).Decode(&req)
+			f.mu.Lock()
+			f.models = append(f.models, req.Model)
+			f.mu.Unlock()
 			// The constitution tail rides last; the turn's newest message sits before it.
 			last := req.Messages[len(req.Messages)-2]
+			if req.Messages[0].Role == "system" {
+				f.mu.Lock()
+				f.systems = append(f.systems, req.Messages[0].Content)
+				f.mu.Unlock()
+			}
 			msg := llm.ChatMessage{Role: "assistant"}
 			switch {
 			case last.Role == "tool":
@@ -93,6 +105,7 @@ func newFakeReminderAPI(t *testing.T) *fakeReminderAPI {
 		case r.URL.Path == "/api/v1/agent-schedules" && r.Method == http.MethodPost:
 			f.mu.Lock()
 			f.schedAuth = append(f.schedAuth, r.Header.Get("Authorization"))
+			f.schedPostAttempts++ // counted before the fail check: a refused save must never even ATTEMPT Create
 			fail := f.failSchedules
 			f.mu.Unlock()
 			if fail {
@@ -120,8 +133,14 @@ func newFakeReminderAPI(t *testing.T) *fakeReminderAPI {
 		case r.URL.Path == "/api/v1/agent-schedules" && r.Method == http.MethodGet:
 			f.mu.Lock()
 			f.schedAuth = append(f.schedAuth, r.Header.Get("Authorization"))
-			rows := append([]map[string]any{}, f.rows[r.URL.Query().Get("conversation_id")]...)
+			fail := f.failSchedules
 			f.mu.Unlock()
+			if fail {
+				w.WriteHeader(http.StatusInternalServerError)
+				_, _ = w.Write([]byte(`{}`))
+				return
+			}
+			rows := append([]map[string]any{}, f.rows[r.URL.Query().Get("conversation_id")]...)
 			_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "status": "success", "message": "OK", "data": rows})
 		case strings.HasPrefix(r.URL.Path, "/api/v1/agent-schedules/") && r.Method == http.MethodDelete:
 			var body map[string]any
@@ -284,13 +303,20 @@ func TestScheduleReminderFromChatCreatesDashboardRow(t *testing.T) {
 	}
 	f.mu.Unlock()
 
-	// The next turn sees the dashboard's rows in its message context.
+	// The next turn sees the dashboard's rows in its SYSTEM prompt context
+	// (they ride outside the user message — see TestHeavyTriggerIgnoresReminderContext).
 	_, _ = bot.Handle(context.Background(), groupMsg(f, "r2", "s1", "Nicholas", "what reminders do we have?"))
 	f.waitFor(t, "listing turn", func() bool { return len(f.chats) >= 2 })
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	if !strings.Contains(f.chats[1], "[Active reminders in this chat:") || !strings.Contains(f.chats[1], "#1 cron '0 9 * * 1'") {
-		t.Errorf("active reminders not listed from the dashboard rows: %q", f.chats[1])
+	sys := ""
+	for _, s := range f.systems {
+		if strings.Contains(s, "[Active reminders in this chat:") {
+			sys = s
+		}
+	}
+	if !strings.Contains(sys, "#1 cron '0 9 * * 1'") {
+		t.Errorf("active reminders not listed in the system prompt from the dashboard rows: %q", sys)
 	}
 }
 
@@ -405,5 +431,86 @@ func TestDeliverMarkdownGroupErrorFallsBackToDM(t *testing.T) {
 	}
 	if !strings.Contains(p, "check the P1s") || !strings.Contains(p, "group delivery failed") {
 		t.Errorf("DM fallback body wrong: %s", p)
+	}
+}
+
+// The reminders/watches context rides in the SYSTEM prompt, not the user
+// message: a reminder whose TEXT contains a heavy trigger phrase ("deep
+// research") used to route EVERY turn of that chat to the heavy model —
+// the trigger must match what the USER said only (audit round 5).
+func TestHeavyTriggerIgnoresReminderContext(t *testing.T) {
+	f := newFakeReminderAPI(t)
+	f.mu.Lock()
+	f.rows["cid-group"] = append(f.rows["cid-group"], map[string]any{
+		"no": 1, "mode": "task", "text": "deep research on incidents",
+		"cron": "0 9 * * 1", "next_run_at": "2026-11-16T09:00:00+07:00",
+	})
+	f.mu.Unlock()
+
+	cfg := &config.Config{
+		LLMBaseURL: f.srv.URL, LLMAPIKey: "k", LLMModel: "m", HeavyModel: "heavy",
+		DingTalkOpenAPIHost: f.srv.URL, DingTalkClientID: "robot", DataDir: "",
+		DashboardAPIBase: f.srv.URL + "/api/v1", DashboardAPIToken: "tok",
+		AgentTurnReports: true,
+	}
+	loop := agent.NewLoop(llm.NewClient(cfg), tools.NewRegistry(&config.Config{}), 4)
+	loop.SetHeavyKeywords([]string{"deep research"})
+	bot := NewBot(cfg, loop, llm.NewClient(cfg))
+
+	_, _ = bot.Handle(context.Background(), groupMsg(f, "h1", "s1", "Nicholas", "what is happening today?"))
+	f.waitFor(t, "chat turn", func() bool { return len(f.models) >= 1 })
+
+	f.mu.Lock()
+	for _, m := range f.models {
+		if m == "heavy" {
+			t.Errorf("reminder text flipped a plain turn to the heavy model (models seen: %v)", f.models)
+		}
+	}
+	if len(f.models) == 0 {
+		f.mu.Unlock()
+		t.Fatal("no chat request observed — probe broken")
+	}
+	// The ack gate and the loop must agree: the plain ack, not the heavy one.
+	ackHeavy := strings.Contains(f.replies[0], "smarter model")
+	f.mu.Unlock() // released BEFORE leg 2: a defer here would hold f.mu across waitFor — self-deadlock
+	if ackHeavy {
+		t.Errorf("ack claims the heavy model: %q", f.replies[0])
+	}
+
+	// A REAL trigger phrase in the user text routes heavy — and the turn
+	// report names the heavy model, not the chat model (cost table).
+	_, _ = bot.Handle(context.Background(), groupMsg(f, "h2", "s1", "Nicholas", "please deep research the QRIS outage"))
+	// TWO reports land: h1's (plain, chat model) posts after its reply, so
+	// waiting for one would race h1's report against the assertion.
+	f.waitFor(t, "turn reports", func() bool { return len(f.turnReports) >= 2 })
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if got := f.turnReports[0]["model"]; got != "m" {
+		t.Errorf("plain turn report model = %v, want the chat model %q", got, "m")
+	}
+	if got := f.turnReports[len(f.turnReports)-1]["model"]; got != "heavy" {
+		t.Errorf("triggered turn report model = %v, want the heavy model", got)
+	}
+}
+
+// A List error must refuse the save (fail-closed): the 20-reminder quota is
+// the only brake on a looping query minting cron jobs, so an unverifiable
+// quota must not fall through to Create.
+func TestReminderCapFailsClosed(t *testing.T) {
+	f := newFakeReminderAPI(t)
+	bot := newReminderBot(t, f, "")
+	f.mu.Lock()
+	f.failSchedules = true
+	f.mu.Unlock()
+
+	m := &chatbot.BotCallbackDataModel{ConversationId: "c", SenderStaffId: "s", SenderNick: "N"}
+	out := bot.bindSchedule(m, schedule.Request{When: "0 9 * * *", Mode: schedule.ModeTask, Text: "check"})
+	if !strings.Contains(out, "not saved") {
+		t.Errorf("List error must refuse the save, got: %s", out)
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.schedPostAttempts != 0 {
+		t.Errorf("Create must not fire when the quota check errored: %d attempts", f.schedPostAttempts)
 	}
 }

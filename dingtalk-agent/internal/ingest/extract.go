@@ -12,6 +12,7 @@ import (
 	"path"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	pdf "github.com/ledongthuc/pdf"
 	"github.com/xuri/excelize/v2"
@@ -54,8 +55,18 @@ func ExtractText(filename string, data []byte) (string, error) {
 // extractXlsx reads every sheet row-by-row ("Sheet: name" headers, tab-separated
 // cells, empty rows dropped). Excel is the most common incident attachment in
 // risk ops and used to hard-fail as "unsupported" (audit 2026-11-12).
+// xlsxUnzipSizeLimit bounds the UNZIPPED workbook size at open time —
+// excelize's default is 16 GB, so a small compressed zip bomb expanded
+// unbounded before the row caps ever ran (audit round 5).
+var xlsxUnzipSizeLimit int64 = 64 << 20
+
+// maxScannedRowsPerSheet bounds every iter.Next() call, blanks included — the
+// content cap alone let a 10M-blank-row sheet burn 10M Columns() calls
+// before any content row was even reached.
+var maxScannedRowsPerSheet = 200_000
+
 func extractXlsx(data []byte) (string, error) {
-	f, err := excelize.OpenReader(bytes.NewReader(data))
+	f, err := excelize.OpenReader(bytes.NewReader(data), excelize.Options{UnzipSizeLimit: xlsxUnzipSizeLimit})
 	if err != nil {
 		return "", fmt.Errorf("open xlsx: %w", err)
 	}
@@ -71,10 +82,15 @@ func extractXlsx(data []byte) (string, error) {
 			continue // unreadable sheet: keep the rest
 		}
 		fmt.Fprintf(&sb, "Sheet: %s\n", sheet)
-		n := 0
+		n, scanned := 0, 0
 		for iter.Next() {
-			if n >= maxRowsPerSheet {
-				fmt.Fprintf(&sb, "...[sheet truncated at %d rows]\n", maxRowsPerSheet)
+			scanned++
+			if n >= maxRowsPerSheet || scanned >= maxScannedRowsPerSheet {
+				bound := maxRowsPerSheet
+				if scanned >= maxScannedRowsPerSheet {
+					bound = maxScannedRowsPerSheet // the blank-row bound is what fired
+				}
+				fmt.Fprintf(&sb, "...[sheet truncated at %d rows]\n", bound)
 				break
 			}
 			row, _ := iter.Columns()
@@ -90,6 +106,7 @@ func extractXlsx(data []byte) (string, error) {
 			}
 			n++
 		}
+		iter.Close() // releases the sheet's temp resources (never closed before)
 		sb.WriteByte('\n')
 	}
 	out := strings.TrimSpace(sb.String())
@@ -165,7 +182,9 @@ func extractPdf(data []byte) (string, error) {
 
 // Truncate clamps extracted text to MaxExtractChars with an explicit marker.
 func Truncate(s string) string {
-	if len(s) <= MaxExtractChars {
+	// Rune-counted, matching util.Cut's rune cut: the byte-length check gave
+	// 48k-rune CJK text (144k bytes) a "truncated" marker with nothing cut.
+	if utf8.RuneCountInString(s) <= MaxExtractChars {
 		return s
 	}
 	return util.Cut(s, MaxExtractChars) + "\n…[truncated]"

@@ -9,6 +9,7 @@ use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
+use App\Filament\Statistics\IncidentStatsFooterData;
 use App\Models\Incident;
 use Carbon\Carbon;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
@@ -124,39 +125,21 @@ class DashboardStatsOverview extends BaseWidget
             ->where('mttr', '<', 0)
             ->average('mttr') ?? 0));
 
-        $mtbfNonFundLossQuery = Incident::query()
-            ->where('classification', '!=', IncidentClassification::Issue->value)
-            ->tap($incidentDateFilter)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->where('fund_status', FundStatus::NonFundLoss->value);
+        // One span-MTBF implementation (IncidentStatsFooterData::avgMtbf):
+        // the metric rules ride on it; only the tab scope stays here.
+        $mtbfNonFundLoss = IncidentStatsFooterData::avgMtbf(
+            Incident::query()
+                ->where('classification', '!=', IncidentClassification::Issue->value)
+                ->tap($incidentDateFilter)
+                ->where('fund_status', FundStatus::NonFundLoss->value),
+        );
 
-        $mtbfNonFundLossCount = $mtbfNonFundLossQuery->count();
-        $mtbfNonFundLoss = 0;
-        if ($mtbfNonFundLossCount > 1) {
-            $minDate = $mtbfNonFundLossQuery->min('incident_date');
-            $maxDate = $mtbfNonFundLossQuery->max('incident_date');
-            if ($minDate && $maxDate) {
-                $mtbfNonFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfNonFundLossCount - 1);
-            }
-        }
-
-        $mtbfFundLossQuery = Incident::query()
-            ->where('classification', '!=', IncidentClassification::Issue->value)
-            ->tap($incidentDateFilter)
-            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->where('fund_status', FundStatus::ConfirmedLoss->value);
-
-        $mtbfFundLossCount = $mtbfFundLossQuery->count();
-        $mtbfFundLoss = 0;
-        if ($mtbfFundLossCount > 1) {
-            $minDate = $mtbfFundLossQuery->min('incident_date');
-            $maxDate = $mtbfFundLossQuery->max('incident_date');
-            if ($minDate && $maxDate) {
-                $mtbfFundLoss = Carbon::parse($minDate)->startOfDay()->diffInDays(Carbon::parse($maxDate)->startOfDay()) / ($mtbfFundLossCount - 1);
-            }
-        }
+        $mtbfFundLoss = IncidentStatsFooterData::avgMtbf(
+            Incident::query()
+                ->where('classification', '!=', IncidentClassification::Issue->value)
+                ->tap($incidentDateFilter)
+                ->where('fund_status', FundStatus::ConfirmedLoss->value),
+        );
 
         return [
             Stat::make('Total Incidents', $totalIncidentsOnly)

@@ -10,6 +10,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"techrisk-dashboard/dingtalk-agent/internal/tools"
 	"time"
 )
 
@@ -117,7 +119,28 @@ func (b *Bot) downloadMessageFile(ctx context.Context, fm fileMessage, dir strin
 // http.DefaultClient has NO timeout — a hung download server stuck the
 // goroutine forever while it held one of MaxConcurrentAgents sem slots;
 // four hung downloads deadlocked the whole bot (audit 2026-11-12).
-var downloadHTTPClient = &http.Client{Timeout: 60 * time.Second}
+// The transport dials public IPs only (DNS rebinding + metadata endpoints),
+// and every redirect hop re-runs the allowlist — a 302 once could move the
+// download to any host.
+var downloadHTTPClient = &http.Client{
+	Timeout:       60 * time.Second,
+	Transport:     tools.GuardedTransport(),
+	CheckRedirect: fileDownloadRedirect,
+}
+
+// fileAllowLoopback opens the loopback branch of fileURLAllowed for tests
+// (httptest fixtures); production leaves it false.
+var fileAllowLoopback = false
+
+func fileDownloadRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return fmt.Errorf("stopped after 10 redirects")
+	}
+	if !fileURLAllowed(req.URL.String()) {
+		return fmt.Errorf("redirect to non-allowlisted URL refused: %q", req.URL)
+	}
+	return nil
+}
 
 // downloadTo GETs dlURL and saves the bytes into dir under a randomized name
 // carrying name. Callers run fileURLAllowed first and own any declared-size
@@ -203,8 +226,8 @@ func fileURLAllowed(raw string) bool {
 	// HTTPS proxy for internal endpoints — only official DingTalk/Aliyun
 	// file hosts are fetchable (audit round 4).
 	host := strings.ToLower(u.Hostname())
-	// Loopback hosts are test-harness fixtures, never a real exfil target.
-	if host == "127.0.0.1" || host == "localhost" || host == "::1" {
+	// Loopback is a test-harness fixture only — production refuses it (SSRF).
+	if fileAllowLoopback && (host == "127.0.0.1" || host == "localhost" || host == "::1") {
 		return true
 	}
 	for _, suffix := range []string{"dingtalk.com", "dingtalkapps.com", "aliyuncs.com", "alicdn.com"} {

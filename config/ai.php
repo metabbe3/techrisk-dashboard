@@ -351,7 +351,8 @@ return [
 
     // Go engine (DingTalk agent) internal endpoint. Shared secret in
     // X-Agent-Token; compose network only — no public port. Timeout ladder:
-    // Go run ctx 360s < this 420s < job timeout 480s < worker 660s.
+    // Go run ctx 360s < this 420s < nginx fastcgi_read_timeout 600 (nginx.conf:31)
+    // < job timeout 480s < worker 660s.
     'go_agent' => [
         'base_url' => env('GO_AGENT_BASE_URL', 'http://dingtalk-agent:9091'),
         'token' => env('GO_AGENT_INTERNAL_TOKEN'),

@@ -20,7 +20,10 @@ class ProactiveIncidentAnalysisJob implements ShouldQueue
 
     public int $tries = 2;
 
-    public int $timeout = 60;
+    // callAiForJson runs up to TWO sendJsonRequest attempts (initial + repair
+    // retry), each up to AiSetting timeout (default 60s) — 60s killed the job
+    // mid-call and tries=2 re-ran the whole thing (double AI cost).
+    public int $timeout = 150; // ponytail: static ladder for the 60s default; raise if ai.timeout grows
 
     public function __construct(
         public int $incidentId,

@@ -94,8 +94,12 @@ func (b *Bot) bindSchedule(m *chatbot.BotCallbackDataModel, req schedule.Request
 	}
 	// Per-chat quota: a looping query could mint unlimited cron jobs, each
 	// burning an LLM turn on fire — cap matches watch.MaxPerConversation
-	// (audit round 4).
-	if existing, err := b.schedAPI.List(context.Background(), m.ConversationId); err == nil && len(existing) >= 20 {
+	// (audit round 4). The check FAILS CLOSED: an errored List can't verify
+	// the quota, so the save is refused (the old `err == nil &&` skipped the
+	// cap whenever the dashboard was down — audit round 5).
+	if existing, err := b.schedAPI.List(context.Background(), m.ConversationId); err != nil {
+		return "⚠️ Reminder not saved: couldn't check this chat's reminder quota (" + err.Error() + "). Try again shortly."
+	} else if len(existing) >= 20 {
 		return "⚠️ Reminder not saved: this chat already has 20 active reminders (the maximum). Cancel one first with cancel_reminder."
 	}
 	it, err := b.schedAPI.Create(context.Background(), m.ConversationId, m.ConversationType,

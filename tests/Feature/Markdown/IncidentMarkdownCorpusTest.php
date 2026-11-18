@@ -129,6 +129,19 @@ class IncidentMarkdownCorpusTest extends TestCase
         $disk->assertExists('markdown/corpus/2040_IN_005/incident.md');
     }
 
+    public function test_refresh_never_wipes_the_compiled_topics_pages(): void
+    {
+        $this->makeIncident(['no' => '2040_IN_006']);
+        $this->service()->refresh();
+
+        // CompileTopicPagesJob owns markdown/corpus/topics — LLM-compiled on
+        // its own daily schedule. The hourly folder wipe must skip it.
+        Storage::disk('local')->put('markdown/corpus/topics/payments.md', 'patterns');
+        $this->service()->refresh();
+
+        Storage::disk('local')->assertExists('markdown/corpus/topics/payments.md');
+    }
+
     public function test_scope_excludes_g_non_incident_and_issues(): void
     {
         $this->makeIncident(['no' => '2040_IN_006']);

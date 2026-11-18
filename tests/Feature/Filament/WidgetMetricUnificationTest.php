@@ -6,7 +6,6 @@ namespace Tests\Feature\Filament;
 
 use App\Enums\Severity;
 use App\Filament\Widgets\DashboardStatsOverview;
-use App\Filament\Widgets\IncidentStatsOverview;
 use App\Filament\Widgets\MttrMtbfTrendChart;
 use App\Models\Incident;
 use App\Services\Analytics\AnalyticsQueryService;
@@ -91,18 +90,6 @@ class WidgetMetricUnificationTest extends TestCase
         $this->assertSame('10.00 days', $values[6], 'MTTR (Fund Loss) must average ONLY Confirmed loss rows');
     }
 
-    public function test_incident_stats_mttr_tiles_scope_by_fund_status(): void
-    {
-        $this->seedSignVsScopeRows();
-
-        $widget = app(IncidentStatsOverview::class);
-        $stats = \Closure::bind(fn () => $this->calculateStats(), $widget, IncidentStatsOverview::class)();
-        $values = collect($stats)->map(fn ($stat) => $stat->getValue())->values();
-
-        $this->assertSame('60.00 mins', $values[3], 'MTTR (Non Fund Loss) must average ONLY Non fundLoss rows');
-        $this->assertSame('10.00 days', $values[4], 'MTTR (Fund Loss) must average ONLY Confirmed loss rows');
-    }
-
     public function test_trend_chart_mttr_series_scope_by_fund_status(): void
     {
         $this->seedSignVsScopeRows();
@@ -146,11 +133,11 @@ class WidgetMetricUnificationTest extends TestCase
             ]);
         }
 
-        $widget = app(IncidentStatsOverview::class);
-        $stats = \Closure::bind(fn () => $this->calculateStats(), $widget, IncidentStatsOverview::class)();
+        $widget = app(DashboardStatsOverview::class);
+        $stats = \Closure::bind(fn () => $this->calculateStats(), $widget, DashboardStatsOverview::class)();
         $values = collect($stats)->map(fn ($stat) => $stat->getValue())->values();
 
-        $this->assertSame('IDR 1.000', $values[1], 'Fund Loss card = Incident + Completed + excludedFromCounts (same as DashboardStatsOverview)');
+        $this->assertSame('IDR 1.000', $values[2], 'Fund Loss card = Incident + Completed + excludedFromCounts');
     }
 
     public function test_analytics_group_metrics_divide_each_bucket_by_its_own_count(): void

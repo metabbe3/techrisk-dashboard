@@ -667,4 +667,68 @@ class RunAiAgentJobTest extends TestCase
         $this->assertStringContainsString('Newest incident line', $body);
         $this->assertStringNotContainsString('Oldest incident line', $body);
     }
+
+    public function test_failed_marks_a_still_running_run_failed_and_rearms_one_shot(): void
+    {
+        $agent = $this->makeAgent(['frequency' => 'Once']);
+        $run = $this->makeRun($agent);
+        $run->forceFill(['status' => AiAgentRunStatus::Running->value, 'started_at' => now()])->save();
+
+        (new RunAiAgentJob($agent->id, $run->id))->failed(new \RuntimeException('worker timeout'));
+
+        $run->refresh();
+        $this->assertSame(AiAgentRunStatus::Failed->value, $run->status->value);
+        $this->assertStringContainsString('worker timeout', (string) $run->error_message);
+        $agent->refresh();
+        // One-shot re-arm mirrors handle()'s failure branch: run_at +5min.
+        $this->assertNotNull($agent->run_at);
+    }
+
+    public function test_failed_leaves_a_completed_run_alone(): void
+    {
+        $agent = $this->makeAgent();
+        $run = $this->makeRun($agent);
+        $run->forceFill(['status' => AiAgentRunStatus::Completed->value, 'output' => 'done', 'completed_at' => now()])->save();
+
+        (new RunAiAgentJob($agent->id, $run->id))->failed(new \RuntimeException('late throw'));
+
+        $run->refresh();
+        $this->assertSame(AiAgentRunStatus::Completed->value, $run->status->value);
+        $this->assertSame('done', $run->output);
+    }
+
+    public function test_go_repair_call_uses_the_remaining_job_deadline_not_a_second_full_timeout(): void
+    {
+        // Two full-length Go calls (2 x 420s) exceed the job's own 480s kill;
+        // the repair window must share the deadline (floor 30s).
+        $agent = $this->makeAgent(['engine' => 'go', 'require_json' => true]);
+        $run = $this->makeRun($agent);
+        $run->forceFill(['status' => AiAgentRunStatus::Running->value, 'started_at' => now(), 'input' => 'x'])->save();
+
+        config(['ai.go_agent.base_url' => 'http://brain.test', 'ai.go_agent.token' => 't', 'ai.go_agent.timeout' => 420]);
+
+        // First call returns NON-JSON output so require_json forces the repair;
+        // the repair response is valid JSON.
+        Http::fake(['brain.test/internal/run' => Http::sequence()
+            ->push(['ok' => true, 'output' => 'not json', 'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 2, 'total_tokens' => 3]])
+            ->push(['ok' => true, 'output' => '{"a":1}', 'usage' => ['prompt_tokens' => 1, 'completion_tokens' => 2, 'total_tokens' => 3]])]);
+
+        $job = new RunAiAgentJob($agent->id, $run->id);
+        $job->handle(app(AiTextService::class), app(ChatContextService::class), app(AiAgentMemoryService::class));
+
+        // Two recorded calls: the original + the repair, and the run
+        // completes on the repair's valid JSON.
+        $this->assertCount(2, Http::recorded());
+        $run->refresh();
+        $this->assertSame(AiAgentRunStatus::Completed->value, $run->status->value);
+        $this->assertSame('{"a":1}', $run->output);
+
+        // The deadline helper: full remaining budget when nothing elapsed,
+        // floored at 30s once the first call burned it (never a full second
+        // 420s over the job's own kill).
+        $method = new \ReflectionMethod($job, 'remainingSeconds');
+        $this->assertLessThanOrEqual(450, $method->invoke($job, microtime(true) + 450));
+        $this->assertGreaterThan(440, $method->invoke($job, microtime(true) + 450));
+        $this->assertSame(30, $method->invoke($job, microtime(true) - 1000));
+    }
 }

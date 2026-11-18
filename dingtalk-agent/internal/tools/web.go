@@ -67,6 +67,12 @@ func blockedIP(a netip.Addr) bool {
 // guardedTransport resolves + dials only public IPs (Control fires post-DNS,
 // pre-connect, covering redirects and DNS rebinding).
 func guardedTransport() *http.Transport {
+	return GuardedTransport()
+}
+
+// GuardedTransport is the exported form: shared by the file downloader so
+// message-file GETs also refuse private/loopback dials.
+func GuardedTransport() *http.Transport {
 	dialer := &net.Dialer{
 		Timeout: 10 * time.Second,
 		Control: func(_, addr string, _ syscall.RawConn) error {
@@ -112,13 +118,13 @@ type webSearchArgs struct {
 	Query string `json:"query"`
 }
 
-func (w *webTools) handleWebSearch(_ context.Context, args webSearchArgs) (string, error) {
+func (w *webTools) handleWebSearch(ctx context.Context, args webSearchArgs) (string, error) {
 	q := strings.TrimSpace(args.Query)
 	if q == "" {
 		return "", fmt.Errorf("query is required")
 	}
 
-	req, err := http.NewRequest(http.MethodGet, ddgEndpoint+"?q="+url.QueryEscape(q), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ddgEndpoint+"?q="+url.QueryEscape(q), nil)
 	if err != nil {
 		return "", err
 	}
@@ -145,7 +151,8 @@ func (w *webTools) handleWebSearch(_ context.Context, args webSearchArgs) (strin
 	for i, res := range results {
 		fmt.Fprintf(&sb, "%d. %s\n   %s\n   %s\n", i+1, res.title, res.link, res.snippet)
 	}
-	return selfTruncate(sb.String()), nil
+	// Snippets quote arbitrary pages — same framing as web_fetch.
+	return guardrail.FrameDocumentContent("web search", selfTruncate(sb.String())), nil
 }
 
 type ddgResult struct{ title, link, snippet string }
@@ -224,14 +231,14 @@ var (
 	blockElRe     = regexp.MustCompile(`(?is)</(p|div|br|li|tr|h[1-6])>`)
 )
 
-func (w *webTools) handleWebFetch(_ context.Context, args webFetchArgs) (string, error) {
+func (w *webTools) handleWebFetch(ctx context.Context, args webFetchArgs) (string, error) {
 	raw := strings.TrimSpace(args.URL)
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return "", fmt.Errorf("url must be absolute http(s), got %q", raw)
 	}
 
-	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return "", err
 	}
@@ -279,9 +286,15 @@ func htmlToText(s string) string {
 	return sb.String()
 }
 
+// selfTruncate caps a web result, reporting how many RUNES were cut. The old
+// byte-length guard produced a negative count on CJK-heavy strings (bytes >
+// limit while runes < limit: the byte guard passed the string through, then
+// the suffix subtracted a byte constant from a rune count). The cut test is
+// rune-based now — util.Cut returned s unchanged means nothing was cut.
 func selfTruncate(s string) string {
-	if len(s) <= webResultMaxChars {
+	t := util.Cut(s, webResultMaxChars)
+	if t == s {
 		return s
 	}
-	return util.Cut(s, webResultMaxChars) + fmt.Sprintf("\n…[truncated %d chars]", len([]rune(s))-webResultMaxChars)
+	return t + fmt.Sprintf("\n…[truncated %d chars]", len([]rune(s))-webResultMaxChars)
 }

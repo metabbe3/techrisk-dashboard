@@ -121,9 +121,11 @@ class InvestigationFormSchemaTest extends TestCase
         Http::fake(function () use (&$calls) {
             $calls++;
 
-            // First call returns fenced prose, the repair call returns clean JSON.
+            // First call returns JSON that even brace-extraction can't fix
+            // (fenced/prose-wrapped JSON now decodes in one call), the repair
+            // call returns clean JSON.
             $output = $calls === 1
-                ? "Here you go:\n```json\n{\"header\": {\"name\": \"Fixed\"}}\n```"
+                ? '{"header": {"name": }}'
                 : '{"header": {"name": "Fixed"}}';
 
             return Http::response(['ok' => true, 'output' => $output, 'model' => 'glm-test']);
@@ -131,8 +133,42 @@ class InvestigationFormSchemaTest extends TestCase
 
         $out = app(InvestigationFormExtractor::class)->extract('source');
 
+        $this->assertTrue($out['result']->success);
+        $this->assertTrue($out['ok']);
         $this->assertSame('Fixed', $out['fields']['header.name']);
         $this->assertSame(2, $calls);
+    }
+
+    public function test_a_fenced_or_prose_wrapped_json_reply_decodes_without_a_repair_call(): void
+    {
+        $calls = 0;
+        Http::fake(function () use (&$calls) {
+            $calls++;
+
+            return Http::response(['ok' => true, 'output' => "Here you go:\n```json\n{\"header\": {\"name\": \"Fixed\"}}\n```", 'model' => 'glm-test']);
+        });
+
+        $out = app(InvestigationFormExtractor::class)->extract('source');
+
+        $this->assertTrue($out['ok']);
+        $this->assertSame('Fixed', $out['fields']['header.name']);
+        $this->assertSame(1, $calls, 'brace-extraction reaches the fenced JSON — no repair re-POST');
+    }
+
+    public function test_an_unparseable_reply_after_repair_reports_ok_false(): void
+    {
+        Http::fake([
+            'brain.test/internal/run' => Http::response(['ok' => true, 'output' => 'no JSON here at all', 'model' => 'glm-test']),
+        ]);
+
+        $out = app(InvestigationFormExtractor::class)->extract('source');
+
+        // The HTTP run itself succeeded — the reply just never parsed as
+        // JSON, even after the repair re-POST: ok=false, not a failed result.
+        $this->assertTrue($out['result']->success);
+        $this->assertFalse($out['ok'], 'a silent empty step 2 is worse than an error');
+        $this->assertSame([], $out['fields']);
+        $this->assertSame([], $out['missing']);
     }
 
     public function test_extractor_transport_failure_returns_failed_result(): void

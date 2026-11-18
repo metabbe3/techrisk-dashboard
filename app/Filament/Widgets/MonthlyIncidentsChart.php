@@ -1,9 +1,9 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
-use App\Enums\IncidentClassification;
 use App\Filament\Concerns\HasChartColors;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
 use App\Models\Incident;
@@ -38,8 +38,10 @@ class MonthlyIncidentsChart extends ChartWidget
                 ? "CAST(strftime('%m', incident_date) AS INTEGER)"
                 : 'MONTH(incident_date)';
             $query = Incident::selectRaw($monthExpr.' as month, COUNT(*) as count')
-                ->where('classification', IncidentClassification::Incident->value)
-                ->excludedFromCounts();
+                // aiCounts = classification + countEligible — without the
+                // severity/fund-status half the bars exceeded the Total
+                // Incidents card (which uses aiCounts).
+                ->aiCounts();
 
             if ($this->start_date && $this->end_date) {
                 $query->whereBetween('incident_date', [$this->start_date, $this->end_date]);

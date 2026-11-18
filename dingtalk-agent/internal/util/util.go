@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -73,11 +74,38 @@ func Cut(s string, n int) string {
 	return string(r[:n])
 }
 
-// AtomicWrite writes data to path via temp file + rename, so a crash mid-write
-// never leaves a truncated state file.
+// CutEllipsis is Cut plus a trailing "…" — the suffix lands only when
+// something was actually cut. The cut test is rune-based: a CJK string can
+// exceed n bytes while staying under n runes, so a byte-length guard would
+// append "…" (or a negative "truncated N chars" note) to an untouched string.
+func CutEllipsis(s string, n int) string {
+	t := Cut(s, n)
+	if t != s {
+		return t + "…"
+	}
+	return t
+}
+
+// AtomicWrite writes data to path via a UNIQUE temp file + rename, so a crash
+// mid-write never leaves a truncated state file and two concurrent writers of
+// the same path cannot interleave in one shared .tmp (a fixed name let one
+// writer's rename race another's half-written bytes — history.json could end
+// up partial and get moved to .corrupt on the next boot).
 func AtomicWrite(path string, data []byte, perm os.FileMode) error {
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, perm); err != nil {
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp) // no-op after a successful rename
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmp, perm); err != nil {
 		return err
 	}
 	return os.Rename(tmp, path)

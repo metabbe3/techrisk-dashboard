@@ -27,7 +27,18 @@ func TestCutRuneSafe(t *testing.T) {
 		t.Errorf("Cut split a rune: %q", got)
 	}
 	if Cut(s, 100) != s {
-		t.Error("Cut must return s unchanged when short enough")
+		t.Error("Cut must return s unchanged when short enough (rune-based — bytes can exceed the limit while runes do not)")
+	}
+	if got := CutEllipsis("abc", 10); got != "abc" {
+		t.Errorf("CutEllipsis must not suffix an untouched string: %q", got)
+	}
+	if got := CutEllipsis("abcdef", 3); got != "abc…" {
+		t.Errorf("CutEllipsis suffixes only a real cut: %q", got)
+	}
+	if got := CutEllipsis(s, 100); got != s {
+		// bytes 55 > n would have made a byte-guard variant append "…" to an
+		// untouched CJK string (the scheduleapi byte-len guard, D12/D8 shape).
+		t.Errorf("CutEllipsis is rune-based: %q", got)
 	}
 }
 

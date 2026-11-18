@@ -5,6 +5,7 @@ package memory
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,12 +56,11 @@ func (s *Store) AppendKnowledge(e KnowledgeEntry) error {
 		return err
 	}
 	s.knowledge = append(s.knowledge, e)
-	// In-memory cap (disk file is append-only history): the knowledge list
-	// is rendered into the system prompt EVERY turn — unbounded growth
-	// bloats every call (audit round 4). Keep the newest 200.
-	if len(s.knowledge) > 200 {
-		s.knowledge = s.knowledge[len(s.knowledge)-200:]
-	}
+	// No in-memory trim: the digest covered cursor is an ABSOLUTE index into
+	// this slice — trimming the window desyncs it (covered >= len(window))
+	// and the incremental merge silently freezes until restart. The prompt
+	// path caps itself (Knowledge() keeps the last MaxKnowledgeEntries);
+	// the full list here must mirror knowledge.jsonl exactly.
 	return nil
 }
 
@@ -76,6 +76,92 @@ func (s *Store) Knowledge() []KnowledgeEntry {
 	return append([]KnowledgeEntry{}, s.knowledge...)
 }
 
+// Digest caps: the compiled knowledge.md digest is injected EVERY turn, so it
+// stays bounded however long knowledge.jsonl grows (LLM-Wiki-style compiled
+// memory; the raw JSONL layer stays append-only on disk).
+const (
+	MaxDigestLines   = 40
+	MaxDigestLineLen = 200
+	digestFile       = "knowledge.md"
+	digestMetaFile   = "knowledge_digest.json"
+)
+
+type digestMeta struct {
+	Covered int `json:"covered"` // knowledge.jsonl entries already merged into the digest
+}
+
+// AllKnowledge returns every parsed knowledge entry — the digest backfill's
+// view of the raw layer (Knowledge() only serves the last-8 prompt slice).
+func (s *Store) AllKnowledge() []KnowledgeEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]KnowledgeEntry{}, s.knowledge...)
+}
+
+// KnowledgeDigest returns the compiled digest ("" when none yet).
+func (s *Store) KnowledgeDigest() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.digest
+}
+
+// DigestCovered returns how many knowledge.jsonl entries the digest already
+// covers (the incremental merge's cursor).
+func (s *Store) DigestCovered() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.digestCovered
+}
+
+// KnowledgeBeyondCovered returns the raw entries the digest does not cover
+// yet — knowledgePrompt injects this tail under the digest so a failed merge
+// never hides newly-learned documents.
+func (s *Store) KnowledgeBeyondCovered() []KnowledgeEntry {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.digestCovered >= len(s.knowledge) {
+		return nil
+	}
+	return append([]KnowledgeEntry{}, s.knowledge[s.digestCovered:]...)
+}
+
+// SaveKnowledgeDigest atomically rewrites knowledge.md and advances the
+// covered cursor. Caps and normalizes like LearnProfile: bullets, length-capped
+// lines, newest MaxDigestLines kept. An empty digest is REFUSED (an empty or
+// broken LLM merge must never wipe compiled memory) with the cursor left
+// alone — the next merge retries. Digest file first, meta second: a crash
+// between them leaves the cursor behind, so entries re-merge (duplicates
+// collapse) rather than being lost.
+func (s *Store) SaveKnowledgeDigest(text string, covered int) error {
+	lines := make([]string, 0, MaxDigestLines)
+	for _, ln := range strings.Split(text, "\n") {
+		ln = strings.TrimSpace(ln)
+		ln = strings.TrimPrefix(ln, "-")
+		ln = strings.TrimSpace(ln)
+		ln = strings.Trim(ln, `-"* `)
+		if ln == "" {
+			continue
+		}
+		lines = append(lines, "- "+util.Cut(ln, MaxDigestLineLen))
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("empty digest refused (raw reply %d chars) — never wipe compiled memory", len(text))
+	}
+	if len(lines) > MaxDigestLines {
+		lines = lines[len(lines)-MaxDigestLines:] // keep the newest
+	}
+
+	s.mu.Lock()
+	if err := util.AtomicWrite(filepath.Join(s.dir, digestFile), []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		s.mu.Unlock()
+		return err
+	}
+	s.digest = strings.Join(lines, "\n")
+	s.digestCovered = covered
+	s.mu.Unlock()
+	return s.writeJSON(filepath.Join(s.dir, digestMetaFile), digestMeta{Covered: covered})
+}
+
 // historyFile mirrors the bot's in-memory history map.
 type historyFile struct {
 	Conversations map[string]HistoryEntry `json:"conversations"`
@@ -88,8 +174,10 @@ type HistoryEntry struct {
 }
 
 type Store struct {
-	knownUsers map[string]bool  // staff ids already in users.jsonl (dedupe per person, S9)
-	knowledge  []KnowledgeEntry // parsed mirror of knowledge.jsonl (was re-read every turn)
+	knownUsers    map[string]bool  // staff ids already in users.jsonl (dedupe per person, S9)
+	knowledge     []KnowledgeEntry // parsed mirror of knowledge.jsonl (was re-read every turn)
+	digest        string           // compiled knowledge.md digest ("" = none yet)
+	digestCovered int              // knowledge.jsonl entries already merged into the digest
 
 	historyTTL time.Duration // 0 = no load-time TTL filtering
 
@@ -106,7 +194,9 @@ type Store struct {
 }
 
 // NewStore loads (auto recall) or initializes the store inside dir.
-func NewStore(dir string) *Store {
+// historyTTL filters expired conversations at LOAD time (SetHistoryTTL used
+// to arm this after the load had already happened — dead code, audit round 5).
+func NewStore(dir string, historyTTL time.Duration) *Store {
 	_ = os.MkdirAll(dir, 0o700)
 	s := &Store{
 		dir:         dir,
@@ -116,10 +206,12 @@ func NewStore(dir string) *Store {
 		profiles:    map[string]UserProfile{},
 		knownUsers:  map[string]bool{},
 	}
+	s.historyTTL = historyTTL
 	s.loadUsers()
 	s.loadKnowledge()
 	s.loadHistory()
 	s.loadProfiles()
+	s.loadDigest()
 	return s
 }
 
@@ -232,10 +324,6 @@ func (s *Store) loadHistory() {
 	s.history = hf.Conversations
 }
 
-// SetHistoryTTL arms the load-time TTL filter; call before first read.
-func (s *Store) SetHistoryTTL(ttl time.Duration) { s.historyTTL = ttl }
-
-// writeJSON atomically replaces path (tmp+rename).
 func (s *Store) writeJSON(path string, v any) error {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -244,11 +332,7 @@ func (s *Store) writeJSON(path string, v any) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
+	return util.AtomicWrite(path, data, 0o600)
 }
 
 // UserProfile is what the agent has learned about one person's preferences
@@ -292,9 +376,15 @@ func (s *Store) LearnProfile(staffID, nick string, lines []string) error {
 
 	s.pmu.Lock()
 	s.profiles[staffID] = UserProfile{Nick: nick, UpdatedAt: time.Now(), Lines: clean}
-	snap := profileFileFormat{Profiles: s.profiles}
+	// Snapshot a COPY under the lock — handing the live map to json.Marshal
+	// outside it raced a concurrent learnProfile write ("concurrent map
+	// iteration and map write", fatal, not recoverable).
+	profiles := make(map[string]UserProfile, len(s.profiles))
+	for id, p := range s.profiles {
+		profiles[id] = p
+	}
 	s.pmu.Unlock()
-	return s.writeJSON(filepath.Join(s.dir, profileFile), snap)
+	return s.writeJSON(filepath.Join(s.dir, profileFile), profileFileFormat{Profiles: profiles})
 }
 
 // Profile returns a user's learned preference lines (nil when unknown).
@@ -313,4 +403,16 @@ func (s *Store) loadProfiles() {
 		return
 	}
 	s.profiles = pf.Profiles
+}
+
+// loadDigest seeds the compiled digest + covered cursor from disk (a restart
+// must not re-merge everything; "" = the boot backfill fills it).
+func (s *Store) loadDigest() {
+	var meta digestMeta
+	if util.LoadJSON(filepath.Join(s.dir, digestMetaFile), &meta) == nil {
+		s.digestCovered = meta.Covered
+	}
+	if data, err := os.ReadFile(filepath.Join(s.dir, digestFile)); err == nil {
+		s.digest = strings.TrimSpace(string(data))
+	}
 }

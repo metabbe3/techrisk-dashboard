@@ -2008,12 +2008,176 @@ Every pasted Notion link failed with "could not be read". Diagnostic surfacing o
 
 ---
 
-### [BUG-035] - Reminder emails sent for Issue-classified records (no classification gate on the reminder lanes)
+### [BUG-035] - Open → Completed save silently did nothing (closure-gate error never rendered)
 
-**Date:** 2026-11-18
+**Date:** 2026-11-17
+**Discovered By:** Owner ("when i update status / save … it failed / not saved"; "when i changed from open to completed")
+**Severity:** Medium (no data loss — the save rolled back — but users could not tell why Completed would not stick)
+**Status:** Resolved
+
+### Description
+Setting an incident from Open to Completed, from either the Edit page or the list's "Update Status" modal, did nothing: no error and no change.
+
+### Root Cause
+The closure gate (`IncidentObserver::saving()`, RD-2) worked correctly. It threw `ValidationException::withMessages(['incident_status' => …])` because the record had no stop-bleed time or root cause. Filament rolls back and rethrows, so Livewire stores the error under the **bare** key `incident_status`. Filament fields render errors by **state path** (`data.incident_status`, `mountedTableActionsData.0.incident_status`), so no field displayed the message. `IncidentClosureGateTest` only covered the model, so it never checked what the UI showed.
+
+### Fix
+`Incident::closureGateError()` is now the one rule. The observer (backstop for API/imports) and two new Filament field rules (the Edit-form Status select reads `$get()` values; the Update Status modal reads the record) all call it. Second trap: in the record-bound modal the Select state arrives as the `IncidentStatus` **enum**, not a string, so the rule normalizes with `tryFrom` before comparing.
+
+### Prevention Checklist
+- [x] Livewire tests `assertHasFormErrors` / `assertHasTableActionErrors(['incident_status'])`. Verified failing before the fix.
+- [x] A `ValidationException` thrown below Filament (observer/model/service) never reaches a field. Mirror the rule as a field `->rule()` and keep the low-level throw only as a backstop.
+- [x] Filament rule closures: compare enum-cast fields as enums (`tryFrom`), not string `->value`.
+
+---
+
+### [BUG-036] - Go selfTruncate printed a NEGATIVE "truncated N chars" on CJK web results + byte-length guards suffixed ellipses onto untouched strings
+
+**Date:** 2026-11-17
+**Discovered By:** Claude audit (batch 5, plan item D12/D8)
+**Severity:** Low (cosmetic/correctness of truncation notes; no data loss)
+**Status:** Resolved
+
+### Description
+`internal/tools/web.go` `selfTruncate()` guarded with `len(s) <= webResultMaxChars` (BYTES) but computed the note from `len([]rune(s)) - webResultMaxChars` (RUNES). A CJK-heavy web result — ~2.3 runes per byte — can cross the byte limit while staying far under the rune cap: the guard passed, then `util.Cut(s, webResultMaxChars)` returned the string unchanged, and the suffix printed e.g. `[truncated -4667 chars]`. The same byte-vs-rune confusion lived in `scheduleapi.go`'s `len(text) > 80` guard (appended "…" after a no-op cut) and five hand-rolled cut+suffix copies disagreed about both.
+
+### Root Cause
+Mixing byte length (`len(s)`) with rune counts in one expression, and writing the cut+ellipsis pattern per call site instead of one helper — each copy re-decided the guard's unit independently.
+
+### Fix
+One helper, `util.CutEllipsis(s, n)`: rune-safe `Cut` + "…" only when `Cut` actually shortened the string. The cut test IS the guard — if `Cut` returns `s` unchanged, nothing was cut, so a rune-count suffix can never be negative. Five call sites converted (stream.go `truncateStr` deleted, watch Describe, scheduleapi describe, mesh queue summary, web selfTruncate — the latter keeps its own count suffix but rune-based now). `llm/client.go`'s byte-slicing `truncate` deleted too (rune-safe `util.Cut`).
+
+### Prevention Checklist
+- [x] `TestCutRuneSafe` extended: `CutEllipsis` must not suffix an untouched string and must be rune-based on CJK (a 55-byte Thai string at n=100 stays unchanged).
+- [x] Never mix `len(s)` (bytes) with `len([]rune(s))` (runes) in one guard+count expression. In Go, guard on the SAME unit you count.
+- [x] The "did anything get cut?" test (`cut(s) != s`) is the correct guard for any suffix/count that assumes a cut happened — a byte-length pre-check is a second, drift-prone copy of that fact.
+
+---
+
+### [WASTE-01] - One MCP round-trip per dangling tombstone on every Notion Settings render (restorableIssues)
+
+**Date:** 2026-11-17
+**Discovered By:** Claude audit (batch 5, plan item C13)
+**Severity:** Low (Settings page latency; N sequential MCP queries per picker render before memoization)
+**Status:** Resolved
+
+### Description
+`NotionIssueSyncService::restorableIssues()` — the restore picker's options — issued one `notion-query-data-sources` round-trip PER dangling tombstone (`WHERE url LIKE '%<id>%'` each). Every Sync-now modal render re-ran the closure, so a workspace with N deleted issues paid N sequential Notion round-trips before the modal could open.
+
+### Root Cause
+The picker reused `recoverDeletedIssues()`'s per-page lookup shape (correct for a background run that processes each tombstone individually) for an N-items-at-once UI read.
+
+### Fix
+One round-trip: a single `url LIKE '%id1%' OR url LIKE '%id2%' …` query (server-side filter keeps the reply inside the result cap — an unfiltered full-table read could silently truncate), then match page ids in PHP. `recoverDeletedIssues()` keeps its per-page shape — pinned mocks document it and the run reports per-tombstone failures.
+
+### Prevention Checklist
+- [x] `NotionIssueSyncServiceTest` restorableIssues tests still green (the shared-mock falls through on the combined query).
+- [x] Batch reads for UI lists; per-item reads only where per-item failure isolation is the point (a background restore must survive one bad tombstone).
+- [x] When replacing N queries with one bulk read over a capped channel, keep a server-side WHERE — an unfiltered bulk read trades a latency bug for a silent-truncation bug.
+## BUG-039 — Recurrence panel wrong on every axis: hand-typed statuses, unbounded relevance, starved AI prompt, stale results (2026-11-18)
+
+### Symptom
+Incident 20261116_IN_7846's "Recurrence Detected" panel: scores of 147/10 and 130/10 (scale is /10), the top "recurrence" was a P1 trade-drop incident unrelated to the unsettled-transaction fund-loss incident, and the AI analysis claimed "0 pending/overdue actions" on all matches while reasoning from who was @-mentioned in the text.
+
+### Root Cause — four independent defects in `RecurrenceDetectionService`
+1. **Hand-typed status strings (Edit-Safety Rule 1 repeat).** Pending/overdue counts filtered actions against `['Open', 'In Progress']`; real statuses are `pending`/`on_progress` (`ActionImprovement::openStatuses()`). A `whereNotIn`-style no-op: every count was 0, so the AI was told there were no open actions anywhere and concluded "nothing contributed".
+2. **Raw MATCH…AGAINST relevance used as a bounded bonus.** `ragBonus = round(relevance_score * 2)` — but `relevance_score` is unbounded MySQL fulltext relevance (30–70 typical). A wordy unrelated incident scored 140+ points of "text similarity", drowning category matching and producing 147/10. `SimilarIncidentService` and `HybridIncidentRetriever` already normalize by max — this service didn't.
+3. **AI prompt starved.** Each match was fed only `Str::limit(summary, 150)` — for these incidents the summary IS the email greeting ("Dear Tech Risk Team, mas @Kevin…"). No title, no root cause, no match reason → the model reasoned from names. The data was already loaded in `SIMILARITY_COLUMNS`; it just wasn't passed on.
+4. **Detection ran once, at creation+30s, when root cause is still empty.** `recurrence_data !== null` then blocked any re-run forever — the analysis could only reflect a half-filled incident.
+
+### Fix
+One `actionCounts()` helper on `ActionImprovement::openStatuses()`; RAG normalized by max (bonus 0–3); score capped `min(10, …)`; a match must share a real signal (root_cause_category / labels / text_similarity) — team+severity alone no longer qualifies; prompts get `[no] title — root cause — matched on: …` plus an explicit "names are reporters, not evidence" rule; re-detect via `DetectRecurrenceJob(force: true)` when `root_cause`/`root_cause_category` change.
+
+**Observer write trap (new):** the first fix nulled `recurrence_data` + `saveQuietly()` inside `IncidentObserver::updated()` — that silently broke `GovernanceKpiServiceTest::test_rca_within_5_days_uses_audit_trail`. Saving inside `updated()` syncs the model's dirty state BEFORE the OwenIt auditing observer runs, so the `root_cause` audit entry came back empty and `rcaWithinFiveDays()` (which reads `audits.new_values.root_cause`) lost coverage. Rule: **`updated()` must not write to the model** — re-detect is signaled via a force flag on the job, the null-guard stays in the job.
+
+### Prevention Checklist
+- [x] `tests/Unit/Services/RecurrenceDetectionServiceTest` (8 tests): open-status counts, raw-relevance normalization + score cap, team+severity-only no longer flags, category/label overlap flags, title/root_cause carried for the prompt, observer re-detect on root_cause edit, no re-detect on team-only edit.
+- [x] Re-running an incident's detection is the owner-run backfill: `php artisan incidents:backfill-recurrence --force` (prod guardrail — writes to prod DB).
+- [ ] Never hand-type action status strings; `ActionImprovement::openStatuses()` is the ONE map (same lesson as the 2026-11-18 on_progress batch).
+- [ ] Never save the model inside an observer hook that other observers audit after; pass intent forward (job flag), don't mutate.
+
+
+### Symptom
+`/admin/incidents/board` → red Filament 500, `Parse error: syntax error, unexpected token "@"`. Governance 500 on prod (techrisk.paas.dana.id) was a separate surface (schema drift — see Prevention) but reported together.
+
+### Root Cause
+Laravel 12.70.1 `BladeCompiler::storePhpBlocks()` runs regex `/(?<!@)@php(.*?)@endphp/s` BEFORE directive compilation — it does NOT skip the expression form `@php(...)`. In `incident-kanban-board.blade.php` the expression form `@php($firstPic = $incident->pics->first())` (line 282, shipped in 52f20d0, PROJ-010 cutover) made that regex match from `@php(` to the NEXT `@endphp` (line 310's), swallowing the 308–310 block and emitting the captured range verbatim as a raw block — an unclosed `<?php(` plus never-compiled `@php`/`@if` text → parse error. Blocks BEFORE the first expression form compiled fine; everything after was mangled. Verified minimal repro on the installed framework: `@php($a = 1)\nX @php\n$y = 2;\n@endphp` → `<?php($a = 1)\nX @php\n$y = 2;\n?>` (raw `@php`, no `; ?>`).
+
+Not caught for 7 weeks: the board cannot render under SQLite (`FIELD(severity, …)` ordering — documented limitation in `UserFacingCrashersTest`), so no component test reached the template.
+
+### Fix
+`@php($x = …)` → block form `@php $x = …; @endphp` (the pattern line 271 already used). Never mix the expression form with block-form `@php` in one template.
+
+### Prevention Checklist
+- [x] `tests/Feature/BladeTemplatesCompileTest.php` — compile+lint sweep over every `resources/views` template (`Blade::compileString` + `php -l`), DB-free; catches the whole class (would have failed on the broken file).
+- [x] Dev DB repair: 8 pending migrations run (dev scheduler `ai:dispatch-due-agents` had failed every ~min since Nov 12 — `Unknown column 'run_at'`), `view:clear` + `docker compose restart app` (OPcache/bind-mount lag trap).
+- [ ] Prod (owner-only guardrail): deploy the fixed file, then `php artisan migrate:status` + `migrate --force`; if governance still 500s, read `storage/logs/laravel-<date>.log` — dev renders it clean, so prod's exception is the definitive evidence.
+- [ ] Any future `@php(` in a template: check the same file for block-form `@php … @endphp`; if mixed, convert. The lint test now fails loud instead.
+## BUG-037 — Multi-year year-access silently showed only the first year (2026-11-17)
+
+### Symptom
+A non-admin user granted `allowed_years = ['2025', '2026']` in `UserAuditLogSetting` saw only 2025's incidents — on every surface routing through `Incident::scopeApplyUserYearAccess` (Incidents list, Issues list, ActionImprovement whereHas, Reporting, export footers, `/api/v1/stats`) and in the audit-log copy `ApiAuditLogResource::applyAccessControl()`. No error anywhere.
+
+### Root Cause
+`whereYear($col, $array)` does NOT build an `IN` clause. Laravel's `flattenValue()` (`Builder.php:4654`) turns the array into `head(Arr::flatten($value))` — the query compiles to `year(col) = ?` bound to the FIRST element only, order-dependently. Single-element arrays (the default `[(int) date('Y')]`) work by accident, which is why prod never flagged it. Admins and `can_view_all_logs` users skip the restriction entirely and were never affected.
+
+### Fix
+OR the years one by one inside a `where()` closure — portable across MySQL (`year(col) = ? or year(col) = ?`) and SQLite (`strftime('%Y', col) = cast(? as text)`):
+```php
+$query->where(function ($w) use ($settings) {
+    foreach ($settings->allowed_years as $year) {
+        $w->orWhereYear('incident_date', (int) $year);
+    }
+});
+```
+The raw alternative `whereIn(DB::raw('YEAR(col)'), $years)` fails on SQLite ("no such function: YEAR") — do not use it.
+
+### Prevention Checklist
+- [x] `IncidentYearAccessScopeTest::test_multi_year_allowed_years_see_every_granted_year` + `ApiAuditLogYearAccessTest` (multi-year + admin-default pins) — were RED on the old code, now green.
+- [x] Full suite 1338 / 5,356 green (7 known reverb errors only, Docker down).
+- [ ] Any future multi-value `where*Date/whereYear` call: pass scalars one per `orWhere*`, never an array — the array form is a silent head-flatten, not an IN.
+## DingTalk agent audit round 5 — 25 verified defects fixed across P0–P3 (2026-11-18)
+
+Branch `fix/dingtalk-agent-audit-round5`, commits `05b3b0a` (P2 batch 2b) + `40b072e` (P3 batch) + the two earlier P1/P2 batches. Full defect table lives in `dingtalk-agent/IMPROVE-BRAINSTORM.md` (STATUS section); this entry records only the transferable lessons.
+
+### The defects that matter (by lesson, not by number)
+
+**Export-path escape (P0, data leak).** `safeExportPath` joined the LLM's ticket to `DataDir`, not `DataDir/exports` — a `[generated-file: history.json]` reply (steerable by injected text in any uploaded doc/Notion page/web page) resolved and DM'd the bot's own KB, user profiles, or token store. Fix: join under the exports dir AND require the cleaned path to keep that prefix. Lesson: **an LLM-supplied filename is user input; validate it against a directory allowlist, not against string blacklists.**
+
+**Inbox send-after-unlock race (P0, message loss).** `enqueue` captured the worker channel under the lock but sent after unlocking; the idle worker could delete the inbox and exit in that gap — the message acked, never processed. Fix: send while holding the lock (channel send is non-blocking). Lesson: **"capture under lock, use after unlock" is a race, not a pattern** — the check and the use must share the lock. Found by line-reading the idle path, not by `-race` (the loser goroutine had already exited).
+
+**Reminder context poisoned the heavy trigger (P2, cost).** `HeavyTurn` matched trigger phrases against the final LLM input, which has the active-reminders list appended — a reminder whose TEXT said "deep research" routed every turn of that chat to the heavy model forever. Fix: match the raw user message only. Lesson: **when a gate must judge "what the user said", feed it exactly what the user said**, not the assembled prompt that happens to also contain tool/reminder content.
+
+**Turn reports logged the wrong model (P2, cost visibility).** `run()` always reported `b.llm.Model()`; heavy-escalated turns were billed in the cost table under the cheap model. Fix: `run`/`runWithEscalation` return the model actually used. Companion fix: escalation now fires only on a typed budget-exhaustion error, not any LLM error (one 429 no longer buys a 30-round heavy run).
+
+**Secret redaction gaps (P1).** The key-value regex missed `"password": "x"` (JSON quote between key and colon), `LLM_API_KEY=` (`\b` doesn't fire after `_`), and `postgresql://` URLs; `*url.Error` in the media-upload path prints full URLs including `access_token=`. Fix: redact before truncate (a secret cut at a truncation boundary falls under the regex minimums), redact input-gate refusals and turn reports, allowlist download hosts with redirect re-checking. Lesson: **redact at the boundary where the string leaves the process, and redact BEFORE any length-based transformation** — order matters.
+
+**Embeddings path `/v1/v1/` (P2, silent degradation).** Chat posts `<base>/chat/completions`, embeddings posted `<base>/v1/embeddings`; with a base URL that already ends in `/v1` the KB silently fell back to keyword-only search. Fix: `/embeddings` + fail loudly on non-200. Lesson: **a silent fallback in a retrieval path must announce itself** — it did, in a README footnote, for weeks.
+
+**Fail-open quota (P2).** The 20-reminder cap was skipped when `List` errored — the only brake on a looping tool minting cron jobs. Fix: refuse on error. Lesson: **a limit that cannot be verified must refuse, not assume.**
+
+**KB overwrites + keyword rescue (P2).** Docs were keyed by file-NAME hash (two users' `report.pdf` overwrote each other) and the keyword rescue returned any chunk sharing one 2-char token, undoing the 0.35 cosine floor. Fix: content-hash keys, stopword set, keyword floor.
+
+**excelize iterator traps (P3).** `Rows()` iterators never Closed (leak), blank rows bypassed the row cap (only non-blank counted), `UnzipSizeLimit` default is 16 GB. Fix: close, count scanned rows, 64 MB unzip limit. Lesson: **a cap that counts only "interesting" rows is not a cap** — count what you scan.
+
+**History starvation (P3, quality).** The 12-message history window counted tool rounds, so one busy turn evicted all dialog. Fix: keep dialog only (drop tool messages and assistant messages carrying tool_calls).
+
+**Prune fallback (P3).** `PruneContextBudget` gave up when only the last user message remained; now it blanks older user messages before giving up — a loaded skill (Track B `load_skill`) is additionally protected from first-pass eviction.
+
+### Prevention Checklist
+- [x] New pins per fix (heavy-trigger two-leg test, unzip-limit, interior-blank chart error, redaction cases, escalation-on-budget-only, export-path rejection); full Go suite green + `-race` on `internal/dingtalk`, `internal/agent`, `internal/tools`, `internal/kb`.
+- [x] `IMPROVE-BRAINSTORM.md` STATUS table reflects final state, incl. deliberate skips (aicard single-flight, knowledge.jsonl compaction, deep bilingualization — each with a reason).
+- [ ] Audit lesson itself: this round found 25 defects by line-reading, all in code that had a green test suite — **test suites prove the paths that exist; only reading finds the paths that interact** (races, fallbacks, gates fed the wrong string).
+- [ ] When appending context to LLM input (reminders, docs), enumerate every gate that reads that input and decide whether the gate should see the appendix too.
+
+---
+
+## BUG-040 — Reminder emails sent for Issue-classified records: no classification gate on the reminder lanes (2026-11-18)
+
 **Discovered By:** Owner, first production run of the status-update lane ("the email still send for issue too not incident only")
 **Severity:** Low (wrong-target reminder; one prod email to a downgraded issue's PICs)
-**Status:** Resolved
+**Status:** Resolved (commit 014a1a0, recorded as BUG-035 pre-merge — renumbered past main's BUG-035/036/039)
+**Note:** the merged number **BUG-037** was also taken by another session mid-merge (multi-year year-access), hence BUG-040.
 
 ### Description
 After the status-update reminder lane shipped, its email fired for a record classified `Issue` — specifically a case raised as an issue, upgraded to Incident, then downgraded back to Issue after it failed the incident requirements. Other Issues had (so far) received nothing, which made the bug look like a downgrade-handling problem rather than what it was.
@@ -2029,3 +2193,4 @@ One shared-scope line: `dueIncidents()` filters `classification = IncidentClassi
 - [x] When one member of a class (the downgraded issue) misbehaves and its peers don't, suspect a latent hole that age/data shape merely hasn't exposed — check the shared query, not the lifecycle transition.
 - [x] `IncidentFactory` randomizes classification: any test that needs a lane to FIRE must pin `classification = Incident` (now defaulted in the test helper), or it flakes 50% once a classification gate exists.
 - [x] Rule written down: business-rules.md "Reminder emails are incident-only" + dependency-map ReminderMail row.
+- [ ] Merge numbering hazard: two sessions appending to lesson-learned.md concurrently burned BUG-035 twice and skipped 037/038 — re-check the file's highest number immediately before appending, and note the pre-merge number in the entry when renumbering.

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -176,7 +177,10 @@ func TestEmbedArrayInputSortedByIndex(t *testing.T) {
 	var gotModel string
 	var gotInput any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/embeddings" {
+		// The chat path posts {base}/chat/completions; embeddings must follow
+		// the SAME convention — base URLs already end in /v1, so a "/v1/"
+		// prefix here produced /v1/v1/embeddings (404 → KB silently keyword-only).
+		if r.URL.Path != "/embeddings" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 			http.NotFound(w, r)
 			return
@@ -442,5 +446,57 @@ func TestPingTimeout(t *testing.T) {
 	}
 	if elapsed > 1500*time.Millisecond {
 		t.Errorf("ping did not return promptly on timeout, took %v", elapsed)
+	}
+}
+
+// A cut-off (finish_reason "length") completion is an error, not an answer —
+// a truncated tool call or OCR page used to pass as success.
+func TestDoCompletionRejectsLengthCutoff(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"choices": []map[string]any{{
+				"message":       map[string]any{"role": "assistant", "content": "partial ans"},
+				"finish_reason": "length",
+			}},
+			"usage": map[string]any{"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"})
+	_, _, err := client.ChatCompletion(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil)
+	if err == nil || !strings.Contains(err.Error(), "cut off") {
+		t.Fatalf("finish_reason=length must error, got: %v", err)
+	}
+}
+
+// 429/5xx on the completion POST retry (2x, short backoff) before failing the
+// turn — one gateway blip must not kill a run.
+func TestChatRetriesOn429(t *testing.T) {
+	var calls int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if atomic.AddInt32(&calls, 1) == 1 {
+			http.Error(w, `{"error":{"message":"rate limited"}}`, http.StatusTooManyRequests)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(ChatResponse{Choices: []ChatChoice{{
+			Message: ChatMessage{Role: "assistant", Content: "ok"}, FinishReason: "stop",
+		}}})
+	}))
+	defer server.Close()
+
+	old := llmRetryDelays
+	llmRetryDelays = []time.Duration{time.Millisecond}
+	defer func() { llmRetryDelays = old }()
+
+	client := NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"})
+	_, _, err := client.ChatCompletion(context.Background(), []ChatMessage{{Role: "user", Content: "hi"}}, nil)
+	if err != nil {
+		t.Fatalf("retry should have recovered: %v", err)
+	}
+	if got := atomic.LoadInt32(&calls); got != 2 {
+		t.Errorf("calls = %d, want 2", got)
 	}
 }

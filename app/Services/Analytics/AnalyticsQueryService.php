@@ -439,7 +439,10 @@ class AnalyticsQueryService
 
     private function computeMtbf(array $dates): float
     {
-        $dates = collect($dates)->unique()->sort()->values();
+        // No unique(): MTBF counts INCIDENTS, not distinct days — dropping
+        // same-day incidents stretched the average ([Jan1,Jan1,Jan11] = 10
+        // instead of 5) and diverged from every other MTBF surface.
+        $dates = collect($dates)->sort()->values();
         if ($dates->count() < 2) {
             return 0;
         }

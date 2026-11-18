@@ -37,6 +37,11 @@ Schedule::command('model:prune', ['--model' => \App\Models\AiAgentRun::class])->
 // conversions are cached-first; skips outright when the manifest is fresh.
 Schedule::command('incidents:refresh-corpus')->hourlyAt(17)->withoutOverlapping()->description('Rebuild the incident memory corpus when stale');
 
+// Compiled topic pages (recurring patterns per team, corpus/topics/) —
+// LLM-synthesized AFTER the hourly corpus rebuild has its head start; each
+// run regenerates from source and an LLM failure keeps the previous page.
+Schedule::job(new \App\Jobs\Ai\CompileTopicPagesJob)->dailyAt('03:20')->withoutOverlapping()->description('Compile topic pattern pages from the incident corpus');
+
 // ---------------------------------------------------------------------------
 // Reminders, maintenance & scheduled reports.
 // Ported from the legacy App\Console\Kernel::schedule(), which this app's

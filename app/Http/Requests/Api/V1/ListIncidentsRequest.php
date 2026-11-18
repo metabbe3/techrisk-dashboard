@@ -36,6 +36,8 @@ class ListIncidentsRequest extends ApiFormRequest
             'fund_status' => ['nullable', 'string', Rule::enum(FundStatus::class)],
             'pic_id' => ['nullable', 'integer'],
             'search' => ['nullable', 'string', 'min:2'],
+            'sort' => ['nullable', 'string', Rule::in(['updated_at'])],
+            'order' => ['nullable', 'string', Rule::in(['asc', 'desc'])],
             'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
             'offset' => ['nullable', 'integer', 'min:0'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:500'],

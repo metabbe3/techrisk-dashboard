@@ -15,6 +15,7 @@ use App\Models\Incident;
 use App\Notifications\IncidentStatusChanged;
 use App\Notifications\IncidentUpdated;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\ValidationException;
 
 class IncidentObserver
@@ -38,14 +39,14 @@ class IncidentObserver
             return;
         }
 
-        $hasRca = ! blank($incident->root_cause) || ! empty($incident->root_cause_category);
+        $error = Incident::closureGateError(
+            $incident->root_cause,
+            $incident->root_cause_category,
+            $incident->stop_bleeding_at,
+        );
 
-        if (! $hasRca || $incident->stop_bleeding_at === null) {
-            throw ValidationException::withMessages([
-                'incident_status' => 'Cannot complete: '
-                    .($incident->stop_bleeding_at === null ? 'stop bleeding time' : 'root cause')
-                    .' is still missing. Fill it in before completing.',
-            ]);
+        if ($error !== null) {
+            throw ValidationException::withMessages(['incident_status' => $error]);
         }
     }
 
@@ -158,8 +159,14 @@ class IncidentObserver
             ));
         }
 
-        // Dispatch recurrence detection when categories change and not yet analyzed
-        if ($incident->wasChanged(['root_cause_category', 'business_category', 'responsible_team'])
+        // Root cause filled/changed later → the original analysis is stale.
+        // Re-detect via a force-flagged job (owner 2026-11-18). NO write here:
+        // saving inside updated() syncs the model's dirty state before the
+        // auditing observer runs, and the root_cause audit entry would come
+        // back empty (GovernanceKpiService::rcaWithinFiveDays reads it).
+        if ($incident->wasChanged(['root_cause', 'root_cause_category'])) {
+            DetectRecurrenceJob::dispatch($incident, force: true);
+        } elseif ($incident->wasChanged(['business_category', 'responsible_team'])
             && $incident->recurrence_data === null) {
             DetectRecurrenceJob::dispatch($incident);
         }
@@ -203,5 +210,43 @@ class IncidentObserver
     private function clearAiContextCache(): void
     {
         app(\App\Services\Ai\ChatContextService::class)->clearDataCache();
+    }
+
+    /**
+     * Handle the Incident "deleted" event. Without it a delete bumped
+     * nothing: widgets and exports kept counting the deleted row until the
+     * cache TTL, and the NEXT incident's stored MTBF still measured its gap
+     * from the deleted one. The job can't be reused — its handle() starts
+     * with fresh(), which is null for a deleted row — so the same adjacent
+     * repair runs inline (a single metric recompute, no heavy work).
+     */
+    public function deleted(Incident $incident): void
+    {
+        $next = Incident::whereYear('incident_date', $incident->incident_date->year)
+            ->where('classification', $incident->classification->value)
+            ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutOutliers()
+            ->where(function ($query) use ($incident) {
+                $query->where('incident_date', '>', $incident->incident_date)
+                    ->orWhere(function ($query) use ($incident) {
+                        $query->where('incident_date', '=', $incident->incident_date)
+                            ->where('id', '>', $incident->id);
+                    });
+            })
+            ->orderBy('incident_date', 'asc')->orderBy('id', 'asc')
+            ->first();
+
+        if ($next) {
+            $calculator = app(\App\Services\Metrics\IncidentMetricsCalculator::class);
+            $calculator->computeMtbf($next);
+            $calculator->computeMttr($next);
+            $calculator->computeCategoryMtbf($next);
+            $calculator->computeMtbfAll($next);
+
+            $next->saveQuietly();
+        }
+
+        Cache::increment('dashboard_cache_version');
+        $this->clearAiContextCache();
     }
 }

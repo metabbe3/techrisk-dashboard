@@ -4,8 +4,11 @@ use App\Http\Controllers\Api\ActionImprovementController;
 use App\Http\Controllers\Api\AgentRunController;
 use App\Http\Controllers\Api\AgentScheduleController;
 use App\Http\Controllers\Api\Ai\ExportController;
+use App\Http\Controllers\Api\CorpusController;
+use App\Http\Controllers\Api\GovernanceController;
 use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\NotionController;
+use App\Http\Controllers\Api\SkillController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TokenController;
 use Illuminate\Support\Facades\Route;
@@ -68,8 +71,11 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
         Route::post('query', [NotionController::class, 'query']);
     });
 
-    // Action improvements read (rate limit editable in Admin → API Settings)
+    // Action improvements read (rate limit editable in Admin → API Settings).
+    // The flat list is the agent's cross-incident view ("overdue this week");
+    // overdue=1 reuses the governance definition, never a hand-typed status pair.
     Route::prefix('v1')->middleware('throttle:actions')->group(function () {
+        Route::get('/action-improvements', [ActionImprovementController::class, 'search']);
         Route::get('/incidents/{incident}/action-improvements', [ActionImprovementController::class, 'index']);
         Route::get('/action-improvements/{action_improvement}', [ActionImprovementController::class, 'show']);
     });
@@ -94,5 +100,26 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     // Rate limit editable in Admin → API Settings.
     Route::prefix('v1')->middleware('throttle:agent')->group(function () {
         Route::get('stats', [StatsController::class, 'index']);
+    });
+
+    // Incident memory corpus pages (index.md → one page per incident/topic).
+    // Relative paths INSIDE markdown/corpus only — traversal rejected below.
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('corpus', [CorpusController::class, 'index']);
+    });
+
+    // Governance KPIs for the DingTalk agent — verbatim GovernanceKpiService
+    // output (one-logic rule: zero new metric math on the Go side).
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('governance', [GovernanceController::class, 'index']);
+    });
+
+    // Agent skill library (Filament → Skills) + War Room personas — read-only,
+    // on-demand: index is a metadata catalog, show loads ONE body (48k cap).
+    // Persona bundles (role-<key>) carry the system prompt + skill NAMES only.
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('skills', [SkillController::class, 'index']);
+        Route::get('skills/{name}', [SkillController::class, 'show'])
+            ->where('name', '[A-Za-z0-9_-]{1,64}');
     });
 });

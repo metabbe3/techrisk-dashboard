@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Ai;
 
+use App\Services\Ai\Concerns\JsonExtractor;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -36,7 +37,9 @@ class GoAgentBrain
             'agent_id' => 'investigation-form-intake',
             'agent_name' => 'Investigation Form Intake',
             'mode' => 'task',
-            'text' => Str::limit($userMessage, 48000),
+            // Named constant — one cap with the extractor's source budget
+            // (NotionReadService::MAX_CONTENT_CHARS), not a second magic number.
+            'text' => mb_substr($userMessage, 0, \App\Services\Notion\NotionReadService::MAX_CONTENT_CHARS),
         ];
 
         if ($system !== '') {
@@ -52,6 +55,7 @@ class GoAgentBrain
         try {
             $response = Http::withHeaders(['X-Agent-Token' => $token])
                 ->timeout((int) config('ai.go_agent.timeout', 420))
+                ->connectTimeout(10)
                 ->post(rtrim((string) config('ai.go_agent.base_url'), '/').'/internal/run', $payload);
         } catch (\Throwable $e) {
             return $this->fail($fieldType, 'Go agent unreachable: '.$e->getMessage());
@@ -112,13 +116,11 @@ class GoAgentBrain
 
     private function decode(?string $text): ?array
     {
-        if ($text === null || trim($text) === '') {
-            return null;
-        }
-
-        $decoded = json_decode(trim($text), true);
-
-        return is_array($decoded) ? $decoded : null;
+        // Tolerates fenced/prose-wrapped JSON via the shared extractor — the
+        // Go reply filter and the model itself can surround the object.
+        return $text === null || trim($text) === ''
+            ? null
+            : JsonExtractor::extract($text);
     }
 
     private static function replyCap(string $fieldType): int

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"log"
 	"net/url"
 	"strconv"
@@ -27,6 +28,9 @@ const (
 	watchWatermarkSlack = 5 * time.Second
 	// sweepLimit rows per sweep — 100 edits/min would be a dire day.
 	sweepLimit = 100
+	// maxSweepPages bounds one sweep's page-through (5000 rows) before the
+	// window tail is dropped (logged) so the watermark can advance.
+	maxSweepPages = 50
 )
 
 const watchListHeader = "[Active watches in this chat:"
@@ -97,23 +101,45 @@ func (b *Bot) sweepWatches(ctx context.Context, watermark time.Time) bool {
 	}
 
 	dash := b.loop.Registry().Dashboard()
-	env, err := dash.Search(ctx, "/incidents?updated_since="+url.QueryEscape(watermark.UTC().Format(time.RFC3339))+"&limit="+strconv.Itoa(sweepLimit))
-	if err != nil {
-		log.Printf("[watch] sweep failed: %v", err)
-		return false
-	}
-	var rows []sweepRow
-	if err := json.Unmarshal(env.Data, &rows); err != nil {
-		log.Printf("[watch] sweep decode failed: %v", err)
-		return false
-	}
-
 	// Two chats watching one incident BOTH fire — a single map keyed by
 	// incident number let the later watch overwrite the earlier one.
 	byNo := map[string][]watch.Item{}
 	for _, it := range ws {
 		byNo[it.IncidentNo] = append(byNo[it.IncidentNo], it)
 	}
+
+	// Page ascending by updated_at until a short page: a full first page used
+	// to return "incomplete" forever — the same 100 persisted rows re-fetched
+	// every tick, every watch past row 100 stalled for good.
+	for offset := 0; ; offset += sweepLimit {
+		env, err := dash.Search(ctx, "/incidents?updated_since="+url.QueryEscape(watermark.UTC().Format(time.RFC3339))+"&sort=updated_at&order=asc&limit="+strconv.Itoa(sweepLimit)+"&offset="+strconv.Itoa(offset))
+		if err != nil {
+			log.Printf("[watch] sweep failed: %v", err)
+			return false
+		}
+		var rows []sweepRow
+		if err := json.Unmarshal(env.Data, &rows); err != nil {
+			log.Printf("[watch] sweep decode failed: %v", err)
+			return false
+		}
+
+		b.fireSweepRows(ctx, byNo, rows)
+
+		if len(rows) < sweepLimit {
+			return true
+		}
+		if offset >= maxSweepPages*sweepLimit {
+			// ponytail: >5000 changed rows in one window drops the tail (logged) —
+			// statuses are persisted, so lastOK must still advance or the sweep stalls.
+			log.Printf("[watch] sweep hit %d-page cap; tail of window skipped", maxSweepPages)
+			return true
+		}
+	}
+}
+
+// fireSweepRows fires a task-mode agent turn for every watched incident whose
+// status changed in this sweep page.
+func (b *Bot) fireSweepRows(ctx context.Context, byNo map[string][]watch.Item, rows []sweepRow) {
 	for _, row := range rows {
 		for _, it := range byNo[row.No] {
 			if row.Status == it.LastStatus || row.Status == "" {
@@ -127,20 +153,38 @@ func (b *Bot) sweepWatches(ctx context.Context, watermark time.Time) bool {
 			// Acquire the agent slot BEFORE spawning (watch fires used to
 			// release b.sem without ever acquiring it: the release either
 			// hung forever on an empty sem or STOLE a live turn's slot —
-			// audit round 4).
-			b.sem <- struct{}{}
-			go b.fireWatch(ctx, it, old, row.Status)
+			// audit round 4). A cancelled poller ctx gives up instead of
+			// queueing one more turn behind Drain (audit round 5).
+			if !b.acquire(ctx) {
+				return
+			}
+			go func(it watch.Item, old, new string) {
+				// A watch that just fired reports on a DETACHED ctx: the
+				// status is already persisted, and a deploy's SIGTERM used
+				// to cancel the turn mid-answer — notification lost. The
+				// timeout bounds a hung loop.
+				fireCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 360*time.Second)
+				defer cancel()
+				b.fireWatch(fireCtx, it, old, new)
+			}(it, old, row.Status)
 		}
 	}
-	return len(rows) < sweepLimit // a full page may have been truncated
 }
 
 // fireWatch runs a task-mode agent turn (fresh context, guarded output) and
 // delivers the change report — same flow as a task-mode scheduled reminder.
 func (b *Bot) fireWatch(ctx context.Context, it watch.Item, old, new string) {
 	defer func() { <-b.sem }() // no defer used to mean a panic leaked the slot forever
+	// Same Subset as the task path (internalapi.go): reminder/watch tickets are
+	// claimed by the chat turn handler only — a fire that creates one parks it
+	// forever — and fireWatch's delivery is markdown-only, so generate_* tickets
+	// would reach the chat raw instead of uploading. Family prompts drop
+	// automatically with the tools.
+	runLoop := b.loop.With(b.loop.Registry().Subset(func(name string) bool {
+		return name != "schedule_reminder" && name != "watch_incident" && !strings.HasPrefix(name, "generate_")
+	}))
 	turnCtx := tools.WithNotionSink(ctx)
-	reply, _, _, err := b.loop.Run(turnCtx,
+	reply, _, _, _, err := runLoop.Run(turnCtx,
 		fmt.Sprintf("[Watch #%d — incident %s status changed %s → %s — report which project and all relevant information about this incident now. Do not create or cancel reminders or watches.]",
 			it.ID, it.IncidentNo, old, new),
 		nil, "")

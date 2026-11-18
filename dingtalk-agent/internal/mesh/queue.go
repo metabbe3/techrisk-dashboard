@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 const (
@@ -296,10 +298,7 @@ func (q *Queue) ListTasks(missionID string) ([]TaskSummary, error) {
 				assignedAt = t.AssignedAt
 			}
 		}
-		res := st.Result
-		if r := []rune(res); len(r) > 200 {
-			res = string(r[:200])
-		}
+		res := util.Cut(st.Result, 200)
 		out = append(out, TaskSummary{
 			ID:         st.ID,
 			Goal:       st.Goal,
@@ -435,7 +434,11 @@ func (q *Queue) GetNextTaskContext(ctx context.Context, workerID string, maxWait
 			return task, nil
 		default:
 		}
-		delete(q.waiters, workerID)
+		// A re-poll (same workerID) replaced our registration — deleting by
+		// key alone unregistered the NEW waiter and its long-poll went deaf.
+		if cur := q.waiters[workerID]; cur == nil || cur.ch == waitCh {
+			delete(q.waiters, workerID)
+		}
 		q.mu.Unlock()
 		return nil, ctx.Err()
 	case <-time.After(maxWait):
@@ -446,7 +449,10 @@ func (q *Queue) GetNextTaskContext(ctx context.Context, workerID string, maxWait
 			return task, nil
 		default:
 		}
-		delete(q.waiters, workerID)
+		// Same guard as the ctx path: only remove our own registration.
+		if cur := q.waiters[workerID]; cur == nil || cur.ch == waitCh {
+			delete(q.waiters, workerID)
+		}
 		q.mu.Unlock()
 		return nil, nil
 	}

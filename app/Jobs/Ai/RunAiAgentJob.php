@@ -185,6 +185,36 @@ class RunAiAgentJob implements ShouldQueue
         }
     }
 
+    /**
+     * Uncaught throw or worker timeout (tries=1): without this the run sits
+     * "Running" until the 15-min sweep and a one-shot never re-arms — the
+     * failure branch in handle() never executes when handle() itself dies.
+     */
+    public function failed(\Throwable $e): void
+    {
+        $run = AiAgentRun::find($this->runId);
+
+        if (! $run || ($run->status?->value) !== AiAgentRunStatus::Running->value) {
+            return;
+        }
+
+        $run->forceFill([
+            'status' => AiAgentRunStatus::Failed->value,
+            'error_message' => 'Job died: '.Str::limit($e->getMessage(), 500),
+            'completed_at' => now(),
+        ])->save();
+
+        $agent = AiAgent::find($this->agentId);
+
+        if ($agent && $agent->frequency === AiAgentFrequency::Once) {
+            if ($agent->runs()->where('status', AiAgentRunStatus::Failed->value)->count() < 3) {
+                $agent->forceFill(['run_at' => now()->addMinutes(5)])->save();
+            } else {
+                $agent->forceFill(['enabled' => false])->save();
+            }
+        }
+    }
+
     private function buildAttachedFilesBlock(AiAgent $agent, int $budget): string
     {
         $sections = [];
@@ -352,11 +382,16 @@ class RunAiAgentJob implements ShouldQueue
      */
     private function runGoWithValidation(AiAgent $agent, AiAgentRun $run, string $systemPrompt, string $userMessage): AiTextResult
     {
-        $result = $this->runViaGoEngine($agent, $run, $systemPrompt, $userMessage, 'task');
+        // Two Go calls at the full 420s HTTP timeout = 840s > the job's own
+        // 480s kill — the worker would cut the repair call mid-flight and
+        // the run dies "Running". Both calls share the job's deadline.
+        $deadline = microtime(true) + $this->timeout - 30;
+
+        $result = $this->runViaGoEngine($agent, $run, $systemPrompt, $userMessage, 'task', $this->remainingSeconds($deadline));
 
         if ($result->success && $agent->require_json && json_decode((string) $result->text) === null) {
             $repairMessage = $userMessage."\n\n## Your previous response was not valid JSON (parse error: ".json_last_error_msg().'). Respond again with valid JSON only.';
-            $result = $this->runViaGoEngine($agent, $run, $systemPrompt, $repairMessage, 'task');
+            $result = $this->runViaGoEngine($agent, $run, $systemPrompt, $repairMessage, 'task', $this->remainingSeconds($deadline));
 
             if ($result->success && json_decode((string) $result->text) === null) {
                 $result = AiTextResult::failure('Output failed JSON validation after retry.', $result->model, $result->responseTimeMs);
@@ -366,13 +401,19 @@ class RunAiAgentJob implements ShouldQueue
         return $result;
     }
 
+    /** Floor 30s so a long first call still leaves a real (short) repair window. */
+    private function remainingSeconds(float $deadline): int
+    {
+        return max(30, (int) ($deadline - microtime(true)));
+    }
+
     /**
      * One call to the Go engine's internal endpoint (task = LLM tool loop,
      * message = deliver text as-is). ForceFills DingTalk delivery facts onto
      * the run (persisted by the caller's save); a failed delivery never
      * fails the run itself.
      */
-    private function runViaGoEngine(AiAgent $agent, AiAgentRun $run, ?string $system, string $userMessage, string $mode): AiTextResult
+    private function runViaGoEngine(AiAgent $agent, AiAgentRun $run, ?string $system, string $userMessage, string $mode, ?int $timeoutSeconds = null): AiTextResult
     {
         $token = (string) config('ai.go_agent.token');
 
@@ -407,7 +448,8 @@ class RunAiAgentJob implements ShouldQueue
 
         try {
             $response = Http::withHeaders(['X-Agent-Token' => $token])
-                ->timeout((int) config('ai.go_agent.timeout', 420))
+                ->timeout($timeoutSeconds ?? (int) config('ai.go_agent.timeout', 420))
+                ->connectTimeout(10)
                 ->post(rtrim((string) config('ai.go_agent.base_url'), '/').'/internal/run', $payload);
         } catch (\Throwable $e) {
             return AiTextResult::failure('Go agent unreachable: '.$e->getMessage());

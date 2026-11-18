@@ -40,10 +40,16 @@ class SendActionImprovementReminders extends Command
 
         $today = Carbon::now()->startOfDay();
 
+        // Open work (owner 2026-11-17): on_progress rows are accepted AND
+        // started — chased exactly like pending. Only done/cancelled/tbd stop
+        // the chase. Date-TBD semantics extend to them: no due date = never
+        // chased (the date filters below already handle that).
+        $openStatuses = ActionImprovement::openStatuses();
+
         // 1. Due in exactly 7 days
         $dueSoonActions = ActionImprovement::with('incident.pics')
             ->where('reminder', true)
-            ->where('status', 'pending')
+            ->whereIn('status', $openStatuses)
             ->whereDate('due_date', '=', $today->copy()->addDays(7)->toDateString())
             ->get();
 
@@ -52,7 +58,7 @@ class SendActionImprovementReminders extends Command
         // 2. Overdue
         $overdueActions = ActionImprovement::with('incident.pics')
             ->where('reminder', true)
-            ->where('status', 'pending')
+            ->whereIn('status', $openStatuses)
             ->where('due_date', '<', $today->toDateString())
             ->get();
 

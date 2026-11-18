@@ -79,6 +79,8 @@ func (r *Registry) registerGenerateTools(cfg *config.Config) {
 	r.Register(externalRCADef(), typed(func(ctx context.Context, args externalRCAArgs) (string, error) {
 		return r.handleExternalRCA(ctx, dir, args)
 	}))
+
+	r.registerChartTool(dir)
 }
 
 // exportPath builds <dir>/exports/<stamp>-<slug>.<ext> under a safe name.
@@ -170,7 +172,7 @@ func renderMarkdownPDF(path, title, markdown string) error {
 	pdf.MultiCell(0, 9, tr(sanitizePDF(title)), "", "L", false)
 	pdf.SetFont("Arial", "", 8)
 	pdf.SetTextColor(100, 116, 139)
-	pdf.Cell(0, 5, tr(time.Now().In(schedule.WIB).Format("2 January 2006, 15:04"))+" — Technical Risk Dashboard")
+	pdf.Cell(0, 5, tr(time.Now().In(schedule.WIB).Format("2 January 2006, 15:04")+" — Technical Risk Dashboard"))
 	pdf.Ln(9)
 
 	pdf.SetTextColor(30, 41, 59)
@@ -221,7 +223,7 @@ func writeBoldAware(pdf *fpdf.Fpdf, tr func(string) string, text string) {
 		} else {
 			pdf.SetFont("Arial", "", 10)
 		}
-		pdf.Write(5, part)
+		pdf.Write(5, tr(part)) // tr AFTER sanitizePDF in boldSplit — the dash/ellipsis map needs it (audit round 5)
 	}
 	pdf.Ln(1)
 }

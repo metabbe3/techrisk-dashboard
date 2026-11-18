@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
@@ -167,11 +168,7 @@ func (c *notionCatalog) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	tmp := c.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	return os.Rename(tmp, c.path)
+	return util.AtomicWrite(c.path, data, 0o600)
 }
 
 // listing renders "PRD=<id>, TA=<id>" sorted by name (stable tool descriptions).
@@ -400,7 +397,9 @@ func (n *notionTools) handleNotionReadPage(ctx context.Context, args notionReadP
 	}
 	excerpt := util.Cut(content, notionExcerptChars)
 	n.recordRead(ctx, NotionRead{Title: title, URL: ref, Excerpt: excerpt})
-	return content, nil
+	// A page anyone with portal access can edit is untrusted data — frame it
+	// like web_fetch output (audit round 5). The recorded excerpt stays raw.
+	return guardrail.FrameDocumentContent("Notion page "+title, content), nil
 }
 
 // firstHeadingOrRef derives a display title from the page's first markdown

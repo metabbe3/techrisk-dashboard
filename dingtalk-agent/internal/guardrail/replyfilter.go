@@ -32,6 +32,21 @@ var (
 	}
 )
 
+// cutRuneSafe returns s truncated to at most maxLen bytes without splitting a
+// multi-byte rune. The old inline loops sliced `s[:maxLen]` FIRST and then
+// scanned for the rune start — reading s[maxLen] panics whenever maxLen ==
+// len(s) (maxLen <= len(TruncationFooter) reached that path).
+func cutRuneSafe(s string, maxLen int) string {
+	if maxLen >= len(s) {
+		return s
+	}
+	cutIndex := maxLen
+	for cutIndex > 0 && !utf8.RuneStart(s[cutIndex]) {
+		cutIndex--
+	}
+	return s[:cutIndex]
+}
+
 // FilterReplyCap applies post-processing to a reply before it reaches the
 // user:
 // 1. Redacts sensitive secrets, keys, and tokens.
@@ -75,21 +90,29 @@ func FilterReplyCap(reply string, maxLen int) string {
 			if lastNL > cutIndex-200 && lastNL > 0 {
 				cutIndex = lastNL
 			}
-			// Never split a multi-byte rune at the cut.
-			for cutIndex > 0 && !utf8.RuneStart(filtered[cutIndex]) {
-				cutIndex--
-			}
-			filtered = strings.TrimRight(filtered[:cutIndex], "\r\n ") + TruncationFooter
+			filtered = strings.TrimRight(cutRuneSafe(filtered, cutIndex), "\r\n ") + TruncationFooter
 		} else {
-			filtered = filtered[:maxLen]
-			for maxLen > 0 && !utf8.RuneStart(filtered[maxLen]) {
-				maxLen--
-			}
-			filtered = filtered[:maxLen]
+			filtered = cutRuneSafe(filtered, maxLen)
 		}
 	}
 
 	return filtered
+}
+
+// FilterReplyData is the DATA path for internal runs that raise the reply
+// cap (dashboard extraction payloads, machine-read JSON): the chat guards —
+// scope gate, tool-call fence strip, system-leak redaction — would fire over
+// text the model is merely QUOTING from the source and replace or corrupt
+// the payload. Only secret redaction and a rune-safe hard cap apply (no
+// truncation footer: it would corrupt the JSON).
+func FilterReplyData(reply string, maxLen int) string {
+	if maxLen <= 0 {
+		maxLen = MaxReplyLength
+	}
+
+	redacted, _ := Redact(reply)
+
+	return cutRuneSafe(redacted, maxLen)
 }
 
 // sanitizeSystemLeaks replaces lines or sentences containing system prompt markers with a safe placeholder.

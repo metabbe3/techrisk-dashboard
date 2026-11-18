@@ -74,4 +74,37 @@ class IncidentUpdatedSinceTest extends TestCase
         $response->assertStatus(422);
         $response->assertJsonValidationErrors(['updated_since']);
     }
+
+    /** @test */
+    public function sort_updated_at_gives_the_watch_sweep_a_stable_offset_order(): void
+    {
+        // Insert OUT of updated_at order: unsorted storage order (PK) must not
+        // satisfy the assertion, only the requested sort does.
+        $b = Incident::factory()->create(['severity' => 'P1', 'classification' => 'Incident', 'incident_date' => now()]);
+        $b->forceFill(['updated_at' => '2026-11-11 10:00:00'])->saveQuietly();
+        $c = Incident::factory()->create(['severity' => 'P1', 'classification' => 'Incident', 'incident_date' => now()]);
+        $c->forceFill(['updated_at' => '2026-11-12 10:00:00'])->saveQuietly();
+        $a = Incident::factory()->create(['severity' => 'P1', 'classification' => 'Incident', 'incident_date' => now()]);
+        $a->forceFill(['updated_at' => '2026-11-10 10:00:00'])->saveQuietly();
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->getJson('/api/v1/incidents?'.http_build_query([
+                'updated_since' => '2026-11-01T00:00:00Z',
+                'sort' => 'updated_at',
+                'order' => 'asc',
+                'offset' => 1,
+                'limit' => 1,
+            ]));
+
+        $response->assertStatus(200);
+        $this->assertSame([$b->no], collect($response->json('data'))->pluck('incident_no')->all());
+    }
+
+    /** @test */
+    public function sort_rejects_non_whitelisted_columns(): void
+    {
+        $this->withHeader('Authorization', 'Bearer '.$this->token)
+            ->getJson('/api/v1/incidents?sort=fund_loss&order=asc')
+            ->assertStatus(422);
+    }
 }

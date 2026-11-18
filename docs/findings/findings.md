@@ -397,10 +397,14 @@ The 2026-11-12 audit of `dingtalk-agent/` (BUG-029 in lesson-learned covers the
 Wave-2 fixes actually shipped) also produced a **crash** list the owner chose to
 DEFER. Recorded here so the next sweep starts from it, not from zero:
 
-1. **Tool panic kills the bot** — `tools/registry.go` `Execute` has no recover;
-   each tool runs on its own goroutine so no caller-side recover can catch it.
-   Fix when picked up: named returns + `defer recover()` → error string. Covers
-   fpdf internals + every future tool.
+1. ~~**Tool panic kills the bot**~~ — **RESOLVED 2026-11-18, twice over**: the
+   agent loop gained a per-goroutine `recover` with a stack-trace log
+   (commit 8c385ed, 2026-11-17 — the "no caller-side recover" note was stale
+   the moment it shipped), and `Registry.Execute` now recovers at the seam
+   too (`executeGuarded`, logs `PANIC in tool <name>` + `debug.Stack()` and
+   returns error content) so direct callers (tests, future seams) can't
+   crash the process either. Original fix sketch — named returns + defer
+   recover → error string — is exactly what shipped.
 2. **Agent panic on the card path kills the bot** — the only `recover` in
    `stream.go` lives in `processPlain`; `processStreaming` (card path),
    `processFile` goroutine and `go b.fireWatch` have none.
@@ -430,3 +434,53 @@ gain. Revisit only if the env var is retired.
 
 **Ship guardrail reminder:** stash@{0} holds PROJ-022 (OPA/guardrails, 2026-11-11)
 — recover there before touching the reply-filter/guardrail stack again.
+
+---
+
+### Sync intake request can exceed any gateway timeout (2026-11-17)
+
+**Date:** 2026-11-17
+**Category:** Architecture
+**Severity:** Medium
+**Status:** Resolved (mitigated, then async shipped — 2026-11-17)
+
+#### Description
+`InvestigationFormIntake::extractFromSource()` runs the whole intake — Notion
+read-all fan-out (up to ~30 sequential MCP calls, `NotionReadService::readFullPage`)
+plus the Go-brain LLM extract (Go ctx 360s, PHP Http 420s) — synchronously inside
+one Livewire POST. Nothing bounds the request except its work, so any gateway in
+front can expire first: nginx `fastcgi_read_timeout 300` produced prod 504s while
+PHP kept running. The 2026-11-17 read-all change (48k→96k cap, subtree drains,
+child pages) pushed real wall time past 300s for the first time.
+
+#### Mitigation applied
+nginx `fastcgi_read_timeout` / `max_execution_time` raised 300→600 (`nginx.conf:30-31`),
+above the documented ladder (Go ctx 360 < Http 420 < nginx 600); `connectTimeout(10)`
+added to the Go call (`GoAgentBrain.php`, per the lesson-learned connect_timeout checklist).
+If an edge proxy sits in front of prod nginx, its read timeout must be raised separately.
+
+#### Status update (2026-11-17, later same day): RESOLVED — async shipped
+The pasted prod 504 page proved the emitter is Dana's PaaS edge proxy
+(`Server: opsproxy-1-1`, `Powered by Tengine/2.2.3`) — a proxy we don't own, so no
+repo-side timeout can fix it. The recommended action was implemented the same day:
+
+- **`app/Jobs/ExtractInvestigationFormSource.php`** — the slow half off the HTTP
+  request: collect source (the component's `collectSource()` moved verbatim: paste
+  cap 48000, upload conversion, Notion `readFullPage` with its ~30-call fan-out)
+  → AI extract → merge into the shared draft. `$tries=1` (a retry would double AI
+  spend; the user re-clicks), `$timeout=600` < worker `--timeout=660`.
+- **Status lives on the request record** (`extraction_status`/`extraction_started_at`/
+  `extraction_result`, migration `2026_11_17_000001`) — a public no-login page can't
+  hold state in the session, and a reload mid-extraction resumes polling.
+- **Component** dispatches in milliseconds and `pollExtraction()` applies the outcome
+  on `wire:poll.3s`; a stale `running` (>15 min) is treated as failed (dead-worker
+  guard). Page copy: "you can close this page — we'll email you when it's ready".
+- **Ready-email on success only** (`InvestigationFormMailFactory::readyMail()`) —
+  no token in it (plain tokens are never stored; rotating would kill a polling
+  session), points back to the invitation link.
+- **`InvestigationFormDraftMerge`** is the one-logic merge service (prefill +
+  applyExtraction) shared by component and job — BUG-005/006/007 drift culture.
+- **96k cap stays** (owner's read-ALL requirement; async moves the wall-time cost
+  off the user).
+- **`runVerify` stays synchronous**: its input is the small answers JSON — no Notion
+  fan-out, no 96k source. Follow-up only if it ever trips opsproxy.

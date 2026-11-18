@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Jobs;
 
 use App\Models\Incident;
@@ -21,14 +22,16 @@ class DetectRecurrenceJob implements ShouldQueue
     public int $timeout = 180;
 
     public function __construct(
-        private Incident $incident
+        private Incident $incident,
+        public bool $force = false,
     ) {}
 
     public function handle(RecurrenceDetectionService $service): void
     {
         $this->incident = $this->incident->fresh();
 
-        if ($this->incident->recurrence_data !== null) {
+        // Skip only when a result already exists AND this isn't a re-detect.
+        if (! $this->force && $this->incident->recurrence_data !== null) {
             return;
         }
 

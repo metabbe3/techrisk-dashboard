@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Filament\Widgets;
 
-use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Filament\Concerns\InteractsWithDashboardFilters;
+use App\Filament\Statistics\IncidentStatsFooterData;
 use App\Models\AiSetting;
 use App\Models\Incident;
 use App\Models\Label;
@@ -156,7 +156,7 @@ class AiTrendInsights extends Widget
             ? "CAST(strftime('%m', incident_date) AS INTEGER)"
             : 'MONTH(incident_date)';
 
-        $baseQuery = Incident::where('classification', IncidentClassification::Incident->value)->tap($dateFilter);
+        $baseQuery = Incident::aiCounts()->tap($dateFilter);
 
         $monthlyData = (clone $baseQuery)
             ->selectRaw($monthExpr.' as month, COUNT(*) as count')
@@ -167,7 +167,7 @@ class AiTrendInsights extends Widget
             ])
             ->toArray();
 
-        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->where('classification', IncidentClassification::Incident->value)->tap($dateFilter)])
+        $topLabels = Label::withCount(['incidents' => fn ($q) => $q->aiCounts()->tap($dateFilter)])
             ->having('incidents_count', '>', 0)
             ->orderByDesc('incidents_count')
             ->limit(10)
@@ -188,19 +188,7 @@ class AiTrendInsights extends Widget
         // so every round()/number_format() below is safe under strict_types.
         $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0);
 
-        $mtbfAgg = (clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers()
-            ->selectRaw('COUNT(*) as cnt, MIN(incident_date) as min_date, MAX(incident_date) as max_date')
-            ->first();
-        $avgMtbf = 0;
-        if ($mtbfAgg && $mtbfAgg->cnt > 1 && $mtbfAgg->min_date && $mtbfAgg->max_date) {
-            $avgMtbf = round(
-                \Carbon\Carbon::parse($mtbfAgg->min_date)->startOfDay()->diffInDays(
-                    \Carbon\Carbon::parse($mtbfAgg->max_date)->startOfDay()
-                ) / ($mtbfAgg->cnt - 1),
-                2
-            );
-        }
+        $avgMtbf = round(IncidentStatsFooterData::avgMtbf($baseQuery), 2);
 
         // Fund Loss card rule: Incident + Completed + excludedFromCounts
         // (matches DashboardStatsOverview).

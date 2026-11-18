@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -78,7 +80,7 @@ func TestAgentLoopWithToolCall(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, _, err := agentLoop.Run(context.Background(), "list current directory", nil, "")
+	finalText, messages, _, _, err := agentLoop.Run(context.Background(), "list current directory", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -187,7 +189,7 @@ func TestParallelToolCallsDeterministicOrder(t *testing.T) {
 	)
 	agentLoop := NewLoop(llmClient, reg, 5)
 
-	finalText, messages, _, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil, "")
+	finalText, messages, _, _, err := agentLoop.Run(context.Background(), "run parallel diagnostics", nil, "")
 	if err != nil {
 		t.Fatalf("agent loop failed: %v", err)
 	}
@@ -288,7 +290,7 @@ func TestSysExtraAppendedToSystemPrompt(t *testing.T) {
 	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
 	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
 
-	if _, _, _, err := agentLoop.Run(context.Background(), "hi", nil,
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "hi", nil,
 		"## About the user you are replying to\n- prefers Indonesian\n"); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -352,7 +354,7 @@ func TestRunSumsUsageAcrossIterations(t *testing.T) {
 		reg, 5,
 	)
 
-	_, _, usage, err := agentLoop.Run(context.Background(), "hi", nil, "")
+	_, _, usage, _, err := agentLoop.Run(context.Background(), "hi", nil, "")
 	if err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
@@ -396,7 +398,7 @@ func TestCurrentDateTimeInSystemPrompt(t *testing.T) {
 
 	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
 	agentLoop := NewLoop(llm.NewClient(cfg), tools.NewRegistry(nil), 2)
-	if _, _, _, err := agentLoop.Run(context.Background(), "hi", nil, ""); err != nil {
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "hi", nil, ""); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 }
@@ -487,7 +489,7 @@ func TestLoopToolContextTimeout(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, _, _, err := agentLoop.Run(ctx, "run slow", nil, "")
+	_, _, _, _, err := agentLoop.Run(ctx, "run slow", nil, "")
 	elapsed := time.Since(start)
 
 	if err == nil {
@@ -495,6 +497,106 @@ func TestLoopToolContextTimeout(t *testing.T) {
 	}
 	if elapsed >= 3*time.Second {
 		t.Fatalf("loop should complete in < 3s when ctx times out, took %v", elapsed)
+	}
+}
+
+// Trigger phrases route the WHOLE turn (every round) to the heavy model —
+// proactive routing beside the failure escalation. Plain text stays on the
+// chat model.
+func TestHeavyKeywordRoutesToHeavyModel(t *testing.T) {
+	var models []string
+	step := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var chatReq llm.ChatRequest
+		_ = json.NewDecoder(r.Body).Decode(&chatReq)
+		models = append(models, chatReq.Model)
+		step++
+		var resp llm.ChatResponse
+		if step%2 == 1 {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{
+					ID: "call_1", Type: "function",
+					Function: llm.FunctionCall{Name: "stub_lookup", Arguments: `{"path":"."}`},
+				}}},
+				FinishReason: "tool_calls",
+			}}}
+		} else {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", Content: "done"}, FinishReason: "stop",
+			}}}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	reg := tools.NewRegistry(nil)
+	reg.Register(
+		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "stub_lookup", Description: "test stub"}},
+		func(ctx context.Context, argsJSON string) (string, error) { return "result", nil },
+	)
+	agentLoop := NewLoop(
+		llm.NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "flash", HeavyModel: "heavy"}),
+		reg, 5,
+	)
+	agentLoop.SetHeavyKeywords([]string{"ultrathink"})
+
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "ultrathink: analyze the spike", nil, ""); err != nil {
+		t.Fatalf("triggered run failed: %v", err)
+	}
+	for i, m := range models {
+		if m != "heavy" {
+			t.Errorf("triggered turn round %d used %q, want heavy", i+1, m)
+		}
+	}
+	if len(models) != 2 {
+		t.Fatalf("triggered turn made %d calls, want 2 (tool round + final)", len(models))
+	}
+	models = nil
+
+	if _, _, _, _, err := agentLoop.Run(context.Background(), "plain question", nil, ""); err != nil {
+		t.Fatalf("plain run failed: %v", err)
+	}
+	for i, m := range models {
+		if m != "flash" {
+			t.Errorf("plain turn round %d used %q, want flash", i+1, m)
+		}
+	}
+}
+
+// heavyRequested: case-insensitive substring; no keywords = never heavy.
+// Keywords WITHOUT a configured heavy model must not route (ChatCompletionHeavy
+// would error every turn) — the guard lives in runWithEscalation.
+func TestHeavyRequestedGuard(t *testing.T) {
+	l := &Loop{}
+	l.SetHeavyKeywords([]string{"ultrathink", "deep research"})
+	if !l.heavyRequested("please ULTRATHINK this") {
+		t.Error("case-insensitive trigger not matched")
+	}
+	if !l.heavyRequested("run a deep research on incidents") {
+		t.Error("multi-word trigger not matched")
+	}
+	if l.heavyRequested("plain question") {
+		t.Error("non-matching text routed heavy")
+	}
+	empty := &Loop{}
+	if empty.heavyRequested("ultrathink") {
+		t.Error("no keywords must never route heavy")
+	}
+	// HeavyTurn also requires a configured heavy model — without one the
+	// trigger must not claim heavy (the ack would lie about the routing).
+	withHeavy := &Loop{llmClient: llm.NewClient(&config.Config{LLMBaseURL: "http://127.0.0.1:1", LLMAPIKey: "k", LLMModel: "flash", HeavyModel: "heavy"})}
+	withHeavy.SetHeavyKeywords([]string{"ultrathink"})
+	if !withHeavy.HeavyTurn("ULTRATHINK this") {
+		t.Error("trigger + heavy model must route")
+	}
+	if withHeavy.HeavyTurn("plain question") {
+		t.Error("non-matching text must not route")
+	}
+	noHeavy := &Loop{llmClient: llm.NewClient(&config.Config{LLMBaseURL: "http://127.0.0.1:1", LLMAPIKey: "k", LLMModel: "flash"})}
+	noHeavy.SetHeavyKeywords([]string{"ultrathink"})
+	if noHeavy.HeavyTurn("ultrathink") {
+		t.Error("trigger without a heavy model must NOT route — the ack would lie")
 	}
 }
 
@@ -536,5 +638,237 @@ func TestLogContextCorrelation(t *testing.T) {
 	}
 	if p := LogPrefix(ctxMissionOnly); p != "[mission mission-222] " {
 		t.Errorf("unexpected prefix: %q", p)
+	}
+}
+
+// A secret cut by the byte-truncator loses its head/tail below the redaction
+// regexes' minimum lengths — redact BEFORE truncating, not after.
+func TestToolResultRedactedBeforeTruncation(t *testing.T) {
+	// Pad so the secret straddles the truncation boundary.
+	// Pad so a partial GitHub PAT straddles the truncation boundary: after a
+	// byte cut only "ghp_AAA" survives — too short for the PAT regex, so
+	// redact-after-truncate leaves it in context; redact-before catches it.
+	padding := strings.Repeat("A", 7994)
+	output := padding + " ghp_AAAABBBBCCCCDDDDeee tail"
+
+	step := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step++
+		var resp llm.ChatResponse
+		if step == 1 {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{
+					ID: "call_1", Type: "function",
+					Function: llm.FunctionCall{Name: "leaky", Arguments: `{}`},
+				}}},
+				FinishReason: "tool_calls",
+			}}}
+		} else {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", Content: "done"}, FinishReason: "stop",
+			}}}
+		}
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	cfg := &config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}
+	reg := tools.NewRegistry(nil)
+	reg.Register(
+		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "leaky", Description: "leaks"}},
+		func(ctx context.Context, argsJSON string) (string, error) { return output, nil },
+	)
+	loop := NewLoop(llm.NewClient(cfg), reg, 5)
+
+	_, messages, _, _, err := loop.Run(context.Background(), "run leaky", nil, "")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	found := false
+	for _, m := range messages {
+		if m.Role == "tool" {
+			found = true
+			if strings.Contains(m.Content, "ghp_") {
+				t.Errorf("partial PAT survived truncation+redaction: %q", m.Content[max(0, len(m.Content)-80):])
+			}
+		}
+	}
+	if !found {
+		t.Error("no tool result in history")
+	}
+}
+
+// A 429/5xx/network blip must NOT burn a 30-round heavy-model retry — only
+// iteration-budget exhaustion escalates.
+func TestEscalationOnlyOnBudgetExhaustion(t *testing.T) {
+	var cheapCalls, heavyCalls int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Model string `json:"model"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		if req.Model == "heavy" {
+			atomic.AddInt32(&heavyCalls, 1)
+		} else {
+			atomic.AddInt32(&cheapCalls, 1)
+		}
+		http.Error(w, `{"error":{"message":"rate limited"}}`, http.StatusTooManyRequests)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{LLMBaseURL: srv.URL, LLMAPIKey: "k", LLMModel: "cheap", HeavyModel: "heavy"}
+	reg := tools.NewRegistry(nil)
+	loop := NewLoop(llm.NewClient(cfg), reg, 5)
+
+	_, _, _, _, err := loop.runWithEscalation(context.Background(), "hi", nil, nil, "")
+	if err == nil || !strings.Contains(err.Error(), "rate limited") {
+		t.Fatalf("expected the original 429 error, got: %v", err)
+	}
+	// Count by MODEL: the cheap call legitimately retries the 429 ladder
+	// (client.go), so total hits exceed 1 — but escalation to the heavy
+	// model must never fire for a non-budget error.
+	if got := atomic.LoadInt32(&heavyCalls); got != 0 {
+		t.Errorf("429 escalated to the heavy model: %d heavy calls, want 0", got)
+	}
+	if got := atomic.LoadInt32(&cheapCalls); got == 0 {
+		t.Error("cheap model never called")
+	}
+}
+
+// D6: with NO tool results to omit, PruneContextBudget used to give up and
+// ship an over-budget request — it now falls back to blanking the oldest
+// USER message (never the last one; users carry no tool_calls).
+func TestPruneContextBudgetFallsBackToUserMessages(t *testing.T) {
+	long := strings.Repeat("x", 600)
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: strings.Repeat("s", 600)},
+		{Role: "user", Content: long},
+		{Role: "assistant", Content: long},
+		{Role: "user", Content: "current question"},
+	}
+	PruneContextBudget(msgs, 1500)
+	if msgs[1].Content != "" {
+		t.Errorf("oldest user message not blanked: %d chars", len(msgs[1].Content))
+	}
+	if msgs[3].Content != "current question" {
+		t.Errorf("the live question was touched: %q", msgs[3].Content)
+	}
+	if msgs[0].Content == "" || msgs[2].Content == "" {
+		t.Error("system/assistant messages must survive the user-fallback")
+	}
+}
+
+// B1: tools report their START to a ctx-keyed progress hook — the AI card
+// shows "checking X…" instead of a 30s black hole during multi-tool turns.
+func TestToolProgressHookFires(t *testing.T) {
+	step := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		step++
+		var resp llm.ChatResponse
+		if step == 1 {
+			resp = llm.ChatResponse{
+				Choices: []llm.ChatChoice{{
+					Message: llm.ChatMessage{
+						Role: "assistant",
+						ToolCalls: []llm.ToolCall{{
+							ID:       "call_1",
+							Type:     "function",
+							Function: llm.FunctionCall{Name: "probe_tool", Arguments: "{}"},
+						}},
+					},
+					FinishReason: "tool_calls",
+				}},
+			}
+		} else {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", Content: "done"}, FinishReason: "stop",
+			}}}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	reg := tools.NewRegistry(nil)
+	reg.Register(llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "probe_tool"}},
+		func(ctx context.Context, _ string) (string, error) { return "ok", nil })
+
+	agentLoop := NewLoop(
+		llm.NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "m"}),
+		reg, 4,
+	)
+	var names []string
+	var mu sync.Mutex
+	ctx := tools.WithToolProgress(context.Background(), func(name string) {
+		mu.Lock()
+		names = append(names, name)
+		mu.Unlock()
+	})
+	_, _, _, _, err := agentLoop.Run(ctx, "run it", nil, "")
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if len(names) == 0 || names[0] != "probe_tool" {
+		t.Errorf("progress hook not fired with the tool name: %v", names)
+	}
+}
+
+// The skills bridge: the prompt must teach both tools (a tool the prompt
+// doesn't mention is never chosen) and the constitution must ALLOW them —
+// methodology content is otherwise off-scope under "Nothing else".
+func TestSkillsPromptAndConstitution(t *testing.T) {
+	for _, tool := range []string{"list_skills", "load_skill"} {
+		if !strings.Contains(SkillsPrompt, tool) {
+			t.Errorf("SkillsPrompt does not mention %s — the model will never use it", tool)
+		}
+		if !strings.Contains(ConstitutionTail, tool) {
+			t.Errorf("ConstitutionTail scope does not name %s — the constitution forbids what the tool does", tool)
+		}
+	}
+	if !strings.Contains(SkillsPrompt, "role-") {
+		t.Error("SkillsPrompt does not teach persona entries (role-<key>)")
+	}
+}
+
+// PruneContextBudget blanks the OLDEST tool result first — which is exactly
+// the skill the turn loaded at its start. load_skill results survive the
+// first pass; they go only when no other tool result remains.
+func TestPruneContextBudgetSparesLoadedSkills(t *testing.T) {
+	long := strings.Repeat("x", 600)
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: strings.Repeat("s", 600)},
+		{Role: "user", Content: "how do we run an RCA?"},
+		{Role: "assistant", Content: "", ToolCalls: []llm.ToolCall{{ID: "c1", Function: llm.FunctionCall{Name: "load_skill"}}}},
+		{Role: "tool", Name: "load_skill", ToolCallID: "c1", Content: long},
+		{Role: "assistant", Content: "", ToolCalls: []llm.ToolCall{{ID: "c2", Function: llm.FunctionCall{Name: "search_incidents"}}}},
+		{Role: "tool", Name: "search_incidents", ToolCallID: "c2", Content: long},
+		{Role: "assistant", Content: "answer"},
+		{Role: "user", Content: "current question"},
+	}
+	PruneContextBudget(msgs, 1500)
+	if msgs[5].Content != "[tool result omitted]" {
+		t.Errorf("the non-skill result must blank first, got %d chars", len(msgs[5].Content))
+	}
+	if msgs[3].Content != long {
+		t.Errorf("the loaded skill must survive while a non-skill result remains, got %d chars", len(msgs[3].Content))
+	}
+}
+
+func TestPruneContextBudgetBlanksLoadedSkillAsLastResort(t *testing.T) {
+	long := strings.Repeat("x", 600)
+	msgs := []llm.ChatMessage{
+		{Role: "system", Content: strings.Repeat("s", 600)},
+		{Role: "user", Content: "how do we run an RCA?"},
+		{Role: "tool", Name: "load_skill", Content: long},
+		{Role: "user", Content: "current question"},
+	}
+	PruneContextBudget(msgs, 1000)
+	if msgs[2].Content != "[tool result omitted]" {
+		t.Errorf("with no other tool result left, the loaded skill must blank, got %d chars", len(msgs[2].Content))
+	}
+	if msgs[3].Content != "current question" {
+		t.Errorf("the live question was touched: %q", msgs[3].Content)
 	}
 }

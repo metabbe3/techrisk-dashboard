@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
+	"runtime/debug"
 	"sort"
 	"sync"
 
@@ -142,11 +144,28 @@ func (r *Registry) Execute(ctx context.Context, name, argsJSON string) (string, 
 		argsJSON = "{}"
 	}
 
-	result, err := tool.Handler(ctx, argsJSON)
+	return executeGuarded(ctx, name, tool.Handler, argsJSON), nil
+}
+
+// executeGuarded runs a tool handler with a panic guard: a panicking handler
+// surfaces as error CONTENT (the same shape as a handler error) instead of
+// killing the process — chat, scheduled and mesh paths all dispatch through
+// this one seam, so one recover covers all of them.
+func executeGuarded(ctx context.Context, name string, h ToolHandler, argsJSON string) (out string) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			// This recover runs BEFORE the loop's per-goroutine one, so this
+			// is the only place the stack trace reaches the operator log —
+			// without it a recurring panic is undebuggable (review 2026-11-18).
+			log.Printf("[tools] PANIC in tool %s: %v\n%s", name, rec, debug.Stack())
+			out = fmt.Sprintf("Error executing %s: internal panic: %v", name, rec)
+		}
+	}()
+	result, err := h(ctx, argsJSON)
 	if err != nil {
-		return fmt.Sprintf("Error executing %s: %v", name, err), nil
+		return fmt.Sprintf("Error executing %s: %v", name, err)
 	}
-	return result, nil
+	return result
 }
 
 // Helper to marshal JSON schema map

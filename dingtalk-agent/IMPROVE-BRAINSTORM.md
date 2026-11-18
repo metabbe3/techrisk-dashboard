@@ -224,3 +224,26 @@ Tabel gabungan rekomendasi perbaikan dari seluruh perspektif, diurutkan berdasar
 | 8 | **Over-fetching Payload `search_incidents`** | D | **P2** | `internal/tools/dashboard.go:340` | Respons mentah Laravel memboroskan 80% token prompt dan cepat terpotong 8KB | Proyeksikan hanya kolom esensial sebelum dikembalikan ke LLM | **S** |
 | 9 | **RAG Search Tanpa Similarity Threshold** | D | **P2** | `internal/kb/kb.go:245` | Query tanpa dokumen yang cocok tetap menyodorkan 6 chunk acak | Pasang ambang batas minimum cosine similarity (misal 0.45) | **S** |
 | 10 | **Pesan User Verbatim Tercatat di Log Stdout** | C | **P2** | `internal/dingtalk/stream.go:204` | PII dan kredensial sensitif dalam prompt user bocor ke container log | Masking atau redaksi teks pesan user sebelum logging | **S** |
+
+---
+
+## STATUS — audit round 5 (2026-11-18, branch `fix/dingtalk-agent-audit-round5`)
+
+Round-4 fixes shipped in `9bf5886`; the items below are round 5 (this branch). All with tests, full Go suite + `-race` green.
+
+| Item | Status |
+|:--|:--|
+| #1 Heavy-model escalation (typed `BudgetExhaustedError` gate + race-free retry, P2 batch 1) | ✅ FIXED |
+| #2 `fireWatch` semaphore deadlock (P2 batch 1) | ✅ FIXED |
+| #3 Child-goroutine panic in `execTools` (P2 batch 1) | ✅ FIXED |
+| #4 Image-download SSRF (P1 batch — allowlist, guarded transport, redirect re-check) | ✅ FIXED |
+| #5 Black-hole AI card | ✅ FIXED — token refresh no longer blocks sends (P2 batch 1) + tool-start status pings in the card via a ctx hook (`tools.WithToolProgress`, P3) |
+| #6 History starvation | ✅ FIXED (P3) — saveHistory keeps the dialog only (tool rounds no longer eat the 12-message window) |
+| #7 Tool truncation 8 KB (RegisterCapped 48 KB for post-mortem/notion; loop truncates AFTER redaction) | ✅ FIXED |
+| #8 `search_incidents` over-fetch | ⬜ OPEN — Go-side projection if it bites |
+| #9 RAG no similarity floor (0.35 cosine floor, round 4) + keyword rescue floor & stopwords (round 5, P2-18) + whitespace-snapped chunk cuts (round 5, P3) | ✅ FIXED |
+| #10 User text verbatim in logs (redacted before log + turn report, P1 batch) | ✅ FIXED |
+| Round-5 additions not in the table | ✅ embedding path `/v1/v1/` (P2 batch 1), reminder cap fail-closed (P2 batch 1), KB embed/deadlines (P2-16), heavy-trigger raw-text match (P2-20a), turn report names actual model (P2-20b), watch turn registry Subset (P2-19), KB keyword rescue floor (P2-18), PDF mojibake (tr on date suffix + bold segments), xlsx iterator Close + scanned-row cap + 64MB UnzipSizeLimit (default was 16 GB), deck f.Close checked, chart interior-blank re-pairing error, help fast-path (zero LLM), KB-off picture notice, file/pic debounce skip, `GET /healthz`, prune user-message fallback |
+| Aicard token-refresh single-flight (audited round 5 as P2-15) | ⏭️ SKIPPED — refreshes are rare (token TTL hours) and every waiter is an in-flight DingTalk send that must serialize behind a fresh token anyway; the fix adds complexity to a path that never contends. Revisit only if card latency shows a refresh-shaped spike. |
+| knowledge.jsonl compaction (A3) | ⏭️ SKIPPED — the append-only raw layer IS the design (digest-merge retries read from it); growth is ~200 bytes per document, MBs over years. The digest already bounds what enters the prompt. |
+| Deep bilingualization of every status string (B4) | ⏭️ PARTIAL — help fast-path is bilingual; acks/refusals stay EN. Content replies already follow the user's language; the ack surface is small and stable. |

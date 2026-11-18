@@ -5,24 +5,22 @@ declare(strict_types=1);
 namespace App\Livewire;
 
 use App\Actions\StoreInvestigationDocument;
+use App\Jobs\ExtractInvestigationFormSource;
 use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
-use App\Services\Ai\AiTextResult;
-use App\Services\InvestigationForm\InvestigationFormExtractor;
+use App\Services\InvestigationForm\InvestigationFormDraftMerge;
 use App\Services\InvestigationForm\InvestigationFormRenderer;
 use App\Services\InvestigationForm\InvestigationFormSchema;
 use App\Services\InvestigationForm\InvestigationFormSettings;
-use App\Services\Markdown\DocumentConverterService;
-use App\Services\Notion\NotionReadService;
 use DanHarrin\LivewireRateLimiting\WithRateLimiting;
 use Filament\Forms\Concerns\InteractsWithForms;
 use Filament\Forms\Contracts\HasForms;
 use Filament\Forms\Form;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
@@ -45,6 +43,9 @@ class InvestigationFormIntake extends Component implements HasForms
 
     public ?InvestigationFormRequest $formRequest = null;
 
+    // Locked: the browser could otherwise $wire.set('aiCalls', 0) and bypass
+    // the cap on this no-login page (rate limit alone allows far more runs).
+    #[Locked]
     public int $aiCalls = 0;
 
     /** Source inputs (step 1). */
@@ -73,8 +74,8 @@ class InvestigationFormIntake extends Component implements HasForms
     /** Concurrency guard: reload warning when the draft moved under us. */
     public ?string $loadedDraftAt = null;
 
-    /** Notion's own refusal text when a provided URL can't be fetched (diagnostic). */
-    public string $notionError = '';
+    /** True while the queued extraction (job) is running — drives wire:poll. */
+    public bool $extractionRunning = false;
 
     public array $missing = [];
 
@@ -96,7 +97,8 @@ class InvestigationFormIntake extends Component implements HasForms
 
     public string $extractError = '';
 
-    private ?AiTextResult $lastResult = null;
+    /** Step-2 notices: unreadable images on the page, truncated Notion source. */
+    public array $sourceNotes = [];
 
     public function mount(string $token): void
     {
@@ -120,6 +122,10 @@ class InvestigationFormIntake extends Component implements HasForms
         $this->jobRole = (string) ($this->formRequest->answers['header']['job_role'] ?? '');
 
         $this->loadDraft();
+
+        // A reload mid-extraction resumes waiting (status lives on the
+        // request — this is a public no-login page, the session can't hold it).
+        $this->extractionRunning = $this->extractionStatus() === 'running';
     }
 
     public function render()
@@ -149,6 +155,8 @@ class InvestigationFormIntake extends Component implements HasForms
     {
         $this->guardValidLink();
         $this->rateLimit(10);
+        $this->formRequest->refresh();
+        $this->checkDraftConcurrency();
 
         if ($this->honeypot !== '') {
             throw ValidationException::withMessages(['notionUrl' => 'Validation failed.']);
@@ -158,56 +166,91 @@ class InvestigationFormIntake extends Component implements HasForms
             throw ValidationException::withMessages(['notionUrl' => 'AI call limit reached for this session.']);
         }
 
-        $source = $this->collectSource();
-
-        if (trim($source) === '') {
-            // A URL that couldn't be read (not shared with the integration) is a
-            // different problem from "nothing provided" — say which.
-            throw ValidationException::withMessages(['notionUrl' => trim($this->notionUrl) !== ''
-                ? 'This Notion page could not be read'
-                    .($this->notionError !== '' ? ' — Notion said: '.$this->notionError : '')
-                    .' — check the link (Share → Copy link), or paste/upload the content instead.'
-                : 'Provide a Notion URL, a file, or paste your material first.']);
+        if ($this->extractionStatus() === 'running') {
+            throw ValidationException::withMessages(['notionUrl' => 'An extraction is already running — it will appear here (and in your email) when it finishes.']);
         }
 
+        // Input presence is checked here (cheap); the Notion read itself runs
+        // in the queued job — a slow read can no longer 504 the page (Dana's
+        // edge proxy kills long Livewire requests).
+        $hasFile = $this->sourceFile instanceof TemporaryUploadedFile;
+
+        if (trim($this->notionUrl) === '' && trim($this->pasteText) === '' && ! $hasFile) {
+            throw ValidationException::withMessages(['notionUrl' => 'Provide a Notion URL, a file, or paste your material first.']);
+        }
+
+        // Fresh attempt — a stale refusal or stacked notes from a previous
+        // extract must not survive into this one.
+        $this->sourceNotes = [];
+        $this->extractError = '';
         $this->aiCalls++;
 
-        /** @var InvestigationFormExtractor $extractor */
-        $extractor = app(InvestigationFormExtractor::class);
-        $out = $extractor->extract($source, $this->draftArray());
+        $this->formRequest->update([
+            'extraction_status' => 'running',
+            'extraction_started_at' => now(),
+            'extraction_result' => null,
+        ]);
 
-        if (! $out['result']->success) {
-            $this->extractError = (string) $out['result']->error;
+        ExtractInvestigationFormSource::dispatch(
+            $this->formRequest->id,
+            trim($this->notionUrl),
+            mb_substr($this->pasteText, 0, 48000),
+            $hasFile ? $this->sourceFile->getRealPath() : '',
+            $hasFile ? $this->sourceFile->getClientOriginalName() : '',
+            mb_strtolower(trim($this->email)),
+        );
 
-            return;
+        $this->extractionRunning = true;
+    }
+
+    /** wire:poll hook — applies the queued job's outcome when it lands. */
+    public function pollExtraction(): void
+    {
+        $this->guardValidLink();
+        $this->rateLimit(60);
+        $this->formRequest->refresh();
+
+        $status = $this->extractionStatus();
+
+        if ($status === 'done') {
+            $result = (array) ($this->formRequest->extraction_result ?? []);
+
+            // Re-load from the DB (the job merged the AI output there) — and
+            // re-sync loadedDraftAt, or the next save hits the concurrency guard.
+            $this->loadDraft();
+            $this->missing = array_values((array) ($result['missing'] ?? []));
+            $this->sourceNotes = array_values((array) ($result['notes'] ?? []));
+            $this->step = 2;
+            $this->extractionRunning = false;
+        } elseif ($status === 'failed') {
+            $result = (array) ($this->formRequest->extraction_result ?? []);
+            $this->extractError = (string) ($result['error'] ?? 'Extraction failed — try again.');
+            $this->extractionRunning = false;
+        }
+        // still running → keep polling
+    }
+
+    /**
+     * Effective status with a dead-job guard: a 'running' status older than
+     * the job timeout window means the worker died without failed() firing —
+     * mark it failed so the user can retry.
+     */
+    private function extractionStatus(): string
+    {
+        $status = (string) ($this->formRequest->extraction_status ?? '');
+
+        if ($status === 'running'
+            && $this->formRequest->extraction_started_at !== null
+            && $this->formRequest->extraction_started_at->lt(now()->subMinutes(ExtractInvestigationFormSource::STALE_AFTER_MINUTES))) {
+            $this->formRequest->update([
+                'extraction_status' => 'failed',
+                'extraction_result' => ['notes' => [], 'missing' => [], 'error' => 'Extraction took too long — try again.', 'notion_error' => ''],
+            ]);
+
+            return 'failed';
         }
 
-        $this->extractError = '';
-
-        // Merge: extraction fills BLANK fields only — a manual edit or draft
-        // value (non-empty) is never erased.
-        foreach ($out['fields'] as $key => $value) {
-            [$section, $field] = explode('.', $key, 2);
-
-            if (trim((string) ($this->answers[$section][$field] ?? '')) === '') {
-                $this->answers[$section][$field] = $value;
-            }
-        }
-
-        foreach ($out['chronology'] as $i => $row) {
-            if (empty($this->chronology[$i]['event'])) {
-                $this->chronology[$i] = $row;
-            }
-        }
-
-        foreach ($out['action_items'] as $i => $row) {
-            if (empty($this->actionItems[$i]['item'])) {
-                $this->actionItems[$i] = $row;
-            }
-        }
-
-        $this->missing = $out['missing'];
-        $this->step = 2;
+        return $status;
     }
 
     public function goToReview(): void
@@ -413,55 +456,21 @@ class InvestigationFormIntake extends Component implements HasForms
 
     private function loadDraft(): void
     {
-        $answers = $this->formRequest->answers ?? [];
+        $answers = InvestigationFormDraftMerge::prefill(
+            InvestigationFormDraftMerge::normalizeRows($this->formRequest->answers ?? []),
+            $this->formRequest->incident,
+        );
 
         foreach (InvestigationFormSchema::flatFields() as $key => $label) {
             [$section, $field] = explode('.', $key, 2);
             $this->answers[$section][$field] = (string) ($answers[$section][$field] ?? '');
         }
 
-        $this->chronology = array_values(array_map(
-            fn (array $row): array => ['time' => (string) ($row['time'] ?? ''), 'event' => (string) ($row['event'] ?? '')],
-            (array) ($answers['chronology'] ?? []),
-        ));
-
-        $this->actionItems = array_values(array_map(
-            fn (array $row): array => [
-                'item' => (string) ($row['item'] ?? ''),
-                'due_date' => (string) ($row['due_date'] ?? ''),
-                'verification' => (string) ($row['verification'] ?? ''),
-                'owner' => (string) ($row['owner'] ?? ''),
-            ],
-            (array) ($answers['action_items'] ?? []),
-        ));
+        $this->chronology = $answers['chronology'];
+        $this->actionItems = $answers['action_items'];
 
         $this->loadedDraftAt = $this->formRequest->draft_updated_at?->format('U.u');
         $this->draftUpdatedAt = $this->formRequest->draft_updated_at?->format('Y-m-d H:i');
-
-        // The incident's own times fill still-blank datetime fields (draft
-        // values win — prefill is blank-only, like the AI merge).
-        $incident = $this->formRequest->incident;
-
-        if ($incident !== null) {
-            $prefill = [
-                'header.incident_date' => $incident->incident_date,
-                'summary.occurred_time' => $incident->incident_date,
-                'summary.discovery_time' => $incident->discovered_at,
-                'summary.stop_bleeding_time' => $incident->stop_bleeding_at,
-            ];
-
-            foreach ($prefill as $key => $value) {
-                if ($value === null) {
-                    continue;
-                }
-
-                [$section, $field] = explode('.', $key, 2);
-
-                if (trim((string) ($this->answers[$section][$field] ?? '')) === '') {
-                    $this->answers[$section][$field] = $value->format('Y-m-d\TH:i');
-                }
-            }
-        }
     }
 
     /** @return array<string, mixed> */
@@ -491,9 +500,14 @@ class InvestigationFormIntake extends Component implements HasForms
     {
         $draft = $this->draftArray();
 
-        // Identity fields ride the form's own header.
-        $draft['header']['name'] = trim($this->name);
-        $draft['header']['job_role'] = trim($this->jobRole);
+        // Identity fields ride the form's own header — but step 2 renders
+        // them editable (the AI may have filled them from the source), so a
+        // non-blank answer wins over the step-1 input, not the other way.
+        foreach (['name' => $this->name, 'job_role' => $this->jobRole] as $key => $fallback) {
+            $draft['header'][$key] = trim((string) ($draft['header'][$key] ?? '')) !== ''
+                ? trim((string) $draft['header'][$key])
+                : trim($fallback);
+        }
         $draft['submitter_name'] = trim($this->name);
 
         return $draft;
@@ -524,70 +538,5 @@ class InvestigationFormIntake extends Component implements HasForms
         }
 
         return $missing;
-    }
-
-    /**
-     * The page id in a Notion link: the LAST 32-hex (or dashed UUID) in the
-     * URL path, hex-bounded. Never strip dashes first — that glues slug
-     * letters onto the id ("RootCaus[e]-1022…", "v[1-0]-d352…") and sends a
-     * shifted, nonexistent id.
-     * ponytail: peek links (?p=<id>) resolve to their database; paste the page's own link.
-     */
-    private static function notionPageId(string $url): ?string
-    {
-        preg_match_all(
-            '/(?<![0-9a-f])(?:[0-9a-f]{32}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?![0-9a-f])/i',
-            (string) strtok(trim($url), '?#'),
-            $m,
-        );
-
-        return $m[0] === [] ? null : end($m[0]);
-    }
-
-    private function collectSource(): string
-    {
-        $parts = [];
-
-        // Notion URL → page id → NotionReadService (same connection the
-        // DingTalk agent reads through; no settings needed).
-        if (($pageId = self::notionPageId($this->notionUrl)) !== null) {
-            $fetched = app(NotionReadService::class)->fetch($pageId);
-
-            if ($fetched !== null && ! $fetched['isError'] && ($body = app(NotionReadService::class)->extractPageBody($fetched['text'])) !== null) {
-                [$clamped] = app(NotionReadService::class)->clamp($body);
-                $parts[] = "## Notion page\n".$clamped;
-            } else {
-                // Keep Notion's own refusal — "could not be read" alone hides
-                // whether it's page-sharing, a dead token or a deleted page.
-                $this->notionError = Str::limit(trim((string) ($fetched['text'] ?? 'connection failed')), 200);
-            }
-        }
-
-        // Upload → DocumentConverterService (pdf/docx) or plain text (md/txt).
-        if ($this->sourceFile instanceof TemporaryUploadedFile) {
-            $bytes = $this->sourceFile->get();
-            $ext = strtolower($this->sourceFile->getClientOriginalExtension());
-
-            $converted = in_array($ext, ['pdf', 'docx', 'doc'], true)
-                ? app(DocumentConverterService::class)->convertRaw($bytes, $ext)
-                : null;
-
-            if ($converted !== null) {
-                $parts[] = "## Uploaded file ({$ext})\n".$converted;
-            } elseif (in_array($ext, ['md', 'txt'], true)) {
-                $parts[] = "## Uploaded file ({$ext})\n".mb_substr($bytes, 0, 48000);
-            }
-        }
-
-        if (trim($this->pasteText) !== '') {
-            $parts[] = "## Pasted text\n".mb_substr($this->pasteText, 0, 48000);
-        }
-
-        return implode("\n\n", $parts);
-    }
-
-    public function getLastResultProperty(): ?AiTextResult
-    {
-        return $this->lastResult;
     }
 }

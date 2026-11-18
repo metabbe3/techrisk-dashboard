@@ -35,6 +35,12 @@ design, kept.
 | `get_incident` | `GET /incidents-by-no/{no}` or `/incidents/{id}` | path segment sanitized to `[A-Za-z0-9_-]` |
 | `get_incident_markdown` | `GET /incidents-by-no/{no}/markdown` | base64-decoded for AI ingestion |
 | `get_dashboard_stats` | `GET /stats` | dashboard's own aggregates (one-logic rule): `mode=summary` → totalCases / avgMttrMins / avgMttrDays / avgMtbf / fund totals; `mode=by_dimension` → metric × dimension `labels[]/values[]`; list params comma-separated |
+| `search_action_items` | `GET /action-improvements` | cross-incident action search: default open work, `overdue=1` = the governance definition; meta.total for counts; rows carry incident_no |
+| `get_action_item` | `GET /action-improvements/{id}` | one action item's full record |
+| `get_governance_kpis` | `GET /governance` | governance/PDR KPIs verbatim from GovernanceKpiService (zero new math); `series=1` adds lag_by_quarter |
+| `list_reference` | `GET /labels` `/incident-types` `/categories` | filter vocabularies — call before guessing search_incidents values |
+| `list_skills` | `GET /skills` | dashboard skill library + persona catalog (metadata only; `domain=role` entries are `role-<role_key>` personas) |
+| `load_skill` | `GET /skills/{name}` | one skill body / persona system prompt + attached skill NAMES; 48k-capped; `AGENT_SKILL_TOOLS` |
 | `web_search` | DuckDuckGo HTML (keyless) | top 6 results, title + snippet + link |
 | `web_fetch` | any public http(s) page | **SSRF-guarded** (dialer blocks loopback/private/link-local post-DNS), 256 KiB cap, tags stripped, ~7k chars |
 
@@ -48,7 +54,7 @@ chars.
 |---|---|---|
 | `DINGTALK_CLIENT_ID` / `DINGTALK_CLIENT_SECRET` | yes | DingTalk Open Platform app |
 | `DINGTALK_ALLOWLIST` | no | **empty = everyone** (access gated by the DingTalk app's visibility range); comma staffIds to narrow further |
-| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `stats`, `agent-schedules`, `agent-runs` |
+| `DASHBOARD_API_TOKEN` | yes | Filament → API Tokens; abilities `incidents`, `incidents-by-no`, `incidents-markdown`, `stats`, `agent-schedules`, `agent-runs`, `skills`, `governance`, `action-improvements` |
 | `DASHBOARD_API_BASE` | no | `http://nginx/api/v1` (compose) |
 | `AGENT_INTERNAL_ADDR` | no | `:9091` — internal listener (the dashboard's Go engine POSTs `/internal/run` here); compose-network only |
 | `AGENT_INTERNAL_TOKEN` | no | shared secret — **must equal** the dashboard `.env`'s `GO_AGENT_INTERNAL_TOKEN`; empty = listener disabled |
@@ -59,7 +65,10 @@ chars.
 | `LLM_MAX_TOKENS` | no | `AI_WAR_ROOM_MAX_OUTPUT_TOKENS` → 16384; `0` omits `max_tokens` (escape hatch if a model rejects it) |
 | `LLM_EMBEDDING_MODEL` | no | `AI_EMBEDDING_MODEL` → **`text-embedding-3-large`** — RAG knowledge-base embeddings (the key needs access to it) |
 | `LLM_VISION_MODEL` | no | `AI_VISION_MODEL` → the chat model — image-reading model used to transcribe pictures sent to the bot (set it if the chat model isn't multimodal) |
+| `LLM_HEAVY_MODEL` | no | *(empty)* — the smarter model for model tiers: failure-escalated turns retry on it once, and any trigger phrase (see `LLM_HEAVY_KEYWORDS`) routes the whole turn to it proactively. Empty = tiers off |
+| `LLM_HEAVY_KEYWORDS` | no | `ultrathink,deep research,think hard` — case-insensitive substrings of the user text that route that whole turn to `LLM_HEAVY_MODEL` ("**ultrathink**: root-cause this spike"). Without a heavy model the triggers do nothing |
 | `AGENT_KB_TOOLS` | no | 1 — `search_knowledge`/`save_knowledge`/`list_knowledge`/`delete_knowledge` RAG over chat-uploaded documents and pictures; `0`/`off` unregisters the tools and the index |
+| `AGENT_SKILL_TOOLS` | no | 1 — `list_skills`/`load_skill` over the dashboard skill library (Filament → Skills) + War Room personas (`role-<key>`); `0`/`off` unregisters both. Token needs the `skills` endpoint |
 | `AGENT_MAX_ITER` | no | 60 tool-call iterations (Hermes parity) |
 | `AGENT_WEB_TOOLS` | no | 1 — keyless web research; `0`/`off`/`false`/`no` unregisters both web tools |
 | `AGENT_NOTION_TOOLS` | no | 1 — read-only Notion doc tools (below); `0`/`off`/`false`/`no` unregisters all four |
@@ -96,8 +105,9 @@ means changing `DINGTALK_MODEL`/env, not the AI Settings page.
    proactive DMs; card streaming (`Card.Instance.Write` /
    `Card.Streaming.Write`) for typewriter replies — without card perms the bot
    still answers via webhook fallback.
-3. **API token**: Filament → API Tokens → `dingtalk-agent` with the five
-   abilities above → `DASHBOARD_API_TOKEN`.
+3. **API token**: Filament → API Tokens → `dingtalk-agent` with the abilities
+   above (incl. `skills`, `governance`, `action-improvements`) →
+   `DASHBOARD_API_TOKEN`.
    Then set the same shared secret in root `.env` as `DINGTALK_INTERNAL_TOKEN`
    **and** `GO_AGENT_INTERNAL_TOKEN`, and `GO_AGENT_BASE_URL=http://dingtalk-agent:9091`.
 4. **Allowlist**: leave empty, have each user DM/mention the bot once, copy the

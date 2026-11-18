@@ -191,7 +191,19 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	// Post-mortems run 15-30KB; the 8KB default cap cut them mid-root-cause
 	// (audit round 4). 48k matches notion_read_page's large-doc allowance.
 	r.RegisterCapped(getIncidentMarkdownDef(), typed(client.handleGetIncidentMarkdown), 48<<10)
+	// Corpus pages are pre-capped at 100k chars server-side; 48k keeps the
+	// prompt budget in line with get_incident_markdown.
+	r.RegisterCapped(readCorpusPageDef(), typed(client.handleReadCorpusPage), 48<<10)
+	// Skill library + personas: server pre-caps bodies at 48k chars.
+	if cfg.SkillToolsEnabled {
+		r.RegisterCapped(listSkillsDef(), typed(client.handleListSkills), 48<<10)
+		r.RegisterCapped(loadSkillDef(), typed(client.handleLoadSkill), 48<<10)
+	}
 	r.Register(statsDef(), typed(client.handleGetDashboardStats))
+	r.Register(searchActionItemsDef(), typed(client.handleSearchActionItems))
+	r.Register(getActionItemDef(), typed(client.handleGetActionItem))
+	r.Register(getGovernanceKpisDef(), typed(client.handleGetGovernanceKpis))
+	r.Register(listReferenceDef(), typed(client.handleListReference))
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number

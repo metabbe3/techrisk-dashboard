@@ -22,15 +22,19 @@ var (
 	reJWT    = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}(?:\.[A-Za-z0-9_-]+)?\b`)
 
 	// Database Connection Strings with Password
-	reConnString = regexp.MustCompile(`((?:postgres|mysql|mongodb(?:\+srv)?|redis|amqp)://[^:\s/@]+:)([^@\s/]+)(@)`)
+	reConnString = regexp.MustCompile(`((?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp)://[^:\s/@]+:)([^@\s/]+)(@)`)
 
 	// Private Key Block
 	rePrivateKey = regexp.MustCompile(`-----BEGIN (?:[A-Z0-9 ]+)?PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9 ]+)?PRIVATE KEY-----`)
 
-	// Key-Value Credentials — both `key=value` and JSON/YAML `key: value`
-	// shapes. client_secret et al. must be LISTED: \b before "secret" does
-	// not match mid-word (client_secret slipped through).
-	reKeyValueCred = regexp.MustCompile(`(?i)\b(password|passwd|secret|client_secret|secret_key|api_secret|token|access_token|refresh_token|api_key|apikey)\s*([:=])\s*(["']?)([^\s;&"'\r\n]+)(["']?)`)
+	// Key-Value Credentials — `key=value`, JSON `"key": "value"`, YAML
+	// `key: value`, and env-style SNAKE_CASE keys (DINGTALK_CLIENT_SECRET=…).
+	// The key prefix is [^A-Za-z0-9] (NOT \b): \b never matches after an
+	// underscore, so *_SECRET / *_API_KEY slipped through. client_secret et
+	// al. stay LISTED for the same reason. Groups: 1 prefix, 2 key, 3 key's
+	// closing quote, 4 separator, 5 value's opening quote, 6 value, 7 value's
+	// closing quote — quotes are echoed back so JSON stays parseable.
+	reKeyValueCred = regexp.MustCompile(`(?i)(^|[^A-Za-z0-9])(password|passwd|secret|client_secret|secret_key|api_secret|token|access_token|refresh_token|api_key|apikey)\s*(["']?)\s*([:=])\s*(["']?)([^\s;&"'\r\n]+)(["']?)`)
 
 	// Email
 	reEmail = regexp.MustCompile(`\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b`)
@@ -109,9 +113,9 @@ func Redact(text string) (string, []string) {
 	if reKeyValueCred.MatchString(result) {
 		result = reKeyValueCred.ReplaceAllStringFunc(result, func(s string) string {
 			m := reKeyValueCred.FindStringSubmatch(s)
-			if len(m) == 6 {
-				keyName := strings.ToLower(m[1])
-				val := m[4]
+			if len(m) == 8 {
+				keyName := strings.ToLower(m[2])
+				val := m[6]
 				// An earlier pass (JWT/bearer) already redacted this value —
 				// never re-redact our own marker into a different type.
 				if strings.HasPrefix(val, "[REDACTED:") {
@@ -128,9 +132,9 @@ func Redact(text string) (string, []string) {
 						tag = "api_key"
 					}
 					addHit(tag)
-					// Keep the original separator (= or :) — a JSON/YAML body
-					// must not be rewritten into = form.
-					return fmt.Sprintf("%s%s[REDACTED:%s]", m[1], m[2], tag)
+					// Keep the original separator (= or :) and surrounding
+					// quotes — a JSON body must not be rewritten into = form.
+					return fmt.Sprintf("%s%s%s%s%s[REDACTED:%s]%s", m[1], m[2], m[3], m[4], m[5], tag, m[7])
 				}
 			}
 			return s

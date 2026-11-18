@@ -24,15 +24,15 @@ class ActionImprovementsRelationManager extends RelationManager
 
     private function isOverdue($record): bool
     {
-        return $record->status === ActionImprovement::STATUS_PENDING
+        return $record->isOpenWork()
             && $record->due_date !== null
             && $record->due_date->isBefore(today());
     }
 
-    /** Pending without a due date — tracked visually, never reminded (owner 2026-10-14). */
+    /** Open work without a due date — tracked visually, never reminded (owner 2026-10-14). */
     private function isTbd($record): bool
     {
-        return $record->status === ActionImprovement::STATUS_PENDING
+        return $record->isOpenWork()
             && $record->due_date === null;
     }
 
@@ -85,23 +85,17 @@ class ActionImprovementsRelationManager extends RelationManager
             ])
             ->filters([
                 SelectFilter::make('status')
-                    ->options([
-                        ActionImprovement::STATUS_DRAFT => 'Draft',
-                        ActionImprovement::STATUS_PENDING => 'Pending',
-                        ActionImprovement::STATUS_DONE => 'Done',
-                        ActionImprovement::STATUS_CANCELLED => 'Cancelled',
-                        ActionImprovement::STATUS_TBD => 'TBD (to be discussed)',
-                    ]),
+                    ->options(ActionImprovementFormSchema::statusOptions()),
                 SelectFilter::make('priority')
                     ->options(array_combine(ActionImprovement::PRIORITIES, array_map('ucfirst', ActionImprovement::PRIORITIES))),
                 TernaryFilter::make('overdue')
                     ->queries(
                         fn ($query) => $query
-                            ->where('status', ActionImprovement::STATUS_PENDING)
+                            ->whereIn('status', ActionImprovement::openStatuses())
                             ->whereDate('due_date', '<', today()),
                         fn ($query) => $query
                             ->where(fn ($q) => $q
-                                ->where('status', '!=', ActionImprovement::STATUS_PENDING)
+                                ->whereNotIn('status', ActionImprovement::openStatuses())
                                 ->orWhereDate('due_date', '>=', today())
                                 ->orWhereNull('due_date')), // TBD can't be past due
                     ),
@@ -142,7 +136,7 @@ class ActionImprovementsRelationManager extends RelationManager
                     ->color('info')
                     ->requiresConfirmation()
                     ->modalDescription('Send a reminder email to the assigned PIC email(s) via Netcore.')
-                    ->visible(fn ($record) => $record->status === ActionImprovement::STATUS_PENDING)
+                    ->visible(fn ($record) => $record->isOpenWork())
                     ->action(function ($record) {
                         $recipients = collect($record->pic_email ?? [])
                             ->map(fn ($email) => User::where('email', $email)->first())

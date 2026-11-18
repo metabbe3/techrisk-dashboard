@@ -68,14 +68,7 @@ class ActionImprovementFormSchema
                     'biweekly' => 'Once every 2 weeks',
                 ]),
             Forms\Components\Select::make('status')
-                ->options([
-                    ActionImprovement::STATUS_DRAFT => 'Draft (AI-suggested)',
-                    ActionImprovement::STATUS_PENDING => 'Pending',
-                    ActionImprovement::STATUS_DONE => 'Done',
-                    ActionImprovement::STATUS_CANCELLED => 'Cancelled (not applicable)',
-                    // Status parking state — distinct from due_date = null ("TBD" date).
-                    ActionImprovement::STATUS_TBD => 'TBD (to be discussed)',
-                ])
+                ->options(self::statusOptions())
                 ->default(ActionImprovement::STATUS_PENDING)
                 ->required()
                 ->live(),
@@ -140,12 +133,31 @@ class ActionImprovementFormSchema
             });
     }
 
+    /**
+     * Shared status option map — the form Select, the global resource's
+     * status filter and the relation manager's status filter all read THIS
+     * (the hand-typed filter map drifted once; same reason as statusColor).
+     */
+    public static function statusOptions(): array
+    {
+        return [
+            ActionImprovement::STATUS_DRAFT => 'Draft (AI-suggested)',
+            ActionImprovement::STATUS_PENDING => 'Pending',
+            ActionImprovement::STATUS_ON_PROGRESS => 'On progress',
+            ActionImprovement::STATUS_DONE => 'Done',
+            ActionImprovement::STATUS_CANCELLED => 'Cancelled (not applicable)',
+            // Status parking state — distinct from due_date = null ("TBD" date).
+            ActionImprovement::STATUS_TBD => 'TBD (to be discussed)',
+        ];
+    }
+
     /** Shared badge colors — the relation manager and global resource must not drift. */
     public static function statusColor(string $state): string
     {
         return match ($state) {
             ActionImprovement::STATUS_DONE => 'success',
             ActionImprovement::STATUS_PENDING => 'warning',
+            ActionImprovement::STATUS_ON_PROGRESS => 'info',
             ActionImprovement::STATUS_CANCELLED => 'danger',
             ActionImprovement::STATUS_TBD => 'gray', // parked, like draft
             default => 'gray', // draft
