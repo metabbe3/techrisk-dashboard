@@ -86,6 +86,7 @@ Owner decision 2026-11-11 (full unification): the dashboard becomes the control 
 #### Progress Updates
 - 2026-11-11: Phases 1–3 landed and green (Laravel 1166 → 1198 tests / 4,726 assertions with the 7 documented reverb env errors excluded; Go suite + `-race` clean).
 - 2026-11-12: Phases 4–6 landed (schedule store retired, Filament engine/once/delivery UI, compose + docs).
+- 2026-11-18: **Capability decision — no generic MCP client in the Go agent.** MCP is a transport, not a capability; the Go tool registry already provides the tool interface, and an in-Go MCP client would add server lifecycle + unrestricted egress + an arbitrary-tool surface for zero current integrations. The template for external systems stays the Notion pattern: **Laravel holds the MCP client + OAuth, exposes read-only proxy endpoints, the Go agent gains a tool family over them.** Candidates when a real need lands (each read-only, each needs owner-provided credentials — guardrail): **Jira/Confluence read** (Atlassian hosted MCP via a Laravel `laravel/mcp` client), **Grafana read** (plain REST proxy — no MCP needed). Also landed same day: panic guard in `Registry.Execute` (a panicking tool no longer kills the bot), prod 404 fix in `read_corpus_page` (double `/v1`), and a `generate_chart` deliverable (chart PDFs via the existing generated-file marker path).
 
 
 ### [PROJ-024] Investigation form intake: unique links → AI fills → consent → DOCX + PDF
