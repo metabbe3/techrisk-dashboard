@@ -109,23 +109,23 @@ func NewBot(cfg *config.Config, loop *agent.Loop, llmClient *llm.Client) *Bot {
 	}
 	rootCtx, rootCancel := context.WithCancel(context.Background())
 	b := &Bot{
-		cfg:      cfg,
-		loop:     loop,
-		replier:  chatbot.NewChatbotReplier(),
-		allowed:  allowed,
-		api:      newOpenAPIClient(cfg),
-		llm:      llmClient,
-		history:  make(map[string]historyEntry),
-		seen:     make(map[string]time.Time),
-		inboxes:  make(map[string]chan chatTask),
-		rootCtx:  rootCtx, rootCancel: rootCancel,
+		cfg:     cfg,
+		loop:    loop,
+		replier: chatbot.NewChatbotReplier(),
+		allowed: allowed,
+		api:     newOpenAPIClient(cfg),
+		llm:     llmClient,
+		history: make(map[string]historyEntry),
+		seen:    make(map[string]time.Time),
+		inboxes: make(map[string]chan chatTask),
+		rootCtx: rootCtx, rootCancel: rootCancel,
 		sem:      make(chan struct{}, MaxConcurrentAgents),
 		schedAPI: tools.NewScheduleAPI(cfg),   // dashboard agent-schedules API (10s client)
 		watches:  watch.NewStore(cfg.DataDir), // "" = memory-only
 	}
 	if cfg.DataDir != "" {
 		b.store = memory.NewStore(cfg.DataDir, cfg.HistoryTTL) // load-time expiry filter (audit round 5)
-		for id, e := range b.store.All() {    // auto recall
+		for id, e := range b.store.All() {                     // auto recall
 			b.history[id] = historyEntry{messages: e.Messages, lastSeen: e.LastSeen}
 		}
 		if loop != nil {
@@ -500,6 +500,15 @@ func (b *Bot) runBatch(batch []chatTask) {
 
 // processFile handles a chat-uploaded document: download, extract text,
 // summarize via the agent, remember the summary — then ALWAYS delete the file.
+// fileKBTitle mints the KB title for a chat-uploaded file. The KB replaces by
+// title, so the raw file name alone made two uploaders' "report.pdf"
+// silently overwrite each other; the sender nick separates people while
+// staying stable so the same person's re-upload replaces their own copy —
+// the update path. (Same pattern as the picture path's unique titles.)
+func fileKBTitle(m *chatbot.BotCallbackDataModel, fileName string) string {
+	return fmt.Sprintf("%s — from %s", fileName, orDefault(m.SenderNick, "unknown"))
+}
+
 func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, fm fileMessage, caption string) {
 	path, err := b.downloadMessageFile(ctx, fm, filepath.Join(b.dataDir(), "tmp"))
 	defer func() {
@@ -551,7 +560,7 @@ func (b *Bot) processFile(ctx context.Context, m *chatbot.BotCallbackDataModel, 
 	// RAG ingest runs in the background; embedding failures only log — the
 	// summary above still answered the user.
 	if b.know != nil {
-		b.know.Ingest(fm.FileName, text)
+		b.know.Ingest(fileKBTitle(m, fm.FileName), text)
 	}
 }
 

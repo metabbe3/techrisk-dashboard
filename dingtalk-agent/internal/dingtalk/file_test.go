@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
+
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 )
@@ -272,5 +274,25 @@ func TestFileURLAllowedRefusesLoopbackByDefault(t *testing.T) {
 	}
 	if fileURLAllowed("https://localhost/x") {
 		t.Error("localhost must be refused by default")
+	}
+}
+
+// The KB replaces by title, so two uploaders' same-named files used to
+// silently overwrite each other. The minted KB title keeps the file name,
+// separates uploaders, and stays stable per sender (a re-upload by the same
+// person replaces their own copy — the update path, audit round 5).
+func TestFileKBTitleDisambiguatesUploaders(t *testing.T) {
+	a := &chatbot.BotCallbackDataModel{SenderStaffId: "sa", SenderNick: "Nicholas", MsgId: "m1"}
+	b := &chatbot.BotCallbackDataModel{SenderStaffId: "sb", SenderNick: "Bob", MsgId: "m2"}
+
+	ta, tb := fileKBTitle(a, "report.pdf"), fileKBTitle(b, "report.pdf")
+	if ta == tb {
+		t.Fatalf("two uploaders' same-named files must not share a KB title: %q", ta)
+	}
+	if again := fileKBTitle(a, "report.pdf"); again != ta {
+		t.Fatalf("same sender must keep the title (re-upload replaces): %q vs %q", ta, again)
+	}
+	if !strings.Contains(ta, "report.pdf") {
+		t.Errorf("title must keep the file name: %q", ta)
 	}
 }
