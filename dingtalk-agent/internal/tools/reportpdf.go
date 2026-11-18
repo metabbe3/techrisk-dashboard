@@ -79,6 +79,8 @@ func (r *Registry) registerGenerateTools(cfg *config.Config) {
 	r.Register(externalRCADef(), typed(func(ctx context.Context, args externalRCAArgs) (string, error) {
 		return r.handleExternalRCA(ctx, dir, args)
 	}))
+
+	r.registerChartTool(dir)
 }
 
 // exportPath builds <dir>/exports/<stamp>-<slug>.<ext> under a safe name.
