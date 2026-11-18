@@ -69,7 +69,7 @@ func (c *dashboardClient) handleReadCorpusPage(ctx context.Context, args struct 
 		return "", err
 	}
 
-	env, err := c.get(ctx, "/v1/corpus?path="+url.QueryEscape(p))
+	env, err := c.get(ctx, "/corpus?path="+url.QueryEscape(p))
 	if err != nil {
 		return "", err
 	}
