@@ -42,10 +42,15 @@ const (
 	batchQuietWait = 800 * time.Millisecond
 	batchMaxWait   = 2500 * time.Millisecond
 	inboxCap       = 64
-	// inboxIdleWait is how long an idle conversation worker lives before
-	// self-retiring (goroutine + channel GC — audit 2026-11-12).
-	inboxIdleWait = 30 * time.Minute
 )
+
+// inboxIdleWait is how long an idle conversation worker lives before
+// self-retiring (goroutine + channel GC — audit 2026-11-12). Atomic var:
+// tests shrink it to drive the retire path quickly, without racing any
+// worker goroutine left parked on it by an earlier test.
+var inboxIdleWait atomic.Int64
+
+func init() { inboxIdleWait.Store(int64(30 * time.Minute)) }
 
 // Bot bridges DingTalk stream messages to the agent loop.
 type Bot struct {
@@ -111,8 +116,7 @@ func NewBot(cfg *config.Config, loop *agent.Loop, llmClient *llm.Client) *Bot {
 		watches:  watch.NewStore(cfg.DataDir), // "" = memory-only
 	}
 	if cfg.DataDir != "" {
-		b.store = memory.NewStore(cfg.DataDir)
-		b.store.SetHistoryTTL(cfg.HistoryTTL) // load-time expiry filter (audit round 4)
+		b.store = memory.NewStore(cfg.DataDir, cfg.HistoryTTL) // load-time expiry filter (audit round 5)
 		for id, e := range b.store.All() {    // auto recall
 			b.history[id] = historyEntry{messages: e.Messages, lastSeen: e.LastSeen}
 		}
@@ -293,13 +297,17 @@ func (b *Bot) enqueue(m *chatbot.BotCallbackDataModel, text string, file *fileMe
 		b.inboxes[m.ConversationId] = ch
 		go b.conversationWorker(m.ConversationId, ch)
 	}
-	b.inboxMu.Unlock()
-
+	// Send while STILL holding inboxMu: the retiring worker deletes the map
+	// entry and reclaims under the same lock, so a send outside it could land
+	// in a channel whose worker already exited (acked, never processed).
 	select {
 	case ch <- chatTask{m: m, text: text, file: file, pic: pic}:
 	default:
+		b.inboxMu.Unlock()
 		b.reply(context.Background(), m, "I'm backed up with queued messages — please retry in a moment.")
+		return
 	}
+	b.inboxMu.Unlock()
 }
 
 // conversationWorker is the single consumer for one conversation: it batches
@@ -365,7 +373,7 @@ func (b *Bot) nextTask(convoID string, ch chan chatTask) (chatTask, bool) {
 	select {
 	case t := <-ch:
 		return t, true
-	case <-time.After(inboxIdleWait):
+	case <-time.After(time.Duration(inboxIdleWait.Load())):
 		b.inboxMu.Lock()
 		if cur, ok := b.inboxes[convoID]; ok && cur == ch {
 			delete(b.inboxes, convoID)
@@ -952,6 +960,12 @@ func (b *Bot) safeExportPath(rel string) (string, bool) {
 	dir := b.dataDir()
 	clean := filepath.Clean("/" + rel) // absolute-rooted: kills any ".." climb
 	path := filepath.Join(dir, clean)
+	// Tickets are LLM output: only paths that STAY under DataDir/exports may
+	// resolve ("history.json" and friends live in DataDir itself).
+	exportsRoot := filepath.Join(dir, "exports") + string(filepath.Separator)
+	if !strings.HasPrefix(path, exportsRoot) {
+		return "", false
+	}
 	st, err := os.Stat(path)
 	if err != nil || st.IsDir() {
 		return "", false

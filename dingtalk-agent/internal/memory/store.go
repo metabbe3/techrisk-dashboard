@@ -194,7 +194,9 @@ type Store struct {
 }
 
 // NewStore loads (auto recall) or initializes the store inside dir.
-func NewStore(dir string) *Store {
+// historyTTL filters expired conversations at LOAD time (SetHistoryTTL used
+// to arm this after the load had already happened — dead code, audit round 5).
+func NewStore(dir string, historyTTL time.Duration) *Store {
 	_ = os.MkdirAll(dir, 0o700)
 	s := &Store{
 		dir:         dir,
@@ -204,6 +206,7 @@ func NewStore(dir string) *Store {
 		profiles:    map[string]UserProfile{},
 		knownUsers:  map[string]bool{},
 	}
+	s.historyTTL = historyTTL
 	s.loadUsers()
 	s.loadKnowledge()
 	s.loadHistory()
@@ -320,9 +323,6 @@ func (s *Store) loadHistory() {
 	}
 	s.history = hf.Conversations
 }
-
-// SetHistoryTTL arms the load-time TTL filter; call before first read.
-func (s *Store) SetHistoryTTL(ttl time.Duration) { s.historyTTL = ttl }
 
 func (s *Store) writeJSON(path string, v any) error {
 	data, err := json.Marshal(v)

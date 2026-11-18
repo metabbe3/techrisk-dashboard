@@ -27,6 +27,9 @@ const (
 	watchWatermarkSlack = 5 * time.Second
 	// sweepLimit rows per sweep — 100 edits/min would be a dire day.
 	sweepLimit = 100
+	// maxSweepPages bounds one sweep's page-through (5000 rows) before the
+	// window tail is dropped (logged) so the watermark can advance.
+	maxSweepPages = 50
 )
 
 const watchListHeader = "[Active watches in this chat:"
@@ -97,23 +100,45 @@ func (b *Bot) sweepWatches(ctx context.Context, watermark time.Time) bool {
 	}
 
 	dash := b.loop.Registry().Dashboard()
-	env, err := dash.Search(ctx, "/incidents?updated_since="+url.QueryEscape(watermark.UTC().Format(time.RFC3339))+"&limit="+strconv.Itoa(sweepLimit))
-	if err != nil {
-		log.Printf("[watch] sweep failed: %v", err)
-		return false
-	}
-	var rows []sweepRow
-	if err := json.Unmarshal(env.Data, &rows); err != nil {
-		log.Printf("[watch] sweep decode failed: %v", err)
-		return false
-	}
-
 	// Two chats watching one incident BOTH fire — a single map keyed by
 	// incident number let the later watch overwrite the earlier one.
 	byNo := map[string][]watch.Item{}
 	for _, it := range ws {
 		byNo[it.IncidentNo] = append(byNo[it.IncidentNo], it)
 	}
+
+	// Page ascending by updated_at until a short page: a full first page used
+	// to return "incomplete" forever — the same 100 persisted rows re-fetched
+	// every tick, every watch past row 100 stalled for good.
+	for offset := 0; ; offset += sweepLimit {
+		env, err := dash.Search(ctx, "/incidents?updated_since="+url.QueryEscape(watermark.UTC().Format(time.RFC3339))+"&sort=updated_at&order=asc&limit="+strconv.Itoa(sweepLimit)+"&offset="+strconv.Itoa(offset))
+		if err != nil {
+			log.Printf("[watch] sweep failed: %v", err)
+			return false
+		}
+		var rows []sweepRow
+		if err := json.Unmarshal(env.Data, &rows); err != nil {
+			log.Printf("[watch] sweep decode failed: %v", err)
+			return false
+		}
+
+		b.fireSweepRows(ctx, byNo, rows)
+
+		if len(rows) < sweepLimit {
+			return true
+		}
+		if offset >= maxSweepPages*sweepLimit {
+			// ponytail: >5000 changed rows in one window drops the tail (logged) —
+			// statuses are persisted, so lastOK must still advance or the sweep stalls.
+			log.Printf("[watch] sweep hit %d-page cap; tail of window skipped", maxSweepPages)
+			return true
+		}
+	}
+}
+
+// fireSweepRows fires a task-mode agent turn for every watched incident whose
+// status changed in this sweep page.
+func (b *Bot) fireSweepRows(ctx context.Context, byNo map[string][]watch.Item, rows []sweepRow) {
 	for _, row := range rows {
 		for _, it := range byNo[row.No] {
 			if row.Status == it.LastStatus || row.Status == "" {
@@ -140,7 +165,6 @@ func (b *Bot) sweepWatches(ctx context.Context, watermark time.Time) bool {
 			}(it, old, row.Status)
 		}
 	}
-	return len(rows) < sweepLimit // a full page may have been truncated
 }
 
 // fireWatch runs a task-mode agent turn (fresh context, guarded output) and

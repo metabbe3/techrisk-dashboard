@@ -910,3 +910,72 @@ func TestHandleEmptyFileFriendlyReply(t *testing.T) {
 		t.Errorf("agent LLM calls spent on an empty file: %d", chatCalls)
 	}
 }
+
+// A ticket naming a real file that lives OUTSIDE DataDir/exports (history.json,
+// users.jsonl, kb.jsonl…) must be rejected: the ticket text is LLM output and
+// those files hold secrets/history.
+func TestDeliverGeneratedRejectsNonExportFiles(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "history.json"), []byte(`{"c":{"role":"user","content":"secret"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	srv, dmBodies, _ := fakeFileAPI(t, 200)
+	cfg := &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv.URL, DataDir: dir}
+	bot := &Bot{cfg: cfg, api: newOpenAPIClient(cfg)}
+	m := &chatbot.BotCallbackDataModel{SenderStaffId: "staff1"}
+
+	for _, rel := range []string{"history.json", "./history.json", "../history.json", "users.jsonl"} {
+		got := bot.deliverGenerated(context.Background(), m, "x [generated-file: "+rel+"] y")
+		if strings.Contains(got, "sent to your DM") || strings.Contains(got, "[generated-file") {
+			t.Errorf("ticket %q must be rejected, got: %s", rel, got)
+		}
+	}
+	if len(*dmBodies) != 0 {
+		t.Errorf("non-export tickets triggered %d uploads, want 0", len(*dmBodies))
+	}
+}
+
+// Stress canary for the enqueue-vs-retire race: every task enqueued while the
+// worker's idle retire is in flight must be either reclaimed by nextTask or
+// processed by a (fresh) worker. The losing interleave is nanoseconds wide and
+// not deterministically reproducible, so this hammers the seam; -race makes it
+// likelier to catch a regression of the send-under-inboxMu fix.
+func TestEnqueueTaskSurvivesWorkerRetireStress(t *testing.T) {
+	oldWait := inboxIdleWait.Load()
+	inboxIdleWait.Store(int64(2 * time.Millisecond))
+	defer inboxIdleWait.Store(oldWait)
+
+	srv, _, _ := fakeFileAPI(t, 200)
+	cfg := &config.Config{DingTalkClientID: "app", DingTalkOpenAPIHost: srv.URL, DataDir: t.TempDir()}
+
+	for round := 0; round < 300; round++ {
+		bot := &Bot{cfg: cfg, api: newOpenAPIClient(cfg), inboxes: map[string]chan chatTask{}, seen: map[string]time.Time{}}
+		ch1 := make(chan chatTask, inboxCap)
+		bot.inboxes["c1"] = ch1
+
+		reclaimed := make(chan bool, 1)
+		go func() {
+			_, ok := bot.nextTask("c1", ch1)
+			reclaimed <- ok
+		}()
+		// Fire the enqueue right around the retire boundary.
+		time.Sleep(time.Duration(round%6) * time.Millisecond)
+		bot.enqueue(&chatbot.BotCallbackDataModel{MsgId: fmt.Sprintf("r%d", round), ConversationId: "c1", SenderStaffId: "s"}, "hi", nil, nil)
+
+		select {
+		case ok := <-reclaimed:
+			if !ok {
+				// Retired empty — the enqueue must have gone to a fresh worker.
+				bot.inboxMu.Lock()
+				_, alive := bot.inboxes["c1"]
+				bot.inboxMu.Unlock()
+				if !alive {
+					t.Fatalf("round %d: task lost — retired empty, no fresh worker", round)
+				}
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("round %d: nextTask never returned", round)
+		}
+	}
+}

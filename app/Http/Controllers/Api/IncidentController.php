@@ -166,6 +166,16 @@ class IncidentController extends Controller
             $limit = $limit !== null ? (int) $limit : null;
             $offset = (int) ($request->validated('offset', 0) ?? 0);
 
+            // The agent's watch sweep pages by offset — that is only meaningful
+            // against a stable order. `sort` is whitelisted in ListIncidentsRequest.
+
+
+            // The agent's watch sweep pages by offset — that is only meaningful
+            // against a stable order. `sort` is whitelisted in ListIncidentsRequest.
+            if ($request->filled('sort')) {
+                $query->orderBy($request->validated('sort'), $request->validated('order') ?? 'asc');
+            }
+
             $total = $query->count();
             $items = $limit
                 ? $query->skip($offset)->take($limit)->get()

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -23,12 +24,13 @@ import (
 // fakeWatchAPI plays the dashboard API, the LLM, and the DingTalk OpenAPI.
 // The dashboard serves one incident (by-no) and a configurable sweep list.
 type fakeWatchAPI struct {
-	srv      *httptest.Server
-	mu       sync.Mutex
-	sweep    []map[string]any // rows returned by the updated_since sweep
-	chats    []string         // user content of each agent turn
-	pushes   []map[string]any // batchSend + groupMessages bodies
-	pushPath []string
+	srv          *httptest.Server
+	mu           sync.Mutex
+	sweep        []map[string]any // rows returned by the updated_since sweep
+	sweepQueries []string         // raw query of each sweep request
+	chats        []string         // user content of each agent turn
+	pushes       []map[string]any // batchSend + groupMessages bodies
+	pushPath     []string
 
 	dashboardStatus int
 }
@@ -56,9 +58,23 @@ func newFakeWatchAPI(t *testing.T) *fakeWatchAPI {
 			_, _ = w.Write([]byte(`{"code":200,"data":{"no":"20261101_IN_0042","title":"Payment gateway timeout","incident_status":"Open"}}`))
 		case strings.HasPrefix(r.URL.Path, "/incidents"):
 			f.mu.Lock()
+			f.sweepQueries = append(f.sweepQueries, r.URL.RawQuery)
 			rows := f.sweep
 			f.mu.Unlock()
-			_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": rows, "meta": map[string]any{"total": len(rows)}})
+			// Honor offset/limit like the real index so paging tests can slice.
+			q := r.URL.Query()
+			off, _ := strconv.Atoi(q.Get("offset"))
+			lim, _ := strconv.Atoi(q.Get("limit"))
+			if lim > 0 && off < len(rows) {
+				end := off + lim
+				if end > len(rows) {
+					end = len(rows)
+				}
+				rows = rows[off:end]
+			} else if lim > 0 {
+				rows = nil
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"code": 200, "data": rows, "meta": map[string]any{"total": len(f.sweep)}})
 		case r.URL.Path == "/v1.0/robot/oToMessages/batchSend", r.URL.Path == "/v1.0/robot/groupMessages/send":
 			var body map[string]any
 			_ = json.NewDecoder(r.Body).Decode(&body)
@@ -186,5 +202,51 @@ func TestSweepFiresOnChangeAndSkipsUnchanged(t *testing.T) {
 	}
 	if bot.watches.All()[0].LastStatus != "In progress" {
 		t.Error("new status not persisted")
+	}
+}
+
+// A full sweep page must PAGE (not stall): with >=sweepLimit changed rows the
+// sweep keeps fetching until a short page, so a watch on row 101 still fires,
+// and the sweep must request ascending updated_at order (the contract the
+// watermark advance relies on).
+func TestSweepPagesBeyondLimit(t *testing.T) {
+	f := newFakeWatchAPI(t)
+	bot := newWatchBot(t, f, t.TempDir())
+	ctx := context.Background()
+
+	var sweep []map[string]any
+	for i := 1; i <= 150; i++ {
+		sweep = append(sweep, map[string]any{"incident_no": fmt.Sprintf("N%03d", i), "incident_status": "In progress"})
+	}
+	f.mu.Lock()
+	f.sweep = sweep
+	f.mu.Unlock()
+
+	if _, err := bot.watches.Add(watch.Item{
+		IncidentNo: "N101", Title: "t",
+		LastStatus: "Open", ConversationID: "cid-dm", ConversationType: "1",
+		StaffID: "s1", Nick: "Nicholas",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	if !bot.sweepWatches(ctx, time.Now().Add(-time.Hour)) {
+		t.Fatal("sweep must report completion after paging through")
+	}
+	f.waitFor(t, "paged watch fire", func() bool { return len(f.pushes) > 0 })
+
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	p, _ := f.pushes[0]["msgParam"].(string)
+	if !strings.Contains(p, "N101") || !strings.Contains(p, "Open") || !strings.Contains(p, "In progress") {
+		t.Errorf("row beyond the first page must fire, got: %s", p)
+	}
+	if len(f.sweepQueries) < 2 {
+		t.Errorf("sweep must issue multiple pages, got %d query: %v", len(f.sweepQueries), f.sweepQueries)
+	}
+	for _, q := range f.sweepQueries {
+		if !strings.Contains(q, "sort=updated_at") || !strings.Contains(q, "order=asc") {
+			t.Errorf("sweep must request stable updated_at order, got: %s", q)
+		}
 	}
 }
