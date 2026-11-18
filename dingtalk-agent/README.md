@@ -59,6 +59,8 @@ chars.
 | `LLM_MAX_TOKENS` | no | `AI_WAR_ROOM_MAX_OUTPUT_TOKENS` → 16384; `0` omits `max_tokens` (escape hatch if a model rejects it) |
 | `LLM_EMBEDDING_MODEL` | no | `AI_EMBEDDING_MODEL` → **`text-embedding-3-large`** — RAG knowledge-base embeddings (the key needs access to it) |
 | `LLM_VISION_MODEL` | no | `AI_VISION_MODEL` → the chat model — image-reading model used to transcribe pictures sent to the bot (set it if the chat model isn't multimodal) |
+| `LLM_HEAVY_MODEL` | no | *(empty)* — the smarter model for model tiers: failure-escalated turns retry on it once, and any trigger phrase (see `LLM_HEAVY_KEYWORDS`) routes the whole turn to it proactively. Empty = tiers off |
+| `LLM_HEAVY_KEYWORDS` | no | `ultrathink,deep research,think hard` — case-insensitive substrings of the user text that route that whole turn to `LLM_HEAVY_MODEL` ("**ultrathink**: root-cause this spike"). Without a heavy model the triggers do nothing |
 | `AGENT_KB_TOOLS` | no | 1 — `search_knowledge`/`save_knowledge`/`list_knowledge`/`delete_knowledge` RAG over chat-uploaded documents and pictures; `0`/`off` unregisters the tools and the index |
 | `AGENT_MAX_ITER` | no | 60 tool-call iterations (Hermes parity) |
 | `AGENT_WEB_TOOLS` | no | 1 — keyless web research; `0`/`off`/`false`/`no` unregisters both web tools |

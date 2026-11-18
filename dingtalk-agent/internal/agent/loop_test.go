@@ -498,6 +498,106 @@ func TestLoopToolContextTimeout(t *testing.T) {
 	}
 }
 
+// Trigger phrases route the WHOLE turn (every round) to the heavy model —
+// proactive routing beside the failure escalation. Plain text stays on the
+// chat model.
+func TestHeavyKeywordRoutesToHeavyModel(t *testing.T) {
+	var models []string
+	step := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var chatReq llm.ChatRequest
+		_ = json.NewDecoder(r.Body).Decode(&chatReq)
+		models = append(models, chatReq.Model)
+		step++
+		var resp llm.ChatResponse
+		if step%2 == 1 {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", ToolCalls: []llm.ToolCall{{
+					ID: "call_1", Type: "function",
+					Function: llm.FunctionCall{Name: "stub_lookup", Arguments: `{"path":"."}`},
+				}}},
+				FinishReason: "tool_calls",
+			}}}
+		} else {
+			resp = llm.ChatResponse{Choices: []llm.ChatChoice{{
+				Message: llm.ChatMessage{Role: "assistant", Content: "done"}, FinishReason: "stop",
+			}}}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	reg := tools.NewRegistry(nil)
+	reg.Register(
+		llm.ToolDefinition{Type: "function", Function: llm.ToolFunctionDef{Name: "stub_lookup", Description: "test stub"}},
+		func(ctx context.Context, argsJSON string) (string, error) { return "result", nil },
+	)
+	agentLoop := NewLoop(
+		llm.NewClient(&config.Config{LLMBaseURL: server.URL, LLMAPIKey: "k", LLMModel: "flash", HeavyModel: "heavy"}),
+		reg, 5,
+	)
+	agentLoop.SetHeavyKeywords([]string{"ultrathink"})
+
+	if _, _, _, err := agentLoop.Run(context.Background(), "ultrathink: analyze the spike", nil, ""); err != nil {
+		t.Fatalf("triggered run failed: %v", err)
+	}
+	for i, m := range models {
+		if m != "heavy" {
+			t.Errorf("triggered turn round %d used %q, want heavy", i+1, m)
+		}
+	}
+	if len(models) != 2 {
+		t.Fatalf("triggered turn made %d calls, want 2 (tool round + final)", len(models))
+	}
+	models = nil
+
+	if _, _, _, err := agentLoop.Run(context.Background(), "plain question", nil, ""); err != nil {
+		t.Fatalf("plain run failed: %v", err)
+	}
+	for i, m := range models {
+		if m != "flash" {
+			t.Errorf("plain turn round %d used %q, want flash", i+1, m)
+		}
+	}
+}
+
+// heavyRequested: case-insensitive substring; no keywords = never heavy.
+// Keywords WITHOUT a configured heavy model must not route (ChatCompletionHeavy
+// would error every turn) — the guard lives in runWithEscalation.
+func TestHeavyRequestedGuard(t *testing.T) {
+	l := &Loop{}
+	l.SetHeavyKeywords([]string{"ultrathink", "deep research"})
+	if !l.heavyRequested("please ULTRATHINK this") {
+		t.Error("case-insensitive trigger not matched")
+	}
+	if !l.heavyRequested("run a deep research on incidents") {
+		t.Error("multi-word trigger not matched")
+	}
+	if l.heavyRequested("plain question") {
+		t.Error("non-matching text routed heavy")
+	}
+	empty := &Loop{}
+	if empty.heavyRequested("ultrathink") {
+		t.Error("no keywords must never route heavy")
+	}
+	// HeavyTurn also requires a configured heavy model — without one the
+	// trigger must not claim heavy (the ack would lie about the routing).
+	withHeavy := &Loop{llmClient: llm.NewClient(&config.Config{LLMBaseURL: "http://127.0.0.1:1", LLMAPIKey: "k", LLMModel: "flash", HeavyModel: "heavy"})}
+	withHeavy.SetHeavyKeywords([]string{"ultrathink"})
+	if !withHeavy.HeavyTurn("ULTRATHINK this") {
+		t.Error("trigger + heavy model must route")
+	}
+	if withHeavy.HeavyTurn("plain question") {
+		t.Error("non-matching text must not route")
+	}
+	noHeavy := &Loop{llmClient: llm.NewClient(&config.Config{LLMBaseURL: "http://127.0.0.1:1", LLMAPIKey: "k", LLMModel: "flash"})}
+	noHeavy.SetHeavyKeywords([]string{"ultrathink"})
+	if noHeavy.HeavyTurn("ultrathink") {
+		t.Error("trigger without a heavy model must NOT route — the ack would lie")
+	}
+}
+
 func TestLogContextCorrelation(t *testing.T) {
 	// 1. Empty context
 	taskID, missionID := FromContext(context.Background())

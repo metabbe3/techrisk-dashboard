@@ -52,6 +52,10 @@ type Config struct {
 	// retries a failed/looped-out turn once on this model ("use the smart
 	// model when we need it" — escalation, not per-message routing).
 	HeavyModel string
+	// HeavyKeywords are trigger phrases (case-insensitive substrings of the
+	// user text) that proactively route a whole turn to HeavyModel from the
+	// first round — no failure needed. Empty = keyword routing off.
+	HeavyKeywords []string
 	// KBToolsEnabled registers search_knowledge (the RAG index over files
 	// users upload in chat). Default on.
 	KBToolsEnabled bool
@@ -94,6 +98,9 @@ const (
 	DefaultMissionTimeoutSec = 1800
 	DefaultSubtaskAttempts   = 2
 	DefaultFanoutMax         = 3
+	// DefaultHeavyKeywords routes a chat turn to the heavy model when any of
+	// these appears (case-insensitive substring) in the user text.
+	DefaultHeavyKeywords = "ultrathink,deep research,think hard"
 )
 
 // loadBool reads a boolean env key ("1"/"true"/"on"/"yes" = on; anything else
@@ -373,6 +380,7 @@ func LoadFromFile(envPath string) (*Config, error) {
 			getVal("LLM_HEAVY_MODEL", ""),
 			getVal("AI_HEAVY_MODEL", ""),
 		), // empty = no heavy escalation; loop retries stay on the chat model
+		HeavyKeywords:   splitLowered(getVal("LLM_HEAVY_KEYWORDS", DefaultHeavyKeywords)),
 		KBToolsEnabled:  loadBool(getVal, "AGENT_KB_TOOLS", true),
 		KnowledgeDigest: loadBool(getVal, "AGENT_KNOWLEDGE_DIGEST", true),
 
@@ -399,4 +407,9 @@ func SplitList(raw string) []string {
 		}
 	}
 	return out
+}
+
+// splitLowered is SplitList over the lowercased raw string (trigger matching).
+func splitLowered(raw string) []string {
+	return SplitList(strings.ToLower(raw))
 }

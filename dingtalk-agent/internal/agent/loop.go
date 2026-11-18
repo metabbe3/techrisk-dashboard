@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"runtime/debug"
+	"strings"
 	"sync"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
@@ -62,6 +63,10 @@ type Loop struct {
 	registry      *tools.Registry
 	maxIterations int
 	role          string
+	// heavyKeywords are trigger phrases (config LLM_HEAVY_KEYWORDS) routing a
+	// whole turn to the heavy model from the first round — beside the
+	// existing failure escalation.
+	heavyKeywords []string
 	// SystemExtras, when set, appends dynamic context (e.g. remembered
 	// document knowledge) to the system prompt on every turn.
 	SystemExtras func() string
@@ -88,6 +93,35 @@ func (l *Loop) SetRole(role string) {
 // Role returns the configured mesh role.
 func (l *Loop) Role() string {
 	return l.role
+}
+
+// SetHeavyKeywords sets the trigger phrases that proactively route a whole
+// turn to the heavy model (beside the failure escalation). Entries are
+// matched as case-insensitive substrings of the user text.
+func (l *Loop) SetHeavyKeywords(keywords []string) {
+	l.heavyKeywords = keywords
+}
+
+// heavyRequested reports whether the user text contains any trigger phrase.
+// Case-insensitive substring: "please ULTRATHINK this" routes heavy.
+func (l *Loop) heavyRequested(text string) bool {
+	if len(l.heavyKeywords) == 0 {
+		return false
+	}
+	t := strings.ToLower(text)
+	for _, k := range l.heavyKeywords {
+		if strings.Contains(t, k) {
+			return true
+		}
+	}
+	return false
+}
+
+// HeavyTurn reports whether this user text would route the whole turn to the
+// heavy model (trigger phrase present AND a heavy model configured) — the bot
+// varies its acknowledgment on it, so both sides must agree on one decision.
+func (l *Loop) HeavyTurn(userText string) bool {
+	return l.heavyRequested(userText) && l.llmClient.HeavyModel() != ""
 }
 
 // Registry exposes the tool registry (e.g. the bot drains Notion reads from it).
@@ -201,7 +235,15 @@ func (l *Loop) run(ctx context.Context, userText string, history []llm.ChatMessa
 // capped to half the normal iteration budget so a bad night cannot burn
 // unlimited tokens.
 func (l *Loop) runWithEscalation(ctx context.Context, userText string, history []llm.ChatMessage, onDelta func(string), sysExtra string) (string, []llm.ChatMessage, llm.Usage, error) {
-	reply, msgs, usage, err := l.run(ctx, userText, history, onDelta, sysExtra, false)
+	// Trigger phrases route proactively; without one (or without a heavy model
+	// configured — ChatCompletionHeavy would error every round) the chat model
+	// runs as usual. The failure escalation below still applies to a triggered
+	// turn: it retries on the SAME heavy model with the slimmer framing.
+	heavy := l.HeavyTurn(userText)
+	if heavy {
+		log.Printf("[agent] %strigger phrase routed this turn to the heavy model %q", LogPrefix(ctx), l.llmClient.HeavyModel())
+	}
+	reply, msgs, usage, err := l.run(ctx, userText, history, onDelta, sysExtra, heavy)
 	if err == nil || l.llmClient.HeavyModel() == "" || ctx.Err() != nil {
 		return reply, msgs, usage, err
 	}
