@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Ai\ExportController;
 use App\Http\Controllers\Api\CorpusController;
 use App\Http\Controllers\Api\IncidentController;
 use App\Http\Controllers\Api\NotionController;
+use App\Http\Controllers\Api\SkillController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TokenController;
 use Illuminate\Support\Facades\Route;
@@ -101,5 +102,14 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     // Relative paths INSIDE markdown/corpus only — traversal rejected below.
     Route::prefix('v1')->middleware('throttle:agent')->group(function () {
         Route::get('corpus', [CorpusController::class, 'index']);
+    });
+
+    // Agent skill library (Filament → Skills) + War Room personas — read-only,
+    // on-demand: index is a metadata catalog, show loads ONE body (48k cap).
+    // Persona bundles (role-<key>) carry the system prompt + skill NAMES only.
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('skills', [SkillController::class, 'index']);
+        Route::get('skills/{name}', [SkillController::class, 'show'])
+            ->where('name', '[A-Za-z0-9_-]{1,64}');
     });
 });
