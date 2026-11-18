@@ -21,6 +21,7 @@ enum ApiEndpoint: string
     case STATS = 'stats';
     case AGENT_CORPUS = 'agent-corpus';
     case SKILLS = 'skills';
+    case GOVERNANCE = 'governance';
 
     /**
      * Get all endpoints as an array for select options
@@ -51,6 +52,7 @@ enum ApiEndpoint: string
             self::STATS => 'Stats (Aggregated Metrics)',
             self::AGENT_CORPUS => 'Corpus pages (incident memory + topic patterns)',
             self::SKILLS => 'Skills (agent skill library + War Room personas)',
+            self::GOVERNANCE => 'Governance KPIs (PDR metrics, verbatim service output)',
         };
     }
 
@@ -75,6 +77,7 @@ enum ApiEndpoint: string
             self::STATS => 'api/v1/stats',
             self::AGENT_CORPUS => 'api/v1/corpus',
             self::SKILLS => 'api/v1/skills',
+            self::GOVERNANCE => 'api/v1/governance',
         };
     }
 

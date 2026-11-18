@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Resources;
 
 use Illuminate\Http\Request;
@@ -17,6 +18,7 @@ class ActionImprovementResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'incident_no' => $this->when($this->relationLoaded('incident'), fn () => $this->incident->no),
             'title' => $this->title,
             'detail' => $this->detail,
             'due_date' => $this->due_date,
