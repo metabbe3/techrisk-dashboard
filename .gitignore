@@ -59,5 +59,10 @@ storage/redis/
 /skills/
 skills-lock.json
 .codeartsdoer/
+/worktrees/
+/storage/debugbar/
+
+# Local-only Docker overrides
+/docker-compose.override.yml
 
 /storage/redis/
