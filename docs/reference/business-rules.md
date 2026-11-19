@@ -39,6 +39,7 @@ A Label `Outlier` tag removes the row from every MTBF/MTTR *average* (calculator
 - The EMAIL lane is the same rule except the empty case waits until the incident itself is also older than 6 days (owner 2026-11-10: the email waits — the screen nudge is immediate, the inbox nudge only for genuinely neglected incidents).
 - Ordering for "last update" is `update_date DESC, id DESC` (`Incident::latestUpdateRecord()`), NOT the `latestStatusUpdate()` HasOne relation (that is latestOfMany by id — different ordering, used by Kanban/Reporting/etc.).
 - Lane gated by the Email Settings toggle `status_update_reminder_enabled` + the shared `last_reminded_at` throttle and `netcore_enabled` kill-switch, like the other two reminder lanes. Delivery preference type: `status_update_reminder` (`User::getNotificationType()`).
+- **Reminder emails are incident-only (owner 2026-11-18):** `SendIncidentReminders::dueIncidents()` filters `classification = Incident` for ALL three lanes (not-done, fund-loss, status-update). The table also holds `Issue` rows — including cases downgraded back from Incident (raised as issue → upgraded → failed the incident requirement → returned to issue) — and no lane may email or in-app-notify them; prod shipped the status-update reminder to such a row because nothing gated classification.
 
 ## Action Improvements lifecycle (PROJ-014, owner 2026-10-14)
 

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Console;
 
 use App\Enums\FundStatus;
+use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Mail\GroupNotificationMail;
 use App\Models\Incident;
@@ -29,7 +30,10 @@ class SendIncidentRemindersTest extends TestCase
      */
     private function incidentWithPic(array $attributes, User $pic): Incident
     {
-        $incident = Incident::factory()->createQuietly($attributes);
+        // Factory randomizes classification — lane tests need a real incident.
+        $incident = Incident::factory()->createQuietly(
+            $attributes + ['classification' => IncidentClassification::Incident->value]
+        );
         $incident->pics()->attach($pic->id);
         Notification::fake();
 
@@ -60,6 +64,7 @@ class SendIncidentRemindersTest extends TestCase
         $pic1 = User::factory()->create();
         $pic2 = User::factory()->create();
         $incident = Incident::factory()->createQuietly([
+            'classification' => IncidentClassification::Incident->value,
             'incident_status' => IncidentStatus::Open->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
@@ -151,6 +156,7 @@ class SendIncidentRemindersTest extends TestCase
         $pic1 = User::factory()->create();
         $pic2 = User::factory()->create();
         $incident = Incident::factory()->createQuietly([
+            'classification' => IncidentClassification::Incident->value,
             'incident_status' => IncidentStatus::Open->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
@@ -180,6 +186,7 @@ class SendIncidentRemindersTest extends TestCase
         $pic2 = User::factory()->create();
         NotificationPreference::forUser($pic2)->update(['email_incident_not_done_reminder' => false]);
         $incident = Incident::factory()->createQuietly([
+            'classification' => IncidentClassification::Incident->value,
             'incident_status' => IncidentStatus::Open->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
@@ -264,6 +271,31 @@ class SendIncidentRemindersTest extends TestCase
     }
 
     /**
+     * Reminder emails are incident-only (owner 2026-11-18): an Issue that
+     * satisfies every lane's conditions — including one downgraded back
+     * from Incident — must get nothing from any lane.
+     */
+    public function test_issues_get_no_reminders_from_any_lane(): void
+    {
+        Notification::fake();
+        $pic = User::factory()->create();
+        $incident = $this->incidentWithPic([
+            'classification' => IncidentClassification::Issue->value,
+            'incident_status' => IncidentStatus::Open->value,
+            'fund_status' => FundStatus::ConfirmedLoss->value,
+            'potential_fund_loss' => 1000000,
+            'recovered_fund' => 0,
+            'incident_date' => now()->subDays(30),
+        ], $pic);
+        $incident->forceFill(['created_at' => now()->subDays(8)])->saveQuietly();
+
+        $this->artisan('reminders:send-incidents')->assertSuccessful();
+
+        Notification::assertNothingSent();
+        $this->assertNull($incident->fresh()->last_reminded_at);
+    }
+
+    /**
      * Seed that keeps the OTHER lanes quiet (recent incident_date -> not-done
      * lane skips; NonFundLoss/zero amounts -> fund-loss lane skips) so only
      * the status-update lane can fire. created_at is not fillable — forceFill
@@ -314,6 +346,7 @@ class SendIncidentRemindersTest extends TestCase
         $pic1 = User::factory()->create();
         $pic2 = User::factory()->create();
         $incident = Incident::factory()->createQuietly([
+            'classification' => IncidentClassification::Incident->value,
             'incident_status' => IncidentStatus::Open->value,
             'fund_status' => FundStatus::NonFundLoss->value,
             'potential_fund_loss' => 0,
