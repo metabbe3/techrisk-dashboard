@@ -54,25 +54,29 @@ class TopbarWidgetsTest extends TestCase
 
     /**
      * Owner 2026-11-19: in the collapsed rail the icons must sit on the
-     * rail's horizontal centerline. The item rows inherit Filament's
-     * justify-center, but our expanded-sidebar padding (left 0.75rem vs
-     * right 0.5rem) shifts every icon 2px right of center — neutralize
-     * it in the closed state. Source-CSS contract (colors/dimensions are
-     * compiled into the built asset; the pattern is
-     * SectionHeaderCornerRadiusTest).
+     * rail's horizontal centerline. Two offsets conspire against it:
+     * our expanded-sidebar padding (left 0.75rem vs right 0.5rem) shifts
+     * every icon 2px right, and Filament's own inline
+     * `scrollbar-gutter: stable` on .fi-sidebar-nav reserves 8px of
+     * scrollbar gutter on the RIGHT only — the 88px rail's icon column
+     * lands 8px left of center (verified with a Playwright probe over
+     * the real rendered page). The closed state neutralizes both.
+     * Source-CSS contract (colors/dimensions are compiled into the
+     * built asset; the pattern is SectionHeaderCornerRadiusTest).
      */
     public function test_collapsed_rail_icons_are_horizontally_centered(): void
     {
         $css = (string) file_get_contents(base_path('resources/css/app.css'));
 
         $this->assertStringContainsString(
-            '.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {',
-            $css,
-        );
-        $this->assertStringContainsString(
             ".fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {\n        padding-left: 0.5rem !important;\n        padding-right: 0.5rem !important;\n    }",
             $css,
             'the rail must use symmetric padding so justify-center truly centers the icons',
+        );
+        $this->assertStringContainsString(
+            ".fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav {\n        scrollbar-gutter: auto;\n        scrollbar-width: none;\n    }",
+            $css,
+            'the rail must drop Filament\'s inline scrollbar-gutter: stable — its 8px right-only gutter shifts every icon 8px left of center',
         );
     }
 
