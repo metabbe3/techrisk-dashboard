@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\RoleResource\Pages;
@@ -20,6 +21,10 @@ class RoleResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-finger-print';
 
     protected static ?string $navigationGroup = 'User Management';
+
+    // PROJ-025: Roles + Permissions consolidate under one nav label;
+    // the permissions table stays reachable from the roles list header.
+    protected static ?string $navigationLabel = 'Access Control';
 
     public static function form(Form $form): Form
     {

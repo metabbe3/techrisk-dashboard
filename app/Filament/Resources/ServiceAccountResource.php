@@ -30,6 +30,11 @@ class ServiceAccountResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Service Accounts';
 
+    // PROJ-025: reached from ListUsers' "Service Accounts" tab instead of
+    // its own nav item. The class stays — its create flow grants the
+    // `access api` permission, which UserResource's create flow lacks.
+    protected static bool $shouldRegisterNavigation = false;
+
     public static function canViewAny(): bool
     {
         return auth()->user()?->can('manage service accounts') ?? false;
