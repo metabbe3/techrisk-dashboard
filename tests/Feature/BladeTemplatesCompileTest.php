@@ -58,7 +58,10 @@ class BladeTemplatesCompileTest extends TestCase
             $output = [];
         }
 
-        $this->assertGreaterThan(50, $checked, 'Blade sweep checked suspiciously few templates.');
+        // Floor tracks the template count (49 after the 2026-11-18 email
+        // layout unification deleted 2); a sudden drop means templates
+        // vanished unexpectedly.
+        $this->assertGreaterThan(48, $checked, 'Blade sweep checked suspiciously few templates.');
         $this->assertSame([], $failures, "Templates that do not compile to valid PHP:\n".implode("\n", $failures));
     }
 }
