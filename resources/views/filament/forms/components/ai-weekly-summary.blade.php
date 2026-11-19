@@ -163,11 +163,11 @@
             </template>
             <template x-if="wsResults?.recommendation">
                 <div class="sl-section">
-                    <div class="sl-section-label" style="color:#7c3aed;">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/></svg>
+                    <div class="sl-section-label" style="color:#0f7bd1;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0f7bd1" stroke-width="2.5"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2Z"/></svg>
                         Recommendation
                     </div>
-                    <div style="font-size:12px;line-height:1.6;color:var(--tr-ink);white-space:pre-wrap;background:var(--tr-violet-bg);padding:8px 10px;border-radius:6px;border:1px solid var(--tr-border);" x-text="wsResults.recommendation"></div>
+                    <div style="font-size:12px;line-height:1.6;color:var(--tr-ink);white-space:pre-wrap;background:var(--tr-sky-bg);padding:8px 10px;border-radius:6px;border:1px solid var(--tr-border);" x-text="wsResults.recommendation"></div>
                 </div>
             </template>
         </div>

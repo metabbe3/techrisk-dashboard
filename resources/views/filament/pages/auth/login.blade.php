@@ -1,6 +1,6 @@
 <div class="grid min-h-screen lg:grid-cols-2">
     {{-- Brand panel — desktop only --}}
-    <div class="hidden flex-col justify-between bg-indigo-600 px-12 py-10 text-white lg:flex dark:bg-indigo-700">
+    <div class="hidden flex-col justify-between bg-dana-600 px-12 py-10 text-white lg:flex dark:bg-dana-700">
         <div class="text-lg font-bold tracking-tight">
             {{ filament()->getBrandName() }}
         </div>
@@ -9,13 +9,13 @@
             <h2 class="text-4xl font-bold leading-tight">
                 Technical risk, one place.
             </h2>
-            <p class="mt-4 text-indigo-200">
+            <p class="mt-4 text-dana-200">
                 Log incidents, track action items and keep the board informed —
                 from a single portal.
             </p>
         </div>
 
-        <p class="text-sm text-indigo-200">
+        <p class="text-sm text-dana-200">
             Internal tooling · Authorized access only
         </p>
     </div>
@@ -38,7 +38,7 @@
 
             <a
                 href="{{ route('microsoft.redirect') }}"
-                class="mt-6 flex h-10 w-full items-center justify-center gap-3 rounded-lg bg-indigo-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950"
+                class="mt-6 flex h-10 w-full items-center justify-center gap-3 rounded-lg bg-dana-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-dana-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-dana-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950"
             >
                 <svg viewBox="0 0 21 21" class="h-4 w-4" aria-hidden="true">
                     <rect x="1" y="1" width="9" height="9" fill="#f25022" />

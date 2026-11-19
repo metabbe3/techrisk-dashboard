@@ -46,7 +46,7 @@ abstract class BaseNotification extends Notification implements ShouldQueue
     /**
      * Branded (HTML) email through the shared layout
      * (emails/notification.blade.php). Every portal notification renders
-     * through here — the white card + indigo header look.
+     * through here — the white card + DANA-blue header look.
      *
      * @param  array<int, string>  $lines  paragraphs; **bold** supported
      * @param  array<string, string>  $details  label => value rows

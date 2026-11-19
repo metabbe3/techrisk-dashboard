@@ -199,7 +199,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
     class="smart-label-wrapper"
 >
     <div class="sl-trigger-group">
-        <button type="button" class="sl-trigger" style="background: var(--tr-violet-600);" @click="{{ $hasMultipleModels ? 'rcaShowModelPicker = !rcaShowModelPicker' : 'analyze()' }}" :disabled="rcaLoading">
+        <button type="button" class="sl-trigger" style="background: var(--tr-sky-600);" @click="{{ $hasMultipleModels ? 'rcaShowModelPicker = !rcaShowModelPicker' : 'analyze()' }}" :disabled="rcaLoading">
             <span x-show="!rcaLoading" x-transition class="sl-trigger__idle">
                 <svg class="sl-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 2 2 3 2 6H14c0-3 2-4 2-6a4 4 0 0 0-4-4Z"/><path d="M10 16h4"/><path d="M10 19h4"/><path d="M10 22h2"/><path d="M12 12v-2"/></svg>
                 <span x-text="{{ $hasMultipleModels ? "'AI Analysis (' + rcaSelectedModel + ')'" : "'AI Full Analysis'" }}"></span>
@@ -243,7 +243,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
     <div x-show="rcaOpen" x-transition:enter="sl-slide-in" x-transition:enter-start="sl-slide-in-start" x-transition:enter-end="sl-slide-in-end" x-transition:leave="sl-slide-out" x-transition:leave-start="sl-slide-out-start" x-transition:leave-end="sl-slide-out-end" x-cloak class="sl-panel">
         <div class="sl-panel__header">
             <div class="sl-panel__header-left">
-                <svg class="sl-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 2 2 3 2 6H14c0-3 2-4 2-6a4 4 0 0 0-4-4Z"/><path d="M10 16h4"/><path d="M10 19h4"/><path d="M10 22h2"/></svg>
+                <svg class="sl-icon-sm" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0f7bd1" stroke-width="2"><path d="M12 2a4 4 0 0 0-4 4c0 2 2 3 2 6H14c0-3 2-4 2-6a4 4 0 0 0-4-4Z"/><path d="M10 16h4"/><path d="M10 19h4"/><path d="M10 22h2"/></svg>
                 <span class="sl-panel__title">AI Full Analysis</span>
             </div>
             <button type="button" @click="rcaOpen=false" class="sl-panel__close">&times;</button>
@@ -267,13 +267,13 @@ if (typeof window.aiRootCauseData === 'undefined') {
             <template x-if="rcaResults?.root_cause">
                 <div class="sl-section">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:600;color:#7c3aed;">
-                            <input type="checkbox" x-model="rcaApply.root_cause" style="accent-color:#7c3aed;width:14px;height:14px;">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:600;color:#0f7bd1;">
+                            <input type="checkbox" x-model="rcaApply.root_cause" style="accent-color:#0f7bd1;width:14px;height:14px;">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0f7bd1" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
                             Root Cause Analysis
                         </label>
                     </div>
-                    <div style="font-size:12px;line-height:1.7;color:var(--tr-ink);background:var(--tr-violet-bg);padding:10px 12px;border-radius:6px;border:1px solid var(--tr-border);" x-html="simpleMd(rcaResults.root_cause)"></div>
+                    <div style="font-size:12px;line-height:1.7;color:var(--tr-ink);background:var(--tr-sky-bg);padding:10px 12px;border-radius:6px;border:1px solid var(--tr-border);" x-html="simpleMd(rcaResults.root_cause)"></div>
                 </div>
             </template>
 
@@ -281,9 +281,9 @@ if (typeof window.aiRootCauseData === 'undefined') {
             <template x-if="rcaResults?.remark">
                 <div class="sl-section">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
-                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:600;color:#7c3aed;">
-                            <input type="checkbox" x-model="rcaApply.remark" style="accent-color:#7c3aed;width:14px;height:14px;">
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3l-4 4Z"/></svg>
+                        <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:11px;font-weight:600;color:#0f7bd1;">
+                            <input type="checkbox" x-model="rcaApply.remark" style="accent-color:#0f7bd1;width:14px;height:14px;">
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0f7bd1" stroke-width="2.5"><path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-3l-4 4Z"/></svg>
                             Remarks
                         </label>
                     </div>
@@ -294,8 +294,8 @@ if (typeof window.aiRootCauseData === 'undefined') {
             {{-- Categories --}}
             <template x-if="rcaResults?.categories?.length > 0">
                 <div class="sl-section">
-                    <div class="sl-section-label" style="color:#7c3aed;">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="M4 4h16v16H4z"/><path d="M9 4v16"/><path d="M4 9h16"/></svg>
+                    <div class="sl-section-label" style="color:#0f7bd1;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0f7bd1" stroke-width="2.5"><path d="M4 4h16v16H4z"/><path d="M9 4v16"/><path d="M4 9h16"/></svg>
                         Probable Categories
                     </div>
                     <div class="sl-tags">
@@ -309,8 +309,8 @@ if (typeof window.aiRootCauseData === 'undefined') {
             {{-- Contributing Factors --}}
             <template x-if="rcaResults?.contributing_factors?.length > 0">
                 <div class="sl-section">
-                    <div class="sl-section-label" style="color:#7c3aed;">
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2.5"><path d="m15 3 4 4L7 19H3v-4L15 3Z"/></svg>
+                    <div class="sl-section-label" style="color:#0f7bd1;">
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#0f7bd1" stroke-width="2.5"><path d="m15 3 4 4L7 19H3v-4L15 3Z"/></svg>
                         Contributing Factors
                     </div>
                     <ul style="margin:0;padding-left:16px;font-size:12px;line-height:1.8;color:var(--tr-muted);">
@@ -358,7 +358,7 @@ if (typeof window.aiRootCauseData === 'undefined') {
         </div>
         <div class="sl-panel__footer">
             <span class="sl-count" x-text="'Apply selected fields'"></span>
-            <button type="button" class="sl-apply" style="background:var(--tr-violet-600);" :disabled="rcaApplying" @click="applySelected()">
+            <button type="button" class="sl-apply" style="background:var(--tr-sky-600);" :disabled="rcaApplying" @click="applySelected()">
                 <template x-if="!rcaApplying">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m4.5 12.75 6 6 9-13.5"/></svg>
                 </template>

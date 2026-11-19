@@ -268,7 +268,7 @@ class AgentPromptBuilder
                 ['User Impact Analysis', 'Support Ticket Patterns', 'Escalation Procedures', 'Customer Communication', 'Known Issue Detection'],
                 self::getTsPrompt()
             ),
-            self::makeAgent('dba', 'IDC DBA', 'heroicon-o-circle-stack', 'purple', 3,
+            self::makeAgent('dba', 'IDC DBA', 'heroicon-o-circle-stack', 'emerald', 3,
                 'Database specialist analyzing performance, integrity, replication, and query optimization',
                 ['Query Optimization', 'Data Integrity', 'Replication Management', 'Backup & Recovery', 'Capacity Assessment', 'Index Strategy'],
                 self::getDbaPrompt()
@@ -283,7 +283,7 @@ class AgentPromptBuilder
                 ['Risk Classification', 'Financial Impact Assessment', 'Regulatory Compliance', 'Reputational Risk', 'Risk Scoring', 'Mitigation Strategy'],
                 self::getTechRiskPrompt()
             ),
-            self::makeAgent('dev_be', 'Dev Backend', 'heroicon-o-code-bracket', 'indigo', 6,
+            self::makeAgent('dev_be', 'Dev Backend', 'heroicon-o-code-bracket', 'lime', 6,
                 'Backend developer analyzing code paths, APIs, service dependencies, and performance bottlenecks',
                 ['Code-Level Analysis', 'API Debugging', 'Service Architecture', 'Message Queues', 'Performance Profiling', 'Error Handling'],
                 self::getDevBePrompt()
@@ -303,7 +303,7 @@ class AgentPromptBuilder
                 ['Timeline Analysis', 'Resource Allocation', 'Stakeholder Communication', 'Priority Assessment', 'Process Evaluation', 'Dependency Analysis'],
                 self::getPmPrompt()
             ),
-            self::makeAgent('pd', 'Product Designer', 'heroicon-o-swatch', 'fuchsia', 10,
+            self::makeAgent('pd', 'Product Designer', 'heroicon-o-swatch', 'gray', 10,
                 'UX designer evaluating user experience impact, design system gaps, and error state design',
                 ['UX Impact Assessment', 'Design System', 'Error State Design', 'User Communication Design', 'Accessibility', 'User Research'],
                 self::getPdPrompt()
@@ -318,7 +318,7 @@ class AgentPromptBuilder
                 ['Regulatory Impact', 'Policy Adherence', 'Audit Readiness', 'Data Protection', 'Governance Review', 'Compliance Reporting'],
                 self::getCompliancePrompt()
             ),
-            self::makeAgent('data_analyst', 'Data Analyst', 'heroicon-o-chart-bar', 'violet', 13,
+            self::makeAgent('data_analyst', 'Data Analyst', 'heroicon-o-chart-bar', 'cyan', 13,
                 'Data specialist identifying patterns, trends, anomalies, and statistical correlations in incident data',
                 ['Pattern Recognition', 'Trend Analysis', 'Anomaly Detection', 'Statistical Correlation', 'Historical Comparison', 'Data Quality Assessment'],
                 self::getDataAnalystPrompt()

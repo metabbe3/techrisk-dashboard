@@ -134,17 +134,17 @@ class SkillResource extends Resource
                 Tables\Columns\TextColumn::make('domain')
                     ->badge()
                     ->color(fn (string $state): string => match ($state) {
-                        'ai-security' => 'purple',
+                        'ai-security' => 'dana',
                         'appsec' => 'blue',
                         'cloud' => 'sky',
                         'compliance' => 'amber',
                         'devsecops' => 'orange',
-                        'identity' => 'indigo',
+                        'identity' => 'emerald',
                         'incident-response' => 'red',
                         'network' => 'teal',
                         'secops' => 'cyan',
                         'vuln-management' => 'rose',
-                        'role' => 'fuchsia',
+                        'role' => 'lime',
                         default => 'gray',
                     })
                     ->sortable(),

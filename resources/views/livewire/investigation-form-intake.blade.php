@@ -1,5 +1,5 @@
 {{-- Public no-login intake page: /investigation/{token}. --}}
-<div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-indigo-50 via-white to-violet-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 px-4 py-12 sm:px-6 lg:px-8">
+<div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-dana-50 via-white to-sky-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 px-4 py-12 sm:px-6 lg:px-8">
     <div class="w-full max-w-3xl">
 
         @if ($invalidLink)
@@ -32,7 +32,7 @@
             <div class="rounded-2xl bg-white dark:bg-gray-800 p-7 shadow-lg ring-1 ring-gray-200 dark:ring-gray-700">
                 {{-- Incident banner --}}
                 <div class="mb-6 border-b border-gray-100 dark:border-gray-700 pb-4">
-                    <p class="text-xs uppercase tracking-wide text-indigo-600 dark:text-indigo-400 font-semibold">
+                    <p class="text-xs uppercase tracking-wide text-dana-600 dark:text-dana-400 font-semibold">
                         Incident Investigation Form — {{ $team }}
                     </p>
                     <h1 class="mt-1 text-lg font-bold text-gray-900 dark:text-white">
@@ -50,8 +50,8 @@
                 {{-- Step indicator --}}
                 <ol class="mb-6 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                     @foreach (['Source', 'Fill & review', 'Verify', 'Consent'] as $i => $label)
-                        <li class="flex items-center gap-1.5 {{ $step >= $i + 1 ? 'text-indigo-600 dark:text-indigo-400 font-semibold' : '' }}">
-                            <span class="inline-flex h-5 w-5 items-center justify-center rounded-full border {{ $step > $i + 1 ? 'bg-indigo-600 border-indigo-600 text-white' : ($step === $i + 1 ? 'border-indigo-600' : 'border-gray-300 dark:border-gray-600') }}">
+                        <li class="flex items-center gap-1.5 {{ $step >= $i + 1 ? 'text-dana-600 dark:text-dana-400 font-semibold' : '' }}">
+                            <span class="inline-flex h-5 w-5 items-center justify-center rounded-full border {{ $step > $i + 1 ? 'bg-dana-600 border-dana-600 text-white' : ($step === $i + 1 ? 'border-dana-600' : 'border-gray-300 dark:border-gray-600') }}">
                                 {{ $i + 1 }}
                             </span>
                             {{ $label }}
@@ -64,7 +64,7 @@
                 @if ($step === 1)
                     @if ($extractionRunning)
                         {{-- Queued extraction in flight; polling stops the moment this block un-renders. --}}
-                        <div wire:poll.3s="pollExtraction" class="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 p-4 text-sm text-indigo-900 dark:text-indigo-200">
+                        <div wire:poll.3s="pollExtraction" class="rounded-xl bg-dana-50 dark:bg-dana-900/20 p-4 text-sm text-dana-900 dark:text-dana-200">
                             <p class="font-semibold">Reading your material in the background…</p>
                             <p class="mt-1">This can take a few minutes for large pages. You can close this page — we'll email you when it's ready, or reopen this link to find the filled draft.</p>
                         </div>
@@ -75,22 +75,22 @@
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Your name <span class="text-red-500">*</span></label>
-                                <input type="text" wire:model="name" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" placeholder="Full name" />
+                                <input type="text" wire:model="name" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="Full name" />
                                 @error('name')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Your email <span class="text-red-500">*</span></label>
-                                <input type="email" wire:model="email" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" placeholder="you@company.com" />
+                                <input type="email" wire:model="email" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="you@company.com" />
                                 @error('email')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                             </div>
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job role</label>
-                                <input type="text" wire:model="jobRole" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" placeholder="e.g. Backend engineer" />
+                                <input type="text" wire:model="jobRole" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="e.g. Backend engineer" />
                             </div>
                         </div>
 
                         @if ($prepareList)
-                            <div class="rounded-xl bg-indigo-50 dark:bg-indigo-900/20 p-4 text-sm text-indigo-900 dark:text-indigo-200">
+                            <div class="rounded-xl bg-dana-50 dark:bg-dana-900/20 p-4 text-sm text-dana-900 dark:text-dana-200">
                                 <p class="font-semibold mb-1">What to prepare</p>
                                 <ul class="list-disc list-inside space-y-0.5">
                                     @foreach ($prepareList as $item)
@@ -102,21 +102,21 @@
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notion page URL</label>
-                            <input type="url" wire:model="notionUrl" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" placeholder="https://www.notion.so/..." />
+                            <input type="url" wire:model="notionUrl" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="https://www.notion.so/..." />
                             <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Paste the page link (Share → Copy link). If it can't be read, paste or upload the content below.</p>
                             @error('notionUrl')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Upload a file (pdf, docx, md, txt — max 10 MB)</label>
-                            <input type="file" wire:model="sourceFile" accept=".pdf,.docx,.md,.txt" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-3 file:py-1.5 file:text-white file:text-sm hover:file:bg-indigo-700" />
+                            <input type="file" wire:model="sourceFile" accept=".pdf,.docx,.md,.txt" class="block w-full text-sm text-gray-500 dark:text-gray-400 file:mr-3 file:rounded-lg file:border-0 file:bg-dana-600 file:px-3 file:py-1.5 file:text-white file:text-sm hover:file:bg-dana-700" />
                             @error('sourceFile')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-                            <div wire:loading wire:target="sourceFile" class="mt-1 text-xs text-indigo-500">Uploading…</div>
+                            <div wire:loading wire:target="sourceFile" class="mt-1 text-xs text-dana-500">Uploading…</div>
                         </div>
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Or paste your material (timeline, details…)</label>
-                            <textarea wire:model="pasteText" rows="6" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" placeholder="Paste anything the AI should read — a timeline, chat logs, notes…"></textarea>
+                            <textarea wire:model="pasteText" rows="6" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="Paste anything the AI should read — a timeline, chat logs, notes…"></textarea>
                         </div>
 
                         @if ($extractError)
@@ -124,7 +124,7 @@
                         @endif
 
                         <button type="submit" wire:loading.attr="disabled" wire:target="extractFromSource"
-                            class="w-full rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
+                            class="w-full rounded-xl bg-gradient-to-r from-dana-600 to-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-md hover:from-dana-700 hover:to-sky-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all">
                             <span wire:loading.remove wire:target="extractFromSource">Extract with AI</span>
                             <span wire:loading wire:target="extractFromSource">Starting…</span>
                         </button>
@@ -179,10 +179,10 @@
                                             </label>
                                             @if (in_array($sectionKey.'.'.$fieldKey, \App\Services\InvestigationForm\InvestigationFormSchema::DATETIME_FIELDS))
                                                 <input type="datetime-local" step="60" max="{{ $nowMax }}" wire:model="answers.{{ $sectionKey }}.{{ $fieldKey }}"
-                                                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" />
+                                                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" />
                                             @else
                                                 <textarea wire:model="answers.{{ $sectionKey }}.{{ $fieldKey }}" rows="2"
-                                                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none"></textarea>
+                                                    class="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-1.5 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none"></textarea>
                                             @endif
                                             @error('answers.'.$sectionKey.'.'.$fieldKey)<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
                                         </div>
@@ -205,7 +205,7 @@
                                     @endforeach
                                 </tbody>
                             </table>
-                            <button type="button" wire:click="addChronologyRow" class="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">+ Add row</button>
+                            <button type="button" wire:click="addChronologyRow" class="mt-2 text-xs font-medium text-dana-600 dark:text-dana-400 hover:underline">+ Add row</button>
                         </fieldset>
 
                         <fieldset class="border border-gray-200 dark:border-gray-700 rounded-xl p-4">
@@ -224,12 +224,12 @@
                                     @endforeach
                                 </tbody>
                             </table>
-                            <button type="button" wire:click="addActionItemRow" class="mt-2 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">+ Add row</button>
+                            <button type="button" wire:click="addActionItemRow" class="mt-2 text-xs font-medium text-dana-600 dark:text-dana-400 hover:underline">+ Add row</button>
                         </fieldset>
 
                         <div class="flex flex-wrap gap-3">
                             <button type="button" wire:click="saveDraft" wire:loading.attr="disabled" wire:target="saveDraft"
-                                class="rounded-xl border border-indigo-300 dark:border-indigo-700 px-4 py-2 text-sm font-medium text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50">
+                                class="rounded-xl border border-dana-300 dark:border-dana-700 px-4 py-2 text-sm font-medium text-dana-700 dark:text-dana-300 hover:bg-dana-50 dark:hover:bg-dana-900/30 disabled:opacity-50">
                                 Save draft
                             </button>
                             <button type="button" wire:click="runVerify" wire:loading.attr="disabled" wire:target="runVerify"
@@ -238,7 +238,7 @@
                                 <span wire:loading wire:target="runVerify">Checking…</span>
                             </button>
                             <button type="button" wire:click="goToConsent"
-                                class="ml-auto rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-indigo-700">
+                                class="ml-auto rounded-xl bg-dana-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:bg-dana-700">
                                 Continue to consent
                             </button>
                         </div>
@@ -295,14 +295,14 @@
                         </div>
 
                         <label class="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                            <input type="checkbox" wire:model="consentAccepted" class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500" />
+                            <input type="checkbox" wire:model="consentAccepted" class="mt-0.5 rounded border-gray-300 dark:border-gray-600 text-dana-600 focus:ring-dana-500" />
                             <span>I confirm the answers above are true and complete, and I accept the Statement of Truth.</span>
                         </label>
                         @error('consentAccepted')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type your email ({{ $email }}) to confirm</label>
-                            <input type="email" wire:model="consentEmail" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-indigo-500 focus:outline-none" placeholder="{{ $email }}" />
+                            <input type="email" wire:model="consentEmail" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="{{ $email }}" />
                         </div>
 
                         @error('consent')<div class="rounded-xl bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-300">{{ $message }}</div>@enderror
@@ -310,7 +310,7 @@
                         <div class="flex gap-3">
                             <button type="button" wire:click="goToReview" class="rounded-xl border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">Back</button>
                             <button type="submit" wire:loading.attr="disabled" wire:target="submit"
-                                class="ml-auto rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:from-indigo-700 hover:to-violet-700 disabled:opacity-50">
+                                class="ml-auto rounded-xl bg-gradient-to-r from-dana-600 to-sky-600 px-5 py-2 text-sm font-semibold text-white shadow-md hover:from-dana-700 hover:to-sky-700 disabled:opacity-50">
                                 <span wire:loading.remove wire:target="submit">Submit final documents</span>
                                 <span wire:loading wire:target="submit">Generating & submitting…</span>
                             </button>

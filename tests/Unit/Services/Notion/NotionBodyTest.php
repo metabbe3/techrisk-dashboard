@@ -33,7 +33,7 @@ class NotionBodyTest extends TestCase
      * the app build's @layer utilities at any specificity); the colliding
      * border classes must be important or the marker renders as nothing.
      */
-    private const TRAITLET = '<span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-indigo-500! align-middle transition-transform group-open:rotate-90"></span>';
+    private const TRAITLET = '<span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-dana-500! align-middle transition-transform group-open:rotate-90"></span>';
 
     public function test_toggles_become_collapsible_sections_with_their_children(): void
     {
@@ -51,7 +51,7 @@ class NotionBodyTest extends TestCase
         // portal's prose styles (the RCA section's look) supply typography.
         // Round 13 (owner): the body content stays selectable/copyable (no
         // select-none), the marker sits on the title's line and VERTICALLY
-        // CENTERED (flex summary), and the traitlet is COLORED (indigo —
+        // CENTERED (flex summary), and the traitlet is COLORED (DANA-blue —
         // reads on both light and dark).
         $this->assertStringContainsString('<details id="notion-sec-1" class="group my-5" open><summary class="flex! cursor-pointer"><h1>'.self::TRAITLET.'PIC</h1></summary>', $html);
         $this->assertStringContainsString('<table><tr><td>Team</td></tr></table>', $html);

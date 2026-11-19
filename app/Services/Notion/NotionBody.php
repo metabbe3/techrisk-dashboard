@@ -71,7 +71,7 @@ class NotionBody
                     // maka posisi toggle di 6", later "should be vertically
                     // centered" — and COLORED, good in light AND dark): the
                     // native marker (position uncontrollable) is replaced by
-                    // an indigo triangle (the panel primary, reads on both
+                    // a DANA-blue triangle (the panel primary, reads on both
                     // themes) living INSIDE the heading as an inline element
                     // with `vertical-align: middle` — centered against the
                     // TEXT itself, so it holds at every heading size; a
@@ -92,10 +92,10 @@ class NotionBody
                     $pad = self::pad((int) substr($tag, 1));
                     // `flex!` on the summary removes the list-item box Filament's
                     // preflight forces on <summary> — keep it or every browser
-                    // paints its NATIVE gray marker next to the indigo one.
+                    // paints its NATIVE gray marker next to the DANA-blue one.
                     $summary = '<summary class="flex! cursor-pointer">'
                         .'<'.$tag.($pad !== '' ? ' class="'.$pad.'"' : '').'>'
-                        .'<span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-indigo-500! align-middle transition-transform group-open:rotate-90"></span>'
+                        .'<span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-dana-500! align-middle transition-transform group-open:rotate-90"></span>'
                         .preg_replace('/\s+/m', ' ', $heading ?? '').'</'.$tag.'></summary>';
 
                     // Round 11 (owner: "atur line-height, beautify"): wider
