@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Filament\Pages\Auth\Login;
 use App\Models\User;
 use App\Support\PanelHome;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Socialite\Facades\Socialite;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
@@ -128,5 +130,60 @@ class MicrosoftSsoTest extends TestCase
         $this->actingAs($user)
             ->get('/auth/microsoft/redirect')
             ->assertRedirect(route('filament.admin.pages.dashboard'));
+    }
+
+    public function test_login_page_is_sso_first_with_collapsed_admin_form(): void
+    {
+        $this->get(route('filament.admin.auth.login'))
+            ->assertOk()
+            ->assertSee('Sign in with Microsoft')
+            ->assertSee(route('microsoft.redirect'), escape: false)
+            ->assertSee('Technical risk, one place.')
+            ->assertSee('Admin password login', escape: false)
+            ->assertSee('Forgot password?', escape: false);
+    }
+
+    public function test_password_login_rejects_non_admin_users(): void
+    {
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $user = User::factory()->create(['password' => bcrypt('secret123')]);
+        $user->assignRole('user');
+
+        Livewire::test(Login::class)
+            ->set('data.email', $user->email)
+            ->set('data.password', 'secret123')
+            ->call('authenticate')
+            ->assertHasErrors(['data.email']);
+
+        $this->assertGuest();
+    }
+
+    public function test_password_login_rejects_role_less_sso_users(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('secret123')]);
+
+        Livewire::test(Login::class)
+            ->set('data.email', $user->email)
+            ->set('data.password', 'secret123')
+            ->call('authenticate')
+            ->assertHasErrors(['data.email']);
+
+        $this->assertGuest();
+    }
+
+    public function test_password_login_allows_admins(): void
+    {
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $admin = User::factory()->create(['password' => bcrypt('secret123')]);
+        $admin->assignRole('admin');
+
+        Livewire::test(Login::class)
+            ->set('data.email', $admin->email)
+            ->set('data.password', 'secret123')
+            ->call('authenticate')
+            ->assertRedirect();
+
+        $this->assertAuthenticatedAs($admin);
+        $this->assertTrue($admin->fresh()->hasRole('admin'));
     }
 }
