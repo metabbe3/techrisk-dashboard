@@ -2808,23 +2808,16 @@
 :root.dark .analytics-chart-container:hover { border-color: var(--tr-slate-500, #64748b); }
 
 /* --- Sidebar redesign (2026-11-19) -----------------------------------------
-   Account + notifications live in the sidebar now (SIDEBAR_FOOTER hook), the
-   desktop top bar is hidden, and the palette replaced the topbar search.
-   Colors go through the --tr-* semantic tokens (DANA brand since 2026-11-19) —
-   no raw brand hexes here. Unlayered + !important beats Filament's unlayered
-   Tailwind v3 build where they collide (same preflight-vs-unlayered story as
-   the Notion panel classes — see testing-standards.md). --- */
+   Account + notifications live in the sidebar now (SIDEBAR_FOOTER hook) and
+   the palette replaced the topbar search. The topbar itself is BACK on
+   desktop (owner 2026-11-19 five-point design pass — it carries the
+   date/calendar + name-beside-avatar widgets); the global-search slot stays
+   hidden. Colors go through the --tr-* semantic tokens (DANA brand since
+   2026-11-19) — no raw brand hexes here. Unlayered + !important beats
+   Filament's unlayered Tailwind v3 build where they collide (same
+   preflight-vs-unlayered story as the Notion panel classes — see
+   testing-standards.md). --- */
 
-/* Top bar: desktop hides it entirely (notifications + account moved into the
-   sidebar, search moved into the palette). Mobile keeps it as the drawer's
-   hamburger + brand bar, minus the pieces the sidebar/palette own. */
-@media (min-width: 1024px) {
-    .fi-topbar {
-        display: none !important;
-    }
-}
-
-.fi-topbar .fi-user-menu,
 .fi-topbar .fi-global-search {
     display: none !important;
 }
@@ -3143,7 +3136,7 @@
 /* Topbar brand bar (mobile keeps a topbar — desktop hides it entirely, see
    main's redesign block above). */
 .fi-topbar nav {
-    background-color: var(--tr-dana-600);
+    background-color: var(--color-dana-600);
     color: #fff;
     box-shadow: none;
     --tw-ring-shadow: 0 0 #0000;
@@ -3345,4 +3338,90 @@ tr.fi-ta-row.sub-incident-row > td {
 
 tr.fi-ta-row.sub-incident-row {
     border-top-width: 0; /* no separator inside the family */
+}
+
+/* --- Owner 2026-11-19: five-point sidebar/topbar design pass ---------------
+   (1) expanded header brand row: real gap + main's bold brandName text;
+   (2) collapsed rail header: the DANA logo replaces the expand chevron;
+   (3) brand text bold like main's default brandName;
+   (4) the sidebar gets its own surface (was lg:bg-transparent — it blended
+       into the page);
+   (5) the desktop topbar returns (hide rule deleted above the redesign
+       block). Sits at the END of the file so it wins cascade ties with the
+       redesign block. --- */
+
+/* 1+3. Filament's .fi-logo renders the logo img and the brand span FLUSH
+   (zero gap) and the span unstyled (16px/400). Real gap, optically centered,
+   and the brand text carries main's default brandName look (text-xl bold
+   tracking-tight, gray-950 / white). The header's px-6 becomes a nav-aligned
+   0.75rem — at 15rem the old 24px inset + the 32px logo left ~150px for the
+   text and "TechRisk Portal" wrapped to two lines. */
+.fi-sidebar-header .fi-logo {
+    gap: 0.625rem;
+    align-items: center;
+}
+
+.fi-sidebar-header .fi-logo span {
+    font-size: 1.25rem;
+    line-height: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: #030712;
+    white-space: nowrap;
+}
+
+@media (min-width: 1024px) {
+    .fi-sidebar.fi-sidebar-open .fi-sidebar-header {
+        padding-left: 0.75rem !important;
+        padding-right: 0.5rem !important;
+    }
+}
+
+:root.dark .fi-sidebar-header .fi-logo span {
+    color: #fff;
+}
+
+/* 2. Collapsed rail: the DANA logo replaces the expand chevron in the rail
+   header — the topbar shows the text-only brand copy meanwhile (the
+   fi-topbar-brand hook is x-show="! $store.sidebar.isOpen"). x-show hides
+   the logo wrapper with an INLINE display:none, so the promotion needs
+   !important; the 32px logo centers in the 4.5rem rail — the header's px-6
+   (24px < 32px) must go. */
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div {
+        display: flex !important;
+        justify-content: center;
+    }
+
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header {
+        justify-content: center !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    .fi-sidebar:not(.fi-sidebar-open) .fi-logo span {
+        display: none !important;
+    }
+
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {
+        display: none !important;
+    }
+}
+
+/* 4. The sidebar's own surface — white over the gray-50 page in light,
+   slate-900 over near-black in dark — with a hairline end border (was
+   main's lg:bg-transparent blend). Scoped OFF the temp-open hover overlay:
+   the overlay's own rule paints its shadow, and this block's !important
+   box-shadow/background would flatten it. */
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.tr-sidebar-temp-open) {
+        background: #fff !important;
+        border-inline-end: 1px solid #e2e8f0;
+        box-shadow: none !important;
+    }
+
+    :root.dark .fi-sidebar:not(.tr-sidebar-temp-open) {
+        background: #0f172a !important;
+        border-inline-end-color: #1e293b;
+    }
 }

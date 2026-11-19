@@ -52,6 +52,42 @@ class SidebarBehaviorTest extends TestCase
         $this->assertStringNotContainsString('<img', $m[0]);
     }
 
+    /**
+     * Owner 2026-11-19 (five-point design pass, point 2): when the sidebar
+     * is collapsed the rail header shows the DANA LOGO in place of the
+     * expand chevron (the topbar carries the text-only brand copy meanwhile
+     * — see the topbar-brand test). Filament's x-show hides the logo wrapper
+     * with an INLINE display:none — the promotion needs !important to beat
+     * it; the 32px img centers in the 4.5rem rail, so the header's px-6
+     * (24px < 32px) must go too, and the expand chevron + brand span hide.
+     * Source-CSS contract (the pattern is SectionHeaderCornerRadiusTest).
+     */
+    public function test_the_collapsed_rail_header_shows_the_dana_logo_not_the_chevron(): void
+    {
+        $css = (string) file_get_contents(base_path('resources/css/app.css'));
+
+        $this->assertStringContainsString(
+            ".fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div {\n        display: flex !important;\n        justify-content: center;\n    }",
+            $css,
+            'the logo wrapper must be promoted over its inline x-show display:none',
+        );
+        $this->assertStringContainsString(
+            ".fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header {\n        justify-content: center !important;\n        padding-left: 0 !important;\n        padding-right: 0 !important;\n    }",
+            $css,
+            'the 4.5rem rail header must center the logo, not keep px-6 (24px < the 32px img)',
+        );
+        $this->assertStringContainsString(
+            ".fi-sidebar:not(.fi-sidebar-open) .fi-logo span {\n        display: none !important;\n    }",
+            $css,
+            'rail shows the logo ONLY — the brand copy lives in the topbar',
+        );
+        $this->assertStringContainsString(
+            ".fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {\n        display: none !important;\n    }",
+            $css,
+            'the expand chevron is REPLACED by the DANA logo — not shown beside it',
+        );
+    }
+
     private function adminUser(): User
     {
         Role::firstOrCreate(['name' => 'admin']);
