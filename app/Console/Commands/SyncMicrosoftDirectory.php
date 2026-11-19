@@ -58,7 +58,14 @@ class SyncMicrosoftDirectory extends Command
             $response = Http::withToken($accessToken)->get($url);
 
             if (! $response->successful()) {
-                $this->error('Graph request failed: '.$response->body());
+                if ($response->json('error.code') === 'Authorization_RequestDenied') {
+                    // App-only token carries no Graph roles — the registration
+                    // lacks the APPLICATION permission User.Read.All (or its
+                    // admin consent). Delegated SSO scopes can't help here.
+                    $this->error('App registration lacks the Graph APPLICATION permission User.Read.All (admin-consented) — Entra admin center → App registrations → API permissions → add it, then Grant admin consent.');
+                } else {
+                    $this->error('Graph request failed: '.$response->body());
+                }
 
                 return self::FAILURE;
             }

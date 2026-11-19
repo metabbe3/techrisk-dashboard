@@ -150,6 +150,20 @@ class SyncMicrosoftDirectoryCommandTest extends TestCase
         Http::assertNothingSent();
     }
 
+    public function test_missing_graph_permission_prints_the_consent_hint(): void
+    {
+        Http::fake([
+            'login.microsoftonline.com/*' => Http::response(['access_token' => 'test-token']),
+            'graph.microsoft.com/*' => Http::response([
+                'error' => ['code' => 'Authorization_RequestDenied', 'message' => 'Insufficient privileges to complete the operation.'],
+            ], 403),
+        ]);
+
+        $this->artisan('users:sync-directory')
+            ->expectsOutputToContain('User.Read.All')
+            ->assertFailed();
+    }
+
     /**
      * ONE fake per URL family with a counter closure — two Http::fake stubs on
      * the same URL MERGE and the first stub keeps winning (pinned trap).
