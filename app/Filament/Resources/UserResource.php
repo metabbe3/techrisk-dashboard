@@ -50,8 +50,16 @@ class UserResource extends Resource
                     ->label('Manager')
                     ->relationship('manager', 'name', modifyQueryUsing: fn ($query) => $query->humanUsers()->orderBy('name'))
                     ->searchable()
-                    ->preload()
+                    // No preload — 2.5k+ humans; searchable() alone does server-side search.
                     ->helperText('Org tree — overdue action-improvement escalations climb this chain'),
+                Forms\Components\TextInput::make('job_title')
+                    ->label('Job title')
+                    ->maxLength(255)
+                    ->helperText('Filled by the Entra directory sync'),
+                Forms\Components\TextInput::make('department')
+                    ->label('Team / department')
+                    ->maxLength(255)
+                    ->helperText('Filled by the Entra directory sync'),
                 Forms\Components\Section::make('Access Settings')
                     ->description('Configure user access and expiry')
                     ->schema([
@@ -139,6 +147,14 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('manager.name')
                     ->label('Manager')
                     ->toggleable(),
+                Tables\Columns\TextColumn::make('job_title')
+                    ->label('Title')
+                    ->searchable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('department')
+                    ->label('Team')
+                    ->searchable()
+                    ->toggleable(),
                 Tables\Columns\TextColumn::make('roles.name')
                     ->searchable(),
                 Tables\Columns\TextColumn::make('access_expiry')
@@ -182,12 +198,56 @@ class UserResource extends Resource
             ])
             ->actions([
                 Tables\Actions\EditAction::make()->databaseTransaction(),
+                Tables\Actions\Action::make('orgChart')
+                    ->label('Org chart')
+                    ->icon('heroicon-o-squares-2x2')
+                    ->color('gray')
+                    ->modalHeading(fn (User $record) => 'Org chart — '.$record->name)
+                    ->modalSubmitAction(false)
+                    ->modalCancelActionLabel('Close')
+                    ->modalContent(fn (User $record) => view('filament.org-chart', [
+                        'chain' => static::orgChain($record),
+                        'teammates' => $record->manager_id === null
+                            ? collect()
+                            : User::query()
+                                ->where('manager_id', $record->manager_id)
+                                ->whereKeyNot($record->getKey())
+                                ->humanUsers()
+                                ->orderBy('name')
+                                ->get(['id', 'name', 'email', 'job_title']),
+                    ])),
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make()->databaseTransaction(),
                 ]),
             ]);
+    }
+
+    /**
+     * Up the manager chain, nearest lead first, max 3 levels. Loop-guarded
+     * (same guard as User::ancestorAt).
+     *
+     * @return list<User>
+     */
+    public static function orgChain(User $user): array
+    {
+        $chain = [];
+        $seen = [$user->id];
+
+        for ($i = 0; $i < 3; $i++) {
+            $manager = $user->manager()->first();
+
+            if ($manager === null || in_array($manager->id, $seen)) {
+                break;
+            }
+
+            $chain[] = $manager;
+            $seen[] = $manager->id;
+            $user = $manager;
+        }
+
+        return $chain;
     }
 
     public static function getRelations(): array

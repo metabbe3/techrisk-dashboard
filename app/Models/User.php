@@ -217,6 +217,8 @@ class User extends Authenticatable implements Auditable, FilamentUser
         'is_service_account',
         'can_login',
         'manager_id',
+        'job_title',
+        'department',
     ];
 
     /**
@@ -252,6 +254,71 @@ class User extends Authenticatable implements Auditable, FilamentUser
     public function manager()
     {
         return $this->belongsTo(self::class, 'manager_id');
+    }
+
+    /**
+     * ONE home for the Entra directory sync (users:sync-directory). Bulk path:
+     * 2,500+ per-row firstOrCreate+observers blows the queue-worker timeout,
+     * so this is chunked INSERT…ON DUPLICATE KEY UPDATE. New rows are
+     * login-disabled with a random password (same shape as PIC directory
+     * rows); on conflict ONLY job_title/department/manager_id are written —
+     * an existing user's name, password, can_login, roles are never touched.
+     *
+     * @param  list<array{name: string, email: string, job_title?: ?string, department?: ?string, manager_email?: ?string}>  $rows
+     * @return array{created: int, total: int, managers: int}
+     */
+    public static function syncDirectoryRows(array $rows): array
+    {
+        if ($rows === []) {
+            return ['created' => 0, 'total' => 0, 'managers' => 0, 'referenced' => 0];
+        }
+
+        $before = self::count();
+        $now = now();
+
+        $insert = array_map(fn (array $row) => [
+            'name' => $row['name'],
+            'email' => $row['email'],
+            'password' => \Illuminate\Support\Str::password(40),
+            'can_login' => false,
+            'job_title' => $row['job_title'] ?? null,
+            'department' => $row['department'] ?? null,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ], $rows);
+
+        foreach (array_chunk($insert, 500) as $chunk) {
+            self::query()->upsert($chunk, ['email'], ['job_title', 'department']);
+        }
+
+        // manager emails → local ids, then link in one second pass (a user's
+        // manager row may only exist thanks to the insert above). Plain
+        // UPDATEs, and only where the link actually differs — upsert() here
+        // would violate NOT NULL name/password on the INSERT side.
+        $byEmail = [];
+        foreach ($rows as $row) {
+            if (! empty($row['manager_email']) && $row['manager_email'] !== $row['email']) {
+                $byEmail[strtolower(trim($row['manager_email']))] = $row['email'];
+            }
+        }
+
+        $idByEmail = self::whereIn('email', array_column($rows, 'email'))->pluck('id', 'email')->all();
+        $currentManager = self::whereIn('email', array_values($byEmail))->pluck('manager_id', 'email')->all();
+        $managers = 0;
+
+        foreach ($byEmail as $managerEmail => $email) {
+            $managerId = $idByEmail[$managerEmail] ?? null;
+
+            if ($managerId !== null && (int) ($currentManager[$email] ?? 0) !== $managerId) {
+                self::query()->whereKey($idByEmail[$email])->update(['manager_id' => $managerId]);
+                $managers++;
+            }
+        }
+
+        // Bulk inserts skip observers — mirror UserCacheObserver once.
+        \Illuminate\Support\Facades\Cache::forget('web_search_pic_names');
+
+        return ['created' => self::count() - $before, 'total' => count($rows), 'managers' => $managers, 'referenced' => count($byEmail)];
     }
 
     /**
