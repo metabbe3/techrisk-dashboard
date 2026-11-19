@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -40,6 +41,10 @@ type Config struct {
 	// InternalToken guards /internal/run (X-Agent-Token header). Empty disables
 	// the listener entirely — it must match the dashboard's GO_AGENT_INTERNAL_TOKEN.
 	InternalToken string
+	// PprofAddr serves net/http/pprof under /debug/pprof/ when set
+	// (AGENT_PPROF_ADDR, e.g. 127.0.0.1:6060). Empty = off. Non-localhost
+	// addresses are refused — pprof exposes heap contents.
+	PprofAddr string
 	// AgentTurnReports reports every chat turn to the dashboard as a run row
 	// (POST /api/v1/agent-runs). Default on.
 	AgentTurnReports bool
@@ -206,6 +211,12 @@ func LoadFromFile(envPath string) (*Config, error) {
 	if meshRole == "leader" && meshToken == "" {
 		return nil, fmt.Errorf("GOAGENT_MESH_TOKEN is required for leader")
 	}
+	if pprofAddr := getVal("AGENT_PPROF_ADDR", ""); pprofAddr != "" {
+		host, _, err := net.SplitHostPort(pprofAddr)
+		if err != nil || (host != "127.0.0.1" && host != "localhost" && host != "::1") {
+			return nil, fmt.Errorf("AGENT_PPROF_ADDR must bind to localhost (got %s) — pprof exposes heap contents", pprofAddr)
+		}
+	}
 	if meshRole == "worker" {
 		if meshToken == "" {
 			return nil, fmt.Errorf("GOAGENT_MESH_TOKEN is required for worker")
@@ -366,6 +377,7 @@ func LoadFromFile(envPath string) (*Config, error) {
 
 		InternalAddr:     getVal("AGENT_INTERNAL_ADDR", DefaultInternalAddr),
 		InternalToken:    getVal("AGENT_INTERNAL_TOKEN", ""),
+		PprofAddr:        getVal("AGENT_PPROF_ADDR", ""),
 		AgentTurnReports: loadBool(getVal, "AGENT_TURN_REPORTS", true),
 
 		// cmp.Or: first non-zero (= non-empty) argument wins.

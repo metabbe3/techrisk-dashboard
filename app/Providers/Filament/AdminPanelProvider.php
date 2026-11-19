@@ -12,6 +12,7 @@ use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
 use Filament\Http\Middleware\DispatchServingFilamentEvent;
+use Filament\Navigation\NavigationGroup;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
 use Filament\View\PanelsRenderHook;
@@ -120,6 +121,18 @@ class AdminPanelProvider extends PanelProvider
                 Dashboard::class,
                 WeeklyReport::class,
                 \App\Filament\Pages\AnalyticsPage::class,
+            ])
+            // PROJ-025: every group starts collapsed except Operations —
+            // Filament seeds localStorage 'collapsedGroups' on first visit
+            // from NavigationGroup::isCollapsed().
+            ->navigationGroups([
+                NavigationGroup::make()->label('Operations'),
+                NavigationGroup::make()->label('Reports')->collapsed(),
+                NavigationGroup::make()->label('Notifications')->collapsed(),
+                NavigationGroup::make()->label('User Management')->collapsed(),
+                NavigationGroup::make()->label('Settings')->collapsed(),
+                NavigationGroup::make()->label('AI')->collapsed(),
+                NavigationGroup::make()->label('System')->collapsed(),
             ])
             ->middleware([
                 EncryptCookies::class,

@@ -2,6 +2,7 @@ package config
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -9,7 +10,7 @@ func loadEnv(t *testing.T, set map[string]string) *Config {
 	t.Helper()
 	// Neutralize knobs first: t.Setenv restores only at test END, so without this
 	// a value from an earlier sub-test leaks into later ones (empty = unset for getVal).
-	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN", "LLM_VISION_MODEL", "AI_VISION_MODEL", "LLM_HEAVY_KEYWORDS"} {
+	for _, k := range []string{"LLM_MAX_TOKENS", "AI_WAR_ROOM_MAX_OUTPUT_TOKENS", "AGENT_WEB_TOOLS", "AGENT_NOTION_TOOLS", "NOTION_DATABASES", "AGENT_MAX_ITER", "AGENT_MAX_REPLY_CHARS", "AGENT_AUTO_LEARN", "LLM_VISION_MODEL", "AI_VISION_MODEL", "LLM_HEAVY_KEYWORDS", "AGENT_PPROF_ADDR"} {
 		t.Setenv(k, "")
 	}
 	for k, v := range set {
@@ -277,4 +278,41 @@ func TestMeshConfig(t *testing.T) {
 	if cfgWorker.FanoutMax != 4 {
 		t.Errorf("FanoutMax = %d, want 4", cfgWorker.FanoutMax)
 	}
+}
+
+func TestPprofAddr(t *testing.T) {
+	base := map[string]string{
+		"DINGTALK_CLIENT_ID": "id", "DINGTALK_CLIENT_SECRET": "s", "DASHBOARD_API_TOKEN": "t",
+	}
+
+	t.Run("off by default", func(t *testing.T) {
+		cfg := loadEnv(t, base)
+		if cfg.PprofAddr != "" {
+			t.Errorf("PprofAddr = %q, want empty (off)", cfg.PprofAddr)
+		}
+	})
+
+	t.Run("localhost accepted", func(t *testing.T) {
+		withPprof := map[string]string{"AGENT_PPROF_ADDR": "127.0.0.1:6060"}
+		for k, v := range base {
+			withPprof[k] = v
+		}
+		cfg := loadEnv(t, withPprof)
+		if cfg.PprofAddr != "127.0.0.1:6060" {
+			t.Errorf("PprofAddr = %q, want 127.0.0.1:6060", cfg.PprofAddr)
+		}
+	})
+
+	t.Run("non-localhost refused", func(t *testing.T) {
+		for _, addr := range []string{"0.0.0.0:6060", ":6060", "example.com:6060", "6060"} {
+			for k, v := range base {
+				t.Setenv(k, v)
+			}
+			t.Setenv("AGENT_PPROF_ADDR", addr)
+			_, err := LoadFromFile("no-such.env")
+			if err == nil || !strings.Contains(err.Error(), "localhost") {
+				t.Errorf("addr %q: err = %v, want localhost refusal", addr, err)
+			}
+		}
+	})
 }
