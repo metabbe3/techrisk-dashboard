@@ -58,6 +58,7 @@ chars.
 | `DASHBOARD_API_BASE` | no | `http://nginx/api/v1` (compose) |
 | `AGENT_INTERNAL_ADDR` | no | `:9091` — internal listener (the dashboard's Go engine POSTs `/internal/run` here); compose-network only |
 | `AGENT_INTERNAL_TOKEN` | no | shared secret — **must equal** the dashboard `.env`'s `GO_AGENT_INTERNAL_TOKEN`; empty = listener disabled |
+| `AGENT_PPROF_ADDR` | no | *(empty = off)* — serve `net/http/pprof` at `/debug/pprof/` for profiling (e.g. `127.0.0.1:6060`); **localhost-only, refused otherwise**. Grab a profile: `go tool pprof http://127.0.0.1:6060/debug/pprof/profile?seconds=30` |
 | `AGENT_TURN_REPORTS` | no | 1 — POST every chat turn (input/output/tokens/latency) to `/api/v1/agent-runs` under the synthetic "DingTalk Bot (chat turns)" agent; `0`/`off` silences it |
 | `LLM_BASE_URL` | no | `AI_API_BASE_URL` → gateway default |
 | `LLM_API_KEY` | no | `AI_API_KEY` (dashboard .env — compose maps it) |

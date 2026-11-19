@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof" // registers /debug/pprof/ on the DefaultServeMux
 	"os"
 	"os/signal"
 	"syscall"
@@ -108,6 +109,18 @@ func main() {
 			}()
 		} else {
 			log.Printf("AGENT_INTERNAL_TOKEN empty — internal listener disabled (scheduled agents cannot use the Go engine).")
+		}
+
+		// pprof: opt-in via AGENT_PPROF_ADDR (e.g. 127.0.0.1:6060); config.Load
+		// refuses non-localhost addresses. ponytail: Prometheus /metrics skipped —
+		// add if we want continuous monitoring.
+		if cfg.PprofAddr != "" {
+			go func() {
+				log.Printf("pprof on http://%s/debug/pprof/", cfg.PprofAddr)
+				if err := http.ListenAndServe(cfg.PprofAddr, nil); err != nil && !errors.Is(err, http.ErrServerClosed) {
+					log.Printf("pprof listener failed: %v", err)
+				}
+			}()
 		}
 
 		log.Printf("dingtalk-agent online — stream connecting, waiting for messages.")
