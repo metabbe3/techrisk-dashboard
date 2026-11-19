@@ -2830,6 +2830,13 @@
     .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {
         display: none !important;
     }
+    /* Owner 2026-11-19: icons on the rail centerline. Filament's item row
+       is justify-center, but the expanded padding (0.75/0.5) shifts every
+       rail icon 2px right of center — neutralize it here. */
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
 }
 
 /* RISE reference: the topmost bar is a solid DANA-blue bar spanning the page

@@ -52,6 +52,30 @@ class TopbarWidgetsTest extends TestCase
         $this->assertStringContainsString('weekend\': cell.weekend', (string) $response->getContent(), 'day cells must carry the weekend flag');
     }
 
+    /**
+     * Owner 2026-11-19: in the collapsed rail the icons must sit on the
+     * rail's horizontal centerline. The item rows inherit Filament's
+     * justify-center, but our expanded-sidebar padding (left 0.75rem vs
+     * right 0.5rem) shifts every icon 2px right of center — neutralize
+     * it in the closed state. Source-CSS contract (colors/dimensions are
+     * compiled into the built asset; the pattern is
+     * SectionHeaderCornerRadiusTest).
+     */
+    public function test_collapsed_rail_icons_are_horizontally_centered(): void
+    {
+        $css = (string) file_get_contents(base_path('resources/css/app.css'));
+
+        $this->assertStringContainsString(
+            '.fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {',
+            $css,
+        );
+        $this->assertStringContainsString(
+            ".fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {\n        padding-left: 0.5rem !important;\n        padding-right: 0.5rem !important;\n    }",
+            $css,
+            'the rail must use symmetric padding so justify-center truly centers the icons',
+        );
+    }
+
     public function test_the_user_menu_shows_the_name_beside_the_avatar(): void
     {
         $user = $this->adminUser();
