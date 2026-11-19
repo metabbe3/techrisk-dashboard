@@ -26,7 +26,7 @@ class AiUsageLogResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-sparkles';
 
-    protected static ?string $navigationGroup = 'AI';
+    protected static ?string $navigationGroup = 'Logs';
 
     protected static ?int $navigationSort = 8;
 

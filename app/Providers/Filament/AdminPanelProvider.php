@@ -97,6 +97,7 @@ class AdminPanelProvider extends PanelProvider
                 NavigationGroup::make()->label('User Management')->collapsed(),
                 NavigationGroup::make()->label('Settings')->collapsed(),
                 NavigationGroup::make()->label('AI')->collapsed(),
+                NavigationGroup::make()->label('Logs')->collapsed(),
                 NavigationGroup::make()->label('System')->collapsed(),
             ])
             ->middleware([
