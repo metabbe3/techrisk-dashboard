@@ -113,6 +113,36 @@ class SidebarBehaviorTest extends TestCase
         );
     }
 
+    /**
+     * Owner 2026-11-19: "font di side bar bisa lebih besar" restored the
+     * pre-main sizes (label 1rem/1.4rem, icons 1.2rem, group 0.78rem) from
+     * the redesign's (0.8rem/1.1rem, 0.875rem, 0.65rem) — then "ubah size
+     * menjadi di tengah-tengah kedua value": split the difference on every
+     * raised value. Label 0.9rem/1.25rem, icons 1.04rem (midpoint 1.0375,
+     * rounded 2dp), group label 0.715rem.
+     * Source-CSS contract (the pattern is SectionHeaderCornerRadiusTest).
+     */
+    public function test_sidebar_nav_typography_sits_between_the_old_and_pre_main_sizes(): void
+    {
+        $css = (string) file_get_contents(base_path('resources/css/app.css'));
+
+        $this->assertStringContainsString(
+            ".fi-sidebar-item-label {\n    font-size: 0.9rem !important;\n    line-height: 1.25rem !important;",
+            $css,
+            'nav item labels: midpoint of 0.8/1rem = 0.9rem (line-height 1.1/1.4 = 1.25rem)',
+        );
+        $this->assertStringContainsString(
+            ".fi-sidebar-item .fi-icon,\n.fi-sidebar-item-icon {\n    width: 1.04rem !important;\n    height: 1.04rem !important;",
+            $css,
+            'nav icons: midpoint of 0.875/1.2rem = 1.0375 ≈ 1.04rem',
+        );
+        $this->assertStringContainsString(
+            ".fi-sidebar-group-label {\n    font-size: 0.715rem !important;",
+            $css,
+            'group section markers: midpoint of 0.65/0.78rem = 0.715rem',
+        );
+    }
+
     private function adminUser(): User
     {
         Role::firstOrCreate(['name' => 'admin']);

@@ -2846,14 +2846,14 @@
 }
 
 .fi-sidebar-item-label {
-    font-size: 0.8rem !important;
-    line-height: 1.1rem !important;
+    font-size: 0.9rem !important;
+    line-height: 1.25rem !important;
 }
 
 .fi-sidebar-item .fi-icon,
 .fi-sidebar-item-icon {
-    width: 0.875rem !important;
-    height: 0.875rem !important;
+    width: 1.04rem !important;
+    height: 1.04rem !important;
 }
 
 /* Active item: quiet brand-tinted pill. */
@@ -2864,7 +2864,7 @@
 
 /* Group labels: quiet uppercase section markers. */
 .fi-sidebar-group-label {
-    font-size: 0.65rem !important;
+    font-size: 0.715rem !important;
     font-weight: 600 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.06em !important;
