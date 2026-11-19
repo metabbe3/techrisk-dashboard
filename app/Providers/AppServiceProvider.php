@@ -34,7 +34,9 @@ use Filament\Facades\Filament;
 use Filament\Support\Facades\FilamentView;
 use Illuminate\Auth\Notifications\ResetPassword as ResetPasswordNotification;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Notifications\Messages\MailMessage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Http;
@@ -66,6 +68,31 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        // Profiling instrumentation (2026-11-19): surface N+1 lazy loads and
+        // cumulative slow query time in the log instead of failing. Strict mode
+        // is on everywhere (logs, never throws), so nothing that works today
+        // changes; the warnings feed docs/findings + the profiling effort.
+        Model::preventLazyLoading(true);
+        Model::handleLazyLoadingViolationUsing(function (Model $model, string $relation): void {
+            Log::warning(sprintf('[N+1] Lazy-loaded %s::%s', $model::class, $relation), [
+                'model' => $model::class,
+                'relation' => $relation,
+            ]);
+        });
+        DB::whenQueryingForLongerThan(500, function ($connection): void {
+            // Fires per query once over threshold — rate-limit to one line / 10s.
+            static $lastLoggedAt = [];
+            $name = $connection->getName() ?? 'default';
+            if (isset($lastLoggedAt[$name]) && Carbon::now()->diffInSeconds($lastLoggedAt[$name]) < 10) {
+                return;
+            }
+            $lastLoggedAt[$name] = Carbon::now();
+            Log::warning('[SlowQueries] Cumulative query time over 500ms', [
+                'connection' => $name,
+                'elapsed_ms' => (int) $connection->totalQueryDuration(),
+            ]);
+        });
+
         Sanctum::usePersonalAccessTokenModel(\App\Models\PersonalAccessToken::class);
 
         // Microsoft (Entra ID) SSO driver — Laravel 11+ registration (no EventServiceProvider).

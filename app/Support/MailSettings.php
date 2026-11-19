@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Support;
 
 use App\Models\Setting;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Runtime mail activation — the single place that decides whether Netcore
@@ -37,7 +36,10 @@ class MailSettings
     public static function apply(): void
     {
         try {
-            if (! Schema::hasTable('settings')) {
+            // ponytail: cheap PK probe (~0.2ms) instead of Schema::hasTable's
+            // information_schema introspection (12–22ms on every boot); swap
+            // back if a second table needs the same guard.
+            if (! Setting::tableExists()) {
                 self::applyFromDefaults();
 
                 return;

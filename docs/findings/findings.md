@@ -326,6 +326,20 @@ Three-angle audit (unified API response, DRY, OOP/architecture). Each finding ha
 
 ---
 
+### [P-1] Profiling round 1 — DB layer lean; boot-path schema check was the only per-request cost
+- **Date:** 2026-11-19 · **Category:** Performance · **Severity:** Low · **Status:** Resolved
+- **Tools:** Laravel Debugbar (dev-only, `composer require --dev`), `Model::preventLazyLoading` + slow-query logger in `AppServiceProvider::boot()`, `net/http/pprof` opt-in listener in dingtalk-agent (`AGENT_PPROF_ADDR`, localhost-only, refused otherwise).
+- **Measured (dev, warm, admin@example.com seeded login):**
+  - `/admin/incidents` GET: 24 queries / **17ms** total query time / 849ms server render (Debugbar-inflated). No N+1 violations, no query over the 500ms slow threshold.
+  - `/admin`, `/admin/issues`, `/admin/analytics-page`, `/admin/action-improvements`: 1–11 queries, 3–60ms each; widgets already cache (`Category::options` 1h, dashboard stats versioned keys).
+  - Wall time to interactive ≈ 6s per page = ~25 sequential Livewire widget POSTs (Filament lazy-widget architecture, each cheap) — by design, not a defect.
+  - **Fixed:** `MailSettings::apply()` ran `Schema::hasTable('settings')` (information_schema introspection, 12–22ms) on EVERY request — replaced with `Setting::tableExists()` PK probe (~0.2ms). Verified: information_schema=0 after `docker compose restart app` (OPcache holds compiled PHP classes — see [[project_blade_opcache_stale]]).
+  - **Not fixed (measured, fine):** Spatie role/permission pivots ~14ms/request (standard); categories 95ms was a one-time cold cache miss of an already-cached query.
+- **Go side:** benchmarks baselined (`internal/guardrail/bench_test.go`: FilterReplyData ~52ms/op @ 64KB payload incl. redaction of 7 secret classes; `internal/agent/bench_test.go`: PruneContextBudget ~39µs/op @ 100k budget). Live pprof of the deployed bot is an owner runbook step — the container isn't hosted locally.
+- **Runbook:** `docs/reference/sre-operations.md` → "Profiling" section.
+
+---
+
 ## Summary Statistics
 
 ### By Category
