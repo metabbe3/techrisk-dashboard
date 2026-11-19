@@ -78,6 +78,8 @@ class RoleResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return auth()->user()->can('view roles');
+        // Null guard: the Spotlight palette evaluates this on guest pages
+        // (login) — a missing user must mean "no", never a 500.
+        return (bool) auth()->user()?->can('view roles');
     }
 }

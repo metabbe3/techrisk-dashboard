@@ -22,6 +22,7 @@
         "parsedown/parsedown": "^1.8",
         "phpoffice/phpspreadsheet": "^1.30",
         "phpoffice/phpword": "^1.4",
+        "pxlrbt/filament-spotlight": "^1.0",
         "socialiteproviders/microsoft": "^4.10",
         "spatie/laravel-permission": "^6.21"
     },

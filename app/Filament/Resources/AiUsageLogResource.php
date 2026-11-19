@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\AiUsageLogResource\Pages\ListAiUsageLogs;
@@ -37,9 +38,11 @@ class AiUsageLogResource extends Resource
 
     public static function canViewAny(): bool
     {
+        // Null guard: the Spotlight palette evaluates this on guest pages
+        // (login) — a missing user must mean "no", never a 500.
         $user = auth()->user();
 
-        return $user->hasRole('admin') || $user->can('view ai usage logs');
+        return $user !== null && ($user->hasRole('admin') || $user->can('view ai usage logs'));
     }
 
     public static function table(Table $table): Table
