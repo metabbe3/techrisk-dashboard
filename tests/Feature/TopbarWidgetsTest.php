@@ -31,26 +31,44 @@ class TopbarWidgetsTest extends TestCase
             ->assertSeeHtml('fi-tr-date-btn', false)
             ->assertSeeHtml($today, false);
 
-        // The calendar panel: weekday headers run Monday → Sunday.
+        // The calendar panel: weekday headers run Monday → Sunday, and the
+        // weekend columns (Sat, Sun) are marked red.
         preg_match('/fi-tr-cal-weekdays.*?<\/div>/s', (string) $response->getContent(), $m);
         $this->assertNotEmpty($m, 'the calendar weekday strip must render');
-        preg_match_all('/<span>([^<]*)<\/span>/', $m[0], $spans);
+        preg_match_all('/<span(?:\s+class="([^"]*)")?>([^<]*)<\/span>/', $m[0], $spans, PREG_SET_ORDER);
+        $headers = array_map(fn ($s) => ['class' => $s[1] ?? '', 'day' => $s[2]], $spans);
         $this->assertSame(
             ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-            $spans[1],
+            array_column($headers, 'day'),
             'calendar weeks must start Monday',
         );
+        foreach ($headers as $header) {
+            $this->assertSame(
+                in_array($header['day'], ['Sat', 'Sun'], true),
+                str_contains($header['class'], 'weekend'),
+                "the {$header['day']} header must ".(in_array($header['day'], ['Sat', 'Sun'], true) ? '' : 'not ').'be marked weekend',
+            );
+        }
+        $this->assertStringContainsString('weekend\': cell.weekend', (string) $response->getContent(), 'day cells must carry the weekend flag');
     }
 
     public function test_the_user_menu_shows_the_name_beside_the_avatar(): void
     {
         $user = $this->adminUser();
 
-        $this->actingAs($user)
+        $html = (string) $this->actingAs($user)
             ->get('/admin')
             ->assertSuccessful()
             ->assertSeeHtml('fi-tr-user-name', false)
-            ->assertSeeHtml(e($user->name), false);
+            ->assertSeeHtml(e($user->name), false)
+            ->getContent();
+
+        // Owner 2026-11-19: the name sits to the RIGHT of the avatar icon.
+        $this->assertGreaterThan(
+            mb_strpos($html, 'fi-user-avatar'),
+            mb_strpos($html, 'fi-tr-user-name'),
+            'the name must render after (right of) the avatar',
+        );
     }
 
     private function adminUser(): User

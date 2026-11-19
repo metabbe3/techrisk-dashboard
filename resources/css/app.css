@@ -2922,9 +2922,11 @@
     text-transform: uppercase;
     margin-bottom: 0.25rem;
 }
+.fi-tr-cal-weekdays .weekend { color: #dc2626; }
 .fi-tr-cal-days { font-size: 0.8125rem; }
 .fi-tr-cal-days span { padding: 0.25rem 0; border-radius: 0.375rem; }
 .fi-tr-cal-days .dim { color: #cbd5e1; }
+.fi-tr-cal-days .weekend { color: #dc2626; font-weight: 600; }
 .fi-tr-cal-days .today { background-color: #108ee9; color: #fff; font-weight: 700; }
 .fi-tr-user-name {
     display: none;

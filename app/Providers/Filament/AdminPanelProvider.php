@@ -182,10 +182,10 @@ class AdminPanelProvider extends PanelProvider
                     .'<strong x-text="label()"></strong>'
                     .'<button type="button" @click="shift(1)" aria-label="Next month">&rsaquo;</button>'
                     .'</div>'
-                    .'<div class="fi-tr-cal-weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>'
+                    .'<div class="fi-tr-cal-weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span class="weekend">Sat</span><span class="weekend">Sun</span></div>'
                     .'<div class="fi-tr-cal-days">'
                     .'<template x-for="cell in cells()" :key="cell.key">'
-                    .'<span :class="{ \'dim\': cell.dim, \'today\': cell.today }" x-text="cell.day"></span>'
+                    .'<span :class="{ \'dim\': cell.dim, \'today\': cell.today, \'weekend\': cell.weekend }" x-text="cell.day"></span>'
                     .'</template>'
                     .'</div>'
                     .'</div>'
@@ -201,19 +201,21 @@ class AdminPanelProvider extends PanelProvider
                     .'  const start = new Date(first); start.setDate(first.getDate() - offset);'
                     .'  const out = [];'
                     .'  for (let i = 0; i < 42; i++) { const d = new Date(start); d.setDate(start.getDate() + i);'
-                    .'   out.push({ key: i, day: d.getDate(), dim: d.getMonth() !== this.cursor.getMonth(), today: d.toDateString() === this.today.toDateString() }) }'
+                    .'   out.push({ key: i, day: d.getDate(), dim: d.getMonth() !== this.cursor.getMonth(), today: d.toDateString() === this.today.toDateString(), weekend: d.getDay() === 0 || d.getDay() === 6 }) }'
                     .'  return out },'
                     .'} } }'
                     .'</script>',
             )
             // Owner 2026-11-18 (RISE reference): the account control shows
-            // the user's NAME beside the avatar — one control; clicking the
+            // the user's NAME beside the avatar — owner 2026-11-19: the name
+            // sits to the RIGHT of the avatar (USER_MENU_AFTER). Clicking the
             // name opens the same menu (it clicks the dropdown's trigger
-            // button). Hidden on <768px: the mobile topbar is cramped.
+            // button, the dropdown wrapper's PREVIOUS sibling). Hidden on
+            // <768px: the mobile topbar is cramped.
             ->renderHook(
-                PanelsRenderHook::USER_MENU_BEFORE,
+                PanelsRenderHook::USER_MENU_AFTER,
                 fn (): string => auth()->check()
-                    ? '<span class="fi-tr-user-name" x-data x-on:click="$el.nextElementSibling?.querySelector(\'button\')?.click()" title="'.e(filament()->getUserName(auth()->user())).'">'
+                    ? '<span class="fi-tr-user-name" x-data x-on:click="$el.previousElementSibling?.querySelector(\'button\')?.click()" title="'.e(filament()->getUserName(auth()->user())).'">'
                         .e(filament()->getUserName(auth()->user()))
                         .'</span>'
                     : '',
