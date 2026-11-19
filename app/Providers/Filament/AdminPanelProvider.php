@@ -162,6 +162,62 @@ class AdminPanelProvider extends PanelProvider
                     .'<span>TechRisk Portal</span>'
                     .'</a>',
             )
+            // Owner 2026-11-18 (RISE reference): today's date opens a MONTH
+            // calendar — weeks start MONDAY. Sits in the topbar's right
+            // cluster before the bell (GLOBAL_SEARCH_AFTER is the hook
+            // between search and the bell/avatar block). Pure display — no
+            // date-picking action. Alpine logic inlines below the markup;
+            // the topbar markup is outside every Livewire root, so the
+            // one-time registration survives morphs.
+            ->renderHook(
+                PanelsRenderHook::GLOBAL_SEARCH_AFTER,
+                fn (): string => '<div class="fi-tr-date" x-data="trCalendar()" @click.outside="open = false">'
+                    .'<button type="button" class="fi-tr-date-btn" @click="toggle()" aria-label="Open calendar">'
+                    .'<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 0 1 2.25-2.25h13.5A2.25 2.25 0 0 1 21 7.5v11.25m-18 0A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75m-18 0v-7.5A2.25 2.25 0 0 1 5.25 9h13.5A2.25 2.25 0 0 1 21 11.25v7.5"/></svg>'
+                    .'<span>'.now()->format('M j, Y').'</span>'
+                    .'</button>'
+                    .'<div class="fi-tr-cal" x-cloak x-show="open" x-transition.opacity.duration.150ms>'
+                    .'<div class="fi-tr-cal-head">'
+                    .'<button type="button" @click="shift(-1)" aria-label="Previous month">&lsaquo;</button>'
+                    .'<strong x-text="label()"></strong>'
+                    .'<button type="button" @click="shift(1)" aria-label="Next month">&rsaquo;</button>'
+                    .'</div>'
+                    .'<div class="fi-tr-cal-weekdays"><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span></div>'
+                    .'<div class="fi-tr-cal-days">'
+                    .'<template x-for="cell in cells()" :key="cell.key">'
+                    .'<span :class="{ \'dim\': cell.dim, \'today\': cell.today }" x-text="cell.day"></span>'
+                    .'</template>'
+                    .'</div>'
+                    .'</div>'
+                    .'</div>'
+                    .'<script>'
+                    .'if (! window.trCalendar) { window.trCalendar = function () { return {'
+                    .' open: false, cursor: null, today: new Date(),'
+                    .' toggle() { this.open = ! this.open; if (this.open && ! this.cursor) this.cursor = new Date() },'
+                    .' label() { return this.cursor.toLocaleString("en-US", { month: "long", year: "numeric" }) },'
+                    .' shift(n) { this.cursor = new Date(this.cursor.getFullYear(), this.cursor.getMonth() + n, 1) },'
+                    .' cells() { const first = new Date(this.cursor.getFullYear(), this.cursor.getMonth(), 1);'
+                    .'  const offset = (first.getDay() + 6) % 7;' // Monday = column 0
+                    .'  const start = new Date(first); start.setDate(first.getDate() - offset);'
+                    .'  const out = [];'
+                    .'  for (let i = 0; i < 42; i++) { const d = new Date(start); d.setDate(start.getDate() + i);'
+                    .'   out.push({ key: i, day: d.getDate(), dim: d.getMonth() !== this.cursor.getMonth(), today: d.toDateString() === this.today.toDateString() }) }'
+                    .'  return out },'
+                    .'} } }'
+                    .'</script>',
+            )
+            // Owner 2026-11-18 (RISE reference): the account control shows
+            // the user's NAME beside the avatar — one control; clicking the
+            // name opens the same menu (it clicks the dropdown's trigger
+            // button). Hidden on <768px: the mobile topbar is cramped.
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): string => auth()->check()
+                    ? '<span class="fi-tr-user-name" x-data x-on:click="$el.nextElementSibling?.querySelector(\'button\')?.click()" title="'.e(filament()->getUserName(auth()->user())).'">'
+                        .e(filament()->getUserName(auth()->user()))
+                        .'</span>'
+                    : '',
+            )
             // Owner 2026-11-17 (DANA HR reference): one control button, three
             // functions — collapse (chevron, when open), temporary expand
             // (hover over the collapsed rail, script below), pinned (this
