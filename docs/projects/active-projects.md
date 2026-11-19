@@ -89,6 +89,30 @@ Owner decision 2026-11-11 (full unification): the dashboard becomes the control 
 - 2026-11-18: **Capability decision — no generic MCP client in the Go agent.** MCP is a transport, not a capability; the Go tool registry already provides the tool interface, and an in-Go MCP client would add server lifecycle + unrestricted egress + an arbitrary-tool surface for zero current integrations. The template for external systems stays the Notion pattern: **Laravel holds the MCP client + OAuth, exposes read-only proxy endpoints, the Go agent gains a tool family over them.** Candidates when a real need lands (each read-only, each needs owner-provided credentials — guardrail): **Jira/Confluence read** (Atlassian hosted MCP via a Laravel `laravel/mcp` client), **Grafana read** (plain REST proxy — no MCP needed). Also landed same day: panic guard in `Registry.Execute` (a panicking tool no longer kills the bot), prod 404 fix in `read_corpus_page` (double `/v1`), and a `generate_chart` deliverable (chart PDFs via the existing generated-file marker path).
 
 
+### [PROJ-025] Sidebar consolidation: fewer menu items, one Settings page
+
+**Status:** Complete (3 workstreams landed; full suite 1394/5,528 with the 7 known reverb errors only)
+**Priority:** P2
+**Start Date:** 2026-11-19
+
+#### Description
+Owner 2026-11-18: "is there any menu in dashboard that can be combined?" — nav audit found 5 ungrouped root items, 4 separate settings pages, sort collisions, and same-model duplicates. Three workstreams approved (Incidents/Issues/Actions merge explicitly declined — high risk per the dependency map).
+
+#### Key decisions
+- **WS1 nav reshuffle (metadata only):** new "Operations" group (Incidents 1 / Issues 2 / Action Improvements 3); TechRisk AI + AI Retrospective join the AI group at sorts 1-2 with resources renumbered 3-8 (Retrospective Agents sits under its page); GovernancePage sort 2→3 breaks the Weekly Report tie.
+- **WS2 one Settings page:** `SystemSettings` (System group, sort 99) hosts Email/API/Notion/AI as Tabs with `persistTabInQueryString`; schemas + save logic verbatim; only collisions renamed (`ai_base_url`/`ai_api_key`, `netcore_status`/`notion_status`); placeholder gate hoisted before ALL writes (all-or-nothing across tabs); page Save hidden on the Notion tab; OAuth redirects land on `?tab=notion`; the 4 old page classes + views deleted.
+- **WS3 User Management:** Service Accounts hidden from nav (create flow keeps granting `access api`) and surfaced as a ListUsers tab (same `serviceAccounts()` scope + `manage service accounts` gate); Permissions hidden, Roles relabelled "Access Control" with a header link to the permissions table (different Spatie models — resource tabs impossible; dual-table page declined as over-engineering).
+
+#### Tasks
+- [x] WS1 nav reshuffle + WS2 SystemSettings + WS3 User Management (3 commits on the merged-main tree).
+- [x] Test migration class-for-class; `NotionWatchIdEditorTest` page-shape pins updated (tab must actually be open — `Livewire::withQueryParams`; Actions-row count 2→3).
+- [x] Docs: dependency-map (MailSettings/SystemSettings), business-rules (Email tab), testing-standards (zero-delta baseline note).
+
+#### Progress Updates
+- 2026-11-19: All three workstreams green; targeted suites (EmailSettingsTest 11/36, Notion suites, ServiceAccountTest) pass; full suite = merged-main count + 0 (see testing-standards).
+
+
+
 ### [PROJ-024] Investigation form intake: unique links → AI fills → consent → DOCX + PDF
 
 **Status:** In Progress (code complete, tests green; manual Docker verification + prod migration pending)
