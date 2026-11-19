@@ -861,7 +861,7 @@ Owner request 2026-10-01: similar-incident detection "is not accurate" (irreleva
 
 ### [PROJ-017] Microsoft (Entra ID) SSO Login
 
-**Status:** In Review (code complete, awaiting Azure credentials + owner e2e check)
+**Status:** Done (2026-11-19 — owner e2e passed locally on the real tenant; prod deploy = .env + container recreate)
 **Priority:** P1
 **Start Date:** 2026-11-05
 
@@ -872,13 +872,13 @@ Owner request 2026-11-05: "Sign in with Microsoft" on the Filament login page, t
 - `laravel/socialite` + `socialiteproviders/microsoft`, driver registered via `SocialiteWasCalled` listener in `AppServiceProvider::boot()`
 - `config/services.php` `microsoft` entry with `tenant` = `MICROSOFT_TENANT_ID` (single-tenant authorize URL); env: `MICROSOFT_CLIENT_SECRET` holds the secret's **Value**, not its Secret ID
 - Guest-only routes `/auth/microsoft/{redirect,callback}` → `MicrosoftLoginController`: case-insensitive email match (`whereRaw('lower(email) = ?)`)`, JIT users get a random unused password (column NOT nullable, same as `upsertFromPicEmails`) + `email_verified_at` now fillable; gate-fail → logout + flash on login page
-- Login button + flash via `PanelsRenderHook::AUTH_LOGIN_FORM_AFTER` render hook + `resources/views/auth/microsoft-sso.blade.php`; `bootstrap/app.php` `redirectUsersTo` keeps authenticated users off the guest routes away from the 404 at `/`
+- SSO button + flash render inside the custom login page `App\Filament\Pages\Auth\Login` (split-screen SSO-first redesign, 2026-11-19: password form collapsed behind an "Admin password login" toggle and gated to `hasRole('admin')` in `authenticate()` — the admins' break-glass; hook + `microsoft-sso.blade.php` deleted). `bootstrap/app.php` `redirectUsersTo` keeps authenticated users off the guest routes away from the 404 at `/`
 - No `microsoft_id` column (single-tenant + unique email make it redundant)
 
 #### Tasks
 - [x] Implementation + `MicrosoftSsoTest` (5 tests / 22 assertions) — 2026-11-05
-- [ ] Azure: register both redirect URIs (Web platform): `http://localhost:8000/auth/microsoft/callback` + `https://techrisk.paas.dana.id/auth/microsoft/callback`; fill the 4 `MICROSOFT_*` env vars (dev and prod)
-- [ ] Owner e2e: new-email login → "admin must grant access" flash → grant `user` role → login lands on dashboard; password login still works
+- [x] Azure + envs (2026-11-19): live app is client `84a0f65e-6f7d-4d55-b1fa-ada372604c6b` in tenant `aeea8c8a-851e-46dc-b993-cac6f54b59c6`, secret `Js18Q~…`; local callback registered as `http://localhost:3000/auth/microsoft/callback` (NOT :8000 — the Azure app only lists :3000 + prod); dev `.env` filled and verified end-to-end. ⚠ after editing `MICROSOFT_*` in any env, `config:clear` is NOT enough — docker bakes `.env` into container env vars at creation, so `docker compose up -d --force-recreate app worker scheduler` (prod services: app/worker/scheduler/reverb/dingtalk-agent read env_file; there is NO `queue` service — the worker is `worker`). First registration attempt (client `9aed6526…`) was AADSTS700016 — not in the tenant (admin sent wrong ID); client `18c12fcc…` exists as "Tech Risk Dashboard" but is admin-assigned-only (AADSTS50105) and unused — ask the Azure admin which to keep/revoke
+- [x] Owner e2e (2026-11-19): real Microsoft sign-in locally → JIT-created role-less `nicholas.andrian@dana.id` → "admin must grant access" flash (expected). Remaining: prod `.env` + recreate + first prod login; prod email match check (Microsoft returns `firstname.lastname@dana.id` — verify existing prod rows match or they'll JIT a second account)
 
 #### Blockers
 - None (waiting on Azure-side env credentials)
