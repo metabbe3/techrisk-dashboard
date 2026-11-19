@@ -38,9 +38,27 @@ class IssueResource extends Resource
 
     protected static ?int $navigationSort = 2; // After Incident (which is 1)
 
+    protected static ?string $recordTitleAttribute = 'title';
+
+    /**
+     * Global search (Spotlight palette record search + Filament global
+     * search). Safe by construction: getGlobalSearchEloquentQuery() defaults
+     * to getEloquentQuery(), which this resource overrides with the Issue
+     * classification + year-access scope.
+     */
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['no', 'title'];
+    }
+
+    public static function getGlobalSearchResultTitle(\Illuminate\Database\Eloquent\Model $record): string
+    {
+        return $record->no.' — '.$record->title;
+    }
+
     public static function canCreate(): bool
     {
-        return auth()->user()->can('manage issues');
+        return (bool) auth()->user()?->can('manage issues');
     }
 
     public static function canEdit(Model $record): bool
@@ -50,7 +68,9 @@ class IssueResource extends Resource
 
     public static function canViewAny(): bool
     {
-        return auth()->user()->can('view issues');
+        // Null guard: the Spotlight palette evaluates these on guest pages
+        // (login) — a missing user must mean "no", never a 500.
+        return (bool) auth()->user()?->can('view issues');
     }
 
     public static function canDelete(Model $record): bool

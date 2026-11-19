@@ -191,7 +191,7 @@ class RunAiAgentJobTest extends TestCase
         $this->assertStringContainsString('completed', $message->getSubject());
         // Branded layout (emails/notification) — the output is an HTML body.
         $this->assertStringContainsString('Digest: 3 incidents', $message->getHtmlBody());
-        $this->assertStringContainsString('#4f46e5', (string) $message->getHtmlBody());
+        $this->assertStringContainsString('#108EE9', (string) $message->getHtmlBody());
     }
 
     public function test_notify_email_receives_error_when_run_fails(): void

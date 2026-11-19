@@ -190,7 +190,7 @@ class DashboardStatsOverview extends BaseWidget
                 ->description('Avg time between failures (non-fund loss)')
                 ->descriptionIcon('heroicon-m-shield-check')
                 ->chart([8, 6, 9, 7, 5, 10, 8, 6])
-                ->color('violet'),
+                ->color('dana'),
 
             Stat::make('MTBF (Fund Loss)', number_format((float) $mtbfFundLoss, 2).' days')
                 ->description('Avg time between failures (fund loss)')

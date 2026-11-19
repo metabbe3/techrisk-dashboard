@@ -90,7 +90,7 @@
         },
 
         severityColor(sev) {
-            const m = {'P1':'#ef4444','P2':'#f59e0b','P3':'#3b82f6','P4':'#10b981','X1':'#6366f1','X2':'#8b5cf6','X3':'#a855f7','X4':'#c084fc'};
+            const m = {'P1':'#ef4444','P2':'#f59e0b','P3':'#3b82f6','P4':'#10b981','X1':'#0c67ad','X2':'#108ee9','X3':'#42adef','X4':'#7fc8f4'};
             return m[sev] || 'var(--tr-muted-ink)';
         },
 

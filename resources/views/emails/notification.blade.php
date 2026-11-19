@@ -28,8 +28,8 @@
                 <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #e2e8f0;">
                     {{-- Header band --}}
                     <tr>
-                        <td style="background:#4f46e5;padding:22px 28px;">
-                            <span style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#c7d2fe;">TechRisk Portal</span><br>
+                        <td style="background:#108EE9;padding:22px 28px;">
+                            <span style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#b8e1fa;">TechRisk Portal</span><br>
                             <span style="font-size:18px;font-weight:700;color:#ffffff;">{{ $headline }}</span>
                         </td>
                     </tr>
@@ -68,7 +68,7 @@
                             @if (! empty($actionUrl))
                                 <table role="presentation" cellpadding="0" cellspacing="0" style="margin-top:24px;">
                                     <tr>
-                                        <td style="border-radius:8px;background:#4f46e5;">
+                                        <td style="border-radius:8px;background:#108EE9;">
                                             <a href="{{ $actionUrl }}" style="display:inline-block;padding:12px 24px;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;border-radius:8px;">{{ $actionText }}</a>
                                         </td>
                                     </tr>
@@ -77,7 +77,7 @@
 
                             @if (! empty($secondaryUrl) && ! empty($secondaryText))
                                 <p style="margin:14px 0 0;font-size:13px;color:#64748b;">
-                                    <a href="{{ $secondaryUrl }}" style="color:#4f46e5;text-decoration:underline;font-weight:600;">{{ $secondaryText }}</a>
+                                    <a href="{{ $secondaryUrl }}" style="color:#108EE9;text-decoration:underline;font-weight:600;">{{ $secondaryText }}</a>
                                 </p>
                             @endif
                         </td>

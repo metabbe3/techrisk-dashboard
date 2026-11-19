@@ -312,7 +312,7 @@ class NotionInvestigationSectionTest extends TestCase
         // Round 12: the title is a REAL heading (prose styles it like the
         // RCA section) and the section carries the id the TOC links to.
         // Round 13: selectable content (no select-none). Round 14: the
-        // flex-centered indigo traitlet survives the sanitizer too.
+        // flex-centered DANA-blue traitlet survives the sanitizer too.
         $this->assertStringContainsString('<details id="notion-sec-1" class="group my-5" open><summary class="flex! cursor-pointer"><h1><span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-dana-500! align-middle transition-transform group-open:rotate-90"></span>PIC</h1></summary>', $html);
         $this->assertStringContainsString('<summary class="flex! cursor-pointer"><h2 class="pl-4"><span class="mr-1.5 inline-block h-0! w-0! border-y-4! border-y-transparent! border-l-[6px]! border-l-dana-500! align-middle transition-transform group-open:rotate-90"></span>Generator</h2></summary>', $html);
         $this->assertStringNotContainsString('select-none', $html);

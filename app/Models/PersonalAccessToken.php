@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Models;
 
 use Laravel\Sanctum\PersonalAccessToken as BasePersonalAccessToken;
@@ -8,6 +9,23 @@ use Laravel\Sanctum\PersonalAccessToken as BasePersonalAccessToken;
 class PersonalAccessToken extends BasePersonalAccessToken
 {
     protected $hidden = ['token'];
+
+    /**
+     * Sanctum's parent whitelists only name/token/abilities/expires_at, which
+     * silently dropped allowed_endpoints + renewal_minutes (and tokenable_id)
+     * from the Filament edit page's mass-assignment update() — the save toast
+     * fired but the fields reverted. Create never noticed: it uses forceFill().
+     * Explicit list, not $guarded = [], so id/disabled_at stay guarded.
+     */
+    protected $fillable = [
+        'name',
+        'token',
+        'abilities',
+        'expires_at',
+        'allowed_endpoints',
+        'renewal_minutes',
+        'tokenable_id',
+    ];
 
     protected $casts = [
         'abilities' => 'json',

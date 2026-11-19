@@ -24,8 +24,8 @@ use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
- * One purple layout for every portal email (emails/notification.blade.php —
- * white card, indigo #4f46e5 band/button) and a REAL global kill-switch:
+ * One DANA-blue layout for every portal email (emails/notification.blade.php —
+ * white card, indigo #108EE9 band/button) and a REAL global kill-switch:
  * netcore_enabled gates every send at the MessageSending event (not just the
  * Netcore transport), and senders never consume a suppressed email's side
  * effects (reminder stamps, token rotation, escalation rungs).
@@ -87,7 +87,7 @@ class EmailLayoutAndKillSwitchTest extends TestCase
         ];
 
         foreach ($surfaces as $name => $html) {
-            $this->assertStringContainsString('#4f46e5', $html, "{$name}: indigo band missing");
+            $this->assertStringContainsString('#108EE9', $html, "{$name}: indigo band missing");
             $this->assertStringContainsString('TechRisk Portal', $html, "{$name}: brand label missing");
             $this->assertStringNotContainsString('**', $html, "{$name}: raw markdown leak");
         }

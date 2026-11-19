@@ -14,7 +14,7 @@
     $statusColors = [
         'warning' => '#f59e0b',
         'info' => '#3b82f6',
-        'primary' => '#6366f1',
+        'primary' => '#108ee9',
         'success' => '#10b981',
     ];
 
@@ -232,7 +232,7 @@
     <div class="kanban-canvas flex gap-4 overflow-x-auto pb-6 min-h-[calc(100vh-340px)] -mx-1 px-1 rounded-xl">
         @foreach($columns as $column)
             @php
-                $colorHex = $statusColors[$column['color']] ?? '#6366f1';
+                $colorHex = $statusColors[$column['color']] ?? '#108ee9';
                 $columnIncidents = $incidents[$column['value']] ?? collect();
                 $totalCount = $totalCounts[$column['value']] ?? 0;
             @endphp

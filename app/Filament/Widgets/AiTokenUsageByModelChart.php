@@ -35,7 +35,7 @@ class AiTokenUsageByModelChart extends ChartWidget
 
         $dates = $data->pluck('date')->unique()->sort()->values();
         $models = $data->pluck('model')->unique()->values();
-        $colors = ['#0d9488', '#f59e0b', '#6366f1', '#ef4444', '#8b5cf6', '#ec4899'];
+        $colors = ['#0d9488', '#f59e0b', '#108ee9', '#ef4444', '#64748b', '#ec4899'];
 
         $datasets = [];
         foreach ($models as $i => $model) {

@@ -147,6 +147,36 @@ Owner 2026-11-18: "is there any menu in dashboard that can be combined?" — nav
 - 2026-11-19: All three workstreams green; targeted suites (EmailSettingsTest 11/36, Notion suites, ServiceAccountTest) pass; full suite = merged-main count + 0 (see testing-standards).
 
 
+### [PROJ-026] Sidebar redesign: account + notifications in the sidebar, command palette, Inter font
+
+**Status:** In Progress (implementation + tests green; browser verification pending)
+**Priority:** P2
+**Start Date:** 2026-11-19
+
+#### Description
+Owner 2026-11-19: "can you redesign the side bar? so account and notif on left side bar? maybe the font and other? try research first? and add command palette i think? if filament needed to be updated its fine and make sure nothing broken."
+
+#### Key decisions
+- **No Filament upgrade** (owner asked "do i need upgrade? if the difference big?" — research said v4 = ~28 breaking changes and NO command palette/sidebar-account features; v5 = v4 + Livewire 4 only. Everything wanted is achievable on 3.3 via render hooks. The v4/v5 upgrade stays a separate future project.)
+- **Command palette:** `pxlrbt/filament-spotlight` 1.x (MIT, by a Filament core team member; the paid Spotlight Pro €49 declined). Ctrl/Cmd+K and Ctrl/Cmd+/. Record search via Filament's global-search attributes on IncidentResource + IssueResource.
+- **Account + bell in the sidebar footer** (`panels::sidebar.footer` hook); notifications slide-over mounted at `panels::body.end` (the aside's transform classes would re-anchor the position:fixed modal); top bar hidden on desktop by CSS, kept on mobile (hamburger).
+- **Icon rail** (`sidebarCollapsibleOnDesktop`) replaces fully-collapsible — with no top bar, a fully hidden sidebar has no reopen button. The old `.fi-sidebar--collapsed` CSS was dead (class never existed in Filament).
+- **Inter Variable self-hosted** (`@fontsource-variable/inter` in the app's Vite build — no font CDN on the VPN-only prod domain); tabular numbers in tables.
+- Sidebar chrome colors ride the `--tr-*` tokens (DANA blue rebrand happening in parallel — see the dana tokens in app.css + the `dana` panel color array).
+
+#### Tasks
+- [x] Panel provider: collapse mode, `databaseNotifications(false)`, `->font()`, Spotlight plugin, 3 render hooks.
+- [x] Sidebar views (search trigger / footer / modal mount) + `App\Livewire\SidebarNotificationBell` (30s poll) + `App\Filament\Livewire\DatabaseNotifications` repurposed (trigger-free modal).
+- [x] Global search on Incident + Issue resources with `applyAccessControl` on IncidentResource's search query (the resource has NO getEloquentQuery override — table-level access control only).
+- [x] Null guards on canViewAny/canCreate in 6 resources — the palette evaluates them on guest pages (login) too; unguarded `auth()->user()` 500'd the login page.
+- [x] AI chat focus-input rebound Ctrl+K → Ctrl+I (palette owns Ctrl+K now).
+- [x] Tests: `tests/Feature/Filament/SidebarChromeTest.php` (5) — chrome render, badge count, guest login page, year-access-scoped + Issue-scoped palette search.
+- [x] Docs: dependency-map panel-chrome row.
+- [ ] Browser verification (desktop expanded + rail, mobile drawer, modal, palette search, Inter loaded).
+- [ ] Full-suite baseline note in testing-standards.
+
+#### Progress Updates
+- 2026-11-19: Implementation complete; SidebarChromeTest 5/22 green on first pass after fixing the guest 500 + lazy-mount assertion.
 
 ### [PROJ-024] Investigation form intake: unique links → AI fills → consent → DOCX + PDF
 

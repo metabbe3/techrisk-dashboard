@@ -1,10 +1,10 @@
 window.WarRoomUtils = {
     colorMap: {
-        blue: '#3b82f6', indigo: '#6366f1', purple: '#8b5cf6', green: '#22c55e',
+        blue: '#3b82f6', indigo: '#0f7bd1', purple: '#108ee9', green: '#22c55e',
         teal: '#14b8a6', cyan: '#06b6d4', red: '#ef4444', orange: '#f97316',
         amber: '#f59e0b', pink: '#ec4899', emerald: '#10b981', gray: '#6b7280',
-        fuchsia: '#d946ef', rose: '#f43f5e', sky: '#0ea5e9',
-        violet: '#8b5cf6', yellow: '#eab308', lime: '#84cc16',
+        fuchsia: '#3b82f6', rose: '#f43f5e', sky: '#0ea5e9',
+        violet: '#42adef', yellow: '#eab308', lime: '#84cc16',
     },
 
     hexToRgba(hex, alpha) {

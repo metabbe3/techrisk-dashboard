@@ -205,7 +205,7 @@
             @if($inc->remark)
             <div class="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5 shadow-sm">
                 <h3 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                    <svg class="w-4 h-4 text-violet-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
+                    <svg class="w-4 h-4 text-sky-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
                     Remark
                 </h3>
                 <div class="text-sm text-gray-700 dark:text-gray-300 leading-relaxed prose prose-sm dark:prose-invert max-w-none bg-gray-50 dark:bg-gray-900/50 rounded-lg p-4 border border-gray-100 dark:border-gray-700">{!! Str::markdown($inc->remark) !!}</div>
@@ -334,7 +334,7 @@
                             <p class="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Responsible Team</p>
                             <div class="flex flex-wrap gap-1.5">
                                 @foreach((array) $inc->responsible_team as $team)
-                                    <x-filament::badge color="violet" size="sm">{{ $team }}</x-filament::badge>
+                                    <x-filament::badge color="dana" size="sm">{{ $team }}</x-filament::badge>
                                 @endforeach
                             </div>
                         </div>

@@ -2308,3 +2308,24 @@ One shared-scope line: `dueIncidents()` filters `classification = IncidentClassi
 - [x] `IncidentFactory` randomizes classification: any test that needs a lane to FIRE must pin `classification = Incident` (now defaulted in the test helper), or it flakes 50% once a classification gate exists.
 - [x] Rule written down: business-rules.md "Reminder emails are incident-only" + dependency-map ReminderMail row.
 - [ ] Merge numbering hazard: two sessions appending to lesson-learned.md concurrently burned BUG-035 twice and skipped 037/038 — re-check the file's highest number immediately before appending, and note the pre-merge number in the entry when renumbering.
+
+## BUG-041 — Token edit says "updated successfully" but endpoints/renewal revert (2026-11-19)
+
+**Discovered By:** Owner, editing a token's permissions in the admin ("it says success edit but when i refresh the permission still not saved — need to make new token")
+**Severity:** Medium (silent data loss on an auth surface: endpoint scoping + sliding expiry uneditable; workaround = delete + recreate the token)
+**Status:** Resolved
+
+### Description
+Editing a token's Allowed Endpoints / Auto-Renewal in ApiTokenResource (edit page or the View-page Edit modal) showed "Token updated successfully", but after a refresh the old values rendered. New tokens saved fine — only edits silently no-oped.
+
+### Root Cause
+Filament's edit save is mass assignment (`$record->update($data)` — vendor `EditRecord::handleRecordUpdate`, and the View-page `EditAction` uses the same), but Sanctum's parent model whitelists only `$fillable = ['name','token','abilities','expires_at']`. The form also submits `tokenable_id`, `renewal_minutes`, `allowed_endpoints` — Laravel dropped them silently (strict mode off), the toast still fired, and the DB kept the old values. Create never hit the wall because `CreateApiToken` writes the extra columns via `forceFill()`; Regenerate/Re-enable also `forceFill()`. The edit path was the only bare-`update()` write on the model.
+
+### Fix
+One line: `protected $fillable` on `App\Models\PersonalAccessToken` — parent's four + `allowed_endpoints`, `renewal_minutes`, `tokenable_id` (explicit list, not `$guarded = []`, so `id`/`disabled_at` stay guarded). Fixes both save surfaces and any future mass-assignment path at the model level. Test: `ApiTokenEditPersistenceTest` pins DB-level persistence of all three fields through the real EditApiToken Livewire page (red before, green after).
+
+### Prevention Checklist
+- [x] When a Filament form adds columns to an existing model, check the model's `$fillable` (or the parent's) — a field missing from the whitelist is a SILENT drop: success toast, no exception, DB unchanged. The tell is "create works, edit doesn't" (create paths often `forceFill`, edit paths mass-assign).
+- [x] `Model::preventSilentlyDiscardingAttributes()` in non-prod would have turned this into an instant 500 on day one — candidate for bootstrap/app.php strictness (not enabled this round; would need a sweep of existing mass-assignment call sites).
+- [x] A "success" notification is only trustable as far as the write it reports; persistence assertions in tests belong at the DB level (`$token->refresh()`), not on the toast.
+- [x] Bug class matches edit-safety rule 5 (grep the bare string) and rule 3 (fix the shared path, not one call site): the model whitelist was the ONE gate every token write routes through.

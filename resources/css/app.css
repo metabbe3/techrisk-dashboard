@@ -1,28 +1,35 @@
 @import 'tailwindcss';
+@import '@fontsource-variable/inter';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
 @source '../**/*.blade.php';
 @source '../**/*.js';
+/* Command palette (pxlrbt/filament-spotlight 1.x + wire-elements/spotlight):
+   the panel has no viteTheme, this build is injected via the panels::head.end
+   render hook, and the palette's Alpine markup lives in vendor views — without
+   this @source its utilities (z-50, rounded-lg, max-w-lg, …) are never
+   generated and the palette renders unstyled. */
+@source '../../vendor/wire-elements/spotlight/resources/views/**/*.blade.php';
 
 @theme {
-    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 
-    /* DANA blue (owner 2026-11-17): the panel primary — blade accent classes
-       (bg-dana-600, text-dana-500, …) use this scale so they match Filament's
-       'primary'/'indigo' palette registered in AdminPanelProvider exactly. */
-    --color-dana-50: #eef7fe;
-    --color-dana-100: #d8ecfd;
-    --color-dana-200: #b6defb;
-    --color-dana-300: #7fcbf7;
-    --color-dana-400: #38aff1;
-    --color-dana-500: #108ee9;
-    --color-dana-600: #0673c9;
-    --color-dana-700: #085ca3;
-    --color-dana-800: #0c4e86;
-    --color-dana-900: #0f426f;
-    --color-dana-950: #092b49;
+    /* DANA brand blue (owner 2026-11-19: no purple anywhere — email, login,
+       panel, accents). 600 = #108EE9 is THE brand (Filament buttons use 600);
+       500/700 are the darker hover/pressed steps. Mirrors the 'dana' panel
+       color array in AdminPanelProvider — keep both in sync. */
+    --color-dana-50: #f0f9fe;
+    --color-dana-100: #dcf0fc;
+    --color-dana-200: #b8e1fa;
+    --color-dana-300: #7fc8f4;
+    --color-dana-400: #42adef;
+    --color-dana-500: #0f7bd1;
+    --color-dana-600: #108ee9;
+    --color-dana-700: #0c67ad;
+    --color-dana-800: #0a5589;
+    --color-dana-900: #083e66;
 }
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -32,13 +39,12 @@
    (AI components, badges, CTAs) read these via var() so theme switching is native
    and the brittle [style*=] substring hacks are no longer needed. --- */
 :root {
-    /* DANA blue since owner 2026-11-17 (the panel primary; renamed from
-       --tr-indigo — same scale positions, new hue). */
-    --tr-dana: #108ee9;
-    --tr-dana-600: #0673c9;
-    --tr-dana-700: #085ca3;
-    --tr-violet: #8b5cf6;
-    --tr-violet-600: #7c3aed;
+    /* DANA blues (owner 2026-11-19, was indigo/violet purple). */
+    --tr-indigo: #108ee9;
+    --tr-indigo-600: #0f7bd1;
+    --tr-indigo-700: #0c67ad;
+    --tr-violet: #42adef;
+    --tr-violet-600: #108ee9;
     --tr-red: #ef4444;
     --tr-red-600: #dc2626;
     --tr-red-700: #991b1b;
@@ -60,7 +66,7 @@
     --tr-muted-ink: #64748b;
     --tr-card-bg: #ffffff;
     --tr-info-bg: #eff6ff;
-    --tr-violet-bg: #f5f3ff;
+    --tr-violet-bg: #eaf6fe;
     --tr-success-bg: #f0fdf4;
     --tr-warning-bg: #fffbeb;
     --tr-danger-bg: #fef2f2;
@@ -74,13 +80,11 @@
 }
 
 :root.dark {
-    /* Dark mode runs the DANA ramp one step lighter (same rule the indigo
-       vars followed). */
-    --tr-dana: #38aff1;
-    --tr-dana-600: #108ee9;
-    --tr-dana-700: #0673c9;
-    --tr-violet: #a78bfa;
-    --tr-violet-600: #8b5cf6;
+    --tr-indigo: #42adef;
+    --tr-indigo-600: #108ee9;
+    --tr-indigo-700: #0f7bd1;
+    --tr-violet: #7fc8f4;
+    --tr-violet-600: #42adef;
     --tr-red: #f87171;
     --tr-red-600: #fca5a5;
     --tr-red-700: #fca5a5;
@@ -102,7 +106,7 @@
     --tr-muted-ink: #94a3b8;
     --tr-card-bg: #1e293b;
     --tr-info-bg: rgba(37,99,235,.12);
-    --tr-violet-bg: rgba(124,58,237,.12);
+    --tr-violet-bg: rgba(16,142,233,.16);
     --tr-success-bg: rgba(5,150,105,.12);
     --tr-warning-bg: rgba(245,158,11,.12);
     --tr-danger-bg: rgba(239,68,68,.12);
@@ -124,9 +128,19 @@
     }
 }
 
+/* Mobile drawer closed: vendor sets no inert/aria-hidden, so take the closed
+   sidebar out of tab order and the accessibility tree via visibility. Scoped
+   to <lg — on desktop the collapsed state is the icon RAIL (still visible,
+   focusable chrome), which this rule would have hidden entirely. */
+@media (max-width: 1023px) {
+    .fi-sidebar:not(.fi-sidebar-open) {
+        visibility: hidden;
+    }
+}
+
 /* --- Sidebar icon colors per resource --- */
 .fi-sidebar-item [href*="/admin/incidents"] .fi-sidebar-item-icon {
-    color: #6366f1;
+    color: #108ee9;
 }
 
 .fi-sidebar-item [href*="/admin/issues"] .fi-sidebar-item-icon {
@@ -134,7 +148,7 @@
 }
 
 .fi-sidebar-item [href*="/admin/access-requests"] .fi-sidebar-item-icon {
-    color: #8b5cf6;
+    color: #42adef;
 }
 
 .fi-sidebar-item [href*="/admin/users"] .fi-sidebar-item-icon {
@@ -166,7 +180,7 @@
 }
 
 .fi-sidebar-item [href*="/admin/labels"] .fi-sidebar-item-icon {
-    color: #8b5cf6;
+    color: #42adef;
 }
 
 .fi-sidebar-item [href*="/admin/weekly-report"] .fi-sidebar-item-icon {
@@ -178,7 +192,7 @@
 }
 
 .fi-sidebar-item [href*="/admin/notification-preferences"] .fi-sidebar-item-icon {
-    color: #a855f7;
+    color: #108ee9;
 }
 
 .fi-sidebar-item [href*="/admin/send-announcement"] .fi-sidebar-item-icon {
@@ -186,11 +200,11 @@
 }
 
 .fi-sidebar-item [href*="/admin/ai-settings"] .fi-sidebar-item-icon {
-    color: #8b5cf6;
+    color: #42adef;
 }
 
 .fi-sidebar-item [href*="/admin/ai-usage-logs"] .fi-sidebar-item-icon {
-    color: #6366f1;
+    color: #108ee9;
 }
 
 /* --- Filament Toggle knob fix ---
@@ -213,9 +227,9 @@
     transition: background-color .2s cubic-bezier(.4,0,.2,1), border-color .2s cubic-bezier(.4,0,.2,1), color .2s cubic-bezier(.4,0,.2,1), box-shadow .2s cubic-bezier(.4,0,.2,1), transform .2s cubic-bezier(.4,0,.2,1) !important;
 }
 .header-btn-board.fi-btn:hover {
-    border-color: #6366f1 !important;
-    color: #6366f1 !important;
-    background: #f5f3ff !important;
+    border-color: #108ee9 !important;
+    color: #108ee9 !important;
+    background: #f0f9fe !important;
     box-shadow: 0 2px 6px rgba(16,142,233,.1) !important;
 }
 :root.dark .header-btn-board.fi-btn {
@@ -224,8 +238,8 @@
     color: var(--tr-muted-ink) !important;
 }
 :root.dark .header-btn-board.fi-btn:hover {
-    border-color: #818cf8 !important;
-    color: #a5b4fc !important;
+    border-color: #42adef !important;
+    color: #7fc8f4 !important;
     background: rgba(16,142,233,.08) !important;
 }
 
@@ -237,9 +251,9 @@
     transition: background-color .2s cubic-bezier(.4,0,.2,1), border-color .2s cubic-bezier(.4,0,.2,1), color .2s cubic-bezier(.4,0,.2,1), box-shadow .2s cubic-bezier(.4,0,.2,1), transform .2s cubic-bezier(.4,0,.2,1) !important;
 }
 .header-btn-table.fi-btn:hover {
-    border-color: #6366f1 !important;
-    color: #6366f1 !important;
-    background: #f5f3ff !important;
+    border-color: #108ee9 !important;
+    color: #108ee9 !important;
+    background: #f0f9fe !important;
     box-shadow: 0 2px 6px rgba(16,142,233,.1) !important;
 }
 :root.dark .header-btn-table.fi-btn {
@@ -248,8 +262,8 @@
     color: var(--tr-muted-ink) !important;
 }
 :root.dark .header-btn-table.fi-btn:hover {
-    border-color: #818cf8 !important;
-    color: #a5b4fc !important;
+    border-color: #42adef !important;
+    color: #7fc8f4 !important;
     background: rgba(16,142,233,.08) !important;
 }
 
@@ -268,14 +282,14 @@
 .kanban-badge--warning { background: #fef3c7; color: #92400e; border: 1px solid rgba(245,158,11,.15); }
 .kanban-badge--info { background: #dbeafe; color: #1e40af; border: 1px solid rgba(59,130,246,.15); }
 .kanban-badge--success { background: #d1fae5; color: #065f46; border: 1px solid rgba(16,185,129,.15); }
-.kanban-badge--primary { background: #e0e7ff; color: #3730a3; border: 1px solid rgba(16,142,233,.15); }
+.kanban-badge--primary { background: #dcf0fc; color: #0a5589; border: 1px solid rgba(16,142,233,.15); }
 .kanban-badge--gray { background: #f1f5f9; color: #475569; border: 1px solid rgba(100,116,139,.12); }
 .kanban-badge--teal { background: #ccfbf1; color: #0f766e; border: 1px solid rgba(20,184,166,.15); }
 :root.dark .kanban-badge--danger { background: rgba(239,68,68,.12); color: #fca5a5; border-color: rgba(239,68,68,.2); }
 :root.dark .kanban-badge--warning { background: rgba(245,158,11,.12); color: #fcd34d; border-color: rgba(245,158,11,.2); }
 :root.dark .kanban-badge--info { background: rgba(59,130,246,.12); color: #93c5fd; border-color: rgba(59,130,246,.2); }
 :root.dark .kanban-badge--success { background: rgba(16,185,129,.12); color: #6ee7b7; border-color: rgba(16,185,129,.2); }
-:root.dark .kanban-badge--primary { background: rgba(16,142,233,.12); color: #a5b4fc; border-color: rgba(16,142,233,.2); }
+:root.dark .kanban-badge--primary { background: rgba(16,142,233,.12); color: #7fc8f4; border-color: rgba(16,142,233,.2); }
 :root.dark .kanban-badge--gray { background: rgba(51,65,85,.4); color: var(--tr-muted-ink); border-color: rgba(100,116,139,.15); }
 :root.dark .kanban-badge--teal { background: rgba(20,184,166,.12); color: #5eead4; border-color: rgba(20,184,166,.2); }
 
@@ -302,15 +316,15 @@
     inset: 0;
     border-radius: inherit;
     pointer-events: none;
-    box-shadow: 0 10px 24px -16px var(--sev, #6366f1);
+    box-shadow: 0 10px 24px -16px var(--sev, #108ee9);
     opacity: 0;
     transition: opacity .18s ease;
 }
 .kanban-card:hover::after { opacity: 1; }
 
 /* Keyboard a11y: crisp severity-colored ring when the card or its move <select> is focused. */
-.kanban-card:focus-within { outline: 2px solid color-mix(in srgb, var(--sev, #6366f1) 55%, transparent); outline-offset: -1px; }
-.kanban-move-select:focus-visible { outline: 2px solid color-mix(in srgb, var(--sev, #6366f1) 60%, transparent); outline-offset: 1px; border-radius: 4px; }
+.kanban-card:focus-within { outline: 2px solid color-mix(in srgb, var(--sev, #108ee9) 55%, transparent); outline-offset: -1px; }
+.kanban-move-select:focus-visible { outline: 2px solid color-mix(in srgb, var(--sev, #108ee9) 60%, transparent); outline-offset: 1px; border-radius: 4px; }
 
 /* Board canvas — faint dot grid for depth (operations-console feel). */
 .kanban-canvas { background-image: radial-gradient(circle, rgba(16,142,233,.05) 1px, transparent 1px); background-size: 20px 20px; }
@@ -381,20 +395,20 @@
 }
 :root.dark .kanban-financial-pill { background: rgba(245,158,11,.12); color: #fcd34d; border-color: rgba(245,158,11,.2); }
 
-/* AI Search — solid indigo (calm, authoritative; was a decorative gradient). */
+/* AI Search — solid DANA blue (calm, authoritative; was a decorative gradient). */
 .header-btn-ai.fi-btn {
-    background: var(--tr-dana-600) !important;
+    background: var(--tr-indigo-600) !important;
     border-color: transparent !important;
     color: #fff !important;
     box-shadow: 0 1px 2px rgba(16,142,233,.2) !important;
     transition: background-color .2s cubic-bezier(.4,0,.2,1), box-shadow .2s cubic-bezier(.4,0,.2,1) !important;
 }
 .header-btn-ai.fi-btn:hover {
-    background: var(--tr-dana-700) !important;
+    background: var(--tr-indigo-700) !important;
     box-shadow: 0 2px 6px rgba(16,142,233,.25) !important;
 }
 :root.dark .header-btn-ai.fi-btn {
-    background: var(--tr-dana) !important;
+    background: var(--tr-indigo) !important;
 }
 
 /* Export — solid sky (was a decorative gradient). */
@@ -459,11 +473,6 @@
 .fi-tabs {
     border-bottom: 1px solid #eef0f4;
     position: relative;
-    /* Filament's overflow-x-auto computes overflow-y to auto on the nav, so
-       the ::after gradient line at bottom:-1px and the items' -1px
-       margin-bottom poke 1px below the padding box — vertical scrollbar.
-       Owner 2026-11-17: no vertical scroll on the incident tabs. */
-    overflow-y: hidden;
 }
 .fi-tabs::after {
     content: '';
@@ -478,28 +487,34 @@
     border-bottom-color: #1e293b;
 }
 
-/* --- Detail pages (owner 2026-11-17): the relation-manager tab bar joins
-   the panel below it — one card (tab strip on top, table flush beneath),
-   no floating gap, and the strip itself never scrolls vertically. --- */
-.fi-resource-view-record-page .fi-resource-relation-managers { row-gap: 0; }
-.fi-resource-view-record-page .fi-tabs {
-    width: 100%; /* span the card — a centered content-width strip looks detached */
-    border-radius: 0.75rem 0.75rem 0 0;
-    border-bottom: none; /* the table card's ring below draws the seam */
-    box-shadow: none;
-    --tw-ring-shadow: 0 0 #0000;
+.fi-tab-item {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 10px 16px;
+    transition: color .25s cubic-bezier(.4,0,.2,1), background-color .25s cubic-bezier(.4,0,.2,1), border-color .25s cubic-bezier(.4,0,.2,1);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    color: #64748b;
+    letter-spacing: -.01em;
 }
-.fi-resource-view-record-page .fi-tabs::after { content: none; }
-.fi-resource-view-record-page .fi-tabs + div .fi-ta-ctn {
-    border-top-left-radius: 0;
-    border-top-right-radius: 0;
+.fi-tab-item:hover {
+    color: #108ee9;
+    background: rgba(16,142,233,.04);
 }
+.fi-tab-item.fi-tab-item-active {
+    color: #0f7bd1;
+    border-bottom-color: #108ee9;
+    font-weight: 600;
+}
+:root.dark .fi-tab-item { color: var(--tr-muted-ink); }
+:root.dark .fi-tab-item:hover { color: #42adef; background: rgba(16,142,233,.06); }
+:root.dark .fi-tab-item.fi-tab-item-active { color: #7fc8f4; border-bottom-color: #108ee9; }
 
 .fi-section-header-icon {
-    color: #6366f1;
+    color: #108ee9;
 }
 :root.dark .fi-section-header-icon {
-    color: #818cf8;
+    color: #42adef;
 }
 
 /* Better section spacing on edit & create pages */
@@ -541,13 +556,13 @@
     background: rgba(16,142,233,.02) !important;
 }
 .fi-ta-table tbody tr:hover td:first-child {
-    box-shadow: inset 3px 0 0 #6366f1;
+    box-shadow: inset 3px 0 0 #108ee9;
 }
 :root.dark .fi-ta-table tbody tr:hover {
     background: rgba(16,142,233,.04) !important;
 }
 :root.dark .fi-ta-table tbody tr:hover td:first-child {
-    box-shadow: inset 3px 0 0 #6366f1;
+    box-shadow: inset 3px 0 0 #108ee9;
 }
 
 /* Custom thin scrollbar for tables */
@@ -564,13 +579,13 @@
 .fi-badge.color-info { background: #dbeafe !important; color: #1e40af !important; font-weight: 600; border: 1px solid rgba(59,130,246,.2); }
 .fi-badge.color-success { background: #d1fae5 !important; color: #065f46 !important; font-weight: 600; border: 1px solid rgba(16,185,129,.2); }
 .fi-badge.color-gray { background: #f1f5f9 !important; color: #475569 !important; font-weight: 600; border: 1px solid rgba(100,116,139,.15); }
-.fi-badge.color-primary { background: #e0e7ff !important; color: #3730a3 !important; font-weight: 600; border: 1px solid rgba(16,142,233,.2); }
+.fi-badge.color-primary { background: #dcf0fc !important; color: #0a5589 !important; font-weight: 600; border: 1px solid rgba(16,142,233,.2); }
 :root.dark .fi-badge.color-danger { background: rgba(239,68,68,.15) !important; color: #fca5a5 !important; border-color: rgba(239,68,68,.2); }
 :root.dark .fi-badge.color-warning { background: rgba(245,158,11,.15) !important; color: #fcd34d !important; border-color: rgba(245,158,11,.2); }
 :root.dark .fi-badge.color-info { background: rgba(59,130,246,.15) !important; color: #93c5fd !important; border-color: rgba(59,130,246,.2); }
 :root.dark .fi-badge.color-success { background: rgba(16,185,129,.15) !important; color: #6ee7b7 !important; border-color: rgba(16,185,129,.2); }
 :root.dark .fi-badge.color-gray { background: rgba(51,65,85,.4) !important; color: var(--tr-muted-ink) !important; border-color: rgba(100,116,139,.15); }
-:root.dark .fi-badge.color-primary { background: rgba(16,142,233,.15) !important; color: #a5b4fc !important; border-color: rgba(16,142,233,.2); }
+:root.dark .fi-badge.color-primary { background: rgba(16,142,233,.15) !important; color: #7fc8f4 !important; border-color: rgba(16,142,233,.2); }
 
 /* View page hero animation */
 @keyframes incidentHeroIn {
@@ -591,11 +606,6 @@
     background: #f8fafc;
     border-bottom: 1px solid #eef0f4;
     padding: 12px 20px;
-    /* Owner 2026-11-18: the band is square by default and its corners
-       overlap the card's 12px rounded corners (the card keeps
-       `overflow: visible` for dropdowns, so nothing clips the header) —
-       round the header to the card's inner radius (12px − 1px border). */
-    border-radius: 11px 11px 0 0;
 }
 :root.dark .fi-resource-edit-record-page .fi-section-header,
 :root.dark .fi-resource-create-record-page .fi-section-header {
@@ -980,8 +990,8 @@
 :root.dark .rca-label-new--unselected { background: #0f172a; color: #64748b; border-color: #334155; }
 
 /* Kanban ghost class for SortableJS */
-.kanban-ghost { opacity: 0.3; border: 2px dashed #108ee9; background: #eef7fe; }
-:root.dark .kanban-ghost { background: rgba(16,142,233,.08); border-color: #818cf8; }
+.kanban-ghost { opacity: 0.3; border: 2px dashed #108ee9; background: #f0f9fe; }
+:root.dark .kanban-ghost { background: rgba(16,142,233,.08); border-color: #42adef; }
 .kanban-drag { transform: rotate(2deg) scale(1.03); box-shadow: 0 20px 25px -5px rgba(0,0,0,.1), 0 8px 10px -6px rgba(0,0,0,.1); }
 
 /* --- AI Chat Assistant --- */
@@ -1050,7 +1060,7 @@
     width: 30px;
     height: 30px;
     border-radius: 8px;
-    background: var(--tr-dana-600);
+    background: var(--tr-indigo-600);
     color: #fff;
     border: none;
     cursor: pointer;
@@ -1072,7 +1082,7 @@
     margin-bottom: 2px;
 }
 .ai-chat-sidebar-item:hover { background: #e2e8f0; }
-.ai-chat-sidebar-item.active { background: #e0e7ff; }
+.ai-chat-sidebar-item.active { background: #dcf0fc; }
 :root.dark .ai-chat-sidebar-item:hover { background: #334155; }
 :root.dark .ai-chat-sidebar-item.active { background: rgba(16,142,233,.15); }
 
@@ -1096,14 +1106,14 @@
     width: 100%;
     font-size: 0.875rem;
     padding: 1px 4px;
-    border: 1px solid #6366f1;
+    border: 1px solid #108ee9;
     border-radius: 4px;
     background: white;
     outline: none;
 }
 :root.dark .ai-chat-title-input {
     background: #1e293b;
-    border-color: #818cf8;
+    border-color: #42adef;
     color: #e2e8f0;
 }
 
@@ -1120,7 +1130,7 @@
     flex-shrink: 0;
 }
 .ai-chat-sidebar-item:hover .ai-chat-edit-btn { opacity: 1; }
-.ai-chat-edit-btn:hover { color: #108ee9; background: #eef7fe; }
+.ai-chat-edit-btn:hover { color: #108ee9; background: #f0f9fe; }
 :root.dark .ai-chat-edit-btn:hover { background: rgba(16,142,233,.1); }
 
 /* Sidebar: Date group headers */
@@ -1169,7 +1179,7 @@
     left: 0;
     right: 0;
     height: 2px;
-    background: linear-gradient(90deg, #6366f1, #8b5cf6, #a78bfa, transparent);
+    background: linear-gradient(90deg, #108ee9, #42adef, #42adef, transparent);
     opacity: .4;
 }
 :root.dark .ai-chat-header { border-bottom-color: #1a2332; background: #0c1222; }
@@ -1188,9 +1198,9 @@
     transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .15s, opacity .15s;
     font-family: inherit;
 }
-.ai-chat-model-btn:hover { border-color: #6366f1; color: #6366f1; }
+.ai-chat-model-btn:hover { border-color: #108ee9; color: #108ee9; }
 :root.dark .ai-chat-model-btn { background: #1e293b; border-color: #334155; color: var(--tr-muted-ink); }
-:root.dark .ai-chat-model-btn:hover { border-color: #818cf8; color: #818cf8; }
+:root.dark .ai-chat-model-btn:hover { border-color: #42adef; color: #42adef; }
 
 .ai-chat-web-search--on {
     background: rgba(16, 185, 129, 0.08) !important;
@@ -1238,11 +1248,11 @@
     font-family: inherit;
     transition: background-color .1s, color .1s;
 }
-.ai-chat-model-option:hover { background: #f0f0ff; color: #6366f1; }
-.ai-chat-model-option.active { background: #e0e7ff; color: #4f46e5; font-weight: 600; }
+.ai-chat-model-option:hover { background: #f0f0ff; color: #108ee9; }
+.ai-chat-model-option.active { background: #dcf0fc; color: #0f7bd1; font-weight: 600; }
 :root.dark .ai-chat-model-option { color: var(--tr-muted-ink); }
-:root.dark .ai-chat-model-option:hover { background: rgba(16,142,233,.1); color: #818cf8; }
-:root.dark .ai-chat-model-option.active { background: rgba(16,142,233,.15); color: #818cf8; }
+:root.dark .ai-chat-model-option:hover { background: rgba(16,142,233,.1); color: #42adef; }
+:root.dark .ai-chat-model-option.active { background: rgba(16,142,233,.15); color: #42adef; }
 
 /* Messages */
 .ai-chat-messages {
@@ -1269,20 +1279,20 @@
     position: absolute;
     inset: 0;
     background: radial-gradient(ellipse at 50% 30%, rgba(16,142,233,.06) 0%, transparent 60%),
-                radial-gradient(ellipse at 20% 70%, rgba(139,92,246,.04) 0%, transparent 50%),
+                radial-gradient(ellipse at 20% 70%, rgba(66,173,239,.04) 0%, transparent 50%),
                 radial-gradient(ellipse at 80% 60%, rgba(79,70,229,.03) 0%, transparent 50%);
     pointer-events: none;
 }
 :root.dark .ai-chat-empty::before {
     background: radial-gradient(ellipse at 50% 30%, rgba(16,142,233,.08) 0%, transparent 60%),
-                radial-gradient(ellipse at 20% 70%, rgba(139,92,246,.05) 0%, transparent 50%);
+                radial-gradient(ellipse at 20% 70%, rgba(66,173,239,.05) 0%, transparent 50%);
 }
 
 .ai-chat-empty-icon {
     width: 72px;
     height: 72px;
     border-radius: 20px;
-    background: var(--tr-dana-600);
+    background: var(--tr-indigo-600);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1340,7 +1350,7 @@
     align-items: center;
     gap: 8px;
 }
-.ai-chat-suggestion:hover { border-color: #6366f1; color: #4f46e5; background: #faf9ff; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16,142,233,.1); }
+.ai-chat-suggestion:hover { border-color: #108ee9; color: #0f7bd1; background: #f0f9fe; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(16,142,233,.1); }
 .ai-chat-suggestion-icon {
     width: 28px;
     height: 28px;
@@ -1350,16 +1360,16 @@
     justify-content: center;
     flex-shrink: 0;
     background: #f0f0ff;
-    color: #6366f1;
+    color: #108ee9;
 }
-.ai-chat-suggestion:hover .ai-chat-suggestion-icon { background: #e0e7ff; }
+.ai-chat-suggestion:hover .ai-chat-suggestion-icon { background: #dcf0fc; }
 .ai-chat-suggestion-text { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ai-chat-suggestion-label { font-weight: 600; font-size: 12px; color: #334155; }
-.ai-chat-suggestion:hover .ai-chat-suggestion-label { color: #4f46e5; }
+.ai-chat-suggestion:hover .ai-chat-suggestion-label { color: #0f7bd1; }
 .ai-chat-suggestion-desc { font-size: 10px; color: var(--tr-muted-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :root.dark .ai-chat-suggestion { background: #111827; border-color: #1e293b; color: var(--tr-muted-ink); box-shadow: none; }
-:root.dark .ai-chat-suggestion:hover { border-color: #6366f1; color: #c7d2fe; background: rgba(16,142,233,.06); box-shadow: 0 4px 12px rgba(16,142,233,.08); }
-:root.dark .ai-chat-suggestion-icon { background: rgba(16,142,233,.12); color: #818cf8; }
+:root.dark .ai-chat-suggestion:hover { border-color: #108ee9; color: #b8e1fa; background: rgba(16,142,233,.06); box-shadow: 0 4px 12px rgba(16,142,233,.08); }
+:root.dark .ai-chat-suggestion-icon { background: rgba(16,142,233,.12); color: #42adef; }
 :root.dark .ai-chat-suggestion:hover .ai-chat-suggestion-icon { background: rgba(16,142,233,.2); }
 :root.dark .ai-chat-suggestion-label { color: #e2e8f0; }
 
@@ -1388,7 +1398,7 @@
     flex-shrink: 0;
     margin-top: 2px;
 }
-.ai-chat-msg-avatar.user { background: var(--tr-dana-600); color: #fff; box-shadow: 0 2px 8px rgba(16,142,233,.3); }
+.ai-chat-msg-avatar.user { background: var(--tr-indigo-600); color: #fff; box-shadow: 0 2px 8px rgba(16,142,233,.3); }
 .ai-chat-msg-avatar.assistant { background: #d1fae5; color: #059669; box-shadow: 0 1px 3px rgba(5,150,105,.1); }
 :root.dark .ai-chat-msg-avatar.assistant { background: rgba(5,150,105,.15); color: #34d399; box-shadow: none; }
 
@@ -1398,7 +1408,7 @@
     line-height: 1.6;
 }
 .ai-chat-msg-content.user {
-    background: var(--tr-dana-600);
+    background: var(--tr-indigo-600);
     color: #fff;
     border-bottom-right-radius: 4px;
     box-shadow: 0 2px 12px rgba(16,142,233,.2);
@@ -1429,7 +1439,7 @@
 }
 .ai-chat-msg-text h1::before, .ai-chat-msg-text h2::before {
     content: ''; position: absolute; left: 0; top: 4px; bottom: 4px;
-    width: 3px; border-radius: 3px; background: var(--tr-dana);
+    width: 3px; border-radius: 3px; background: var(--tr-indigo);
 }
 .ai-chat-msg-text h3::before, .ai-chat-msg-text h4::before {
     content: ''; position: absolute; left: 0; top: 5px; bottom: 5px;
@@ -1453,7 +1463,7 @@
 .ai-chat-msg-text li > ul, .ai-chat-msg-text li > ol { margin: 6px 0 0; }
 .ai-chat-msg-text ul > li::before {
     content: ''; position: absolute; left: 5px; top: 9px;
-    width: 5px; height: 5px; border-radius: 50%; background: var(--tr-dana);
+    width: 5px; height: 5px; border-radius: 50%; background: var(--tr-indigo);
 }
 .ai-chat-msg-text ol > li::before {
     counter-increment: ai-ol; content: counter(ai-ol);
@@ -1560,11 +1570,11 @@
     padding: 2px 6px;
     border-radius: 4px;
     font-size: 12px;
-    background: rgba(99, 102, 241, 0.08);
-    color: #6366f1;
+    background: rgba(16,142,233, 0.08);
+    color: #108ee9;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
-:root.dark .ai-chat-msg-text code { background: rgba(129, 140, 248, 0.12); color: #a5b4fc; }
+:root.dark .ai-chat-msg-text code { background: rgba(129, 140, 248, 0.12); color: #7fc8f4; }
 
 /* Code blocks */
 .ai-chat-msg-text pre {
@@ -1650,21 +1660,21 @@
     align-items: center;
     justify-content: center;
     gap: 8px;
-    border: 2px dashed #6366f1;
+    border: 2px dashed #108ee9;
     border-radius: 14px;
-    background: rgba(99, 102, 241, .08);
+    background: rgba(16,142,233, .08);
     backdrop-filter: blur(2px);
-    color: #6366f1;
+    color: #108ee9;
     font-weight: 600;
     font-size: 14px;
     pointer-events: none;
 }
-:root.dark .ai-chat-drop-overlay { border-color: #818cf8; background: rgba(129, 140, 248, .1); color: #a5b4fc; }
+:root.dark .ai-chat-drop-overlay { border-color: #42adef; background: rgba(129, 140, 248, .1); color: #7fc8f4; }
 
 /* Edit-message box (user message edit & resend) */
 .ai-chat-edit-box {
     width: 100%;
-    border: 1px solid #c7d2fe;
+    border: 1px solid #b8e1fa;
     border-radius: 8px;
     padding: 8px 10px;
     font-size: 13px;
@@ -1673,20 +1683,20 @@
     background: white;
     color: #1e293b;
 }
-.ai-chat-edit-box:focus { outline: 2px solid #6366f1; outline-offset: -1px; }
-:root.dark .ai-chat-edit-box { background: #0f172a; border-color: #4338ca; color: #e2e8f0; }
+.ai-chat-edit-box:focus { outline: 2px solid #108ee9; outline-offset: -1px; }
+:root.dark .ai-chat-edit-box { background: #0f172a; border-color: #0c67ad; color: #e2e8f0; }
 
 /* Links */
 .ai-chat-msg-text a {
-    color: #6366f1;
+    color: #108ee9;
     text-decoration: none;
     font-weight: 600;
-    border-bottom: 1px dashed #6366f1;
+    border-bottom: 1px dashed #108ee9;
     transition: background-color .15s, border-color .15s, color .15s, box-shadow .15s, transform .15s, opacity .15s;
 }
-.ai-chat-msg-text a:hover { color: #4f46e5; border-bottom-style: solid; }
-:root.dark .ai-chat-msg-text a { color: #818cf8; border-bottom-color: #818cf8; }
-:root.dark .ai-chat-msg-text a:hover { color: #a5b4fc; }
+.ai-chat-msg-text a:hover { color: #0f7bd1; border-bottom-style: solid; }
+:root.dark .ai-chat-msg-text a { color: #42adef; border-bottom-color: #42adef; }
+:root.dark .ai-chat-msg-text a:hover { color: #7fc8f4; }
 
 /* Mermaid diagrams in AI chat */
 .ai-chat-msg-text .mermaid {
@@ -1714,7 +1724,7 @@
     width: 6px;
     height: 6px;
     border-radius: 50%;
-    background: #6366f1;
+    background: #108ee9;
     animation: typingDot 1.4s ease-in-out infinite;
     opacity: .3;
 }
@@ -1724,7 +1734,7 @@
     0%, 60%, 100% { opacity: .3; transform: scale(1); }
     30% { opacity: 1; transform: scale(1.4); }
 }
-:root.dark .ai-chat-typing span { background: #818cf8; }
+:root.dark .ai-chat-typing span { background: #42adef; }
 
 
 /* Input Area */
@@ -1747,11 +1757,11 @@
     box-shadow: 0 1px 3px rgba(0,0,0,.04);
 }
 .ai-chat-input-wrapper:focus-within {
-    border-color: #6366f1;
+    border-color: #108ee9;
     box-shadow: 0 0 0 3px rgba(16,142,233,.08), 0 2px 8px rgba(16,142,233,.06);
 }
 :root.dark .ai-chat-input-wrapper { background: #111827; border-color: #1e293b; box-shadow: none; }
-:root.dark .ai-chat-input-wrapper:focus-within { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(16,142,233,.1); }
+:root.dark .ai-chat-input-wrapper:focus-within { border-color: #108ee9; box-shadow: 0 0 0 3px rgba(16,142,233,.1); }
 
 .ai-chat-textarea {
     flex: 1;
@@ -1776,7 +1786,7 @@
     width: 36px;
     height: 36px;
     border-radius: 12px;
-    background: var(--tr-dana-600);
+    background: var(--tr-indigo-600);
     color: #fff;
     border: none;
     cursor: pointer;
@@ -1827,7 +1837,7 @@
 :root.dark .ai-chat-slash-item:hover, :root.dark .ai-chat-slash-item.active { background: #334155; }
 .ai-chat-slash-cmd {
     font-weight: 600;
-    color: #6366f1;
+    color: #108ee9;
     font-family: monospace;
     font-size: 12px;
     min-width: 70px;
@@ -1864,9 +1874,9 @@
     font-family: inherit;
 }
 .ai-chat-followup-btn:hover {
-    background: #6366f1;
+    background: #108ee9;
     color: white;
-    border-color: #6366f1;
+    border-color: #108ee9;
     transform: translateY(-1px);
     box-shadow: 0 2px 6px rgba(16,142,233,.25);
 }
@@ -1876,9 +1886,9 @@
     color: var(--tr-muted-ink);
 }
 :root.dark .ai-chat-followup-btn:hover {
-    background: #6366f1;
+    background: #108ee9;
     color: white;
-    border-color: #6366f1;
+    border-color: #108ee9;
 }
 
 /* Data freshness badge */
@@ -1902,7 +1912,7 @@
     border-radius: 4px;
     transition: color .15s;
 }
-.ai-chat-refresh-btn:hover { color: #6366f1; }
+.ai-chat-refresh-btn:hover { color: #108ee9; }
 
 /* Stop generation button */
 .ai-chat-stop-btn {
@@ -1970,19 +1980,19 @@
 }
 .ai-chat-msg:hover .ai-chat-action-btn,
 .ai-chat-msg:focus-within .ai-chat-action-btn { opacity: .7; }
-.ai-chat-action-btn:hover { background: #f1f5f9; color: #6366f1; opacity: 1 !important; }
-:root.dark .ai-chat-action-btn:hover { background: #253040; color: #818cf8; }
+.ai-chat-action-btn:hover { background: #f1f5f9; color: #108ee9; opacity: 1 !important; }
+:root.dark .ai-chat-action-btn:hover { background: #253040; color: #42adef; }
 
 /* Streaming cursor */
 .ai-chat-cursor {
     animation: ai-chat-blink 1s step-end infinite;
-    color: #6366f1;
+    color: #108ee9;
     font-weight: 400;
 }
 @keyframes ai-chat-blink {
     50% { opacity: 0; }
 }
-:root.dark .ai-chat-cursor { color: #818cf8; }
+:root.dark .ai-chat-cursor { color: #42adef; }
 
 /* Message feedback buttons (thumbs up/down) */
 .ai-chat-feedback-btn {
@@ -2000,7 +2010,7 @@
 }
 .ai-chat-msg:hover .ai-chat-feedback-btn,
 .ai-chat-msg:focus-within .ai-chat-feedback-btn { opacity: .7; }
-.ai-chat-feedback-btn:hover { background: #f1f5f9; color: #6366f1; opacity: 1 !important; }
+.ai-chat-feedback-btn:hover { background: #f1f5f9; color: #108ee9; opacity: 1 !important; }
 .ai-chat-feedback-btn.active.positive { opacity: 1; color: #10b981; }
 /* Touch devices have no hover — always reveal action/feedback buttons. */
 @media (pointer: coarse) {
@@ -2013,7 +2023,7 @@
 .ai-chat-refresh-btn,
 .ai-chat-attach-btn { min-width: 28px; min-height: 28px; }
 .ai-chat-feedback-btn.active.negative { opacity: 1; color: #ef4444; }
-:root.dark .ai-chat-feedback-btn:hover { background: #253040; color: #818cf8; }
+:root.dark .ai-chat-feedback-btn:hover { background: #253040; color: #42adef; }
 
 /* Sidebar search */
 .ai-chat-sidebar-search {
@@ -2031,10 +2041,10 @@
     font-family: inherit;
     transition: border-color .15s;
 }
-.ai-chat-search-input:focus { border-color: #6366f1; }
+.ai-chat-search-input:focus { border-color: #108ee9; }
 .ai-chat-search-input::placeholder { color: var(--tr-muted-ink); }
 :root.dark .ai-chat-search-input { background: #0f172a; border-color: #334155; color: #e2e8f0; }
-:root.dark .ai-chat-search-input:focus { border-color: #818cf8; }
+:root.dark .ai-chat-search-input:focus { border-color: #42adef; }
 
 /* Custom scrollbar for AI chat */
 .ai-chat-messages::-webkit-scrollbar { width: 6px; }
@@ -2064,7 +2074,7 @@
 
 /* Fi Sidebar icon for AI Chat */
 .fi-sidebar-item [href*="/admin/ai-chat"] .fi-sidebar-item-icon {
-    color: #6366f1;
+    color: #108ee9;
 }
 
 /* ── Incident Reference Chips ── */
@@ -2108,7 +2118,7 @@
 .ai-chat-ref-severity.severity-p4 { background: #65a30d; }
 .ai-chat-ref-severity.severity-g { background: #64748b; }
 .ai-chat-ref-severity.severity-x1, .ai-chat-ref-severity.severity-x2,
-.ai-chat-ref-severity.severity-x3, .ai-chat-ref-severity.severity-x4 { background: #7c3aed; }
+.ai-chat-ref-severity.severity-x3, .ai-chat-ref-severity.severity-x4 { background: #108ee9; }
 .ai-chat-ref-severity.severity-nonincident { background: #94a3b8; }
 
 .ai-chat-ref-text {
@@ -2136,7 +2146,7 @@
     cursor: pointer;
     padding: 2px 6px;
 }
-.ai-chat-ref-clear:hover { color: #6366f1; }
+.ai-chat-ref-clear:hover { color: #108ee9; }
 
 /* ── Attach Incident Button ── */
 .ai-chat-attach-btn {
@@ -2152,15 +2162,15 @@
     justify-content: center;
     transition: color .15s, background .15s;
 }
-.ai-chat-attach-btn:hover { color: #6366f1; background: #f1f5f9; }
-.ai-chat-attach-btn.has-refs { color: #6366f1; }
+.ai-chat-attach-btn:hover { color: #108ee9; background: #f1f5f9; }
+.ai-chat-attach-btn.has-refs { color: #108ee9; }
 :root.dark .ai-chat-attach-btn:hover { background: #1e293b; }
 
 .ai-chat-attach-badge {
     position: absolute;
     top: -2px;
     right: -2px;
-    background: #6366f1;
+    background: #108ee9;
     color: #fff;
     font-size: 9px;
     font-weight: 700;
@@ -2236,14 +2246,14 @@
 
 /* --- Persona Panel --- */
 .ai-chat-model-btn--active {
-    background: rgba(99, 102, 241, 0.08) !important;
-    border-color: rgba(99, 102, 241, 0.25) !important;
-    color: #6366f1 !important;
+    background: rgba(16,142,233, 0.08) !important;
+    border-color: rgba(16,142,233, 0.25) !important;
+    color: #108ee9 !important;
 }
 :root.dark .ai-chat-model-btn--active {
-    background: rgba(99, 102, 241, 0.15) !important;
-    border-color: rgba(99, 102, 241, 0.3) !important;
-    color: #a5b4fc !important;
+    background: rgba(16,142,233, 0.15) !important;
+    border-color: rgba(16,142,233, 0.3) !important;
+    color: #7fc8f4 !important;
 }
 
 .ai-chat-persona-panel {
@@ -2364,11 +2374,11 @@
 }
 
 .ai-chat-persona-card--selected {
-    border-color: color-mix(in srgb, var(--p-color, #6366f1) 35%, transparent) !important;
-    background: color-mix(in srgb, var(--p-color, #6366f1) 4%, white) !important;
+    border-color: color-mix(in srgb, var(--p-color, #108ee9) 35%, transparent) !important;
+    background: color-mix(in srgb, var(--p-color, #108ee9) 4%, white) !important;
 }
 :root.dark .ai-chat-persona-card--selected {
-    background: color-mix(in srgb, var(--p-color, #6366f1) 8%, #1e293b) !important;
+    background: color-mix(in srgb, var(--p-color, #108ee9) 8%, #1e293b) !important;
 }
 
 .ai-chat-persona-card__inner {
@@ -2395,13 +2405,13 @@
     font-weight: 800;
     letter-spacing: -0.02em;
     color: white;
-    background: var(--p-color, #6366f1);
-    box-shadow: 0 1px 4px color-mix(in srgb, var(--p-color, #6366f1) 25%, transparent);
+    background: var(--p-color, #108ee9);
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--p-color, #108ee9) 25%, transparent);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .ai-chat-persona-card:hover .ai-chat-persona-card__avatar {
     transform: scale(1.06);
-    box-shadow: 0 2px 8px color-mix(in srgb, var(--p-color, #6366f1) 30%, transparent);
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--p-color, #108ee9) 30%, transparent);
 }
 
 .ai-chat-persona-card__body { flex: 1; min-width: 0; }
@@ -2454,9 +2464,9 @@
 :root.dark .ai-chat-persona-card__toggle { background: #1e293b; border-color: #475569; }
 
 .ai-chat-persona-card__toggle--on {
-    background: var(--p-color, #6366f1) !important;
-    border-color: var(--p-color, #6366f1) !important;
-    box-shadow: 0 1px 4px color-mix(in srgb, var(--p-color, #6366f1) 30%, transparent);
+    background: var(--p-color, #108ee9) !important;
+    border-color: var(--p-color, #108ee9) !important;
+    box-shadow: 0 1px 4px color-mix(in srgb, var(--p-color, #108ee9) 30%, transparent);
 }
 
 .ai-chat-persona-card__desc {
@@ -2481,12 +2491,12 @@
     letter-spacing: 0.04em;
     padding: 1.5px 6px;
     border-radius: 3px;
-    background: color-mix(in srgb, var(--p-color, #6366f1) 7%, #f3f4f6);
-    color: color-mix(in srgb, var(--p-color, #6366f1) 65%, #6b7280);
+    background: color-mix(in srgb, var(--p-color, #108ee9) 7%, #f3f4f6);
+    color: color-mix(in srgb, var(--p-color, #108ee9) 65%, #6b7280);
 }
 :root.dark .ai-chat-persona-card__skill {
-    background: color-mix(in srgb, var(--p-color, #6366f1) 10%, #1e293b);
-    color: color-mix(in srgb, var(--p-color, #6366f1) 60%, #94a3b8);
+    background: color-mix(in srgb, var(--p-color, #108ee9) 10%, #1e293b);
+    color: color-mix(in srgb, var(--p-color, #108ee9) 60%, #94a3b8);
 }
 
 .ai-chat-persona-card__more {
@@ -2517,7 +2527,7 @@
 
 /* ── AI Trend Insights Widget ── */
 
-.ai-trends-heading-icon { color: var(--tr-dana, #108ee9); flex-shrink: 0; }
+.ai-trends-heading-icon { color: var(--tr-indigo, #108ee9); flex-shrink: 0; }
 
 .ai-trends-actions { display: flex; align-items: center; gap: 8px; }
 
@@ -2541,7 +2551,7 @@
     cursor: pointer;
     transition: background-color 0.15s, border-color 0.15s, color 0.15s;
 }
-.ai-trends-refresh:hover { color: var(--tr-dana, #108ee9); border-color: var(--tr-dana, #108ee9); }
+.ai-trends-refresh:hover { color: var(--tr-indigo, #108ee9); border-color: var(--tr-indigo, #108ee9); }
 .ai-trends-refresh:disabled { opacity: 0.3; cursor: not-allowed; }
 :root.dark .ai-trends-refresh { border-color: var(--tr-slate-600, #475569); }
 
@@ -2610,7 +2620,7 @@
     transition: background 0.1s;
 }
 .ai-trends-mp__item:hover { background: rgba(16,142,233,0.06); }
-.ai-trends-mp__item--active { background: rgba(16,142,233,0.08); font-weight: 600; color: var(--tr-dana, #108ee9); }
+.ai-trends-mp__item--active { background: rgba(16,142,233,0.08); font-weight: 600; color: var(--tr-indigo, #108ee9); }
 :root.dark .ai-trends-mp__item { color: var(--tr-slate-300, #cbd5e1); }
 :root.dark .ai-trends-mp__item:hover { background: rgba(16,142,233,0.12); }
 
@@ -2689,7 +2699,7 @@
     gap: 6px;
     margin-bottom: 10px;
 }
-.ai-trends-card--trends .ai-trends-card__head { color: var(--tr-dana, #108ee9); }
+.ai-trends-card--trends .ai-trends-card__head { color: var(--tr-indigo, #108ee9); }
 .ai-trends-card--recurring .ai-trends-card__head { color: var(--tr-amber, #f59e0b); }
 .ai-trends-card--anomalies .ai-trends-card__head { color: var(--tr-rose, #f43f5e); }
 .ai-trends-card--recs .ai-trends-card__head { color: var(--tr-emerald, #10b981); }
@@ -2732,7 +2742,7 @@
     height: 5px;
     border-radius: 50%;
 }
-.ai-trends-card--trends .ai-trends-item::before { background: var(--tr-dana, #108ee9); }
+.ai-trends-card--trends .ai-trends-item::before { background: var(--tr-indigo, #108ee9); }
 .ai-trends-card--recurring .ai-trends-item::before { background: var(--tr-amber, #f59e0b); }
 .ai-trends-card--anomalies .ai-trends-item::before { background: var(--tr-rose, #f43f5e); }
 .ai-trends-card--recs .ai-trends-item::before { background: var(--tr-emerald, #10b981); }
@@ -2772,85 +2782,304 @@
 }
 :root.dark .analytics-chart-container:hover { border-color: var(--tr-slate-500, #64748b); }
 
-/* --- Sidebar (RISE portal reference, owner 2026-11-17) ---
-   Roomy look: white panel, large labels, navigation groups as rounded
-   cards — OPEN group = light DANA card with blue uppercase label +
-   chevron; COLLAPSED group = plain gray label between hairlines
-   (Filament rotates the group chevron -180 when collapsed, so :has()
-   can target it). Width comes from ->sidebarWidth('17rem') in
-   AdminPanelProvider; the old 14rem width hack and the dead
-   .fi-sidebar--collapsed block are gone. --- */
-.fi-sidebar {
-    background-color: #ffffff;
-    border-right: 1px solid #eef0f4;
-}
-:root.dark .fi-sidebar {
-    background-color: #0f172a;
-    border-right-color: #1e293b;
-}
+/* --- Sidebar redesign (2026-11-19) -----------------------------------------
+   Account + notifications live in the sidebar now (SIDEBAR_FOOTER hook), the
+   desktop top bar is hidden, and the palette replaced the topbar search.
+   Colors go through the --tr-* semantic tokens (DANA brand since 2026-11-19) —
+   no raw brand hexes here. Unlayered + !important beats Filament's unlayered
+   Tailwind v3 build where they collide (same preflight-vs-unlayered story as
+   the Notion panel classes — see testing-standards.md). --- */
 
-.fi-logo {
-    align-items: center;
-    gap: 0.75rem;
-    font-size: 1.35rem;
-    font-weight: 800;
-    letter-spacing: -0.01em;
-    color: #0f172a;
-}
-:root.dark .fi-logo { color: #f1f5f9; }
-
-/* The brand text never wraps (18rem sidebar fits it once the collapse
-   chevron leaves the flow — absolute, vertically centered at the right
-   edge like the RISE reference). */
-.fi-sidebar .fi-logo span { white-space: nowrap; }
-
-.fi-sidebar-header { position: relative; }
-
-.fi-sidebar-header .fi-icon-btn {
-    position: absolute;
-    inset-inline-end: 0.5rem;
-    top: 50%;
-    translate: 0 -50%;
-    margin: 0 !important;
-}
-
-/* Collapsed rail: the expand control IS the DANA logo (owner 2026-11-18 —
-   supersedes the earlier "no logo in the rail"). Alpine x-show hides the
-   brand wrapper with an inline display:none; !important author rules beat
-   that, so the wrapper comes back as a centered mark-only block. The pin
-   appears only on the temporary expand (fi-tr-pin-btn), so the rail carries
-   just the logo. */
+/* Top bar: desktop hides it entirely (notifications + account moved into the
+   sidebar, search moved into the palette). Mobile keeps it as the drawer's
+   hamburger + brand bar, minus the pieces the sidebar/palette own. */
 @media (min-width: 1024px) {
-    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div[x-show] {
-        display: flex !important;
-        justify-content: center;
-        width: 100%;
-    }
-    .fi-sidebar:not(.fi-sidebar-open) .fi-logo span { display: none; }
-    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {
+    .fi-topbar {
         display: none !important;
     }
-    /* Owner 2026-11-19: icons on the rail centerline. Filament's item row
-       is justify-center, but the expanded padding (0.75/0.5) shifts every
-       rail icon 2px right of center — neutralize it here. Filament's own
-       inline `scrollbar-gutter: stable` on the nav reserves 8px on the
-       RIGHT only (our styled 8px webkit scrollbar), landing the icon
-       column 8px LEFT of the 88px rail's center — Playwright-probed.
-       Drop gutter + scrollbar in the rail; wheel scrolling still works. */
-    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {
-        padding-left: 0.5rem !important;
-        padding-right: 0.5rem !important;
-    }
-    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav {
-        scrollbar-gutter: auto;
-        scrollbar-width: none;
-    }
-    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav::-webkit-scrollbar { display: none; }
 }
 
-/* RISE reference: the topmost bar is a solid DANA-blue bar spanning the page
-   width, white text/icons, the brand parked at its start whenever the
-   sidebar collapses away (brand lives in the sidebar header when expanded). */
+.fi-topbar .fi-user-menu,
+.fi-topbar .fi-global-search {
+    display: none !important;
+}
+
+/* Open sidebar (expanded) — 15rem for the account rows' breathing room. */
+.fi-sidebar.fi-sidebar-open {
+    width: 15rem !important;
+}
+
+/* Rail (collapsed on desktop): scoped to >=lg — the mobile drawer's closed
+   state is off-screen, not a rail. Replaces the dead .fi-sidebar--collapsed
+   rules (that class never existed in Filament v3 — the rail is the aside's
+   no-width state, content-sized; pin it for a stable icon column). */
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) {
+        width: 4.5rem !important;
+    }
+}
+
+.fi-sidebar-item > a {
+    padding-top: 0.3rem !important;
+    padding-bottom: 0.3rem !important;
+    padding-left: 0.75rem !important;
+    padding-right: 0.5rem !important;
+    gap: 0.375rem !important;
+    border-radius: 0.5rem !important;
+}
+
+.fi-sidebar-item-label {
+    font-size: 0.8rem !important;
+    line-height: 1.1rem !important;
+}
+
+.fi-sidebar-item .fi-icon,
+.fi-sidebar-item-icon {
+    width: 0.875rem !important;
+    height: 0.875rem !important;
+}
+
+/* Active item: quiet brand-tinted pill. */
+.fi-sidebar-item-active > a {
+    background: var(--tr-violet-bg, #eaf6fe) !important;
+    font-weight: 600 !important;
+}
+
+/* Group labels: quiet uppercase section markers. */
+.fi-sidebar-group-label {
+    font-size: 0.65rem !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.06em !important;
+    color: #64748b !important;
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.125rem !important;
+    margin-bottom: 0 !important;
+}
+
+/* Rail: hide text, center icons. The account/search rows below hide their own
+   labels the same way. */
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {
+        justify-content: center !important;
+        padding: 0.45rem !important;
+    }
+}
+
+/* --- Sidebar search row (SIDEBAR_NAV_START → filament.sidebar.search-trigger) --- */
+.sidebar-search-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.625rem;
+    margin-bottom: 0.5rem;
+    padding: 0.45rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    color: #64748b;
+    font-size: 0.8rem;
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+}
+
+.sidebar-search-row:hover {
+    border-color: var(--tr-indigo-600, #0f7bd1);
+    color: var(--tr-indigo-600, #0f7bd1);
+    background: var(--tr-violet-bg, #eaf6fe);
+}
+
+.sidebar-search-kbd {
+    margin-inline-start: auto;
+    padding: 0.05rem 0.4rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    font-size: 0.65rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #94a3b8;
+}
+
+/* --- Sidebar footer (SIDEBAR_FOOTER → filament.sidebar.footer) --- */
+.fi-sidebar-footer {
+    border-top: 1px solid #e2e8f0;
+    padding: 0.625rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+:root.dark .fi-sidebar-footer {
+    border-top-color: #334155;
+}
+
+/* Bell + account rows share one row anatomy. */
+.sidebar-account-row {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 0.5rem;
+    font-size: 0.8rem;
+    color: #334155;
+    transition: background-color .15s ease, color .15s ease;
+}
+
+.sidebar-account-row:hover {
+    background: #f1f5f9;
+    color: var(--tr-indigo-600, #0f7bd1);
+}
+
+:root.dark .sidebar-account-row {
+    color: #cbd5e1;
+}
+
+:root.dark .sidebar-account-row:hover {
+    background: rgba(51, 65, 85, .5);
+}
+
+.sidebar-account-icon {
+    width: 1.25rem;
+    flex-shrink: 0;
+    color: #64748b;
+}
+
+.sidebar-account-row:hover .sidebar-account-icon {
+    color: var(--tr-indigo-600, #0f7bd1);
+}
+
+.sidebar-account-icon > svg {
+    width: 1.1rem;
+    height: 1.1rem;
+}
+
+.sidebar-account-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Unread badge on the bell icon. */
+.sidebar-account-badge {
+    position: absolute;
+    top: -0.25rem;
+    right: -0.375rem;
+    min-width: 1rem;
+    height: 1rem;
+    padding: 0 0.2rem;
+    border-radius: 9999px;
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1rem;
+    text-align: center;
+}
+
+/* Account block: the user-menu dropdown trigger rendered as a full row. */
+.sidebar-account-user .fi-user-menu {
+    width: 100%;
+}
+
+.sidebar-account-user .fi-user-menu > button {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.45rem 0.6rem;
+    border-radius: 0.5rem;
+    transition: background-color .15s ease;
+}
+
+.sidebar-account-user .fi-user-menu > button:hover {
+    background: #f1f5f9;
+}
+
+:root.dark .sidebar-account-user .fi-user-menu > button:hover {
+    background: rgba(51, 65, 85, .5);
+}
+
+.sidebar-account-user .fi-user-menu img {
+    width: 1.75rem !important;
+    height: 1.75rem !important;
+    border-radius: 9999px;
+}
+
+.sidebar-account-meta {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    line-height: 1.15;
+    overflow: hidden;
+}
+
+.sidebar-account-name {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #1e293b;
+}
+
+.sidebar-account-email {
+    max-width: 100%;
+    font-size: 0.68rem;
+    color: #64748b;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+:root.dark .sidebar-account-name { color: #e2e8f0; }
+:root.dark .sidebar-account-email { color: #94a3b8; }
+
+/* Rail: only icons remain in the footer + search row. */
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-label,
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-meta,
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-kbd {
+        display: none !important;
+    }
+
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-row,
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-row,
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-user .fi-user-menu > button {
+        justify-content: center !important;
+        padding: 0.45rem 0 !important;
+    }
+}
+
+/* Tabular numbers in tables — Inter's tnum keeps ID/figure columns aligned. */
+.fi-ta-cell,
+.fi-ta-header-cell {
+    font-feature-settings: 'tnum' 1;
+}
+
+/* --- Compact Tables --- */
+.fi-ta-cell {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    font-size: 0.75rem !important;
+    line-height: 1.1rem !important;
+}
+
+.fi-ta-header-cell {
+    padding-top: 0.375rem !important;
+    padding-bottom: 0.375rem !important;
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    font-size: 0.7rem !important;
+}
+
+.fi-ta-cell .fi-badge {
+    font-size: 0.65rem !important;
+    padding: 0.1rem 0.4rem !important;
+}
+
+/* --- From feature/sub-incident-hierarchy (merge round 6) — additions main's
+   redesign doesn't carry. Order: appended AFTER main's rules, so anything
+   here wins a tie at equal specificity. --- */
+
+/* Topbar brand bar (mobile keeps a topbar — desktop hides it entirely, see
+   main's redesign block above). */
 .fi-topbar nav {
     background-color: var(--tr-dana-600);
     color: #fff;
@@ -2858,9 +3087,6 @@
     --tw-ring-shadow: 0 0 #0000;
     border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
-/* Owner 2026-11-18: dark mode paints the topbar the SAME color as the dark
-   sidebar (#0f172a) — NOT var(--tr-dana-700) either, which is bright: the
-   dark DANA ramp shifts one step LIGHTER (#0673c9). */
 :root.dark .fi-topbar nav {
     background-color: #0f172a;
     border-bottom-color: rgba(0, 0, 0, 0.4);
@@ -2878,7 +3104,9 @@
     white-space: nowrap;
 }
 
-/* --- Topbar date + calendar + user name (RISE reference, owner 2026-11-18) --- */
+/* --- Topbar date + calendar + user name (RISE reference, owner 2026-11-18).
+   The topbar renders on mobile; on desktop main's redesign hides the bar —
+   owner decision pending whether the date widget moves into the sidebar. --- */
 .fi-tr-date { position: relative; }
 .fi-tr-date-btn {
     display: inline-flex;
@@ -2957,111 +3185,23 @@
 }
 @media (min-width: 768px) { .fi-tr-user-name { display: inline; } }
 
-.fi-sidebar-item > a {
-    padding-top: 0.55rem !important;
-    padding-bottom: 0.55rem !important;
-    padding-left: 0.75rem !important;
-    padding-right: 0.5rem !important;
-    gap: 0.75rem !important;
-}
-
-.fi-sidebar-item-label {
-    font-size: 1rem !important;
-    line-height: 1.4rem !important;
-    font-weight: 500 !important;
-    color: #334155;
-}
-:root.dark .fi-sidebar-item-label { color: #cbd5e1; }
-
-.fi-sidebar-item .fi-icon,
-.fi-sidebar-item-icon {
-    width: 1.2rem !important;
-    height: 1.2rem !important;
-}
-
-/* Active item: light DANA card + blue label (Filament marks the li
-   `fi-active` and grays the button — retint to the primary). */
-.fi-sidebar .fi-active > .fi-sidebar-item-button {
-    background-color: #eef7fe;
-}
-.fi-sidebar .fi-active .fi-sidebar-item-label {
-    color: #0673c9;
-    font-weight: 600;
-}
-:root.dark .fi-sidebar .fi-active > .fi-sidebar-item-button { background-color: rgba(16, 142, 233, 0.12); }
-:root.dark .fi-sidebar .fi-active .fi-sidebar-item-label { color: #7fcbf7; }
-
-/* Group header card (open state). */
-.fi-sidebar-group-button {
-    background-color: #eef7fe;
-    border: 1px solid #d8ecfd;
-    border-radius: 0.75rem;
-    padding-top: 0.5rem !important;
-    padding-bottom: 0.5rem !important;
-    padding-left: 0.75rem !important;
-    padding-right: 0.5rem !important;
-    margin-top: 0.25rem;
-}
-
-.fi-sidebar-group-label {
-    font-size: 0.78rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase;
-    color: #0673c9;
-    margin-bottom: 0 !important;
-}
-
-/* Collapsed group: strip the card, show a plain gray label between
-   hairlines (the reference's PERFORMANCE MANAGEMENT row). */
-.fi-sidebar-group:has(.fi-sidebar-group-collapse-button.-rotate-180) > .fi-sidebar-group-button {
-    background-color: transparent;
-    border: 0;
-    border-top: 1px solid #eef0f4;
-    border-bottom: 1px solid #eef0f4;
-    border-radius: 0;
-    margin-top: 0;
-    padding-top: 0.4rem !important;
-    padding-bottom: 0.4rem !important;
-}
-.fi-sidebar-group:has(.fi-sidebar-group-collapse-button.-rotate-180) .fi-sidebar-group-label {
-    color: #94a3b8;
-}
-:root.dark .fi-sidebar-group-button {
-    background-color: rgba(16, 142, 233, 0.10);
-    border-color: rgba(16, 142, 233, 0.25);
-}
-:root.dark .fi-sidebar-group-label { color: #7fcbf7; }
-:root.dark .fi-sidebar-group:has(.fi-sidebar-group-collapse-button.-rotate-180) > .fi-sidebar-group-button {
-    background-color: transparent;
-    border: 0;
-    border-top: 1px solid #1e293b;
-    border-bottom: 1px solid #1e293b;
-}
-:root.dark .fi-sidebar-group:has(.fi-sidebar-group-collapse-button.-rotate-180) .fi-sidebar-group-label {
-    color: #64748b;
-}
-
 /* --- Sidebar hover temp-expand + pin (DANA HR reference, owner 2026-11-17) ---
    Hovering the collapsed rail temporarily expands it as an OVERLAY: the aside
-   widens to --sidebar-width while a negative end margin pays the difference
+   widens to the open width while a negative end margin pays the difference
    back to the layout, so the page content never moves. Leaving collapses it
    again (script in AdminPanelProvider SIDEBAR_NAV_END); the pin control (fixed
    over the header's right edge, visible only in the temporary state) makes the
    expand permanent. $store.sidebar.isOpen is Alpine-persisted, so the pinned /
-   collapsed choice survives reloads. Desktop only. --- */
+   collapsed choice survives reloads. Desktop only. Geometry follows main's
+   redesign: rail = 4.5rem, open = 15rem (ponytail: hardcoded to mirror those
+   two !important rules above — update together). --- */
 @media (min-width: 1024px) {
     .fi-sidebar {
         transition: width 0.2s ease, margin-inline-end 0.2s ease;
     }
-    /* Give the closed rail a deterministic width — the margin compensation
-       below is written against it (--collapsed-sidebar-width, 4.5rem). */
-    .fi-sidebar:not(.fi-sidebar-open) {
-        width: var(--collapsed-sidebar-width);
-    }
     .fi-sidebar.tr-sidebar-temp-open {
-        width: var(--sidebar-width);
-        margin-inline-end: calc(var(--collapsed-sidebar-width) - var(--sidebar-width));
+        width: 15rem;
+        margin-inline-end: calc(4.5rem - 15rem);
         z-index: 30;
         box-shadow: 0 12px 32px rgba(2, 32, 71, 0.18);
     }
@@ -3075,7 +3215,7 @@
     display: none;
     position: fixed;
     top: 0.875rem;
-    left: calc(var(--sidebar-width) - 2.75rem);
+    left: calc(15rem - 2.75rem);
     z-index: 40;
     align-items: center;
     justify-content: center;
@@ -3100,35 +3240,27 @@
     color: #f1f5f9;
 }
 
-/* The nav scrollbar only appears while the cursor is over the sidebar
-   (the nav's scrollbar-gutter: stable keeps nothing from shifting). */
+/* The nav scrollbar only appears while the cursor is over the sidebar.
+   In the RAIL the gutter is the enemy: Filament's inline
+   `scrollbar-gutter: stable` on .fi-sidebar-nav reserves 8px on the RIGHT
+   only, shifting every rail icon 8px left of center (Playwright-probed).
+   scrollbar-width: none zeroes the gutter; the closed rail never scrolls
+   visually. Collapsed-rail centering, owner 2026-11-19. */
 .fi-sidebar .fi-sidebar-nav { scrollbar-color: transparent transparent; }
 .fi-sidebar:hover .fi-sidebar-nav { scrollbar-color: rgba(148, 163, 184, 0.55) transparent; }
 .fi-sidebar .fi-sidebar-nav::-webkit-scrollbar { width: 8px; }
 .fi-sidebar .fi-sidebar-nav::-webkit-scrollbar-thumb { border-radius: 9999px; background-color: transparent; }
 .fi-sidebar:hover .fi-sidebar-nav::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.55); }
-
-/* --- Compact Tables --- */
-.fi-ta-cell {
-    padding-top: 0.25rem !important;
-    padding-bottom: 0.25rem !important;
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
-    font-size: 0.75rem !important;
-    line-height: 1.1rem !important;
-}
-
-.fi-ta-header-cell {
-    padding-top: 0.375rem !important;
-    padding-bottom: 0.375rem !important;
-    padding-left: 0.5rem !important;
-    padding-right: 0.5rem !important;
-    font-size: 0.7rem !important;
-}
-
-.fi-ta-cell .fi-badge {
-    font-size: 0.65rem !important;
-    padding: 0.1rem 0.4rem !important;
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav {
+        scrollbar-gutter: auto;
+        scrollbar-width: none;
+    }
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav::-webkit-scrollbar { display: none; }
 }
 
 /* --- PROJ-022: a super and its subs render as ONE highlighted group ---
@@ -3146,7 +3278,7 @@ tr.fi-ta-row.sub-incident-row > td {
 
 :root.dark tr.fi-ta-row.sub-incident-family-head > td,
 :root.dark tr.fi-ta-row.sub-incident-row > td {
-    background-color: rgb(99 102 241 / 0.08);
+    background-color: rgba(16, 142, 233, 0.08);
 }
 
 tr.fi-ta-row.sub-incident-row {

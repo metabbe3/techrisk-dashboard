@@ -1,8 +1,8 @@
-<div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-dana-50 via-white to-violet-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 px-4 py-12 sm:px-6 lg:px-8">
+<div class="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-dana-50 via-white to-sky-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 px-4 py-12 sm:px-6 lg:px-8">
     <div class="w-full max-w-md">
         {{-- Header --}}
         <div class="text-center mb-8">
-            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-dana-500 to-violet-600 shadow-lg mb-4">
+            <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-dana-500 to-sky-600 shadow-lg mb-4">
                 <svg class="h-7 w-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
                 </svg>
@@ -23,7 +23,7 @@
                 <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
                     Your access request has been submitted successfully. You will receive an email once your request is reviewed and approved.
                 </p>
-                <a href="{{ url('/') }}" class="mt-6 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-dana-600 to-violet-600 px-5 py-2.5 text-sm font-medium text-white shadow-md hover:shadow-lg hover:from-dana-700 hover:to-violet-700 transition-all">
+                <a href="{{ url('/') }}" class="mt-6 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-dana-600 to-sky-600 px-5 py-2.5 text-sm font-medium text-white shadow-md hover:shadow-lg hover:from-dana-700 hover:to-sky-700 transition-all">
                     <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
                     Return to Home
                 </a>
@@ -151,7 +151,7 @@
                         type="submit"
                         wire:loading.attr="disabled"
                         wire:loading.class="opacity-50 cursor-not-allowed"
-                        class="w-full rounded-xl bg-gradient-to-r from-dana-600 to-violet-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:from-dana-700 hover:to-violet-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-dana-500 focus:ring-offset-2 transition-all"
+                        class="w-full rounded-xl bg-gradient-to-r from-dana-600 to-sky-600 px-4 py-3 text-sm font-semibold text-white shadow-md hover:from-dana-700 hover:to-sky-700 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-dana-500 focus:ring-offset-2 transition-all"
                     >
                         <span wire:loading.remove>Submit Request</span>
                         <span wire:loading class="hidden">Submitting...</span>

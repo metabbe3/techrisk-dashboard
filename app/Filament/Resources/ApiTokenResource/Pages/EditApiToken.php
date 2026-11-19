@@ -26,7 +26,7 @@ class EditApiToken extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        // These fields are managed separately on the token model
+        // Defaults for fields the form may leave blank.
         $data['expires_at'] = $data['expires_at'] ?? now()->addMonths(6);
         $data['renewal_minutes'] = $data['renewal_minutes'] ?? null;
 

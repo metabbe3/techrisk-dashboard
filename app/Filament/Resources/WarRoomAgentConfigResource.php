@@ -65,11 +65,11 @@ class WarRoomAgentConfigResource extends Resource
                             ->helperText('Heroicon name (e.g. heroicon-o-server, heroicon-o-shield-check)'),
                         Forms\Components\Select::make('color')
                             ->options([
-                                'blue' => 'Blue', 'indigo' => 'Indigo', 'purple' => 'Purple',
+                                'blue' => 'Blue',
                                 'green' => 'Green', 'teal' => 'Teal', 'cyan' => 'Cyan',
                                 'red' => 'Red', 'orange' => 'Orange', 'amber' => 'Amber',
-                                'pink' => 'Pink', 'fuchsia' => 'Fuchsia', 'rose' => 'Rose',
-                                'sky' => 'Sky', 'violet' => 'Violet', 'yellow' => 'Yellow',
+                                'pink' => 'Pink', 'rose' => 'Rose',
+                                'sky' => 'Sky', 'yellow' => 'Yellow',
                                 'emerald' => 'Emerald', 'gray' => 'Gray',
                             ]),
                         Forms\Components\TextInput::make('sort_order')

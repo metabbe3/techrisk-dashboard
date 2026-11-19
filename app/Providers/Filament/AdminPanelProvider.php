@@ -23,30 +23,12 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
+use pxlrbt\FilamentSpotlight\SpotlightPlugin;
 
 class AdminPanelProvider extends PanelProvider
 {
     public function panel(\Filament\Panel $panel): \Filament\Panel
     {
-        // Owner 2026-11-17: the sidebar follows the RISE portal reference and
-        // the panel switches to DANA blue. 'indigo' is overridden with the same
-        // palette because the primary WAS indigo — every existing 'indigo'
-        // badge/accent keeps its exact relationship to primary. 'info' moves
-        // Sky -> Cyan: Sky (#0ea5e9) is near-identical to the new primary.
-        $dana = [
-            50 => '238, 247, 254',
-            100 => '216, 236, 253',
-            200 => '182, 222, 251',
-            300 => '127, 203, 247',
-            400 => '56, 175, 241',
-            500 => '16, 142, 233',
-            600 => '6, 115, 201',
-            700 => '8, 92, 163',
-            800 => '12, 78, 134',
-            900 => '15, 66, 111',
-            950 => '9, 43, 73',
-        ];
-
         return $panel
             ->default()
             ->id('admin')
@@ -65,31 +47,47 @@ class AdminPanelProvider extends PanelProvider
             // covers the browser's default /favicon.ico request (Safari).
             // ?v=3: the same URL served the dark-fringed rebuild — bust it.
             ->favicon(asset('images/favicon.png').'?v=3')
-            ->sidebarWidth('18rem')
-            // 4.5rem (Filament default) clips the rail icons: nav px-6 +
-            // item px-2 + a 1.5rem icon needs 5.5rem to render full-size.
-            ->collapsedSidebarWidth('5.5rem')
+            // Sidebar geometry (open 15rem / rail 4.5rem) is owned by the
+            // app.css redesign block (main a0c3e30) — no provider width
+            // overrides, or the two fight at different layers.
+            // Icon rail on desktop (was fully-collapsible): with the top bar
+            // hidden on desktop, a fully-hidden sidebar would have no button
+            // left to reopen it — the rail keeps logo + nav icons reachable.
+            // (Both chains converged here; ours also carries the hover
+            // temp-expand + pin on the rail.)
             ->sidebarCollapsibleOnDesktop()
-            // Owner 2026-11-18: the collapsed rail's expand control is the
-            // DANA logo itself — the brandLogo wrapper is CSS-promoted into
-            // the collapsed header (app.css); the pin lives only on the
-            // temporary expand state (SIDEBAR_NAV_START hook below).
-            // MERGE 2026-11-18: main flipped this to
-            // sidebarFullyCollapsibleOnDesktop() (commit 84c6914, a side
-            // note in the stale-reminders round) — fully HIDES the sidebar
-            // when closed. Every rail round here (rail logo, hover
-            // temp-expand, pin, 5.5rem width) is built on the COLLAPSIBLE
-            // icon rail, so the flip is reverted; switching modes is an
-            // owner decision, not a reminder-feature side effect.
-            ->databaseNotifications()
+            // Main a0c3e30: topbar bell is OFF — the sidebar footer shows the
+            // bell row (App\Livewire\SidebarNotificationBell) and the
+            // slide-over modal is mounted at panels::body.end instead
+            // (App\Filament\Livewire\DatabaseNotifications, trigger-free).
+            ->databaseNotifications(false)
             ->globalSearch(true)
+            // Inter Variable is self-hosted through the app's Vite build
+            // (@fontsource-variable/inter imported in resources/css/app.css) —
+            // no font CDN, which matters on the VPN-only prod domain.
+            // ->font() sets the panel's --font-family CSS var.
+            ->font('Inter Variable', provider: \Filament\FontProviders\LocalFontProvider::class)
+            ->plugins([
+                SpotlightPlugin::make(),
+            ])
             ->path('admin')
             ->login(Login::class)
             ->passwordReset()
             ->profile(CustomProfilePage::class)
             ->colors([
-                'primary' => $dana,
-                'indigo' => $dana,
+                // DANA brand blue (owner 2026-11-19: no purple anywhere).
+                // 600 = #108EE9 is the brand (Filament buttons use 600).
+                // Mirrors the --color-dana-* @theme tokens in app.css — keep in sync.
+                'primary' => [
+                    50 => '#f0f9fe', 100 => '#dcf0fc', 200 => '#b8e1fa', 300 => '#7fc8f4',
+                    400 => '#42adef', 500 => '#0f7bd1', 600 => '#108ee9', 700 => '#0c67ad',
+                    800 => '#0a5589', 900 => '#083e66',
+                ],
+                'dana' => [
+                    50 => '#f0f9fe', 100 => '#dcf0fc', 200 => '#b8e1fa', 300 => '#7fc8f4',
+                    400 => '#42adef', 500 => '#0f7bd1', 600 => '#108ee9', 700 => '#0c67ad',
+                    800 => '#0a5589', 900 => '#083e66',
+                ],
                 'danger' => Color::Rose,
                 'warning' => Color::Amber,
                 'success' => Color::Emerald,
@@ -139,6 +137,22 @@ class AdminPanelProvider extends PanelProvider
             ->authMiddleware([
                 Authenticate::class,
             ])
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_NAV_START,
+                fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.search-trigger'),
+            )
+            ->renderHook(
+                PanelsRenderHook::SIDEBAR_FOOTER,
+                fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.footer'),
+            )
+            // The database-notifications slide-over modal. Body level (NOT the
+            // sidebar aside): the aside's transform classes re-anchor
+            // position:fixed descendants — see
+            // App\Filament\Livewire\DatabaseNotifications for the full story.
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.notifications-modal'),
+            )
             ->renderHook(
                 'panels::head.end',
                 fn () => '<link rel="stylesheet" href="'.Vite::asset('resources/css/app.css').'">'

@@ -52,7 +52,7 @@ class ListIncidents extends ListRecords
             Actions\Action::make('ai_search')
                 ->label('AI Search')
                 ->icon('heroicon-o-sparkles')
-                ->color('violet')
+                ->color('dana')
                 ->extraAttributes([
                     'class' => 'header-btn-ai',
                 ])

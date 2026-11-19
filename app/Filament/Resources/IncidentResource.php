@@ -52,19 +52,59 @@ class IncidentResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
+    protected static ?string $recordTitleAttribute = 'title';
+
+    /**
+     * Global search (Spotlight palette record search + Filament global
+     * search) — the incident number and title are the fields users search by.
+     */
+    public static function getGloballySearchableAttributes(): array
+    {
+        return ['no', 'title'];
+    }
+
+    /**
+     * ONE-LOGIC: global search must run through the SAME access control as
+     * the table (non-Issue classification + user year access). The default
+     * (parent) returns getEloquentQuery(), which IncidentResource does NOT
+     * override — access control lives on the table via modifyQueryUsing — so
+     * without this override the palette would search EVERY incident regardless
+     * of the user's year access.
+     */
+    public static function getGlobalSearchEloquentQuery(): Builder
+    {
+        return static::applyAccessControl(parent::getGlobalSearchEloquentQuery());
+    }
+
+    public static function getGlobalSearchResultTitle(Model $record): string
+    {
+        return $record->no.' — '.$record->title;
+    }
+
+    public static function getGlobalSearchResultDetails(Model $record): array
+    {
+        return [
+            'Status' => $record->status?->value ?? '—',
+            'Incident date' => $record->incident_date?->format('d M Y') ?? '—',
+        ];
+    }
+
+    // Null guard: the Spotlight palette evaluates canViewAny/canView/canCreate
+    // for every resource on guest pages too (login) — a missing user must
+    // mean "no", never a 500.
     public static function canViewAny(): bool
     {
-        return auth()->user()->can('view incidents');
+        return (bool) auth()->user()?->can('view incidents');
     }
 
     public static function canView(Model $record): bool
     {
-        return auth()->user()->can('view incidents');
+        return (bool) auth()->user()?->can('view incidents');
     }
 
     public static function canCreate(): bool
     {
-        return auth()->user()->can('manage incidents');
+        return (bool) auth()->user()?->can('manage incidents');
     }
 
     public static function canEdit(Model $record): bool

@@ -31,7 +31,13 @@ class ApiAuditLogResource extends Resource
 
     public static function canViewAny(): bool
     {
+        // Null guard: the Spotlight palette evaluates this on guest pages
+        // (login) — a missing user must mean "no", never a 500.
         $user = auth()->user();
+
+        if ($user === null) {
+            return false;
+        }
 
         // Admins can always view audit logs
         if ($user->hasRole('admin')) {

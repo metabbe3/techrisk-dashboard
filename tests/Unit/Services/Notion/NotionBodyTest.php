@@ -51,7 +51,7 @@ class NotionBodyTest extends TestCase
         // portal's prose styles (the RCA section's look) supply typography.
         // Round 13 (owner): the body content stays selectable/copyable (no
         // select-none), the marker sits on the title's line and VERTICALLY
-        // CENTERED (flex summary), and the traitlet is COLORED (indigo —
+        // CENTERED (flex summary), and the traitlet is COLORED (DANA-blue —
         // reads on both light and dark).
         $this->assertStringContainsString('<details id="notion-sec-1" class="group my-5" open><summary class="flex! cursor-pointer"><h1>'.self::TRAITLET.'PIC</h1></summary>', $html);
         $this->assertStringContainsString('<table><tr><td>Team</td></tr></table>', $html);

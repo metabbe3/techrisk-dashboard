@@ -345,7 +345,7 @@ class ViewIncident extends ViewRecord
                     TextEntry::make('responsible_team')
                         ->label('Responsible Team')
                         ->badge()
-                        ->color('violet')
+                        ->color('dana')
                         ->separator(','),
                 ])
                 ->collapsible()
@@ -390,7 +390,7 @@ class ViewIncident extends ViewRecord
 
             Section::make('Remark')
                 ->icon('heroicon-o-chat-bubble-bottom-center-text')
-                ->iconColor('violet')
+                ->iconColor('dana')
                 ->schema([
                     TextEntry::make('remark')
                         ->markdown()
@@ -470,7 +470,7 @@ class ViewIncident extends ViewRecord
             Grid::make(2)->schema([
                 Section::make('Source & Assignment')
                     ->icon('heroicon-o-user-group')
-                    ->iconColor('indigo')
+                    ->iconColor('dana')
                     ->schema([
                         TextEntry::make('incident_source')
                             ->label('Source')
