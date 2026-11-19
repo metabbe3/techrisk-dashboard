@@ -357,13 +357,13 @@ class IncidentResource extends Resource
             ->columns([
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases'))
                     ->extraHeaderAttributes(['class' => 'sticky-col-id'])
-                    ->extraAttributes(['class' => 'sticky-col-id']),
+                    ->extraCellAttributes(['class' => 'sticky-col-id']),
                 TextColumn::make('title')
                     ->searchable()
                     ->html()
                     ->width('200px')
                     ->extraHeaderAttributes(['class' => 'sticky-col-title'])
-                    ->extraAttributes(['class' => 'sticky-col-title'])
+                    ->extraCellAttributes(['class' => 'sticky-col-title'])
                     ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render()),
                 TextColumn::make('mttr_formatted')->label('MTTR')->width('70px')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
