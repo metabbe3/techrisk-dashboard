@@ -72,11 +72,6 @@ class AdminPanelProvider extends PanelProvider
             // stretch badly.
             ->maxContentWidth(MaxWidth::Full)
             ->globalSearch(true)
-            // Inter Variable is self-hosted through the app's Vite build
-            // (@fontsource-variable/inter imported in resources/css/app.css) —
-            // no font CDN, which matters on the VPN-only prod domain.
-            // ->font() sets the panel's --font-family CSS var.
-            ->font('Inter Variable', provider: \Filament\FontProviders\LocalFontProvider::class)
             ->plugins([
                 SpotlightPlugin::make(),
             ])

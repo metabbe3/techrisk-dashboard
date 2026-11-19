@@ -187,6 +187,37 @@ class TopbarWidgetsTest extends TestCase
         );
     }
 
+    /**
+     * Owner 2026-11-19: "samakan ukuran font dengan yang ada di prod
+     * sekarang … font yang kita pakai sebelum main sudah cukup besar" — main
+     * a0c3e30 switched the panel to self-hosted Inter Variable, which reads
+     * smaller than the pre-main stack at the same px. Pre-main, the panel
+     * declared 'Instrument Sans' but never loaded its files (the bunny.net
+     * stylesheet was welcome-page-only), so it rendered system-ui — the look
+     * the owner wants back. Restore the pre-main @theme stack, drop the
+     * Inter import, and remove the provider's ->font('Inter Variable') so
+     * Filament's --font-family falls back to the same system stack.
+     * Source-CSS/provider contract (SectionHeaderCornerRadiusTest pattern).
+     */
+    public function test_the_panel_font_stack_matches_the_pre_main_design(): void
+    {
+        $css = (string) file_get_contents(base_path('resources/css/app.css'));
+
+        $this->assertStringNotContainsString(
+            "@import '@fontsource-variable/inter';",
+            $css,
+            'the Inter import must go — the owner wants the pre-main font back',
+        );
+        $this->assertStringContainsString(
+            "--font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',\n        'Segoe UI Symbol', 'Noto Color Emoji';",
+            $css,
+            'the pre-main --font-sans stack must be restored verbatim (Instrument Sans is not loaded in the panel — it renders system-ui, the pre-main look)',
+        );
+
+        $provider = (string) file_get_contents(app_path('Providers/Filament/AdminPanelProvider.php'));
+        $this->assertStringNotContainsString('->font(', $provider, "Filament's ->font('Inter Variable') must go — it re-pins --font-family to Inter");
+    }
+
     public function test_the_user_menu_shows_the_name_beside_the_avatar(): void
     {
         $user = $this->adminUser();
