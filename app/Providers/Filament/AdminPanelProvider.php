@@ -56,11 +56,13 @@ class AdminPanelProvider extends PanelProvider
             // (Both chains converged here; ours also carries the hover
             // temp-expand + pin on the rail.)
             ->sidebarCollapsibleOnDesktop()
-            // Topbar bell is OFF — the sidebar footer shows the bell row
-            // (App\Livewire\SidebarNotificationBell) and the slide-over modal
-            // is mounted at panels::body.end instead
-            // (App\Livewire\SidebarDatabaseNotifications, trigger-free).
-            ->databaseNotifications(false)
+            // Topbar bell is BACK (owner 2026-11-19: profile + notifications
+            // return to the header; the sidebar footer hook is gone). The
+            // panel flag defaults to FALSE — databaseNotifications() must be
+            // explicit or Filament renders no bell. Every app notification
+            // carries format:filament (BaseNotification), so no filter is
+            // lost by dropping the custom bell.
+            ->databaseNotifications()
             ->globalSearch(true)
             // Inter Variable is self-hosted through the app's Vite build
             // (@fontsource-variable/inter imported in resources/css/app.css) —
@@ -141,17 +143,13 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::SIDEBAR_NAV_START,
                 fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.search-trigger'),
             )
+            // Theme switcher — used to live in the sidebar footer's account
+            // dropdown; owner 2026-11-19 moved profile + notifications back
+            // to the topbar, so the switcher re-homes here (before the user
+            // menu button, same dropdown anatomy).
             ->renderHook(
-                PanelsRenderHook::SIDEBAR_FOOTER,
-                fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.footer'),
-            )
-            // The database-notifications slide-over modal. Body level (NOT the
-            // sidebar aside): the aside's transform classes re-anchor
-            // position:fixed descendants — see
-            // App\Livewire\SidebarDatabaseNotifications for the full story.
-            ->renderHook(
-                PanelsRenderHook::BODY_END,
-                fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.notifications-modal'),
+                PanelsRenderHook::USER_MENU_BEFORE,
+                fn (): \Illuminate\Contracts\View\View => view('filament.topbar.theme-switcher'),
             )
             ->renderHook(
                 'panels::head.end',

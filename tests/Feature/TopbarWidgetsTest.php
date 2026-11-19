@@ -117,7 +117,7 @@ class TopbarWidgetsTest extends TestCase
         $this->assertStringContainsString(
             'background-color: var(--color-dana-600);',
             $css,
-            "the topbar bar must paint the DANA brand blue through the live token",
+            'the topbar bar must paint the DANA brand blue through the live token',
         );
     }
 
@@ -155,24 +155,33 @@ class TopbarWidgetsTest extends TestCase
     }
 
     /**
-     * Owner 2026-11-19 (point 4): the sidebar blends into the page (main's
-     * redesign made the aside lg:bg-transparent). Give it its own surface —
-     * white over the gray-50 page in light, slate-900 over near-black in
-     * dark — with a hairline end border. The temp-open hover overlay keeps
-     * its shadow (the rule scopes itself :not(.tr-sidebar-temp-open), or the
-     * !important background/shadow rule would flatten the overlay).
+     * Owner 2026-11-19 (point 4 + temp-expand bug): the sidebar blends into
+     * the page (main's redesign made the aside lg:bg-transparent). Give it
+     * its own surface — white over the gray-50 page in light, slate-900 over
+     * near-black in dark — with a hairline end border. The surface must
+     * cover EVERY desktop aside INCLUDING the temp-open hover overlay: when
+     * the surface scoped itself off .tr-sidebar-temp-open, the overlay kept
+     * Filament's transparent background and the z-20 topbar strip showed
+     * THROUGH the z-30 overlay behind the brand row. box-shadow:none stays
+     * scoped to the pinned state, or it would flatten the overlay's
+     * elevation shadow.
      */
     public function test_the_sidebar_surface_is_distinct_from_the_page(): void
     {
         $css = (string) file_get_contents(base_path('resources/css/app.css'));
 
         $this->assertStringContainsString(
-            ".fi-sidebar:not(.tr-sidebar-temp-open) {\n        background: #fff !important;\n        border-inline-end: 1px solid #e2e8f0;\n        box-shadow: none !important;\n    }",
+            ".fi-sidebar {\n        background: #fff !important;\n        border-inline-end: 1px solid #e2e8f0;\n    }",
             $css,
-            'light sidebar surface: white + hairline end border, scoped off the temp-open overlay',
+            'light sidebar surface: white + hairline end border, covering the temp-open overlay too',
         );
         $this->assertStringContainsString(
-            ":root.dark .fi-sidebar:not(.tr-sidebar-temp-open) {\n        background: #0f172a !important;\n        border-inline-end-color: #1e293b;\n    }",
+            ".fi-sidebar:not(.tr-sidebar-temp-open) {\n        box-shadow: none !important;\n    }",
+            $css,
+            'flat shadow is pinned-only — the temp-open overlay keeps its elevation shadow',
+        );
+        $this->assertStringContainsString(
+            ":root.dark .fi-sidebar {\n        background: #0f172a !important;\n        border-inline-end-color: #1e293b;\n    }",
             $css,
             'dark sidebar surface: slate-900 + darker hairline',
         );

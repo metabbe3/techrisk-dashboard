@@ -88,6 +88,31 @@ class SidebarBehaviorTest extends TestCase
         );
     }
 
+    /**
+     * Owner 2026-11-19 (temp-expand bug): the pin button is position:fixed
+     * over the header's right edge and OVERLAPPED the brand text tail —
+     * with its rounded hover fill visible, the button box (starting at
+     * 15rem - 2.75rem = 196px) cut into "TechRisk Portal" (ends ≈198.6px
+     * at 15rem: 0.75rem logo inset + 32px logo + 0.625rem gap + ~145px
+     * nowrap text). The button must start CLEAR of the text tail.
+     * Source-CSS contract (the pattern is SectionHeaderCornerRadiusTest).
+     */
+    public function test_the_temp_open_pin_button_sits_clear_of_the_brand_text(): void
+    {
+        $css = (string) file_get_contents(base_path('resources/css/app.css'));
+
+        $this->assertStringContainsString(
+            'left: calc(15rem - 2.375rem);',
+            $css,
+            'the pin button must start at 202px — 196px overlaps the ≈198.6px text tail',
+        );
+        $this->assertStringNotContainsString(
+            'left: calc(15rem - 2.75rem);',
+            $css,
+            'the old 196px offset must be gone',
+        );
+    }
+
     private function adminUser(): User
     {
         Role::firstOrCreate(['name' => 'admin']);

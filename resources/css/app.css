@@ -2915,53 +2915,15 @@
     color: #94a3b8;
 }
 
-/* --- Sidebar footer (SIDEBAR_FOOTER → filament.sidebar.footer) --- */
-.fi-sidebar-footer {
-    border-top: 1px solid #e2e8f0;
-    padding: 0.625rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-:root.dark .fi-sidebar-footer {
-    border-top-color: #334155;
-}
-
-/* Bell + account rows share one row anatomy. */
-.sidebar-account-row {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.45rem 0.6rem;
-    border-radius: 0.5rem;
-    font-size: 0.8rem;
-    color: #334155;
-    transition: background-color .15s ease, color .15s ease;
-}
-
-.sidebar-account-row:hover {
-    background: #f1f5f9;
-    color: var(--tr-indigo-600, #0f7bd1);
-}
-
-:root.dark .sidebar-account-row {
-    color: #cbd5e1;
-}
-
-:root.dark .sidebar-account-row:hover {
-    background: rgba(51, 65, 85, .5);
-}
+/* (Profile + notifications moved back to the TOPBAR, owner 2026-11-19 —
+   the .fi-sidebar-footer/.sidebar-account-* blocks died with the footer
+   hook. .sidebar-account-icon/.sidebar-account-label stay: the search row
+   reuses them.) */
 
 .sidebar-account-icon {
     width: 1.25rem;
     flex-shrink: 0;
     color: #64748b;
-}
-
-.sidebar-account-row:hover .sidebar-account-icon {
-    color: var(--tr-indigo-600, #0f7bd1);
 }
 
 .sidebar-account-icon > svg {
@@ -2970,85 +2932,6 @@
 }
 
 .sidebar-account-label {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Unread badge on the bell icon. */
-.sidebar-account-badge {
-    position: absolute;
-    top: -0.25rem;
-    right: -0.375rem;
-    min-width: 1rem;
-    height: 1rem;
-    padding: 0 0.2rem;
-    border-radius: 9999px;
-    background: #ef4444;
-    color: #fff;
-    font-size: 0.6rem;
-    font-weight: 700;
-    line-height: 1rem;
-    text-align: center;
-}
-
-/* Account block: the dropdown trigger rendered as ONE row (avatar | name +
-   email | ⋮). Target the button by its own class — Filament wraps the
-   trigger slot in a .fi-dropdown-trigger div, so `.fi-user-menu > button`
-   never matched and the avatar/name/email stacked vertically. */
-.sidebar-account-user .fi-user-menu,
-.sidebar-account-user .fi-dropdown-trigger {
-    width: 100%;
-    min-width: 0;
-}
-
-.sidebar-account-trigger {
-    width: 100%;
-    min-width: 0;
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.45rem 0.6rem;
-    border-radius: 0.5rem;
-    text-align: start;
-    transition: background-color .15s ease;
-}
-
-.sidebar-account-trigger:hover {
-    background: #f1f5f9;
-}
-
-:root.dark .sidebar-account-trigger:hover {
-    background: rgba(51, 65, 85, .5);
-}
-
-.sidebar-account-trigger .fi-avatar,
-.sidebar-account-trigger img {
-    width: 1.75rem !important;
-    height: 1.75rem !important;
-    flex-shrink: 0;
-    border-radius: 9999px;
-}
-
-.sidebar-account-trigger > .sidebar-account-icon {
-    margin-inline-start: auto;
-    width: 1rem;
-    height: 1rem;
-}
-
-.sidebar-account-meta {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    line-height: 1.15;
-    overflow: hidden;
-}
-
-.sidebar-account-name {
-    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3065,36 +2948,14 @@
     }
 }
 
-.sidebar-account-name {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #1e293b;
-}
-
-.sidebar-account-email {
-    max-width: 100%;
-    font-size: 0.68rem;
-    color: #64748b;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-:root.dark .sidebar-account-name { color: #e2e8f0; }
-:root.dark .sidebar-account-email { color: #94a3b8; }
-
-/* Rail: only icons remain in the footer + search row. */
+/* Rail: only icons remain in the search row. */
 @media (min-width: 1024px) {
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-label,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-meta,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-trigger > .sidebar-account-icon,
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-kbd {
         display: none !important;
     }
 
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-row,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-row,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-trigger {
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-row {
         justify-content: center !important;
         padding: 0.45rem 0 !important;
     }
@@ -3270,7 +3131,11 @@
     display: none;
     position: fixed;
     top: 0.875rem;
-    left: calc(15rem - 2.75rem);
+    /* 15rem - 2.375rem = 202px: the brand text tail ends ≈198.6px at
+       15rem (0.75rem inset + 32px logo + 0.625rem gap + ~145px nowrap
+       text) — the button box must start CLEAR of it or its rounded hover
+       fill cuts into "TechRisk Portal" (owner temp-expand bug). */
+    left: calc(15rem - 2.375rem);
     z-index: 40;
     align-items: center;
     justify-content: center;
@@ -3410,17 +3275,22 @@ tr.fi-ta-row.sub-incident-row {
 
 /* 4. The sidebar's own surface — white over the gray-50 page in light,
    slate-900 over near-black in dark — with a hairline end border (was
-   main's lg:bg-transparent blend). Scoped OFF the temp-open hover overlay:
-   the overlay's own rule paints its shadow, and this block's !important
-   box-shadow/background would flatten it. */
+   main's lg:bg-transparent blend). Covers EVERY desktop aside INCLUDING
+   the temp-open overlay: scoped off .tr-sidebar-temp-open the overlay kept
+   the transparent background and the z-20 topbar strip showed THROUGH the
+   z-30 overlay behind the brand row (owner screenshot). box-shadow:none
+   stays pinned-only — the overlay's own rule paints its elevation shadow. */
 @media (min-width: 1024px) {
-    .fi-sidebar:not(.tr-sidebar-temp-open) {
+    .fi-sidebar {
         background: #fff !important;
         border-inline-end: 1px solid #e2e8f0;
+    }
+
+    .fi-sidebar:not(.tr-sidebar-temp-open) {
         box-shadow: none !important;
     }
 
-    :root.dark .fi-sidebar:not(.tr-sidebar-temp-open) {
+    :root.dark .fi-sidebar {
         background: #0f172a !important;
         border-inline-end-color: #1e293b;
     }
