@@ -18,14 +18,17 @@ use Tests\TestCase;
  * (App\Livewire\SidebarNotificationBell) and the trigger-free modal
  * (App\Livewire\SidebarDatabaseNotifications) are deleted, and Filament's
  * default database-notifications bell + user menu serve the topbar. The
- * theme switcher re-homes to the topbar (it used to live only in the footer
- * dropdown). The sidebar keeps the search row (palette trigger).
+ * theme switcher lives inside the user menu (round 3: the standalone
+ * topbar hook is a duplicate of Filament's built-in dropdown switcher).
+ * The sidebar keeps the search row (palette trigger).
  *
  * Pins:
  * 1. The panel page renders the sidebar search row (palette trigger), the
  *    topbar bell (open-modal dispatch + database-notifications modal at body
  *    level), and the topbar user menu — and renders NO sidebar footer.
- * 2. The theme switcher still renders (topbar).
+ * 2. The theme switcher renders INSIDE the user menu (owner round 3 killed
+ *    the standalone topbar hook — Filament's default dropdown switcher is
+ *    the one).
  * 3. Guests get the login page cleanly.
  * 4. Palette record search is access-scoped: IncidentResource global search
  *    runs through applyAccessControl (year access + non-Issue), so a
@@ -97,16 +100,47 @@ class SidebarChromeTest extends TestCase
     }
 
     /**
-     * The theme switcher used to live in the sidebar footer's account
-     * dropdown; the footer is gone, so it re-homes to the topbar.
+     * Owner 2026-11-19: the light/dark toggle lives INSIDE the profile
+     * (user menu) button — Filament's default user-menu already renders
+     * <x-filament-panels::theme-switcher /> inside its dropdown (gated on
+     * hasDarkMode, active by default). The round-2 USER_MENU_BEFORE hook
+     * was a duplicate: it drew the same switcher as a standalone 3-icon
+     * row in the topbar. It must be gone; the switcher then renders only
+     * inside the menu, AFTER the menu's own markup starts.
      */
-    public function test_the_theme_switcher_still_renders_in_the_topbar(): void
+    public function test_the_theme_switcher_lives_inside_the_user_menu(): void
+    {
+        $provider = (string) file_get_contents(app_path('Providers/Filament/AdminPanelProvider.php'));
+        $this->assertStringNotContainsString('PanelsRenderHook::USER_MENU_BEFORE', $provider, 'the standalone topbar switcher hook is a duplicate — the user menu carries its own');
+
+        $response = $this->actingAs($this->panelUser())->get('/admin/incidents');
+        $response->assertOk();
+        $html = (string) $response->getContent();
+        $this->assertStringContainsString('fi-theme-switcher', $html, "the switcher must still render — inside the user menu's dropdown");
+        $this->assertGreaterThan(
+            mb_strpos($html, 'fi-user-menu'),
+            mb_strpos($html, 'fi-theme-switcher'),
+            'the switcher must render inside (after the start of) the user-menu dropdown, not the topbar row before it',
+        );
+    }
+
+    /**
+     * Owner 2026-11-19: "perbesar page dashboardnya, di kanan-kiri masih
+     * ada ruang" — Filament caps fi-main at max-w-7xl (1280px) unless the
+     * panel sets maxContentWidth; on a 1920 viewport that left ~200px of
+     * dead margin each side. The panel goes Full (fi-main keeps its own
+     * px-4/6/8 gutters).
+     */
+    public function test_the_panel_content_spans_the_full_width(): void
     {
         $response = $this->actingAs($this->panelUser())->get('/admin/incidents');
-
         $response->assertOk();
-        $this->assertStringContainsString('fi-theme-switcher', $response->getContent());
-        $this->assertStringNotContainsString('sidebar-account-trigger', $response->getContent());
+        $html = (string) $response->getContent();
+
+        preg_match('/<main[^>]*fi-main[^>]*>/', $html, $m);
+        $this->assertNotEmpty($m, 'the fi-main element must render');
+        $this->assertStringContainsString('max-w-full', $m[0], 'the content column must span the full width');
+        $this->assertStringNotContainsString('max-w-7xl', $m[0], 'the 1280px default cap must be gone');
     }
 
     public function test_guest_login_page_renders_cleanly(): void

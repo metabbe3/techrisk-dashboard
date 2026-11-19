@@ -15,6 +15,7 @@ use Filament\Http\Middleware\DispatchServingFilamentEvent;
 use Filament\Navigation\NavigationGroup;
 use Filament\PanelProvider;
 use Filament\Support\Colors\Color;
+use Filament\Support\Enums\MaxWidth;
 use Filament\View\PanelsRenderHook;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
@@ -63,6 +64,13 @@ class AdminPanelProvider extends PanelProvider
             // carries format:filament (BaseNotification), so no filter is
             // lost by dropping the custom bell.
             ->databaseNotifications()
+            // Owner 2026-11-19: "perbesar page dashboardnya, di kanan-kiri
+            // masih ada ruang" — Filament's default cap is max-w-7xl (1280px);
+            // on a 1920 viewport that left ~200px dead margin each side.
+            // Full spans the viewport; fi-main keeps its own px-4/6/8
+            // gutters. Revert to MaxWidth::SevenExtraLarge if wide forms
+            // stretch badly.
+            ->maxContentWidth(MaxWidth::Full)
             ->globalSearch(true)
             // Inter Variable is self-hosted through the app's Vite build
             // (@fontsource-variable/inter imported in resources/css/app.css) —
@@ -142,14 +150,6 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::SIDEBAR_NAV_START,
                 fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.search-trigger'),
-            )
-            // Theme switcher — used to live in the sidebar footer's account
-            // dropdown; owner 2026-11-19 moved profile + notifications back
-            // to the topbar, so the switcher re-homes here (before the user
-            // menu button, same dropdown anatomy).
-            ->renderHook(
-                PanelsRenderHook::USER_MENU_BEFORE,
-                fn (): \Illuminate\Contracts\View\View => view('filament.topbar.theme-switcher'),
             )
             ->renderHook(
                 'panels::head.end',
