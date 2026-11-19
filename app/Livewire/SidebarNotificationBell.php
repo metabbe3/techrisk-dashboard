@@ -11,7 +11,7 @@ use Livewire\Component;
  *
  * Shows the unread database-notification count (same filter Filament's
  * database notifications use: data->format = 'filament') and opens the
- * slide-over modal owned by App\Filament\Livewire\DatabaseNotifications by
+ * slide-over modal owned by App\Livewire\SidebarDatabaseNotifications by
  * dispatching the standard `open-modal {id: 'database-notifications'}` event.
  *
  * Polls every 30s — broadcasting is disabled, so polling is used, mirroring

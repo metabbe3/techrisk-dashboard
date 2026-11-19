@@ -7,5 +7,5 @@
      to open before any intersection fires (the wrapper sits at body end, so
      lazy would load it immediately anyway). --}}
 @if (filament()->auth()->check())
-    @livewire(\App\Filament\Livewire\DatabaseNotifications::class)
+    @livewire(\App\Livewire\SidebarDatabaseNotifications::class)
 @endif

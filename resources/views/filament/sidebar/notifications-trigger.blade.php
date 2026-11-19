@@ -1,7 +1,7 @@
 {{-- Notifications bell row in the sidebar footer. Rendered by
      App\Livewire\SidebarNotificationBell (30s polling keeps the badge fresh).
      Opens the slide-over modal owned by
-     App\Filament\Livewire\DatabaseNotifications (mounted at panels::body.end)
+     App\Livewire\SidebarDatabaseNotifications (mounted at panels::body.end)
      via the standard open-modal browser event. --}}
 <div wire:poll.30s>
     <button

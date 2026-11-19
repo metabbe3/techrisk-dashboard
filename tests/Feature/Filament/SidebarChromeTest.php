@@ -104,6 +104,37 @@ class SidebarChromeTest extends TestCase
         $this->assertStringContainsString('>2</span>', $response->getContent());
     }
 
+    /**
+     * Prod 500 after 1–2 minutes idle (BUG, 2026-11-19): the modal component
+     * lived in App\Filament\Livewire — outside Livewire's auto-discovery
+     * namespace (App\Livewire). The initial render worked (mounted by class),
+     * but its 30s wire:poll round-trip resolves the component BY NAME and threw
+     * ComponentNotFoundException ("app.filament.livewire.database-notifications")
+     * → 500 on every page after the first poll. Pin: every sidebar component's
+     * snapshot name must resolve back to its class through the registry —
+     * exactly what /livewire/update does.
+     */
+    public function test_sidebar_livewire_components_resolve_by_name_for_poll_updates(): void
+    {
+        $registry = app(\Livewire\Mechanisms\ComponentRegistry::class);
+
+        foreach ([\App\Livewire\SidebarDatabaseNotifications::class, \App\Livewire\SidebarNotificationBell::class] as $class) {
+            $name = $registry->getName($class);
+
+            // nameToClass() returns a leading-backslash FQCN — normalize.
+            $this->assertSame($class, ltrim($registry->getClass($name), '\\'), "Livewire cannot resolve [{$name}] on update requests");
+        }
+    }
+
+    public function test_account_menu_offers_theme_switcher(): void
+    {
+        $response = $this->actingAs($this->panelUser())->get('/admin/incidents');
+
+        $response->assertOk();
+        $this->assertStringContainsString('fi-theme-switcher', $response->getContent());
+        $this->assertStringContainsString('sidebar-account-trigger', $response->getContent());
+    }
+
     public function test_guest_login_page_renders_cleanly(): void
     {
         // The BODY_END hook renders on the login page too (SimplePage shares

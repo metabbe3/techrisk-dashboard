@@ -131,7 +131,7 @@ Owner 2026-11-19: "can you redesign the side bar? so account and notif on left s
 
 #### Tasks
 - [x] Panel provider: collapse mode, `databaseNotifications(false)`, `->font()`, Spotlight plugin, 3 render hooks.
-- [x] Sidebar views (search trigger / footer / modal mount) + `App\Livewire\SidebarNotificationBell` (30s poll) + `App\Filament\Livewire\DatabaseNotifications` repurposed (trigger-free modal).
+- [x] Sidebar views (search trigger / footer / modal mount) + `App\Livewire\SidebarNotificationBell` (30s poll) + `App\Livewire\SidebarDatabaseNotifications` repurposed (trigger-free modal).
 - [x] Global search on Incident + Issue resources with `applyAccessControl` on IncidentResource's search query (the resource has NO getEloquentQuery override — table-level access control only).
 - [x] Null guards on canViewAny/canCreate in 6 resources — the palette evaluates them on guest pages (login) too; unguarded `auth()->user()` 500'd the login page.
 - [x] AI chat focus-input rebound Ctrl+K → Ctrl+I (palette owns Ctrl+K now).

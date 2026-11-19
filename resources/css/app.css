@@ -143,6 +143,26 @@
     color: #108ee9;
 }
 
+/* Every nav item gets its own hue (owner 2026-11-19: "all icon have color,
+   different color if possible"). Items below had none and rendered gray.
+   Dashboard is matched on the exact panel root (its href is /admin itself). */
+.fi-sidebar-item a[href$="/admin"] .fi-sidebar-item-icon { color: #0ea5e9; }
+.fi-sidebar-item [href*="/admin/action-improvements"] .fi-sidebar-item-icon { color: #22c55e; }
+.fi-sidebar-item [href*="/admin/reporting"] .fi-sidebar-item-icon { color: #f97316; }
+.fi-sidebar-item [href*="/admin/analytics-page"] .fi-sidebar-item-icon { color: #06b6d4; }
+.fi-sidebar-item [href*="/admin/governance-page"] .fi-sidebar-item-icon { color: #84cc16; }
+.fi-sidebar-item [href*="/admin/report-templates"] .fi-sidebar-item-icon { color: #d946ef; }
+.fi-sidebar-item [href*="/admin/war-room"] .fi-sidebar-item-icon { color: #e11d48; }
+.fi-sidebar-item [href*="/admin/war-room-agent-configs"] .fi-sidebar-item-icon { color: #fb7185; }
+.fi-sidebar-item [href*="/admin/ai-agents"] .fi-sidebar-item-icon { color: #0d9488; }
+.fi-sidebar-item [href*="/admin/ai-agent-runs"] .fi-sidebar-item-icon { color: #2563eb; }
+.fi-sidebar-item [href*="/admin/ai-agent-memories"] .fi-sidebar-item-icon { color: #c026d3; }
+.fi-sidebar-item [href*="/admin/ai-workflows"] .fi-sidebar-item-icon { color: #ea580c; }
+.fi-sidebar-item [href*="/admin/agent-tools"] .fi-sidebar-item-icon { color: #65a30d; }
+.fi-sidebar-item [href*="/admin/skills"] .fi-sidebar-item-icon { color: #ca8a04; }
+.fi-sidebar-item [href*="/admin/service-accounts"] .fi-sidebar-item-icon { color: #475569; }
+.fi-sidebar-item [href*="/admin/system-settings"] .fi-sidebar-item-icon { color: #64748b; }
+
 .fi-sidebar-item [href*="/admin/issues"] .fi-sidebar-item-icon {
     color: #f59e0b;
 }
@@ -2974,41 +2994,77 @@
     text-align: center;
 }
 
-/* Account block: the user-menu dropdown trigger rendered as a full row. */
-.sidebar-account-user .fi-user-menu {
+/* Account block: the dropdown trigger rendered as ONE row (avatar | name +
+   email | ⋮). Target the button by its own class — Filament wraps the
+   trigger slot in a .fi-dropdown-trigger div, so `.fi-user-menu > button`
+   never matched and the avatar/name/email stacked vertically. */
+.sidebar-account-user .fi-user-menu,
+.sidebar-account-user .fi-dropdown-trigger {
     width: 100%;
+    min-width: 0;
 }
 
-.sidebar-account-user .fi-user-menu > button {
+.sidebar-account-trigger {
     width: 100%;
-    display: flex;
+    min-width: 0;
+    display: flex !important;
+    flex-direction: row !important;
     align-items: center;
     gap: 0.625rem;
     padding: 0.45rem 0.6rem;
     border-radius: 0.5rem;
+    text-align: start;
     transition: background-color .15s ease;
 }
 
-.sidebar-account-user .fi-user-menu > button:hover {
+.sidebar-account-trigger:hover {
     background: #f1f5f9;
 }
 
-:root.dark .sidebar-account-user .fi-user-menu > button:hover {
+:root.dark .sidebar-account-trigger:hover {
     background: rgba(51, 65, 85, .5);
 }
 
-.sidebar-account-user .fi-user-menu img {
+.sidebar-account-trigger .fi-avatar,
+.sidebar-account-trigger img {
     width: 1.75rem !important;
     height: 1.75rem !important;
+    flex-shrink: 0;
     border-radius: 9999px;
 }
 
+.sidebar-account-trigger > .sidebar-account-icon {
+    margin-inline-start: auto;
+    width: 1rem;
+    height: 1rem;
+}
+
 .sidebar-account-meta {
+    flex: 1 1 auto;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     line-height: 1.15;
     overflow: hidden;
+}
+
+.sidebar-account-name {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Sidebar header ("TechRisk Portal" + collapse chevron): Filament paints it
+   bg-white + ring + shadow, so it read as a white slab above a transparent
+   nav. Blend it into the sidebar like the rest of the nav. */
+@media (min-width: 1024px) {
+    .fi-sidebar-header {
+        background: transparent !important;
+        box-shadow: none !important;
+        --tw-ring-shadow: 0 0 #0000 !important;
+    }
 }
 
 .sidebar-account-name {
@@ -3033,13 +3089,14 @@
 @media (min-width: 1024px) {
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-label,
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-meta,
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-trigger > .sidebar-account-icon,
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-kbd {
         display: none !important;
     }
 
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-row,
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-row,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-user .fi-user-menu > button {
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-trigger {
         justify-content: center !important;
         padding: 0.45rem 0 !important;
     }

@@ -40,7 +40,7 @@ class AdminPanelProvider extends PanelProvider
             // Topbar bell is OFF — the sidebar footer shows the bell row
             // (App\Livewire\SidebarNotificationBell) and the slide-over modal
             // is mounted at panels::body.end instead
-            // (App\Filament\Livewire\DatabaseNotifications, trigger-free).
+            // (App\Livewire\SidebarDatabaseNotifications, trigger-free).
             ->databaseNotifications(false)
             ->globalSearch(true)
             // Inter Variable is self-hosted through the app's Vite build
@@ -124,7 +124,7 @@ class AdminPanelProvider extends PanelProvider
             // The database-notifications slide-over modal. Body level (NOT the
             // sidebar aside): the aside's transform classes re-anchor
             // position:fixed descendants — see
-            // App\Filament\Livewire\DatabaseNotifications for the full story.
+            // App\Livewire\SidebarDatabaseNotifications for the full story.
             ->renderHook(
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.notifications-modal'),
