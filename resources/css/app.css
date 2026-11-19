@@ -593,6 +593,52 @@
 :root.dark .fi-ta-table-container::-webkit-scrollbar-track { background: var(--tr-slate-900, #0f172a); }
 :root.dark .fi-ta-table-container::-webkit-scrollbar-thumb { background: var(--tr-slate-700, #334155); }
 
+/* Incidents list — freeze checkbox, ID and name columns on horizontal scroll.
+   Scoped via :has(.sticky-col-id); offsets assume the forced 56px checkbox cell. */
+.fi-ta-table:has(.sticky-col-id) th:first-child,
+.fi-ta-table:has(.sticky-col-id) td:first-child:not([colspan]) {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    width: 56px;
+    min-width: 56px;
+    background: #fff;
+}
+.fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
+    position: sticky;
+    left: 56px;
+    z-index: 2;
+    background: #fff;
+}
+.fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
+    position: sticky;
+    left: 136px;
+    z-index: 2;
+    background: #fff;
+    box-shadow: 6px 0 8px -6px rgba(15, 23, 42, .18);
+}
+/* row-hover tint must be replicated on the opaque pinned cells (the tr bg is hidden beneath them) */
+.fi-ta-table tbody tr:hover td:first-child:not([colspan]),
+.fi-ta-table tbody tr:hover td.sticky-col-id,
+.fi-ta-table tbody tr:hover td.sticky-col-title {
+    background: #fafcff;
+}
+:root.dark .fi-ta-table:has(.sticky-col-id) th:first-child,
+:root.dark .fi-ta-table:has(.sticky-col-id) td:first-child:not([colspan]),
+:root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
+:root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]),
+:root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
+:root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
+    background: #111827;
+}
+:root.dark .fi-ta-table tbody tr:hover td:first-child:not([colspan]),
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-id,
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-title {
+    background: #131c2b;
+}
+
 /* Severity/status badges — solid tint, no decorative gradient or text-shadow. */
 .fi-badge.color-danger { background: #fee2e2 !important; color: #b91c1c !important; font-weight: 600; border: 1px solid rgba(239,68,68,.2); }
 .fi-badge.color-warning { background: #fef3c7 !important; color: #92400e !important; font-weight: 600; border: 1px solid rgba(245,158,11,.2); }

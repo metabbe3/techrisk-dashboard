@@ -211,8 +211,7 @@ class IncidentResource extends Resource
                                             ->label('Person In Charge')
                                             ->relationship('pics', 'name')
                                             ->multiple()
-                                            ->searchable()
-                                            ->preload(),
+                                            ->searchable(),
                                         TextInput::make('checker'),
                                         TextInput::make('maker'),
                                     ])->columnSpan(['default' => 'full', 'lg' => 1]),
@@ -356,11 +355,15 @@ class IncidentResource extends Resource
             ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'statusUpdates' => fn ($u) => $u->orderByDesc('update_date')->orderByDesc('id')]))
             ->defaultSort('incident_date', 'desc')
             ->columns([
-                TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases')),
+                TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases'))
+                    ->extraHeaderAttributes(['class' => 'sticky-col-id'])
+                    ->extraAttributes(['class' => 'sticky-col-id']),
                 TextColumn::make('title')
                     ->searchable()
                     ->html()
                     ->width('200px')
+                    ->extraHeaderAttributes(['class' => 'sticky-col-title'])
+                    ->extraAttributes(['class' => 'sticky-col-title'])
                     ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render()),
                 TextColumn::make('mttr_formatted')->label('MTTR')->width('70px')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
