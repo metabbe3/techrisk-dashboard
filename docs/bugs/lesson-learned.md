@@ -2329,3 +2329,28 @@ One line: `protected $fillable` on `App\Models\PersonalAccessToken` — parent's
 - [x] `Model::preventSilentlyDiscardingAttributes()` in non-prod would have turned this into an instant 500 on day one — candidate for bootstrap/app.php strictness (not enabled this round; would need a sweep of existing mass-assignment call sites).
 - [x] A "success" notification is only trustable as far as the write it reports; persistence assertions in tests belong at the DB level (`$token->refresh()`), not on the toast.
 - [x] Bug class matches edit-safety rule 5 (grep the bare string) and rule 3 (fix the shared path, not one call site): the model whitelist was the ONE gate every token write routes through.
+
+## BUG-042 — Panel 500s after 1–2 minutes idle; sidebar account row wrapped; theme toggle lost (2026-11-19)
+
+**Discovered By:** Owner, on prod after PROJ-026 shipped ("when i leave it for 1 - 2 minutes got 500 error on prod"; "the name and log out not in 1 line"; "light mode and dark mode toggle also missing"; "spotlight not working")
+**Severity:** High (every panel page 500'd ~30s after load — the first notifications poll)
+**Status:** Resolved
+
+### Description
+After the sidebar redesign, every admin page worked on load and then threw a 500 on the first background request. Same release: the sidebar account trigger stacked avatar / name / email vertically, the light/dark/system switcher vanished, and the command palette did nothing on prod.
+
+### Root Cause
+1. **500:** the trigger-free notifications modal was `App\Filament\Livewire\DatabaseNotifications` — outside Livewire's auto-discovery namespace (`config/livewire.php` `class_namespace = App\Livewire`). The INITIAL render mounted it by class (`@livewire(Foo::class)`), which always works; its 30s `wire:poll` goes through `/livewire/update`, which resolves the component BY NAME from the snapshot (`app.filament.livewire.database-notifications`) → `ComponentNotFoundException`. The original file had been dead code (registered nowhere), so this path had never run. The render-only feature tests could not see it — they never make an update request.
+2. **Account row:** CSS targeted `.fi-user-menu > button`, but Filament's dropdown wraps the trigger slot in a `.fi-dropdown-trigger` div, so the selector never matched.
+3. **Theme toggle:** the custom account dropdown copied Profile + Logout from the vendor user-menu but not its `<x-filament-panels::theme-switcher />` block.
+4. **Palette on prod:** the plugin's published assets (`public/js/pxlrbt/`, `public/css/pxlrbt/`, written by `filament:upgrade` during `composer require`) were never committed, and the prod deploy runs composer with `--no-scripts`.
+
+### Fix
+Moved the component to `App\Livewire\SidebarDatabaseNotifications` (auto-discovered, resolves by name). Footer trigger gets its own `.sidebar-account-trigger` class + one-row flex CSS with truncation; theme switcher restored under the same `hasDarkMode() && ! hasDarkModeForced()` gate the vendor uses; sidebar header made transparent; every nav item got its own icon hue. Spotlight assets committed. Test: `SidebarChromeTest::test_sidebar_livewire_components_resolve_by_name_for_poll_updates` round-trips every sidebar component class → registry name → class (fails on the old namespace with the exact prod exception), plus a theme-switcher render pin.
+
+### Prevention Checklist
+- [x] A Livewire component that will receive ANY update request (poll, wire:click, lazy load) must live under `App\Livewire` or be registered with `Livewire::component()` — mounting by class name hides the problem until the first round-trip.
+- [x] Render-only tests (`GET` + `assertSee`) do not exercise `/livewire/update`; pin name resolution through `ComponentRegistry` for any polled component.
+- [x] After moving/renaming a class, run `composer dump-autoload` — the optimized classmap kept pointing at the old path locally, and prod builds with `--optimize-autoloader` (prod deploy: run `composer dump-autoload -o` after the pull).
+- [x] Filament plugins that publish to `public/` need those files committed — the prod composer step is `--no-scripts`, so `filament:upgrade` never runs there.
+- [x] When replacing a vendor component (user-menu) with a custom one, diff the vendor view and carry over EVERY block, not just the visible ones.

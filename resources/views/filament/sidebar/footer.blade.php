@@ -26,6 +26,7 @@
                 <x-slot name="trigger">
                     <button
                         type="button"
+                        class="sidebar-account-trigger"
                         aria-label="{{ __('filament-panels::layout.actions.open_user_menu.label') }}"
                     >
                         <x-filament-panels::avatar.user :user="$user" />
@@ -48,6 +49,14 @@
                         >
                             {{ $profileLabel ?? __('Profile') }}
                         </x-filament::dropdown.list.item>
+                    </x-filament::dropdown.list>
+                @endif
+
+                {{-- Light / dark / system switcher — same component and gate the
+                     vendor user-menu uses (it was lost when the menu moved here). --}}
+                @if (filament()->hasDarkMode() && (! filament()->hasDarkModeForced()))
+                    <x-filament::dropdown.list>
+                        <x-filament-panels::theme-switcher />
                     </x-filament::dropdown.list>
                 @endif
 
