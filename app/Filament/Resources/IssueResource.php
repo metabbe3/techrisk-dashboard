@@ -34,6 +34,8 @@ class IssueResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Issues';
 
+    protected static ?string $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 2; // After Incident (which is 1)
 
     public static function canCreate(): bool

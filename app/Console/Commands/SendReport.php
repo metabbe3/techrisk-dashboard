@@ -113,7 +113,11 @@ class SendReport extends Command
         $filePath = 'reports/'.$template->name.'_'.time().'.xlsx';
         Excel::store($export, $filePath, 'local');
 
-        Mail::raw('Here is your scheduled report.', function ($message) use ($template, $filePath) {
+        Mail::send('emails.notification', [
+            'headline' => 'Scheduled report: '.$template->name,
+            'intro' => 'Your scheduled report is attached as an Excel file.',
+            'actionUrl' => null,
+        ], function ($message) use ($template, $filePath) {
             $message->to($template->email)
                 ->subject('Scheduled Report: '.$template->name)
                 ->attach(storage_path('app/'.$filePath));

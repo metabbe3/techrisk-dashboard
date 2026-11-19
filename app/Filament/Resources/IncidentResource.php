@@ -48,6 +48,10 @@ class IncidentResource extends Resource
 
     protected static ?string $navigationIcon = 'heroicon-o-shield-exclamation';
 
+    protected static ?string $navigationGroup = 'Operations';
+
+    protected static ?int $navigationSort = 1;
+
     public static function canViewAny(): bool
     {
         return auth()->user()->can('view incidents');

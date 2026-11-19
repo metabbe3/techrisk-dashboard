@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Notion;
 
-use App\Filament\Pages\NotionSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Models\Setting;
 use App\Models\User;
 use App\Services\Notion\NotionInvestigationService;
@@ -178,6 +178,6 @@ class NotionInvestigationParentIdEditorTest extends TestCase
         $user = User::factory()->create();
         $user->givePermissionTo('manage api tokens');
 
-        return Livewire::actingAs($user)->test(NotionSettings::class);
+        return Livewire::actingAs($user)->test(SystemSettings::class);
     }
 }

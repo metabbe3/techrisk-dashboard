@@ -14,7 +14,9 @@ class WarRoom extends Page
 
     protected static ?string $title = 'AI Retrospective';
 
-    protected static ?int $navigationSort = 4;
+    protected static ?string $navigationGroup = 'AI';
+
+    protected static ?int $navigationSort = 2;
 
     protected static string $view = 'filament.pages.war-room';
 

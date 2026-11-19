@@ -89,7 +89,7 @@ class PasswordResetTest extends TestCase
         $mail = (new ResetPasswordNotification('test-token'))->toMail($user);
 
         $this->assertSame('TechRisk Portal — Reset Password', $mail->subject);
-        $this->assertSame('emails.incident-reminder', $mail->view);
+        $this->assertSame('emails.notification', $mail->view);
 
         $data = $mail->viewData;
         $this->assertSame('Hello '.$user->name.',', $data['greeting']);

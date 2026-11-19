@@ -36,6 +36,8 @@ class ActionImprovementResource extends Resource
 
     protected static ?string $navigationLabel = 'Action Improvements';
 
+    protected static ?string $navigationGroup = 'Operations';
+
     protected static ?int $navigationSort = 3; // After Incident (1) and Issue (2)
 
     public static function getEloquentQuery(): Builder

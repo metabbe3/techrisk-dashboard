@@ -2,7 +2,7 @@
 
 namespace Tests\Feature\Notion;
 
-use App\Filament\Pages\NotionSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Services\Notion\NotionMcpClient;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -50,7 +50,7 @@ class NotionSettingsStatusTest extends TestCase
             ->shouldReceive('needsReconnect')->andReturn(false)
             ->shouldReceive('tokenExpiresAt')->andReturn(time() + 3600);
 
-        $this->assertSame('connected', app(NotionSettings::class)->connectionState());
+        $this->assertSame('connected', app(SystemSettings::class)->connectionState());
         $this->assertStatusClasses(['text-success-600', 'font-bold']);
     }
 
@@ -58,7 +58,7 @@ class NotionSettingsStatusTest extends TestCase
     {
         $this->mock(NotionMcpClient::class)->shouldReceive('connected')->andReturn(false);
 
-        $this->assertSame('not_connected', app(NotionSettings::class)->connectionState());
+        $this->assertSame('not_connected', app(SystemSettings::class)->connectionState());
         $this->assertStatusClasses(['text-danger-600']);
     }
 
@@ -67,7 +67,7 @@ class NotionSettingsStatusTest extends TestCase
         $this->mock(NotionMcpClient::class)->shouldReceive('connected')->andReturn(true)
             ->shouldReceive('needsReconnect')->andReturn(true);
 
-        $this->assertSame('reconnect_required', app(NotionSettings::class)->connectionState());
+        $this->assertSame('reconnect_required', app(SystemSettings::class)->connectionState());
         $this->assertStatusClasses(['text-danger-600']);
     }
 
@@ -77,18 +77,18 @@ class NotionSettingsStatusTest extends TestCase
             ->shouldReceive('needsReconnect')->andReturn(false)
             ->shouldReceive('tokenExpiresAt')->andReturn(time() - 60);
 
-        $this->assertSame('renewal_pending', app(NotionSettings::class)->connectionState());
+        $this->assertSame('renewal_pending', app(SystemSettings::class)->connectionState());
         $this->assertStatusClasses(['text-warning-600']);
     }
 
     private function connectActionLabel(): string
     {
-        return app(NotionSettings::class)->connectButtonLabel();
+        return app(SystemSettings::class)->connectButtonLabel();
     }
 
     private function assertStatusClasses(array $classes): void
     {
-        $html = (string) app(NotionSettings::class)->connectionStatusHtml();
+        $html = (string) app(SystemSettings::class)->connectionStatusHtml();
 
         foreach ($classes as $class) {
             $this->assertStringContainsString($class, $html);

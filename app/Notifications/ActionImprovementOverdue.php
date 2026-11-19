@@ -28,13 +28,14 @@ class ActionImprovementOverdue extends ActionImprovementNotification
     public function toMail(object $notifiable): \Illuminate\Notifications\Messages\MailMessage
     {
         return $this->buildActionMailMessage(
-            '[URGENT] Action Improvement OVERDUE',
-            [
-                '**Days Overdue:** '.$this->daysOverdue,
-                '**Status:** '.ucfirst($this->actionImprovement->status),
+            subject: '[Overdue '.$this->daysOverdue.'d] '.$this->actionImprovement->title.' — ['.$this->actionImprovement->incident->no.']',
+            headline: 'Action improvement overdue',
+            intro: 'This action improvement is '.$this->daysOverdue.' days past its due date and still open. Please complete it as soon as possible.',
+            extraDetails: [
+                'Days overdue' => $this->daysOverdue,
             ],
-            $notifiable,
-            'Please complete this action improvement as soon as possible.'
+            notifiable: $notifiable,
+            closingLine: 'Please complete this action improvement as soon as possible.',
         );
     }
 

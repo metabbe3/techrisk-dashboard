@@ -97,12 +97,13 @@ class ViewIncident extends ViewRecord
 
                     $incident->pics->each(fn ($pic) => $pic->notify($notification));
                     // One combined email for all PICs (owner rule 2026-10-09).
-                    ReminderMail::send($incident->pics, $notification);
+                    $mailed = ReminderMail::send($incident->pics, $notification);
 
                     Notification::make()
-                        ->success()
-                        ->title('Reminder sent')
-                        ->body('Email sent to '.$incident->pics->pluck('email')->implode(', ').'.')
+                        ->when($mailed > 0, fn ($n) => $n->success()->title('Reminder sent')->body('Email sent to '.$incident->pics->pluck('email')->implode(', ').'.'))
+                        ->when($mailed === 0, fn ($n) => $n->warning()->title('No email sent')->body(\App\Support\MailSettings::enabled()
+                            ? 'No PIC has email reminders enabled in their preferences.'
+                            : 'Email is turned off in Email Settings (global kill-switch).'))
                         ->send();
                 }),
             Actions\Action::make('detect_similar_incidents')

@@ -38,8 +38,14 @@ class InvestigationFormRequestMail extends Mailable
     public function content(): Content
     {
         return new Content(
-            markdown: 'emails.investigation-form-request',
-            with: ['body' => $this->body],
+            view: 'emails.notification',
+            with: [
+                'headline' => (string) $this->subject,
+                'greeting' => null,
+                'intro' => null,
+                'bodyHtml' => \Illuminate\Support\Str::markdown($this->body, ['html_input' => 'escape']),
+                'actionUrl' => null,
+            ],
         );
     }
 

@@ -14,7 +14,9 @@ class AiChat extends Page
 
     protected static ?string $title = 'TechRisk AI';
 
-    protected static ?int $navigationSort = 3;
+    protected static ?string $navigationGroup = 'AI';
+
+    protected static ?int $navigationSort = 1;
 
     protected static string $view = 'filament.pages.ai-chat';
 

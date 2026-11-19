@@ -21,10 +21,17 @@ class ReminderMail
     /**
      * @param  iterable<User>|Collection<int, User>  $recipients
      * @return int mail-eligible recipients actually on the send (0 = no
-     *             email went out, e.g. everyone's preference is off)
+     *             email went out — global kill-switch or everyone's
+     *             preference is off)
      */
     public static function send(iterable|Collection $recipients, BaseNotification $notification): int
     {
+        // Kill-switch: report 0 so callers (recordReminderSent, manual
+        // buttons) never stamp "reminded" for an email that was suppressed.
+        if (! MailSettings::enabled()) {
+            return 0;
+        }
+
         $eligible = collect($recipients)
             ->filter()
             ->unique('id')

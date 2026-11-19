@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\PermissionResource\Pages;
@@ -18,6 +19,10 @@ class PermissionResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-key';
 
     protected static ?string $navigationGroup = 'User Management';
+
+    // PROJ-025: one "Access Control" nav item (Roles) — permissions are
+    // reached from the Roles list page header link. The URL survives.
+    protected static bool $shouldRegisterNavigation = false;
 
     public static function form(Form $form): Form
     {

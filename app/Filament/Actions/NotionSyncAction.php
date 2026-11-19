@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Actions;
 
-use App\Filament\Pages\NotionSettings;
+use App\Filament\Pages\SystemSettings;
 use App\Services\Notion\NotionIssueSyncService;
 use Filament\Forms\Components\Checkbox;
 use Filament\Forms\Components\CheckboxList;
@@ -68,12 +68,12 @@ class NotionSyncAction
                 ->label('Full sync — restore deleted issues')
                 ->helperText('Also re-import issues that were previously deleted from this dashboard — you pick which ones. A normal sync imports only new Notion entries.')
                 ->live()
-                ->visible(fn (NotionSettings $livewire): bool => ! $livewire->fullSyncPickerOpen),
+                ->visible(fn (SystemSettings $livewire): bool => ! $livewire->fullSyncPickerOpen),
             CheckboxList::make('restorePageIds')
                 ->label('Deleted issues to restore')
                 ->helperText('Only the ticked issues are restored — everything you leave unticked stays deleted, including duplicates deleted on purpose. New Notion rows import either way.')
-                ->options(fn (NotionSettings $livewire): array => $livewire->fullSyncPickerOpen ? $livewire->restorableIssueOptions() : [])
-                ->visible(fn (NotionSettings $livewire): bool => $livewire->fullSyncPickerOpen && $livewire->restorableIssueOptions() !== [])
+                ->options(fn (SystemSettings $livewire): array => $livewire->fullSyncPickerOpen ? $livewire->restorableIssueOptions() : [])
+                ->visible(fn (SystemSettings $livewire): bool => $livewire->fullSyncPickerOpen && $livewire->restorableIssueOptions() !== [])
                 // Live: without it, ticking (or Select All) updates the state
                 // but never re-renders the modal — the Import button's
                 // disabled state is frozen at the last render and the
@@ -85,7 +85,7 @@ class NotionSyncAction
                 ->content(new HtmlString(
                     'No restorable deleted issues right now — either nothing was deleted, or Notion could not be reached to list them.'
                 ))
-                ->visible(fn (NotionSettings $livewire): bool => $livewire->fullSyncPickerOpen && $livewire->restorableIssueOptions() === [])
+                ->visible(fn (SystemSettings $livewire): bool => $livewire->fullSyncPickerOpen && $livewire->restorableIssueOptions() === [])
                 ->columnSpanFull(),
         ];
     }
