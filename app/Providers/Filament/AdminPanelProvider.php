@@ -69,20 +69,6 @@ class AdminPanelProvider extends PanelProvider
             // 4.5rem (Filament default) clips the rail icons: nav px-6 +
             // item px-2 + a 1.5rem icon needs 5.5rem to render full-size.
             ->collapsedSidebarWidth('5.5rem')
-            // Owner 2026-11-18: fixed group order — Dashboard (ungrouped
-            // home) sits above all groups, then these. NavigationManager
-            // sorts groups by their index HERE (array_search), so the
-            // registration order IS the sidebar order; a group left out
-            // would render after every listed one.
-            ->navigationGroups([
-                'Operations',
-                'Reports',
-                'AI',
-                'Notifications',
-                'User Management',
-                'Settings',
-                'System',
-            ])
             ->sidebarCollapsibleOnDesktop()
             // Owner 2026-11-18: the collapsed rail's expand control is the
             // DANA logo itself — the brandLogo wrapper is CSS-promoted into
@@ -122,16 +108,21 @@ class AdminPanelProvider extends PanelProvider
                 WeeklyReport::class,
                 \App\Filament\Pages\AnalyticsPage::class,
             ])
-            // PROJ-025: every group starts collapsed except Operations —
-            // Filament seeds localStorage 'collapsedGroups' on first visit
-            // from NavigationGroup::isCollapsed().
+            // Owner 2026-11-18: fixed group order — Dashboard (ungrouped
+            // home) sits above all groups, then these. NavigationManager
+            // sorts groups by their index HERE (array_search), so the
+            // registration order IS the sidebar order; a group left out
+            // would render after every listed one. Every group starts
+            // COLLAPSED except Operations (PROJ-025) — Filament seeds
+            // localStorage 'collapsedGroups' on first visit from
+            // NavigationGroup::isCollapsed().
             ->navigationGroups([
                 NavigationGroup::make()->label('Operations'),
                 NavigationGroup::make()->label('Reports')->collapsed(),
+                NavigationGroup::make()->label('AI')->collapsed(),
                 NavigationGroup::make()->label('Notifications')->collapsed(),
                 NavigationGroup::make()->label('User Management')->collapsed(),
                 NavigationGroup::make()->label('Settings')->collapsed(),
-                NavigationGroup::make()->label('AI')->collapsed(),
                 NavigationGroup::make()->label('System')->collapsed(),
             ])
             ->middleware([
