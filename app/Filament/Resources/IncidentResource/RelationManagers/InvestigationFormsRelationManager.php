@@ -9,10 +9,10 @@ use App\Models\Category;
 use App\Models\Incident;
 use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
+use App\Models\User;
 use App\Services\InvestigationForm\InvestigationFormSettings;
 use App\Support\InvestigationFormMailFactory;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Notifications\Actions\Action as NotificationAction;
 use Filament\Notifications\Notification;
@@ -69,13 +69,34 @@ class InvestigationFormsRelationManager extends RelationManager
                             ->options(fn (RelationManager $livewire): array => self::teamOptions($livewire->getOwnerRecord()))
                             ->required()
                             ->searchable(),
-                        TagsInput::make('recipients')
+                        // Recipients come from the directory (the Entra-synced
+                        // user list) — everyone here can SSO, which the intake
+                        // now requires. Search-loaded, never all 2.5k rows.
+                        Select::make('recipients')
                             ->label('Recipients')
-                            ->placeholder('name@example.com')
                             ->required()
-                            // Filament v3 TagsInput has no maxItems/email() — the
-                            // cap + email format are enforced in the action.
-                            ->rule(fn (): string => 'max:'.InvestigationFormSettings::maxRecipients()),
+                            ->multiple()
+                            ->searchable()
+                            ->maxItems(InvestigationFormSettings::maxRecipients())
+                            ->getSearchResultsUsing(function (string $search): array {
+                                return User::query()
+                                    ->where(fn ($q) => $q->where('is_service_account', false)->orWhereNull('is_service_account'))
+                                    ->where(fn ($q) => $q->where('email', 'like', "%{$search}%")->orWhere('name', 'like', "%{$search}%"))
+                                    ->orderBy('name')
+                                    ->limit(50)
+                                    ->get()
+                                    ->mapWithKeys(fn (User $user): array => [$user->email => $user->name.' — '.$user->email])
+                                    ->all();
+                            })
+                            ->getOptionLabelsUsing(function (array $values): array {
+                                $names = User::query()->whereIn('email', $values)->pluck('name', 'email');
+
+                                return collect($values)->mapWithKeys(fn (string $email): array => [
+                                    $email => $names->has($email) ? $names[$email].' — '.$email : $email,
+                                ])->all();
+                            })
+                            ->hintIcon('heroicon-m-information-circle')
+                            ->hint('Picked from the directory — these people sign in with Microsoft.'),
                         Textarea::make('note')
                             ->label('Note for the recipients')
                             ->maxLength(1000),
@@ -135,21 +156,18 @@ class InvestigationFormsRelationManager extends RelationManager
                     ->icon('heroicon-o-arrow-path')
                     ->requiresConfirmation()
                     ->modalHeading('Resend link')
-                    ->modalDescription('Rotates this person\'s token — their previous link stops working — and emails the fresh link.')
+                    ->modalDescription('Emails this person\'s link again — the link does not change, so anything already filled stays where it is.')
                     ->visible(fn (InvestigationFormRecipient $record): bool => self::linkState($record) === 'pending')
                     ->action(function (InvestigationFormRecipient $record) {
-                        $plain = InvestigationFormRecipient::newToken();
-                        $record->update([
-                            'token_hash' => InvestigationFormRecipient::hashToken($plain),
-                            'emailed_at' => now(),
-                        ]);
+                        $record->update(['emailed_at' => now()]);
 
+                        $plain = $record->linkToken();
                         ['mail' => $mail, 'link' => $link] = InvestigationFormMailFactory::requestMail($record, $plain, null);
                         Mail::to($record->email)->queue($mail);
                         $emailOff = ! \App\Support\MailSettings::enabled();
 
                         Notification::make()
-                            ->title($emailOff ? 'Email is OFF — copy the link for '.$record->email : 'Link rotated and re-emailed to '.$record->email)
+                            ->title($emailOff ? 'Email is OFF — copy the link for '.$record->email : 'Link emailed to '.$record->email)
                             ->body($emailOff ? 'The global email kill-switch is on. Copy this one-time link and share it directly:' : 'One-time copy fallback if mail is down:')
                             ->actions([NotificationAction::make('copy')->url($link)->button()])
                             ->success()
@@ -170,7 +188,7 @@ class InvestigationFormsRelationManager extends RelationManager
                     ->color('warning')
                     ->requiresConfirmation()
                     ->modalHeading('Reissue the team\'s request')
-                    ->modalDescription('New expiry window, every non-revoked recipient gets a rotated token and a fresh email.')
+                    ->modalDescription('New expiry window, every non-revoked recipient gets their existing link re-emailed.')
                     ->visible(fn (InvestigationFormRecipient $record): bool => in_array(self::linkState($record), ['expired', 'revoked'], true))
                     ->action(function (InvestigationFormRecipient $record) {
                         $request = $record->request;
@@ -184,12 +202,9 @@ class InvestigationFormsRelationManager extends RelationManager
                         }
 
                         foreach ($request->recipients()->whereNull('revoked_at')->get() as $recipient) {
-                            $plain = InvestigationFormRecipient::newToken();
-                            $recipient->update([
-                                'token_hash' => InvestigationFormRecipient::hashToken($plain),
-                                'emailed_at' => now(),
-                            ]);
+                            $recipient->update(['emailed_at' => now()]);
 
+                            $plain = $recipient->linkToken();
                             ['mail' => $mail, 'link' => $link] = InvestigationFormMailFactory::requestMail($recipient, $plain, null);
                             Mail::to($recipient->email)->queue($mail);
 

@@ -6,7 +6,6 @@ namespace Tests\Feature;
 
 use App\Mail\Transports\NetcoreTransport;
 use App\Models\Incident;
-use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
 use App\Models\Setting;
 use App\Models\User;
@@ -72,12 +71,12 @@ class InvestigationFormMailFromTest extends TestCase
             'expires_at' => now()->addDays(14),
             'created_by' => User::factory()->create()->id,
         ]);
-        $plain = InvestigationFormRecipient::newToken();
         $recipient = $request->recipients()->create([
             'email' => 'pic@team.id',
-            'token_hash' => InvestigationFormRecipient::hashToken($plain),
+            'token_hash' => '',
             'emailed_at' => now(),
         ]);
+        $plain = $recipient->linkToken();
 
         ['mail' => $mail] = InvestigationFormMailFactory::requestMail($recipient, $plain, '');
 

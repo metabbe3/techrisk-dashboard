@@ -51,8 +51,28 @@ class InvestigationFormRecipient extends Model
         return hash('sha256', $token);
     }
 
-    public static function newToken(): string
+    /**
+     * The plain link token for this recipient. Derived (HMAC of
+     * request_id|email, keyed by APP_KEY) rather than random + stored — only
+     * the sha256 hash is persisted, so every send site can re-derive the
+     * SAME link forever. Nothing rotates: the link lives until
+     * submit/revoke/expiry.
+     */
+    public function linkToken(): string
     {
-        return bin2hex(random_bytes(32));
+        $derived = self::tokenFor($this->request_id, $this->email);
+
+        // Lazy re-key of pre-de-rotation rows (hashed from a random token):
+        // safe only when a mail carrying this fresh link is about to go out.
+        if ($this->token_hash !== self::hashToken($derived)) {
+            $this->update(['token_hash' => self::hashToken($derived)]);
+        }
+
+        return $derived;
+    }
+
+    public static function tokenFor(int $requestId, string $email): string
+    {
+        return hash_hmac('sha256', $requestId.'|'.mb_strtolower(trim($email)), (string) config('app.key'));
     }
 }

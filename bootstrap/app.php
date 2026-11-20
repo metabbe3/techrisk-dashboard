@@ -49,6 +49,13 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
+            // The investigation form intake is SSO-only: guests go straight to
+            // Microsoft and come back to the exact link (Redirector::guest()
+            // stores url.intended for us). Everything else keeps the login page.
+            if ($request->routeIs('investigation-form.intake')) {
+                return route('microsoft.redirect');
+            }
+
             return route('filament.admin.auth.login');
         });
 

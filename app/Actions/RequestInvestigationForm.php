@@ -15,8 +15,10 @@ use Illuminate\Support\Facades\Mail;
 
 /**
  * Creates (or reopens) the per-team investigation form request and emails
- * each NEW recipient their own unique no-login link. Existing non-revoked
- * recipients get no second mail — the Resend action does that.
+ * each NEW recipient their own unique SSO-only link. Existing non-revoked
+ * recipients get no second mail — the Resend action does that. Tokens are
+ * derived (InvestigationFormRecipient::linkToken()), never rotated: the same
+ * link re-derives on every send until submit/revoke/expiry.
  *
  * @return array{request: InvestigationFormRequest, mailed: array<string, string>, skipped: array<int, string>}
  *                                                                                                              mailed = email => plain link (for the admin's one-time copy fallback)
@@ -92,7 +94,11 @@ class RequestInvestigationForm
                 'request_id' => $request->id,
                 'email' => $email,
             ]);
-            $recipient->token_hash = InvestigationFormRecipient::hashToken($plainToken = InvestigationFormRecipient::newToken());
+            // Tokens are derived from request_id|email (never rotated) — the
+            // same link re-derives on every send; linkToken() re-keys any
+            // pre-de-rotation hash when its mail goes out.
+            $plainToken = $existing !== null ? $recipient->linkToken() : InvestigationFormRecipient::tokenFor($request->id, $email);
+            $recipient->token_hash = InvestigationFormRecipient::hashToken($plainToken);
             $recipient->revoked_at = null;
             $recipient->emailed_at = now();
             $recipient->save();

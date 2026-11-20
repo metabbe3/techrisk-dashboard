@@ -30,12 +30,6 @@
                 Sign in with your DANA Microsoft account.
             </p>
 
-            @if (session('microsoft_error'))
-                <div class="mt-4 rounded-lg bg-danger-50 px-4 py-3 text-sm font-medium text-danger-600 dark:bg-danger-500/10 dark:text-danger-400">
-                    {{ session('microsoft_error') }}
-                </div>
-            @endif
-
             <a
                 href="{{ route('microsoft.redirect') }}"
                 class="mt-6 flex h-10 w-full items-center justify-center gap-3 rounded-lg bg-dana-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-dana-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-dana-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-gray-950"
