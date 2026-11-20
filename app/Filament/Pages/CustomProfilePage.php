@@ -36,43 +36,49 @@ class CustomProfilePage extends BaseEditProfile
         $this->contributionGraph = MyIncidents::contributionGraph($this->getUser());
     }
 
-    // Owner 2026-11-20: the page's working function is the password change —
-    // the bare "Profile" title never said so.
+    // Owner 2026-11-20 (revisi): the page is the PROFILE page — heading and
+    // browser title follow the menu; no subheading.
     public function getTitle(): string
     {
-        return __('Change Password');
+        return __('Profile');
     }
 
     public function getHeading(): string
     {
-        return __('Change Password');
+        return __('Profile');
     }
 
-    public function getSubheading(): ?string
-    {
-        return __('Update your display name or change your password.');
-    }
-
+    /**
+     * Owner 2026-11-20 (revisi): the change-password form (revealed behind a
+     * button) takes OLD password / NEW password / CONFIRM. The name/email
+     * fields left the form — the info block shows them read-only.
+     *
+     * The vendor EditProfile::save() pipeline is kept AS-IS: it persists
+     * `$data['password']` (the hash) and refreshes the session
+     * `password_hash_{guard}` that AuthenticateSession compares against —
+     * dropping that session refresh force-logs users out on every change.
+     */
     public function form(Form $form): Form
     {
         return $form
             ->schema([
-                TextInput::make('name')
-                    ->required()
-                    ->maxLength(255),
-                TextInput::make('email')
-                    ->email()
-                    ->required()
-                    ->maxLength(255)
-                    ->disabled(),
-                TextInput::make('password')
+                TextInput::make('current_password')
+                    ->label(__('Old password'))
                     ->password()
+                    ->required()
+                    ->rule('current_password')
+                    ->dehydrated(false),
+                TextInput::make('password')
+                    ->label(__('New password'))
+                    ->password()
+                    ->required()
                     ->rule(Password::default())
                     ->dehydrateStateUsing(fn ($state) => Hash::make($state))
-                    ->dehydrated(fn ($state) => filled($state))
                     ->confirmed(),
                 TextInput::make('password_confirmation')
+                    ->label(__('Confirm new password'))
                     ->password()
+                    ->required()
                     ->dehydrated(false),
             ]);
     }

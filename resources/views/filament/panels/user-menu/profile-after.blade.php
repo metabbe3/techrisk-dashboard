@@ -1,24 +1,9 @@
 {{-- USER_MENU_PROFILE_AFTER hook — rendered INSIDE the profile dropdown, right
-     after the stock "Profile" item: "My Incident" + the inline Appearance
-     expander (3 preview cards; owner 2026-11-20, GitHub reference). The stock
-     icon theme-switcher below is CSS-hidden — this expander replaces it. --}}
-@php
-    $user = filament()->auth()->user();
-    $myIncidentsUrl = route('filament.admin.resources.incidents.index', [
-        'tableFilters' => ['pic' => ['values' => [$user->id]]],
-    ]);
-@endphp
-
-<x-filament::dropdown.list>
-    <x-filament::dropdown.list.item
-        :href="$myIncidentsUrl"
-        icon="heroicon-m-clipboard-document-list"
-        tag="a"
-    >
-        My Incident
-    </x-filament::dropdown.list.item>
-</x-filament::dropdown.list>
-
+     after the stock "Profile" item: the inline Appearance expander (3 preview
+     cards; owner 2026-11-20, GitHub reference). Owner 2026-11-20 (revisi):
+     the "My Incident" item was removed — the "Your active incidents" row
+     above already links to the same PIC-filtered list. The stock icon
+     theme-switcher below is CSS-hidden — this expander replaces it. --}}
 <x-filament::dropdown.list>
     <div
         class="tr-theme-expander"

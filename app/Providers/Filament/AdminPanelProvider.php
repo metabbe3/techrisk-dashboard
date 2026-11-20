@@ -170,21 +170,12 @@ class AdminPanelProvider extends PanelProvider
             // no second logo beside the rail's.
             ->renderHook(
                 PanelsRenderHook::TOPBAR_START,
-                // Owner 2026-11-20 (profile revamp): on the profile pages the
-                // master sidebar hides completely — a "three lines" hamburger
-                // reopens it as an OVERLAY (CSS: body:has(.tr-profile-land)).
-                // The hamburger + the DANA logo sit LEFT of the brand copy and
-                // are hidden everywhere EXCEPT profile-land. The logo is a
-                // SIBLING of the brand anchor, never an <img> inside it
-                // (SidebarBehaviorTest bans img in the brand copy). All three
-                // hide while the overlay sidebar is open.
+                // Owner 2026-11-20 (revisi): the profile-land hamburger + logo
+                // were dropped — the sidebar stays DEFAULT on every page,
+                // including the profile page. Brand copy only.
                 // x-cloak hides the copy until Alpine registers the sidebar
                 // store (Filament's JS) — no flash on expanded desktop loads.
-                fn (): string => '<button type="button" class="fi-tr-burger" aria-label="Show sidebar" aria-hidden="true" tabindex="-1" x-cloak x-show="! $store.sidebar.isOpen" x-on:click="$store.sidebar.open()">'
-                    .'<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5"/></svg>'
-                    .'</button>'
-                    .'<span class="fi-tr-brand-logo" aria-hidden="true" x-cloak x-show="! $store.sidebar.isOpen"><img src="'.asset('images/favicon.png').'?v=3" alt=""></span>'
-                    .'<a href="'.filament()->getHomeUrl().'" class="fi-topbar-brand" x-cloak x-show="! $store.sidebar.isOpen">'
+                fn (): string => '<a href="'.filament()->getHomeUrl().'" class="fi-topbar-brand" x-cloak x-show="! $store.sidebar.isOpen">'
                     .'<span>TechRisk Portal</span>'
                     .'</a>',
             )
@@ -283,15 +274,7 @@ class AdminPanelProvider extends PanelProvider
                 fn (): string => '<button type="button" class="fi-tr-pin-btn" title="Pin sidebar" aria-label="Pin sidebar">'
                     .'<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-6 w-6">'
                     .'<path stroke-linecap="round" stroke-linejoin="round" d="M12 17v5M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1z"/>'
-                    .'</svg></button>'
-                    // Profile-land close button (owner 2026-11-20): the ✕ at
-                    // the sidebar's top-right corner when the overlay is open
-                    // there. Hidden everywhere else — CSS
-                    // (body:has(.tr-profile-land)) shows it only on the profile
-                    // pages. The aside carries x-data, so $store resolves.
-                    .'<button type="button" class="tr-sidebar-close-btn" aria-label="Close sidebar" x-on:click="$store.sidebar.close()">'
-                    .'<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="h-5 w-5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/></svg>'
-                    .'</button>',
+                    .'</svg></button>',
             )
             // The hover behaviour: entering the collapsed rail temporarily
             // opens it (overlay, CSS in app.css), leaving closes it again.

@@ -16,11 +16,15 @@ use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 /**
- * Password change from the profile page must go through the vendor
+ * Change-password from the profile page must go through the vendor
  * EditProfile::save() pipeline: DB hash updated, session password_hash_web
  * refreshed (AuthenticateSession force-logs-out otherwise), redirect to the
  * dashboard. Regression: the old custom save() dropped the session refresh,
  * so every password change killed the session.
+ *
+ * Owner 2026-11-20 (revisi): the form is OLD / NEW / CONFIRM behind a button;
+ * the old password is verified with Laravel's `current_password` rule; the
+ * name/email fields left the form.
  */
 class CustomProfilePageTest extends TestCase
 {
@@ -28,7 +32,7 @@ class CustomProfilePageTest extends TestCase
 
     public function test_password_change_updates_hash_and_refreshes_session(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['password' => Hash::make('password')]);
 
         $oldHash = $user->password;
 
@@ -44,7 +48,7 @@ class CustomProfilePageTest extends TestCase
                 [
                     'snapshot' => json_encode($snapshot),
                     'updates' => [
-                        'data.name' => $user->name,
+                        'data.current_password' => 'password',
                         'data.password' => 'NewPassword123!',
                         'data.password_confirmation' => 'NewPassword123!',
                     ],
@@ -78,7 +82,7 @@ class CustomProfilePageTest extends TestCase
         // `manage incidents` — an unconditional Dashboard redirect is a
         // guaranteed 403 for them. Login already sends them to the incidents
         // list; the profile page must agree (PanelHome is the shared rule).
-        $user = User::factory()->create();
+        $user = User::factory()->create(['password' => Hash::make('password')]);
         Role::firstOrCreate(['name' => 'user']);
         $user->assignRole('user');
 
@@ -92,7 +96,7 @@ class CustomProfilePageTest extends TestCase
                 [
                     'snapshot' => json_encode($snapshot),
                     'updates' => [
-                        'data.name' => $user->name,
+                        'data.current_password' => 'password',
                         'data.password' => 'NewPassword123!',
                         'data.password_confirmation' => 'NewPassword123!',
                     ],
@@ -111,11 +115,11 @@ class CustomProfilePageTest extends TestCase
 
     public function test_password_change_keeps_user_logged_in(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['password' => Hash::make('password')]);
 
         Livewire::actingAs($user)
             ->test(CustomProfilePage::class)
-            ->set('data.name', $user->name)
+            ->set('data.current_password', 'password')
             ->set('data.password', 'NewPassword123!')
             ->set('data.password_confirmation', 'NewPassword123!')
             ->call('save');
@@ -123,37 +127,52 @@ class CustomProfilePageTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
-    public function test_page_title_and_heading_say_change_password(): void
+    public function test_wrong_old_password_is_rejected_and_password_unchanged(): void
     {
-        // Owner 2026-11-20: the page's working function is the password
-        // change — a bare "Profile" title never said so.
-        $user = User::factory()->create();
-
-        $page = app(CustomProfilePage::class);
-        $this->assertSame('Change Password', $page->getTitle());
-        $this->assertSame('Change Password', $page->getHeading());
-
-        Livewire::actingAs($user)
-            ->test(CustomProfilePage::class)
-            ->assertSee('Change Password')
-            ->assertSee('Update your display name or change your password.');
-    }
-
-    public function test_name_only_save_does_not_touch_password(): void
-    {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['password' => Hash::make('password')]);
         $oldHash = $user->password;
 
         Livewire::actingAs($user)
             ->test(CustomProfilePage::class)
-            ->set('data.name', 'Renamed User')
-            ->set('data.password', '')
-            ->set('data.password_confirmation', '')
-            ->call('save');
+            ->set('data.current_password', 'not-my-password')
+            ->set('data.password', 'NewPassword123!')
+            ->set('data.password_confirmation', 'NewPassword123!')
+            ->call('save')
+            ->assertHasFormErrors(['current_password']);
 
         $user->refresh();
 
-        $this->assertSame('Renamed User', $user->name);
         $this->assertSame($oldHash, $user->password);
+    }
+
+    public function test_mismatched_confirmation_is_rejected(): void
+    {
+        $user = User::factory()->create(['password' => Hash::make('password')]);
+
+        Livewire::actingAs($user)
+            ->test(CustomProfilePage::class)
+            ->set('data.current_password', 'password')
+            ->set('data.password', 'NewPassword123!')
+            ->set('data.password_confirmation', 'Different456!')
+            ->call('save')
+            ->assertHasFormErrors(['password']);
+
+        $this->assertTrue(Hash::check('password', $user->refresh()->password));
+    }
+
+    public function test_page_title_and_heading_say_profile(): void
+    {
+        // Owner 2026-11-20 (revisi): the page is the PROFILE page again —
+        // the password change moved behind a button in its content.
+        $user = User::factory()->create();
+
+        $page = app(CustomProfilePage::class);
+        $this->assertSame('Profile', $page->getTitle());
+        $this->assertSame('Profile', $page->getHeading());
+
+        Livewire::actingAs($user)
+            ->test(CustomProfilePage::class)
+            ->assertSee('Change password')
+            ->assertDontSee('Update your display name or change your password.');
     }
 }
