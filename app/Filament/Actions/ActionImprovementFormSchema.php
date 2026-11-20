@@ -48,18 +48,8 @@ class ActionImprovementFormSchema
                 ->searchable()
                 // No preload: the directory sync brought 2.5k+ humans — options
                 // are served by server-side search instead (top 50 hits).
-                ->getSearchResultsUsing(fn (string $search): array => User::humanUsers()
-                    ->where(fn ($q) => $q
-                        ->where('name', 'like', "%{$search}%")
-                        ->orWhere('email', 'like', "%{$search}%")
-                        ->orWhere('department', 'like', "%{$search}%")
-                        ->orWhere('job_title', 'like', "%{$search}%"))
-                    ->orderBy('name')
-                    ->limit(50)
-                    ->get()
-                    ->mapWithKeys(fn ($u) => [$u->email => $u->name])
-                    ->all())
-                ->getOptionLabelUsing(fn ($value): string => (string) (User::where('email', $value)->value('name') ?? $value))
+                ->getSearchResultsUsing(fn (string $search): array => self::picSearchResults($search))
+                ->getOptionLabelUsing(fn ($value): string => self::picOptionLabel($value))
                 ->createOptionModalHeading('Add new PIC contact')
                 ->createOptionForm([
                     Forms\Components\TextInput::make('name'),
@@ -147,6 +137,104 @@ class ActionImprovementFormSchema
                         ->danger()
                         ->send();
             });
+    }
+
+    /**
+     * Directory search behind BOTH PIC pickers (the form Select and the
+     * Add Assignee action) — one home so the two cannot drift.
+     */
+    private static function picSearchResults(string $search): array
+    {
+        return User::humanUsers()
+            ->where(fn ($q) => $q
+                ->where('name', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%")
+                ->orWhere('department', 'like', "%{$search}%")
+                ->orWhere('job_title', 'like', "%{$search}%"))
+            ->orderBy('name')
+            ->limit(50)
+            ->get()
+            ->mapWithKeys(fn ($u) => [$u->email => $u->name])
+            ->all();
+    }
+
+    private static function picOptionLabel($value): string
+    {
+        return (string) (User::where('email', $value)->value('name') ?? $value);
+    }
+
+    /**
+     * Shared "Add Assignee" row action (owner 2026-11-20 re-assignment):
+     * the action's own assignees + trusted users can ADD people to
+     * pic_email (add-only — removal stays with Edit for admins). The
+     * observer emails ONLY the newly-added assignees.
+     */
+    public static function addAssigneeAction(): Action
+    {
+        return Action::make('add_assignee')
+            ->label('Add Assignee')
+            ->icon('heroicon-o-user-plus')
+            ->color('gray')
+            ->visible(fn (ActionImprovement $record): bool => $record->isOpenWork()
+                && self::mayManageAssignees($record))
+            ->form([
+                Forms\Components\Select::make('new_pic_email')
+                    ->label('Add person in charge')
+                    ->multiple()
+                    ->searchable()
+                    ->getSearchResultsUsing(fn (string $search): array => self::picSearchResults($search))
+                    ->getOptionLabelUsing(fn ($value): string => self::picOptionLabel($value))
+                    ->helperText('They will be emailed that they are now responsible for this action.'),
+            ])
+            ->action(function (ActionImprovement $record, array $data) {
+                self::guardManageAssignees($record);
+
+                $added = collect($data['new_pic_email'] ?? [])
+                    ->filter()
+                    ->unique()
+                    ->reject(fn (string $email) => in_array($email, $record->pic_email ?? [], true))
+                    ->values()
+                    ->all();
+
+                if ($added === []) {
+                    Notification::make()
+                        ->title('Nothing to add')
+                        ->body('Those people are already assigned to this action.')
+                        ->warning()
+                        ->send();
+
+                    return;
+                }
+
+                $record->pic_email = [...($record->pic_email ?? []), ...$added];
+                $record->save(); // observer upserts directory rows + emails the newly-added only
+
+                Notification::make()
+                    ->title('Assignee added')
+                    ->body(count($added).' person(s) added and notified.')
+                    ->success()
+                    ->send();
+            });
+    }
+
+    /** Add-assignee grant: trusted approvers (admin / incident PIC) + the action's own assignees. */
+    public static function mayManageAssignees(ActionImprovement $record): bool
+    {
+        $user = auth()->user();
+
+        return $user !== null && (
+            self::isTrustedApprover($record)
+            || in_array($user->email, $record->pic_email ?? [], true)
+        );
+    }
+
+    /** visible() is UX only — re-checked server-side before any write. */
+    public static function guardManageAssignees(ActionImprovement $record): void
+    {
+        abort_unless(
+            $record->isOpenWork() && self::mayManageAssignees($record),
+            403,
+        );
     }
 
     /**

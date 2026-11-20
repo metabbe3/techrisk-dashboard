@@ -244,6 +244,11 @@ class Incident extends Model implements Auditable
                 foreach ($user->teams()->pluck('name')->all() as $teamName) {
                     $w->orWhereJsonContains('responsible_team', $teamName);
                 }
+                // Re-assignment (owner 2026-11-20): a team-viewer assigned to
+                // an action improvement sees that incident even without a
+                // PIC/team match — ONE grant here, so the list, record gate,
+                // Action Improvements page and proofAllowed all follow.
+                $w->orWhereHas('actionImprovements', fn ($a) => $a->whereJsonContains('pic_email', $user->email));
             });
 
             return;

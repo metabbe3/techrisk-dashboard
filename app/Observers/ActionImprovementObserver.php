@@ -51,14 +51,25 @@ class ActionImprovementObserver
     public function updated(ActionImprovement $actionImprovement): void
     {
         if ($actionImprovement->isDirty('pic_email')) {
-            $this->notifyAssignees($actionImprovement);
+            // Re-assignment (owner 2026-11-20): only the NEWLY-ADDED emails
+            // get the assignment mail — existing assignees were notified when
+            // they were assigned and a re-email on every PIC edit is noise.
+            $added = array_values(array_diff(
+                (array) $actionImprovement->pic_email,
+                (array) $actionImprovement->getOriginal('pic_email'),
+            ));
+
+            $this->notifyAssignees($actionImprovement, $added);
         }
     }
 
     /**
      * Send notifications to assigned PICs via User::notify() to respect preferences.
+     *
+     * @param  array<int, string>|null  $emails  subset to notify (defaults to
+     *                                           every assigned email — used by created())
      */
-    private function notifyAssignees(ActionImprovement $actionImprovement): void
+    private function notifyAssignees(ActionImprovement $actionImprovement, ?array $emails = null): void
     {
         // Assignment mail is for open work only — rows created or PIC-edited
         // as done/draft/cancelled/tbd never chase (owner 2026-11-19).
@@ -66,13 +77,15 @@ class ActionImprovementObserver
             return;
         }
 
-        if (! $actionImprovement->pic_email || ! is_array($actionImprovement->pic_email)) {
+        $emails ??= $actionImprovement->pic_email;
+
+        if (! $emails || ! is_array($emails)) {
             return;
         }
 
         $notified = [];
 
-        foreach ($actionImprovement->pic_email as $email) {
+        foreach ($emails as $email) {
             if (! filter_var($email, FILTER_VALIDATE_EMAIL)) {
                 continue;
             }

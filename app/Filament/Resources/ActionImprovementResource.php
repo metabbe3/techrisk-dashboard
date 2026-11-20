@@ -202,6 +202,7 @@ class ActionImprovementResource extends Resource
                 ActionImprovementFormSchema::rewordAction(),
                 ActionImprovementFormSchema::submitProofAction(),
                 ActionImprovementFormSchema::approveProofAction(),
+                ActionImprovementFormSchema::addAssigneeAction(),
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([]);

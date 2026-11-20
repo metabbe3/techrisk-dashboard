@@ -165,6 +165,7 @@ class ActionImprovementsRelationManager extends RelationManager
                 ActionImprovementFormSchema::rewordAction(),
                 ActionImprovementFormSchema::submitProofAction(),
                 ActionImprovementFormSchema::approveProofAction(),
+                ActionImprovementFormSchema::addAssigneeAction(),
                 // Evidence files live on the global EditActionImprovement
                 // page — Filament 3 cannot nest a relation manager inside
                 // this one, so this jumps straight to its Evidence tab.
