@@ -93,9 +93,10 @@ class SidebarChromeTest extends TestCase
         $this->assertStringNotContainsString('sidebar-notification-bell', $html);
         $this->assertStringNotContainsString('sidebar-account-trigger', $html);
 
-        // Notifications modal mounted at body level — the modal id must be on
-        // the page for the bell's open-modal dispatch to open anything.
-        $this->assertStringContainsString('data-fi-modal-id="database-notifications"', $html);
+        // (main's `data-fi-modal-id="database-notifications"` pin is NOT
+        // carried — that modal view belongs to main's sidebar bell; this
+        // branch keeps Filament's LAZY topbar bell, whose trigger + modal
+        // hydrate client-side and are absent from the initial HTML.)
 
         // The incident is navigable — record search has something to find.
         $this->assertStringContainsString(e($incident->no), $html);

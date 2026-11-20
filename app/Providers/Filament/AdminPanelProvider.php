@@ -70,15 +70,14 @@ class AdminPanelProvider extends PanelProvider
             // stretch badly.
             ->maxContentWidth(MaxWidth::Full)
             ->globalSearch(true)
-            // Inter Variable is self-hosted through the app's Vite build
-            // (@fontsource-variable/inter imported in resources/css/app.css) —
-            // no font CDN, which matters on the VPN-only prod domain.
-            // ->font() sets the panel's --font-family CSS var.
-            ->font('Inter Variable', provider: \Filament\FontProviders\LocalFontProvider::class)
             // Command palette (pxlrbt/filament-spotlight) deleted 2026-11-20 —
             // owner: it let restricted roles reach page commands past their
             // nav gates. The composer package stays until the parallel
             // session's composer churn settles.
+            // ⚠ main's Inter Variable font call is NOT carried (owner
+            // 2026-11-20: "ukuran font pakai punya main, yang sekarang saja" —
+            // the branch keeps the pre-main font stack; the app.css
+            // --font-sans Instrument Sans declaration stays).
             ->path('admin')
             ->login(Login::class)
             ->passwordReset()
