@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Support\MyIncidents;
 use App\Support\PanelHome;
 use Filament\Actions\Action;
 use Filament\Forms\Components\TextInput;
@@ -14,6 +15,27 @@ use Illuminate\Validation\Rules\Password;
 
 class CustomProfilePage extends BaseEditProfile
 {
+    // Owner 2026-11-20 (profile revamp): a custom page view — profile-land
+    // shell, info block, contribution graph, right sub-menu nav — while the
+    // form block stays byte-identical to the vendor view, so the EditProfile
+    // save() pipeline (session password_hash_web refresh) is untouched.
+    protected static string $view = 'filament.pages.profile';
+
+    // The panel's profile page is SIMPLE by default (Filament::isProfilePageSimple)
+    // → a centered card with no topbar/sidebar. Profile-land needs the full
+    // panel layout: the topbar with the ☰ + logo (owner 2026-11-20).
+    protected static string $layout = 'filament-panels::components.layout.index';
+
+    /** @var array<string, mixed> */
+    public array $contributionGraph = [];
+
+    public function mount(): void
+    {
+        parent::mount();
+
+        $this->contributionGraph = MyIncidents::contributionGraph($this->getUser());
+    }
+
     // Owner 2026-11-20: the page's working function is the password change —
     // the bare "Profile" title never said so.
     public function getTitle(): string
