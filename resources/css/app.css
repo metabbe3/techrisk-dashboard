@@ -618,6 +618,17 @@
 .fi-ta-table tbody tr:hover td.sticky-col-title {
     background: #fafcff;
 }
+/* header + summary rows sit on bg-gray-50 (dark: white/5 over gray-900) — pinned
+   cells there must match or they read as a different color. :has() is required
+   here to out-specify the white base rule (its :has() counts as a class). */
+.fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-id,
+.fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-title,
+.fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-id,
+.fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-title,
+.fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-id,
+.fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-title {
+    background: #f9fafb;
+}
 :root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
 :root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]),
 :root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
@@ -627,6 +638,14 @@
 :root.dark .fi-ta-table tbody tr:hover td.sticky-col-id,
 :root.dark .fi-ta-table tbody tr:hover td.sticky-col-title {
     background: #131c2b;
+}
+:root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-id,
+:root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-title,
+:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-id,
+:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-title,
+:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-id,
+:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-title {
+    background: #1d2432;
 }
 
 /* Severity/status badges — solid tint, no decorative gradient or text-shadow. */
