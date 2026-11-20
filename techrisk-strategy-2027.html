@@ -1,0 +1,701 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Technical Risk 2027 Strategy</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: full-viewport slide deck, keyboard + button navigation.
+   Color logic: pain red = diagnosis, resolve green = fixes, brand blue = structure.
+   Type: IBM Plex Sans (display/body) + IBM Plex Mono (labels, refs, data) for a
+   control-room document feel. */
+:root{
+  --bg:#F2F4F6;
+  --surface:#FFFFFF;
+  --ink:#182430;
+  --ink2:#5C6B7A;
+  --line:#DCE2E8;
+  --brand:#2F5D8A;
+  --brand-bg:#E9F0F7;
+  --pain:#B42318;
+  --pain-bg:#FBEDEA;
+  --fix:#0E7C5B;
+  --fix-bg:#E5F2EC;
+  --amber:#955F0B;
+  --amber-bg:#FAF0DC;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1319;
+    --surface:#151C24;
+    --ink:#E7EDF3;
+    --ink2:#98A7B6;
+    --line:#2A3541;
+    --brand:#7FB1DF;
+    --brand-bg:#1C2C3B;
+    --pain:#FF7A5C;
+    --pain-bg:#3A201A;
+    --fix:#3DC08B;
+    --fix-bg:#14302A;
+    --amber:#E0A33C;
+    --amber-bg:#332A14;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1319;
+  --surface:#151C24;
+  --ink:#E7EDF3;
+  --ink2:#98A7B6;
+  --line:#2A3541;
+  --brand:#7FB1DF;
+  --brand-bg:#1C2C3B;
+  --pain:#FF7A5C;
+  --pain-bg:#3A201A;
+  --fix:#3DC08B;
+  --fix-bg:#14302A;
+  --amber:#E0A33C;
+  --amber-bg:#332A14;
+  color-scheme:dark;
+}
+html{height:100%}
+body{
+  margin:0;height:100%;overflow:hidden;position:relative;
+  background:var(--bg);color:var(--ink);
+  font-family:"IBM Plex Sans",-apple-system,"Segoe UI",sans-serif;
+  font-size:15.5px;line-height:1.55;
+  padding:0 max(16px,env(safe-area-inset-right,0px)) 0 max(16px,env(safe-area-inset-left,0px));
+}
+h1,h2,h3{margin:0;font-weight:650;letter-spacing:-0.012em;text-wrap:balance}
+p{margin:0}
+.mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+/* slides */
+.slide{
+  position:absolute;inset:0;display:flex;overflow-y:auto;
+  visibility:hidden;opacity:0;z-index:0;
+  transition:opacity .35s ease,visibility .35s ease;
+}
+.slide:first-child{visibility:visible;opacity:1}
+.slide.active{visibility:visible;opacity:1;z-index:1}
+.wrap{
+  margin:auto;width:min(1060px,100%);
+  padding:72px 0 116px;
+  transform:translateY(12px);transition:transform .35s ease;
+}
+.slide.active .wrap{transform:none}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:500;
+  letter-spacing:.16em;text-transform:uppercase;color:var(--ink2);margin-bottom:14px;
+}
+h2{font-size:clamp(26px,4.5vw,40px);line-height:1.15;margin-bottom:14px}
+.lede{color:var(--ink2);font-size:16.5px;max-width:62ch;margin-bottom:36px}
+
+/* chips */
+.chip{
+  display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;
+  letter-spacing:.06em;padding:2px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap;
+}
+.chip.pp{color:var(--pain);background:var(--pain-bg);border-color:color-mix(in srgb,var(--pain) 25%,transparent)}
+.chip.fix{color:var(--fix);background:var(--fix-bg);border-color:color-mix(in srgb,var(--fix) 30%,transparent)}
+.chip.brand{color:var(--brand);background:var(--brand-bg);border-color:color-mix(in srgb,var(--brand) 30%,transparent)}
+.chip.amber{color:var(--amber);background:var(--amber-bg);border-color:color-mix(in srgb,var(--amber) 30%,transparent)}
+.chip.plain{color:var(--ink2);background:transparent;border-color:var(--line)}
+.tchip{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:24px;height:24px;border-radius:6px;font-family:"IBM Plex Mono",monospace;
+  font-size:12px;font-weight:600;color:var(--brand);background:var(--brand-bg);
+}
+
+/* cover */
+.cover-title{font-size:clamp(42px,7vw,74px);line-height:1.04;margin-bottom:22px}
+.cover-sub{color:var(--ink2);font-size:clamp(16px,2.2vw,19px);max-width:34em;margin-bottom:34px}
+.cover-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.hint{margin-top:56px;font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.08em;color:var(--ink2)}
+.hint kbd{border:1px solid var(--line);border-radius:4px;padding:1px 6px;font-family:inherit}
+
+/* tiles */
+.tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px 20px}
+.tile b{display:block;font-size:36px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.tile span{font-family:"IBM Plex Mono",monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
+
+/* root cards */
+.roots{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:36px}
+.root{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px}
+.root h3{font-size:17px;margin-bottom:6px}
+.root p{font-size:14.5px;color:var(--ink2)}
+.root .chip{margin-bottom:10px}
+
+/* theme rows */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+.label{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--ink2);margin-bottom:12px}
+.pprow{display:flex;gap:12px;align-items:baseline;padding:11px 0;border-top:1px solid var(--line);font-size:14.5px}
+.pprow:last-child{border-bottom:1px solid var(--line)}
+.pprow .chip{transform:translateY(-1px)}
+.init-note{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink2);white-space:nowrap}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:10px}
+.card:last-child{margin-bottom:0}
+.card.fixcard{background:var(--fix-bg);border-color:color-mix(in srgb,var(--fix) 25%,transparent)}
+.card h3{font-size:15.5px;margin-bottom:5px}
+.card p{font-size:14px;color:var(--ink2)}
+.card .meta{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink2);margin-bottom:8px}
+
+/* pain -> fix duo rows */
+.duo{display:grid;grid-template-columns:1fr 30px 1fr;gap:10px 6px;align-items:stretch;margin-bottom:12px}
+.duo .arrow{display:flex;align-items:center;justify-content:center;color:var(--ink2);font-size:16px}
+.duo .paincell{display:flex;gap:12px;align-items:baseline;padding:13px 16px;background:var(--surface);border:1px solid var(--line);border-radius:10px;font-size:14px}
+.duo .fixcell{display:flex;gap:12px;align-items:baseline;padding:13px 16px;background:var(--fix-bg);border:1px solid color-mix(in srgb,var(--fix) 25%,transparent);border-radius:10px;font-size:14px}
+.duo p b{font-weight:600}
+.duo p span{color:var(--ink2)}
+
+/* flow strip */
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:28px}
+.flow .step{font-family:"IBM Plex Mono",monospace;font-size:12px;padding:8px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.flow .step.key{color:var(--fix);background:var(--fix-bg);border-color:color-mix(in srgb,var(--fix) 30%,transparent);font-weight:600}
+.flow .arr{color:var(--ink2)}
+
+/* map slide */
+.mrow{display:grid;grid-template-columns:230px 1fr;border-top:1px solid var(--line);padding:16px 0}
+.mrow:last-child{border-bottom:1px solid var(--line)}
+.mtheme{display:flex;gap:10px;align-items:flex-start;padding-right:20px}
+.mtheme .name{font-weight:600;font-size:14.5px;line-height:1.35}
+.mtheme .meta{display:block;font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink2);margin-top:3px}
+.mtheme .tchip{margin-top:1px}
+.pplist .pprow{padding:7px 0}
+.pplist .pprow:first-child{border-top:none}
+.pplist .pprow:last-child{border-bottom:none}
+
+/* objectives */
+.objgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.obj{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:20px 22px}
+.obj h3{font-size:17px;margin:10px 0 6px}
+.obj p{font-size:14.5px;color:var(--ink2)}
+.obj .theme{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--ink2);margin-top:10px}
+
+/* priorities */
+.prio{display:grid;grid-template-columns:56px 1fr;gap:18px;padding:20px 0;border-top:1px solid var(--line);align-items:start}
+.prio:last-child{border-bottom:1px solid var(--line)}
+.rank{font-family:"IBM Plex Mono",monospace;font-size:34px;font-weight:600;color:var(--brand);line-height:1;font-variant-numeric:tabular-nums}
+.prio h3{font-size:17px;margin-bottom:6px}
+.prio p{font-size:14.5px;color:var(--ink2);max-width:62ch}
+.prio .chips{margin-top:9px;display:flex;gap:6px;flex-wrap:wrap}
+
+/* roadmap */
+.qcols{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.qcol{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px}
+.qcol .qhead{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.1em;color:var(--brand);margin-bottom:3px}
+.qcol .qname{font-weight:600;font-size:15px;margin-bottom:12px}
+.qitem{display:flex;gap:9px;align-items:baseline;font-size:13px;color:var(--ink2);padding:7px 0;border-top:1px solid var(--line)}
+.qitem .chip{flex:none;transform:translateY(-1px)}
+.roadnote{margin-top:14px;font-size:13.5px;color:var(--ink2);max-width:70ch}
+
+/* portfolio table */
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:13.5px}
+th{font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2);text-align:left;padding:12px 14px;border-bottom:1px solid var(--line);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:none}
+td.mono{font-family:"IBM Plex Mono",monospace;font-size:12px;white-space:nowrap}
+td.refs{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--pain);white-space:nowrap}
+td.meas{color:var(--ink2);font-size:13px}
+tbody tr:hover{background:var(--brand-bg)}
+
+/* decisions */
+.decrow{display:grid;grid-template-columns:130px 1fr 190px;gap:14px;padding:16px 0;border-top:1px solid var(--line);align-items:baseline}
+.decrow:last-of-type{border-bottom:1px solid var(--line)}
+.decrow .from{font-family:"IBM Plex Mono",monospace;font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--brand)}
+.decrow p{font-size:15px}
+.decrow .unblocks{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--ink2);text-align:right;white-space:nowrap}
+.close-line{margin-top:36px;font-size:16.5px;font-weight:600}
+.close-row{margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+
+/* chrome */
+.progress{position:fixed;top:0;left:0;right:0;height:3px;background:color-mix(in srgb,var(--ink) 10%,transparent);z-index:6}
+#bar{height:100%;width:0;background:var(--brand);transition:width .3s ease}
+#ctr{
+  position:fixed;left:max(20px,env(safe-area-inset-left,0px));bottom:max(20px,env(safe-area-inset-bottom,0px));
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--ink2);z-index:5;
+  font-variant-numeric:tabular-nums;letter-spacing:.08em;
+}
+.controls{position:fixed;right:max(20px,env(safe-area-inset-right,0px));bottom:max(20px,env(safe-area-inset-bottom,0px));display:flex;gap:8px;z-index:5}
+.controls button{
+  width:44px;height:36px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);font-size:16px;cursor:pointer;
+  font-family:"IBM Plex Sans",sans-serif;
+}
+.controls button:hover{background:var(--brand-bg)}
+.controls button:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+
+@media (max-width:760px){
+  .wrap{padding:56px 0 120px}
+  .tiles{grid-template-columns:1fr 1fr}
+  .roots,.grid2,.objgrid{grid-template-columns:1fr}
+  .duo{grid-template-columns:1fr}
+  .duo .arrow{display:none}
+  .duo .fixcell{border-top:none;border-radius:0 0 10px 10px}
+  .duo .paincell{border-radius:10px 10px 0 0}
+  .mrow{grid-template-columns:1fr;gap:10px}
+  .mtheme{padding-right:0}
+  .qcols{grid-template-columns:1fr}
+  .decrow{grid-template-columns:1fr;gap:4px}
+  .decrow .unblocks{text-align:left}
+  .prio{grid-template-columns:40px 1fr}
+}
+@media (prefers-reduced-motion: reduce){
+  *{transition:none!important}
+}
+@media print{
+  html,body{height:auto;overflow:visible;background:#fff}
+  .slide{position:static;visibility:visible;opacity:1;break-after:page}
+  .wrap{transform:none;padding:40px 0 60px}
+  .progress,#ctr,.controls,.hint{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="progress"><div id="bar"></div></div>
+
+<!-- 1 · COVER -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Technical Risk · Strategy Review</p>
+    <h1 class="cover-title">From firefighting<br>to a system that holds.</h1>
+    <p class="cover-sub">Seven pain points from the FY2026 review, refined into twelve initiatives, four objectives, and a quarter-by-quarter plan for 2027.</p>
+    <div class="cover-row">
+      <span class="chip amber">Draft for discussion</span>
+      <span class="chip plain">Prepared November 2026</span>
+    </div>
+    <p class="hint">Navigate with <kbd>←</kbd> <kbd>→</kbd> or the buttons below.</p>
+  </div>
+</section>
+
+<!-- 2 · EXECUTIVE SUMMARY -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Executive summary</p>
+    <h2>Every pain point traces to one of four roots.</h2>
+    <p class="lede">Our read of the FY2026 review: none of the seven pain points stands alone. They cluster into four root conditions, and the 2027 plan addresses the roots rather than the symptoms.</p>
+    <div class="roots">
+      <div class="root">
+        <span class="chip brand">A</span>
+        <h3>Capacity is guessed, coverage is partial</h3>
+        <p>Planning never happened, and the fundamentals that prevent incidents — reviews, tests, a ranked backlog — grew by habit instead of design.</p>
+      </div>
+      <div class="root">
+        <span class="chip brand">B</span>
+        <h3>Responders show up, nobody owns the call</h3>
+        <p>War rooms convene engineers but no designated leader, and after hours there is no standing team to catch what monitoring misses.</p>
+      </div>
+      <div class="root">
+        <span class="chip brand">C</span>
+        <h3>Incidents close, lessons don't</h3>
+        <p>Investigation forms come in thin and late, corrective actions go untracked, and small fundlosses repeat until they grow. BI-FAS is the standing example.</p>
+      </div>
+      <div class="root">
+        <span class="chip brand">D</span>
+        <h3>Three processes run on memory</h3>
+        <p>Fund-risk submissions, external RCA reporting and company-loss deadlines have no working instruction, no RACI and no date anyone is measured on.</p>
+      </div>
+    </div>
+    <div class="tiles">
+      <div class="tile"><b>7</b><span>Pain points</span></div>
+      <div class="tile"><b>4</b><span>Themes</span></div>
+      <div class="tile"><b>12</b><span>Initiatives</span></div>
+      <div class="tile"><b>4</b><span>Objectives</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · PAIN POINT MAP -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">The evidence</p>
+    <h2>Seven pain points, four themes.</h2>
+    <p class="lede">Each pain point carries a PP reference through the rest of the deck, so every initiative can be traced back to the gap it closes.</p>
+    <div class="mrow">
+      <div class="mtheme"><span class="tchip">A</span><div><span class="name">Capacity &amp; coverage</span><span class="meta">3 initiatives</span></div></div>
+      <div class="pplist">
+        <div class="pprow"><span class="chip pp">PP-1</span><span>Capacity planning not conducted properly — no forecast of transaction targets</span></div>
+        <div class="pprow"><span class="chip pp">PP-2</span><span>Fundloss / non-fundloss / MOTO-CC: thin monitoring &amp; escalation, weak code review &amp; SA, low test coverage, unprioritized feature backlog</span></div>
+      </div>
+    </div>
+    <div class="mrow">
+      <div class="mtheme"><span class="tchip">B</span><div><span class="name">Incident command</span><span class="meta">1 initiative</span></div></div>
+      <div class="pplist">
+        <div class="pprow"><span class="chip pp">PP-3</span><span>No designated leadership in the incident war room — decisions stall, roles blur</span></div>
+      </div>
+    </div>
+    <div class="mrow">
+      <div class="mtheme"><span class="tchip">C</span><div><span class="name">RCA discipline</span><span class="meta">5 initiatives</span></div></div>
+      <div class="pplist">
+        <div class="pprow"><span class="chip pp">PP-4</span><span>RCA process failing on six fronts — form quality, submission timeliness, ownership, prevention, centralization, action tracking</span></div>
+      </div>
+    </div>
+    <div class="mrow">
+      <div class="mtheme"><span class="tchip">D</span><div><span class="name">Governance &amp; process</span><span class="meta">3 initiatives</span></div></div>
+      <div class="pplist">
+        <div class="pprow"><span class="chip pp">PP-5</span><span>Fund-risk project list submitted late; low risk-management awareness</span></div>
+        <div class="pprow"><span class="chip pp">PP-6</span><span>External RCA report process unclear — nobody owns the steps</span></div>
+        <div class="pprow"><span class="chip pp">PP-7</span><span>Company-loss reporting mismatched with ERM on due dates</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · THEME A -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Theme A · Capacity &amp; coverage</p>
+    <h2>Capacity is guessed, coverage is partial.</h2>
+    <p class="lede">Nobody owns the transaction forecast, and the engineering fundamentals that prevent incidents are applied unevenly across the team.</p>
+    <div class="grid2">
+      <div>
+        <p class="label">The pain</p>
+        <div class="pprow"><span class="chip pp">PP-1</span><span>Capacity planning was never conducted properly — no forecast of transaction targets behind staffing or infrastructure decisions</span></div>
+        <div class="pprow"><span class="chip pp">PP-2a</span><span>Monitoring and escalation are thin for fundloss, non-fundloss and MOTO-CC incidents</span></div>
+        <div class="pprow"><span class="chip pp">PP-2b</span><span>Code review and solution-architecture review are inconsistent</span></div>
+        <div class="pprow"><span class="chip pp">PP-2c</span><span>Test coverage is low</span></div>
+        <div class="pprow"><span class="chip pp">PP-2d</span><span>The feature backlog has no priority management</span></div>
+      </div>
+      <div>
+        <p class="label">The fix</p>
+        <div class="card fixcard">
+          <p class="meta">I-01 · closes PP-1</p>
+          <h3>Capacity forecast program</h3>
+          <p>A standing quarterly cycle with the business team to forecast transaction targets, and size staffing and infrastructure against it.</p>
+        </div>
+        <div class="card fixcard">
+          <p class="meta">I-02 · closes PP-2a</p>
+          <h3>24/7 coverage model</h3>
+          <p>A standing rota across TS, Security and IDC (system, network, DBA) plus SRE, with a defined escalation path at any hour.</p>
+        </div>
+        <div class="card fixcard">
+          <p class="meta">I-03 · closes PP-2b–d</p>
+          <h3>Engineering quality baseline</h3>
+          <p>Code review and SA gates in the delivery flow, test coverage targets, and a ranked backlog with explicit priority rules.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · THEME B -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Theme B · Incident command</p>
+    <h2>The war room has responders. It needs a commander.</h2>
+    <p class="lede">During incidents, engineers work their lanes but nobody owns the call. Decisions stall, priorities blur, and the room waits for someone to lead.</p>
+    <div class="grid2">
+      <div>
+        <p class="label">The pain</p>
+        <div class="pprow"><span class="chip pp">PP-3</span><span>No designated leadership during incidents in the war room — no criteria exist for who should lead, so leadership is improvised or absent</span></div>
+      </div>
+      <div>
+        <p class="label">The fix</p>
+        <div class="card fixcard">
+          <p class="meta">I-04 · closes PP-3</p>
+          <h3>Incident commander framework</h3>
+          <p>Explicit criteria for who can lead an incident, empowerment to make the call, and training so every war room opens with a named IC.</p>
+        </div>
+      </div>
+    </div>
+    <div class="flow">
+      <span class="step">Detect &amp; triage</span>
+      <span class="arr">→</span>
+      <span class="step">War room opens</span>
+      <span class="arr">→</span>
+      <span class="step key">Named IC owns the call</span>
+      <span class="arr">→</span>
+      <span class="step">TS · Security · IDC · SRE execute</span>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · THEME C -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Theme C · RCA discipline</p>
+    <h2>Incidents close. Lessons don't.</h2>
+    <p class="lede">Six failures around the RCA process, each paired with its fix. Together they decide whether every incident makes the next one less likely.</p>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-4a</span><p><b>Investigation forms come in thin</b> <span>— missing evidence, missing timeline</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-05</span><p><b>Structured investigation form</b> <span>— required fields and evidence standards</span></p></div>
+    </div>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-4b</span><p><b>Submissions run late</b> <span>— PICs are chased by hand over DingTalk</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-06</span><p><b>RCA SLA with automated chase</b> <span>— reminders escalate to the PIC's lead</span></p></div>
+    </div>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-4c</span><p><b>Mistakes are admitted late, if at all</b> <span>— no culture of owning the error</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-07</span><p><b>Risk-ownership program for leaders</b> <span>— no-blame, no-hide</span></p></div>
+    </div>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-4d</span><p><b>Small fundlosses recur and grow</b> <span>— BI-FAS started small before it became large</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-07</span><p><b>Preventive review on every small fundloss</b> <span>— before it can scale</span></p></div>
+    </div>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-4e</span><p><b>CFM-impacted fundloss information is not centralized</b> <span>— each case lives in a thread</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-08</span><p><b>Central fundloss registry</b> <span>— with a KPI per incident level</span></p></div>
+    </div>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-4f</span><p><b>Corrective and preventive actions are tracked nowhere</b> <span>— delivery depends on memory</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-09</span><p><b>Action-improvement tracker</b> <span>— automated chase emails per owner</span></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · THEME D -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Theme D · Governance &amp; process</p>
+    <h2>Three processes run on memory.</h2>
+    <p class="lede">Fund-risk submissions, external RCA reporting and company-loss deadlines have no documented owner, sequence or due date. Each gets a working instruction and a measure.</p>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-5</span><p><b>Fund-risk project list submitted late</b> <span>— updates and submissions slip, risk awareness is low</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-10</span><p><b>Fund-risk KPI</b> <span>— submission timeliness and completion measured per team</span></p></div>
+    </div>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-6</span><p><b>External RCA report process is unclear</b> <span>— steps and responsibilities are improvised per incident</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-11</span><p><b>Working Instruction with a RACI matrix</b> <span>— one documented path for every external report</span></p></div>
+    </div>
+    <div class="duo">
+      <div class="paincell"><span class="chip pp">PP-7</span><p><b>Company-loss reporting mismatches ERM</b> <span>— due dates for reporting don't line up</span></p></div>
+      <div class="arrow">→</div>
+      <div class="fixcell"><span class="chip fix">I-12</span><p><b>Re-align the existing WI with ERM</b> <span>— one agreed calendar for loss reporting</span></p></div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · INITIATIVE PORTFOLIO -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">The portfolio</p>
+    <h2>Twelve initiatives, one per fix.</h2>
+    <p class="lede">Every initiative traces to the pain points it closes. The type shows what kind of work it takes: process, people, or tooling.</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Initiative</th><th>Closes</th><th>Type</th><th>Success looks like</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono">I-01</td><td>Capacity forecast program</td><td class="refs">PP-1</td><td><span class="chip brand">Process</span></td><td class="meas">Forecast agreed with the business every quarter</td></tr>
+          <tr><td class="mono">I-02</td><td>24/7 coverage model</td><td class="refs">PP-2a</td><td><span class="chip amber">People</span></td><td class="meas">Escalation answered at any hour; response time measured</td></tr>
+          <tr><td class="mono">I-03</td><td>Engineering quality baseline</td><td class="refs">PP-2b–d</td><td><span class="chip brand">Process</span></td><td class="meas">Review, SA and coverage gates live in CI; backlog ranked</td></tr>
+          <tr><td class="mono">I-04</td><td>Incident commander framework</td><td class="refs">PP-3</td><td><span class="chip amber">People</span></td><td class="meas">Every war room opens with a named IC</td></tr>
+          <tr><td class="mono">I-05</td><td>Investigation form standard</td><td class="refs">PP-4a</td><td><span class="chip brand">Process</span></td><td class="meas">No RCA accepted with required fields missing</td></tr>
+          <tr><td class="mono">I-06</td><td>RCA SLA + automated chase</td><td class="refs">PP-4b</td><td><span class="chip fix">Tooling</span></td><td class="meas">On-time RCA rate measured; reminders fully automated</td></tr>
+          <tr><td class="mono">I-07</td><td>Risk-ownership program</td><td class="refs">PP-4c·d</td><td><span class="chip amber">People</span></td><td class="meas">Leaders trained; preventive review on each small fundloss</td></tr>
+          <tr><td class="mono">I-08</td><td>Fundloss registry + level KPIs</td><td class="refs">PP-4e</td><td><span class="chip fix">Tooling</span></td><td class="meas">CFM-impacted cases in one registry; KPI per incident level</td></tr>
+          <tr><td class="mono">I-09</td><td>Action-improvement tracker</td><td class="refs">PP-4f</td><td><span class="chip fix">Tooling</span></td><td class="meas">Every action owned and chased to done automatically</td></tr>
+          <tr><td class="mono">I-10</td><td>Fund-risk KPI</td><td class="refs">PP-5</td><td><span class="chip brand">Process</span></td><td class="meas">Project-list on-time rate published per team</td></tr>
+          <tr><td class="mono">I-11</td><td>External RCA WI + RACI</td><td class="refs">PP-6</td><td><span class="chip brand">Process</span></td><td class="meas">WI signed off; RACI named for each role</td></tr>
+          <tr><td class="mono">I-12</td><td>ERM loss-reporting WI alignment</td><td class="refs">PP-7</td><td><span class="chip brand">Process</span></td><td class="meas">Due dates aligned and agreed with ERM</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- 9 · OBJECTIVES -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Objectives</p>
+    <h2>Four objectives for 2027.</h2>
+    <p class="lede">Each objective names the themes it draws from, so progress on initiatives rolls up into something we can declare achieved or not.</p>
+    <div class="objgrid">
+      <div class="obj">
+        <span class="chip brand">O1</span>
+        <h3>Right-sized capacity</h3>
+        <p>Staffing and infrastructure track a transaction forecast agreed with the business each quarter.</p>
+        <p class="theme">from Theme A</p>
+      </div>
+      <div class="obj">
+        <span class="chip brand">O2</span>
+        <h3>Always-on response</h3>
+        <p>Fundloss or not, Friday afternoon or Sunday night, monitoring finds it and escalation moves.</p>
+        <p class="theme">from Themes A · B</p>
+      </div>
+      <div class="obj">
+        <span class="chip brand">O3</span>
+        <h3>Closed loops</h3>
+        <p>Every incident ends in an RCA submitted on time, with actions owned and chased to done.</p>
+        <p class="theme">from Theme C</p>
+      </div>
+      <div class="obj">
+        <span class="chip brand">O4</span>
+        <h3>Governance on rails</h3>
+        <p>External RCA and loss reporting run on documented instructions with named owners and dates.</p>
+        <p class="theme">from Theme D</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · STRATEGIC PRIORITIES -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Strategic priorities · proposed</p>
+    <h2>Where to spend attention first.</h2>
+    <p class="lede">Ranking is by exposure and dependency, not by effort. The order is proposed for discussion.</p>
+    <div class="prio">
+      <div class="rank">1</div>
+      <div>
+        <h3>Man the night shift first</h3>
+        <p>The costliest gap is after hours: today a weekend fundloss has neither an escalation path nor a leader. Coverage and command come before everything else.</p>
+        <div class="chips"><span class="chip fix">I-02</span><span class="chip fix">I-04</span></div>
+      </div>
+    </div>
+    <div class="prio">
+      <div class="rank">2</div>
+      <div>
+        <h3>Build the RCA engine</h3>
+        <p>Cheapest to build, biggest compound return. Reliable, on-time RCAs turn every later decision from opinion into data.</p>
+        <div class="chips"><span class="chip fix">I-05</span><span class="chip fix">I-06</span><span class="chip fix">I-09</span></div>
+      </div>
+    </div>
+    <div class="prio">
+      <div class="rank">3</div>
+      <div>
+        <h3>Partner on capacity, raise the floor</h3>
+        <p>Forecast-driven staffing and quality gates prevent the next class of incidents instead of explaining the last one.</p>
+        <div class="chips"><span class="chip fix">I-01</span><span class="chip fix">I-03</span><span class="chip fix">I-07</span></div>
+      </div>
+    </div>
+    <div class="prio">
+      <div class="rank">4</div>
+      <div>
+        <h3>Put governance on rails</h3>
+        <p>Documentation and KPIs move fast once owners agree — cheap to schedule, right to run in parallel, wrong to let them wait on the bigger builds.</p>
+        <div class="chips"><span class="chip fix">I-08</span><span class="chip fix">I-10</span><span class="chip fix">I-11</span><span class="chip fix">I-12</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 · ROADMAP -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">Roadmap · proposed</p>
+    <h2>The 2027 calendar.</h2>
+    <p class="lede">Q1 deliberately front-loads the paperwork the team can ship without new headcount; the structural builds follow once decisions land.</p>
+    <div class="qcols">
+      <div class="qcol">
+        <p class="qhead">Q1</p>
+        <p class="qname">Paper first</p>
+        <div class="qitem"><span class="chip fix">I-11</span><span>External RCA WI with RACI signed</span></div>
+        <div class="qitem"><span class="chip fix">I-12</span><span>ERM due-date alignment session</span></div>
+        <div class="qitem"><span class="chip fix">I-05</span><span>Investigation form standard live</span></div>
+        <div class="qitem"><span class="chip fix">I-06</span><span>RCA SLA + automated chase live</span></div>
+        <div class="qitem"><span class="chip fix">I-04</span><span>IC criteria drafted</span></div>
+        <div class="qitem"><span class="chip fix">I-08·10</span><span>KPI definitions agreed</span></div>
+      </div>
+      <div class="qcol">
+        <p class="qhead">Q2</p>
+        <p class="qname">People first</p>
+        <div class="qitem"><span class="chip fix">I-04</span><span>ICs named and trained on live incidents</span></div>
+        <div class="qitem"><span class="chip fix">I-08</span><span>Fundloss registry live with CFM</span></div>
+        <div class="qitem"><span class="chip fix">I-10</span><span>Fund-risk KPI reporting starts</span></div>
+        <div class="qitem"><span class="chip fix">I-07</span><span>Leader awareness, wave 1</span></div>
+      </div>
+      <div class="qcol">
+        <p class="qhead">Q3</p>
+        <p class="qname">Structure up</p>
+        <div class="qitem"><span class="chip fix">I-02</span><span>24/7 rota dry run, then live</span></div>
+        <div class="qitem"><span class="chip fix">I-01</span><span>First joint forecast cycle with business</span></div>
+        <div class="qitem"><span class="chip fix">I-03</span><span>Review and coverage gates in CI</span></div>
+        <div class="qitem"><span class="chip fix">I-09</span><span>Action tracker chase fully automated</span></div>
+      </div>
+      <div class="qcol">
+        <p class="qhead">Q4</p>
+        <p class="qname">Prove it</p>
+        <div class="qitem"><span class="chip plain">Q4</span><span>24/7 coverage at steady state</span></div>
+        <div class="qitem"><span class="chip plain">Q4</span><span>KPI review against objectives</span></div>
+        <div class="qitem"><span class="chip plain">Q4</span><span>First real external RCA on the new WI</span></div>
+        <div class="qitem"><span class="chip plain">Q4</span><span>2028 targets set from measured data</span></div>
+      </div>
+    </div>
+    <p class="roadnote">Sequencing proposed for discussion — Q1 assumes no new headcount; the 24/7 rota and the forecast cycle start only after the staffing and business decisions on the next slide.</p>
+  </div>
+</section>
+
+<!-- 12 · DECISIONS -->
+<section class="slide">
+  <div class="wrap">
+    <p class="eyebrow">The ask</p>
+    <h2>Four decisions unlock the plan.</h2>
+    <p class="lede">Everything else in this deck is execution. These four are the gates.</p>
+    <div class="decrow">
+      <span class="from">Business</span>
+      <p>Agree a joint forecast cadence: quarterly transaction targets we plan capacity against.</p>
+      <span class="unblocks">unblocks I-01</span>
+    </div>
+    <div class="decrow">
+      <span class="from">Management</span>
+      <p>Commit on-call staffing for the 24/7 rota across TS, Security, IDC and SRE.</p>
+      <span class="unblocks">unblocks I-02</span>
+    </div>
+    <div class="decrow">
+      <span class="from">ERM</span>
+      <p>Hold a working session to re-align the company-loss WI due dates.</p>
+      <span class="unblocks">unblocks I-12</span>
+    </div>
+    <div class="decrow">
+      <span class="from">This room</span>
+      <p>Sign off the KPI set: per incident level and for fund-risk submissions.</p>
+      <span class="unblocks">unblocks I-08 · I-10</span>
+    </div>
+    <p class="close-line">Approve the gates, and Q1 starts this week.</p>
+    <div class="close-row"><span class="chip amber">Draft for discussion</span><span class="chip plain">Technical Risk · FY2027</span></div>
+  </div>
+</section>
+
+<div id="ctr">01 / 12</div>
+<div class="controls">
+  <button id="prev" aria-label="Previous slide">←</button>
+  <button id="next" aria-label="Next slide">→</button>
+</div>
+
+<script>
+const slides=[...document.querySelectorAll('.slide')];
+const bar=document.getElementById('bar');
+const ctr=document.getElementById('ctr');
+let i=0;
+function go(n){
+  i=Math.max(0,Math.min(slides.length-1,n));
+  slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+  bar.style.width=((i+1)/slides.length*100)+'%';
+  ctr.textContent=String(i+1).padStart(2,'0')+' / '+String(slides.length).padStart(2,'0');
+}
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' '){e.preventDefault();go(i+1);}
+  else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(i-1);}
+  else if(e.key==='Home'){go(0);}
+  else if(e.key==='End'){go(slides.length-1);}
+});
+let tx=null;
+addEventListener('touchstart',e=>{tx=e.touches[0].clientX;},{passive:true});
+addEventListener('touchend',e=>{
+  if(tx===null)return;
+  const dx=e.changedTouches[0].clientX-tx;
+  if(Math.abs(dx)>60)go(i+(dx<0?1:-1));
+  tx=null;
+},{passive:true});
+document.getElementById('prev').addEventListener('click',()=>go(i-1));
+document.getElementById('next').addEventListener('click',()=>go(i+1));
+go(0);
+</script>
+</body>
+</html>

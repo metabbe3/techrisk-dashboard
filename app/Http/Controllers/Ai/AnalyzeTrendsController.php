@@ -77,9 +77,14 @@ class AnalyzeTrendsController extends Controller
         // incidents stay out so trends and chat agree on the same totals.
         $baseQuery = Incident::aiCounts()->tap($dateFilter);
 
+        // Review I2 fix pass: substr(...,6,2) instead of MONTH() — identical
+        // month bucket on MySQL 8 AND SQLite (both store 'Y-m-d H:i:s' text,
+        // substr is 1-based on both), so this endpoint is testable under the
+        // SQLite suite (MONTH() is MySQL-only — it made runAnalysis a test
+        // void, hiding the fund-loss scope from review).
         $monthlyData = (clone $baseQuery)
-            ->selectRaw('MONTH(incident_date) as month, COUNT(*) as count')
-            ->groupBy(DB::raw('MONTH(incident_date)'))
+            ->selectRaw('substr(incident_date, 6, 2) as month, COUNT(*) as count')
+            ->groupBy(DB::raw('substr(incident_date, 6, 2)'))
             ->pluck('count', 'month')
             ->mapWithKeys(fn ($count, $month) => [
                 date('F', mktime(0, 0, 0, $month, 1)) => $count,
@@ -87,6 +92,9 @@ class AnalyzeTrendsController extends Controller
             ->toArray();
 
         $topLabels = Label::withCount(['incidents' => fn ($q) => $q->aiCounts()->tap($dateFilter)])
+            // group by PK: every label is its own group (same rows on MySQL),
+            // and HAVING needs GROUP BY to be valid on SQLite.
+            ->groupBy('labels.id')
             ->having('incidents_count', '>', 0)
             ->orderByDesc('incidents_count')
             ->limit(10)
@@ -105,13 +113,18 @@ class AnalyzeTrendsController extends Controller
         $total = (clone $baseQuery)->count();
         // BUG-021: DECIMAL aggregates are strings on MySQL — cast at the producer
         // so every round()/number_format() below is safe under strict_types.
-        $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0);
+        $avgMttr = (float) ((clone $baseQuery)->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '>=', 0)->avg('mttr') ?? 0);
 
         $avgMtbf = round(\App\Filament\Statistics\IncidentStatsFooterData::avgMtbf($baseQuery), 2);
 
-        // Fund Loss card rule: Incident + Completed + excludedFromCounts
-        // (matches DashboardStatsOverview; aiCounts() already pins Incident).
-        $fundLoss = (float) (clone $baseQuery)->where('incident_status', IncidentStatus::Completed->value)->excludedFromCounts()->sum('fund_loss');
+        // Review I2 (PROJ-022): money stays with subs — the money base opts
+        // IN to sub-incidents (withSubIncidents: true), NOT a clone of the
+        // count base, which excludes them. AI trends must agree with the
+        // Fund Loss tile.
+        $fundLoss = (float) Incident::aiCounts(withSubIncidents: true)
+            ->tap($dateFilter)
+            ->where('incident_status', IncidentStatus::Completed->value)
+            ->sum('fund_loss');
 
         $result = $this->aiService->analyzeTrends(
             monthlyData: $monthlyData,

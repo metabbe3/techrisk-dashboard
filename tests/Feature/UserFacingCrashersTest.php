@@ -41,6 +41,26 @@ class UserFacingCrashersTest extends TestCase
         $this->assertIsString($row[0]);
     }
 
+    public function test_the_kanban_board_view_compiles_to_valid_php(): void
+    {
+        // Owner 2026-11-17: the Board view button 500'd with ParseError at
+        // blade:284 — the @php(expr) ONE-LINERS (283/468) are swallowed by
+        // Blade's storePhpBlocks pre-pass, which pairs them with the NEXT
+        // @endphp in the file (311/439) and stores the whole span as one
+        // raw php block — raw directives included — so the @if text landed
+        // inside an open php tag. Fixed by the inline-block form the
+        // file already uses elsewhere (@php ...; @endphp). The board still
+        // cannot RENDER under SQLite (FIELD()) — but it must COMPILE anywhere.
+        $compiled = (new \Illuminate\View\Compilers\BladeCompiler(app('files'), storage_path('framework/views')))
+            ->compileString(file_get_contents(resource_path('views/livewire/incident-kanban-board.blade.php')));
+
+        // No raw directive may survive compilation, and the one-liner's
+        // malformed php-open-with-paren artifact must not either.
+        $this->assertStringNotContainsString('@if(', $compiled);
+        $this->assertStringNotContainsString('@php', $compiled); // also pins no surviving @endphp
+        $this->assertStringNotContainsString('php(', $compiled);
+    }
+
     public function test_update_status_action_no_longer_overwrites_incident_date(): void
     {
         $this->seedIncident();

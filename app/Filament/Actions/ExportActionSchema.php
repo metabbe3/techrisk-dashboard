@@ -212,7 +212,7 @@ class ExportActionSchema
      */
     public static function baselineQuery(Builder $query, array $data): Builder
     {
-        $baseline = $query->clone();
+        $baseline = $query->clone()->withoutSubIncidents(); // subs never export (PROJ-022)
 
         return empty($data['f_fund_status'] ?? []) ? self::widgetFundScope($baseline) : $baseline;
     }
@@ -223,6 +223,9 @@ class ExportActionSchema
     public static function applyFilters(Builder $query, array $data): Builder
     {
         return self::baseExportScope($query)
+            // Subs never export (PROJ-022). NOT in baseExportScope — the AI
+            // corpus shares it and keeps subs (knowledge base).
+            ->withoutSubIncidents()
             ->when(! empty($data['f_severity'] ?? []), fn (Builder $q) => $q->whereIn('severity', $data['f_severity']))
             ->when(! empty($data['f_status'] ?? []), fn (Builder $q) => $q->whereIn('incident_status', $data['f_status']))
             ->when(! empty($data['f_incident_type'] ?? []), fn (Builder $q) => $q->whereIn('incident_type', $data['f_incident_type']))

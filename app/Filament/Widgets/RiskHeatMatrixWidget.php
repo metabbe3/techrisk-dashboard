@@ -61,6 +61,7 @@ class RiskHeatMatrixWidget extends Widget
                 ->where('classification', IncidentClassification::Incident->value)
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->excludedFromCounts()
+                ->withoutSubIncidents()
                 ->when($this->start_date && $this->end_date,
                     fn ($q) => $q->whereBetween('incident_date', [$this->start_date, $this->end_date]),
                     fn ($q) => $q->whereYear('incident_date', now()->year))

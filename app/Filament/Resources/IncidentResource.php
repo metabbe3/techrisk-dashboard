@@ -11,6 +11,8 @@ use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
+use App\Filament\Actions\FinancialImpactFormSchema;
+use App\Filament\Actions\SubIncidentLinkAction;
 use App\Filament\Forms\Components\AiTextarea;
 use App\Filament\Resources\IncidentResource\Pages;
 use App\Filament\Resources\IncidentResource\RelationManagers;
@@ -27,6 +29,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Form;
 use Filament\Forms\Get;
+use Filament\Notifications\Notification;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Columns\IconColumn;
@@ -150,10 +153,74 @@ class IncidentResource extends Resource
         }
 
         $coreDetails = [
+            // PROJ-022: create-as-sub entry — CreateIncident?parent=<id> fills
+            // this from the URL; a normal create leaves it null.
+            // Review I4: the URL is craftable — validate the candidate (exists,
+            // a super-grade Incident, not itself linked) or a crafted
+            // ?parent=<sub|issue|garbage> chains depth-2 hierarchies, hangs a
+            // family off an Issue, or 500s on the FK.
+            Forms\Components\Hidden::make('parent_incident_id')
+                ->dehydrated()
+                // Hidden fields are EXCLUDED from validation unless this flag
+                // is set (HasState defaults isDehydratedWhenHidden false) —
+                // without it the rules below never ran.
+                ->dehydratedWhenHidden()
+                ->rules([
+                    fn (?Incident $record): \Closure => function (string $attribute, $value, \Closure $fail) use ($record): void {
+                        // Owner 2026-11-17: on the EDIT page the hidden field
+                        // carries the record's own link — the super would
+                        // fail the "sits at the top" check below (it has
+                        // subs by definition). Only an untouched link is
+                        // exempt; any other value is still validated.
+                        if ($record !== null && (int) $value === (int) $record->parent_incident_id) {
+                            return;
+                        }
+
+                        if (blank($value)) {
+                            return;
+                        }
+
+                        $parent = Incident::find($value);
+
+                        if ($parent === null
+                            || $parent->classification !== IncidentClassification::Incident
+                            || filled($parent->parent_incident_id)
+                            || $parent->subIncidents()->exists()) {
+                            $fail('The selected parent is not a valid super-incident: it must exist, be an Incident (not an Issue), and sit at the top of its hierarchy.');
+                        }
+                    },
+                ])
+                ->default(fn () => request()->filled('parent') ? (int) request()->query('parent') : null),
+            Forms\Components\Placeholder::make('sub_incident_hint')
+                ->content(fn ($get) => filled($get('parent_incident_id'))
+                    ? 'Recording as a sub-incident of '.Incident::find($get('parent_incident_id'))?->no
+                    : null)
+                ->visible(fn ($get) => filled($get('parent_incident_id')))
+                ->columnSpanFull(),
             TextInput::make('title')->required()->columnSpanFull(),
             $noField,
             Select::make('severity')->options(Severity::options())->required(),
-            Select::make('classification')->options(IncidentClassification::options())->required(),
+            Select::make('classification')->options(IncidentClassification::options())->required()
+                // PROJ-022: a record linked in a hierarchy cannot change
+                // classification until unlinked — the guard behind every
+                // metric-scope rule in this feature.
+                // Owner 2026-11-17: the fill state holds the cast ENUM
+                // (EditIncident fills from the record's cast attributes) and
+                // an untouched create submit can hold it too — normalize to
+                // the raw value first, or the strict !== reads enum !==
+                // 'Incident' as changed and EVERY edit of a linked record
+                // fails this guard without touching the field.
+                ->rules([
+                    fn (?Incident $record): \Closure => function (string $attribute, $value, \Closure $fail) use ($record): void {
+                        $submitted = $value instanceof \BackedEnum ? $value->value : $value;
+
+                        if ($record !== null
+                            && $record->hasIncidentLinks()
+                            && $submitted !== $record->classification?->value) {
+                            $fail('Unlink this incident from its super/sub-incidents before changing classification.');
+                        }
+                    },
+                ]),
             Select::make('incident_type')->label('Area')->options(IncidentType::options())->required(),
             Select::make('incident_type_id')
                 ->label('Incident Type')
@@ -281,9 +348,10 @@ class IncidentResource extends Resource
                                 ->icon('heroicon-o-currency-dollar')
                                 ->schema([
                                     Select::make('fund_status')->options(FundStatus::options()),
-                                    TextInput::make('potential_fund_loss')->numeric()->minValue(0)->prefix('Rp')->default(0),
-                                    TextInput::make('recovered_fund')->numeric()->minValue(0)->prefix('Rp')->default(0)->required(),
-                                    TextInput::make('fund_loss')->numeric()->minValue(0)->prefix('Rp')->default(0)->required(),
+                                    // Money fields (format/parse = id-ID, see
+                                    // FinancialImpactFormSchema) live in the
+                                    // shared schema class.
+                                    ...FinancialImpactFormSchema::fields(),
                                     TextInput::make('loss_taken_by')->label('Loss Taken By'),
                                 ])->columns(['default' => 1, 'sm' => 2, 'xl' => 5]),
                         ]),
@@ -367,9 +435,40 @@ class IncidentResource extends Resource
     {
         return $table
             ->modifyQueryUsing(fn (Builder $query) => self::applyAccessControl($query))
-            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'statusUpdates' => fn ($u) => $u->orderByDesc('update_date')->orderByDesc('id')]))
+            ->modifyQueryUsing(fn (Builder $query) => $query->with(['pics', 'incidentType', 'labels', 'superIncident:id,no,title', 'statusUpdates' => fn ($u) => $u->orderByDesc('update_date')->orderByDesc('id')]))
+            ->modifyQueryUsing(fn (Builder $query) => $query->withCount('subIncidents')) // PROJ-022 chevron/badge visibility
+            // PROJ-022 (owner 2026-11-16): the super's money display is the
+            // family total — carry the sub sums in one query so the money
+            // columns never per-row query (familyMoney() reads them).
+            ->modifyQueryUsing(fn (Builder $query) => $query
+                ->withSum('subIncidents', 'potential_fund_loss')
+                ->withSum('subIncidents', 'recovered_fund')
+                ->withSum('subIncidents', 'fund_loss'))
             ->defaultSort('incident_date', 'desc')
             ->columns([
+                // PROJ-022: expand column ikut sticky kiri — geometry kolom
+                // (ID left = lebar expand) diukur runtime oleh app.js
+                // syncStickyIdWidths (var --sticky-expand-w), rules CSS di
+                // app.css. Row-conditional ->hidden() is not available on
+                // columns (it is evaluated once per column set, with no
+                // record) — a null icon / null badge state renders the cell
+                // empty on sub-less rows instead.
+                IconColumn::make('expand_sub_incidents')
+                    ->label('')
+                    ->width('20px')
+                    ->extraHeaderAttributes(['class' => 'sticky-col-expand'])
+                    ->extraCellAttributes(['class' => 'sticky-col-expand'])
+                    // Review C1: the column needs a non-null state or the icon
+                    // blade never evaluates the icon closure (empty invisible
+                    // button); closures in this static table() can NOT capture
+                    // $this — the component arrives by injection as $livewire.
+                    ->state(fn (Incident $record) => $record->sub_incidents_count)
+                    ->icon(fn (Incident $record, $livewire) => $record->sub_incidents_count === 0
+                        ? null
+                        : (in_array($record->getKey(), $livewire->expandedSubIncidents) ? 'heroicon-m-chevron-down' : 'heroicon-m-chevron-right'))
+                    ->action(fn (Incident $record, $livewire) => $record->sub_incidents_count > 0
+                        ? $livewire->toggleExpandedSubIncidents((int) $record->getKey())
+                        : null),
                 TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases'))
                     ->extraHeaderAttributes(['class' => 'sticky-col-id'])
                     ->extraCellAttributes(['class' => 'sticky-col-id']),
@@ -379,7 +478,13 @@ class IncidentResource extends Resource
                     ->width('200px')
                     ->extraHeaderAttributes(['class' => 'sticky-col-title'])
                     ->extraCellAttributes(['class' => 'sticky-col-title'])
-                    ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render()),
+                    ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render())
+                    ->description(fn (Incident $record) => $record->parent_incident_id ? "Sub of: {$record->superIncident?->no}" : null),
+                TextColumn::make('sub_incidents_count')
+                    ->label('Subs')
+                    ->badge()
+                    ->color('info')
+                    ->formatStateUsing(fn ($state) => $state > 0 ? $state : null),
                 TextColumn::make('mttr_formatted')->label('MTTR')->width('70px')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
                 }),
@@ -457,17 +562,18 @@ class IncidentResource extends Resource
                 TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),
                 TextColumn::make('pics.name')->label('PIC')->badge()->toggleable()->width('100px'),
                 TextColumn::make('incident_date')->dateTime()->sortable()->width('100px'),
-                TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->width('110px')->summarize(Sum::make()->money('IDR')->label('Total Potential')),
-                TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->width('100px')->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
-                TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->width('100px')->summarize(Sum::make()->money('IDR')->label('Total Loss')),
+                // PROJ-022 (owner 2026-11-16): a super's money columns show
+                // the FAMILY total (itself + subs); subs and standalones keep
+                // their own values. Display-only — the sort/summary bases
+                // stay on the stored columns.
+                TextColumn::make('potential_fund_loss')->label('Potential Loss')->money('IDR')->sortable()->width('110px')->state(fn (Incident $record): float => $record->familyMoney()['potential'])->summarize(Sum::make()->money('IDR')->label('Total Potential')),
+                TextColumn::make('recovered_fund')->label('Recovered')->money('IDR')->sortable()->color('success')->width('100px')->state(fn (Incident $record): float => $record->familyMoney()['recovered'])->summarize(Sum::make()->money('IDR')->label('Total Recovered')),
+                TextColumn::make('fund_loss')->label('Actual Loss')->money('IDR')->sortable()->color('danger')->width('100px')->state(fn (Incident $record): float => $record->familyMoney()['actual'])->summarize(Sum::make()->money('IDR')->label('Total Loss')),
                 TextColumn::make('recovery_rate')->label('Recovery %')->state(function (Incident $record): string {
-                    if ($record->potential_fund_loss && $record->potential_fund_loss > 0) {
-                        $rate = ($record->recovered_fund / $record->potential_fund_loss) * 100;
+                    // Family base too — same roll-up as the money columns.
+                    $rate = $record->familyRecoveryRate();
 
-                        return number_format($rate, 1).'%';
-                    }
-
-                    return '0%';
+                    return $rate > 0 ? number_format($rate, 1).'%' : '0%';
                 })->color(fn (string $state): string => (floatval($state) >= 100) ? 'success' : ((floatval($state) > 0) ? 'warning' : 'gray'))->width('80px'),
 
                 TextColumn::make('classification')->sortable()->toggleable(isToggledHiddenByDefault: true),
@@ -483,10 +589,20 @@ class IncidentResource extends Resource
                     ->state(fn (Incident $record): bool => filled($record->notion_investigation_page_id))
                     ->trueIcon('heroicon-o-arrow-top-right-on-square')
                     ->trueColor('info')
-                    ->tooltip('Open the Notion investigation page')
+                    ->tooltip(fn (Incident $record): ?string => filled($record->notion_investigation_page_id)
+                        ? 'Open the Notion investigation page'
+                        : null)
                     ->url(fn (Incident $record): ?string => filled($record->notion_investigation_page_id)
                         ? app(\App\Services\Notion\NotionInvestigationService::class)->pageUrl((string) $record->notion_investigation_page_id)
                         : null)
+                    // Owner 2026-11-18: without a page the cell must navigate
+                    // NOWHERE — Filament's ListRecords wraps every cell in an
+                    // anchor to the detail page (the table carries a
+                    // ViewAction, so the row's default recordUrl exists), and
+                    // a null column URL falls back to it. Disable the click
+                    // per record so the cell renders a plain div when no page
+                    // is linked; the Notion anchor itself stays.
+                    ->disableClick(fn (Incident $record): bool => blank($record->notion_investigation_page_id))
                     ->openUrlInNewTab(),
             ])
             ->groups([
@@ -746,6 +862,43 @@ class IncidentResource extends Resource
                             ]);
                         })
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
+                    // PROJ-022: sub-incident hierarchy actions. A super's
+                    // family grows (multiple subs); subs themselves cannot
+                    // supers (one level deep), so link/create hide on them.
+                    Tables\Actions\Action::make('create_sub_incident')
+                        ->label('Create sub-incident')
+                        ->icon('heroicon-o-plus-circle')
+                        ->color('success')
+                        ->url(fn (Incident $record): string => IncidentResource::getUrl('create', ['parent' => $record->getKey()]))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && $record->classification === IncidentClassification::Incident
+                            && blank($record->parent_incident_id)),
+                    Tables\Actions\Action::make('link_sub_incident')
+                        ->label('Link sub-incident')
+                        ->icon('heroicon-o-link')
+                        ->color('info')
+                        ->form([
+                            Forms\Components\Select::make('sub_incident_id')
+                                ->label('Incident to link as a sub')
+                                ->searchable()
+                                ->required()
+                                ->options(fn (?Incident $record) => SubIncidentLinkAction::options($record))
+                                ->rule(fn () => fn (string $attribute, $value, \Closure $fail) => SubIncidentLinkAction::validatePick($value, $fail)),
+                        ])
+                        ->action(fn (Incident $record, array $data) => SubIncidentLinkAction::link($record, (int) $data['sub_incident_id']))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && $record->classification === IncidentClassification::Incident
+                            && blank($record->parent_incident_id)),
+                    Tables\Actions\Action::make('unlink_sub_incident')
+                        ->label('Unlink sub-incident')
+                        ->icon('heroicon-o-link-slash')
+                        ->color('danger')
+                        ->requiresConfirmation()
+                        ->modalHeading('Unlink sub-incident')
+                        ->modalDescription('The sub stays a standalone incident. Neither record is deleted.')
+                        ->action(fn (Incident $record) => $record->update(['parent_incident_id' => null]))
+                        ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                            && filled($record->parent_incident_id)),
                     Tables\Actions\Action::make('downgrade_to_issue')
                         ->label('Downgrade to Issue')
                         ->icon('heroicon-o-arrow-down-circle')
@@ -753,7 +906,21 @@ class IncidentResource extends Resource
                         ->requiresConfirmation()
                         ->modalHeading('Downgrade to Issue')
                         ->modalDescription('This will reclassify this incident as an issue and assign a new Issue ID.')
-                        ->action(fn (Incident $record) => $record->changeClassification('Issue'))
+                        ->action(function (Incident $record): void {
+                            // PROJ-022: linked records keep the metrics honest —
+                            // a mid-hierarchy reclassification would strand counts.
+                            if ($record->hasIncidentLinks()) {
+                                Notification::make()
+                                    ->danger()
+                                    ->title('Linked in a hierarchy')
+                                    ->body('Unlink this incident from its super/sub-incidents before downgrading.')
+                                    ->send();
+
+                                return;
+                            }
+
+                            $record->changeClassification('Issue');
+                        })
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                     Tables\Actions\DeleteAction::make()
                         ->databaseTransaction()
@@ -772,14 +939,39 @@ class IncidentResource extends Resource
                         ->requiresConfirmation()
                         ->modalHeading('Downgrade selected incidents to issues')
                         ->modalDescription('All selected incidents will be reclassified as issues with new IDs.')
-                        ->action(fn (\Illuminate\Support\Collection $records) => $records->each->changeClassification('Issue'))
+                        ->action(function (\Illuminate\Support\Collection $records): void {
+                            $linked = $records->filter(fn (Incident $record) => $record->hasIncidentLinks());
+                            $records->reject(fn (Incident $record) => $record->hasIncidentLinks())->each->changeClassification('Issue');
+
+                            if ($linked->isNotEmpty()) {
+                                Notification::make()
+                                    ->warning()
+                                    ->title('Skipped linked incidents')
+                                    ->body($linked->count().' selected incident(s) are linked in a hierarchy and were left unchanged — unlink them before downgrading.')
+                                    ->send();
+                            }
+                        })
                         ->visible(fn (): bool => auth()->user()->can('manage incidents'))
                         ->deselectRecordsAfterCompletion(),
                     Tables\Actions\DeleteBulkAction::make()
                         ->databaseTransaction()
                         ->visible(fn (): bool => auth()->user()->can('manage incidents')),
                 ]),
-            ]);
+            ])
+            // PROJ-022 (owner 2026-11-16): super + subs render as ONE
+            // highlighted group — the head carries its marker even collapsed
+            // (the band signals a family), each sub carries its own; app.css
+            // merges both into one continuous band (.sub-incident-family-head
+            // / .sub-incident-row).
+            ->recordClasses(function (Incident $record): array {
+                if (filled($record->parent_incident_id)) {
+                    return ['sub-incident-row'];
+                }
+
+                return $record->sub_incidents_count > 0 ? ['sub-incident-family-head'] : [];
+            });
+        // The list-page Summary strip (widget + footer view) was deleted in
+        // main (owner 2026-11-20) — the merge carries that deletion.
     }
 
     public static function getRelations(): array

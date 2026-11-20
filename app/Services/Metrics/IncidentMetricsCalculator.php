@@ -89,6 +89,7 @@ class IncidentMetricsCalculator
             ->where('classification', $incident->classification->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -150,6 +151,8 @@ class IncidentMetricsCalculator
                 ->where('classification', $incident->classification->value)
                 ->where($condition)
                 ->withoutOutliers()
+                ->withoutSubIncidents()
+                ->withoutSubIncidents()
                 ->where(function ($query) use ($incident) {
                     $query->where('incident_date', '<', $incident->incident_date)
                         ->orWhere(function ($query) use ($incident) {
@@ -176,6 +179,7 @@ class IncidentMetricsCalculator
             ->where('classification', $incident->classification->value)
             ->where('recovered_fund', '>', 0)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
@@ -214,6 +218,7 @@ class IncidentMetricsCalculator
         $previousRecord = Incident::whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
             ->withoutOutliers()
+            ->withoutSubIncidents()
             ->where(function ($query) use ($incident) {
                 $query->where('incident_date', '<', $incident->incident_date)
                     ->orWhere(function ($query) use ($incident) {
