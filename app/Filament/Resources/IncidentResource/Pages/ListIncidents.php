@@ -26,18 +26,8 @@ class ListIncidents extends ListRecords
     /** Super ids whose sub-incidents the user expanded (chevron). Stale ids are harmless. */
     public array $expandedSubIncidents = [];
 
-    // Summary renders as a header widget (owner 2026-11-17): header widgets
-    // sit ABOVE the page slot (tabs + table), outside the table's horizontal
-    // scroll container — the contentFooter it replaced moved with the table.
-    protected function getHeaderWidgets(): array
-    {
-        return [\App\Filament\Widgets\IncidentListSummary::class];
-    }
-
-    public function getHeaderWidgetsColumns(): int
-    {
-        return 1;
-    }
+    // The list-page Summary strip (header widget + footer view) was deleted
+    // in main (owner 2026-11-20) — the merge carries that deletion.
 
     protected function getHeaderActions(): array
     {

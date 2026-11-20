@@ -56,13 +56,15 @@ class SystemSettings extends Page implements HasForms
 {
     use InteractsWithForms;
 
-    protected static ?string $navigationIcon = 'heroicon-o-cog-6-tooth';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Settings';
 
-    protected static ?string $navigationGroup = 'System';
+    protected static ?string $cluster = \App\Filament\Clusters\SettingsCluster::class;
 
-    protected static ?int $navigationSort = 99;
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
+
+    protected static ?int $navigationSort = 5;
 
     protected static string $view = 'filament.pages.system-settings';
 

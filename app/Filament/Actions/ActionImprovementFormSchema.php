@@ -40,10 +40,20 @@ class ActionImprovementFormSchema
                 ->required()
                 ->multiple()
                 ->searchable()
-                ->preload()
-                // Keyed by email — pic_email keeps storing bare emails.
-                ->options(fn () => User::humanUsers()->orderBy('name')->get()
-                    ->mapWithKeys(fn ($u) => [$u->email => $u->name]))
+                // No preload: the directory sync brought 2.5k+ humans — options
+                // are served by server-side search instead (top 50 hits).
+                ->getSearchResultsUsing(fn (string $search): array => User::humanUsers()
+                    ->where(fn ($q) => $q
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('department', 'like', "%{$search}%")
+                        ->orWhere('job_title', 'like', "%{$search}%"))
+                    ->orderBy('name')
+                    ->limit(50)
+                    ->get()
+                    ->mapWithKeys(fn ($u) => [$u->email => $u->name])
+                    ->all())
+                ->getOptionLabelUsing(fn ($value): string => (string) (User::where('email', $value)->value('name') ?? $value))
                 ->createOptionModalHeading('Add new PIC contact')
                 ->createOptionForm([
                     Forms\Components\TextInput::make('name'),

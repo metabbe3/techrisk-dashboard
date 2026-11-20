@@ -1,14 +1,15 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use App\Models\User;
 use App\Notifications\AdminAnnouncement;
 use Filament\Actions\Action;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Forms\Get;
 use Filament\Notifications\Notification;
@@ -17,11 +18,13 @@ use Illuminate\Support\Facades\Auth;
 
 class SendAnnouncement extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-megaphone';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Send Announcement';
 
-    protected static ?string $navigationGroup = 'Notifications';
+    protected static ?string $cluster = \App\Filament\Clusters\NotificationsCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     protected static ?int $navigationSort = 3;
 

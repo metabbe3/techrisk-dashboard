@@ -18,9 +18,13 @@ class RoleResource extends Resource
 {
     protected static ?string $model = Role::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-finger-print';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
-    protected static ?string $navigationGroup = 'User Management';
+    protected static ?string $cluster = \App\Filament\Clusters\UserManagementCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
+
+    protected static ?int $navigationSort = 2;
 
     // PROJ-025: Roles + Permissions consolidate under one nav label;
     // the permissions table stays reachable from the roles list header.

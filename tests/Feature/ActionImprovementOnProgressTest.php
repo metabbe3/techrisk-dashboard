@@ -11,8 +11,10 @@ use App\Mail\GroupNotificationMail;
 use App\Models\ActionImprovement;
 use App\Models\Incident;
 use App\Models\User;
+use App\Notifications\ChannelFilteredNotification;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
@@ -266,6 +268,52 @@ class ActionImprovementOnProgressTest extends TestCase
         $service = new \App\Services\Governance\GovernanceKpiService;
 
         $this->assertSame(2, $service->overdueActionItemCount());
+    }
+
+    // ---- assignment mail is for open work only (owner 2026-11-19) ----
+
+    public function test_row_created_as_done_does_not_email_assignees(): void
+    {
+        $incident = Incident::factory()->create();
+        [$pic] = $this->picWithManager();
+        Notification::fake();
+
+        $this->action($incident, [
+            'pic_email' => [$pic->email],
+            'status' => ActionImprovement::STATUS_DONE,
+        ]);
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_row_created_as_pending_still_emails_assignees(): void
+    {
+        $incident = Incident::factory()->create();
+        [$pic] = $this->picWithManager();
+        Notification::fake();
+
+        $this->action($incident, ['pic_email' => [$pic->email]]);
+
+        // Notifications travel wrapped in ChannelFilteredNotification (the
+        // preferences filter) — databaseType() carries the inner class.
+        Notification::assertSentTo($pic, ChannelFilteredNotification::class, function (\App\Notifications\ChannelFilteredNotification $n) {
+            return $n->databaseType() === \App\Notifications\ActionImprovementAssigned::class;
+        });
+        Notification::assertSentToTimes($pic, ChannelFilteredNotification::class, 1);
+    }
+
+    public function test_pic_edit_on_done_row_does_not_email_assignees(): void
+    {
+        $incident = Incident::factory()->create();
+        [$pic] = $this->picWithManager();
+        $closed = $this->action($incident, [
+            'status' => ActionImprovement::STATUS_DONE,
+        ]);
+        Notification::fake();
+
+        $closed->update(['pic_email' => [$pic->email]]);
+
+        Notification::assertNothingSent();
     }
 
     // ---- AI context lists started overdue rows ----

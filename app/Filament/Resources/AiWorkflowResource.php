@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\AiWorkflowResource\Pages;
@@ -17,7 +18,7 @@ class AiWorkflowResource extends Resource
 {
     protected static ?string $model = AiWorkflow::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-arrow-path-rounded-square';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Workflows';
 
@@ -27,7 +28,9 @@ class AiWorkflowResource extends Resource
 
     protected static ?int $navigationSort = 7;
 
-    protected static ?string $navigationGroup = 'AI';
+    protected static ?string $cluster = \App\Filament\Clusters\AiCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     public static function canViewAny(): bool
     {

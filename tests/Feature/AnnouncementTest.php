@@ -33,14 +33,14 @@ class AnnouncementTest extends TestCase
         return DB::table('notifications')
             ->where('notifiable_id', $user->id)
             ->where('notifiable_type', User::class)
-            ->where('data', 'like', '%"type":"' . $type . '"%')
+            ->where('data', 'like', '%"type":"'.$type.'"%')
             ->count();
     }
 
     public function test_announcement_page_is_accessible_by_admin(): void
     {
         $response = $this->actingAs($this->admin)
-            ->get('/admin/send-announcement');
+            ->get('/admin/notifications/send-announcement');
 
         $response->assertSuccessful();
     }
@@ -52,7 +52,7 @@ class AnnouncementTest extends TestCase
         $user->givePermissionTo('access dashboard');
 
         $response = $this->actingAs($user)
-            ->get('/admin/send-announcement');
+            ->get('/admin/notifications/send-announcement');
 
         $response->assertForbidden();
     }

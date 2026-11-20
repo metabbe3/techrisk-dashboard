@@ -60,7 +60,7 @@ class UsersResourceTest extends DuskTestCase
         $this->browse(function (Browser $browser) {
             $this->loginAsAdmin($browser);
 
-            $browser->visit('/admin/users')
+            $browser->visit('/admin/user-management/users')
                 ->waitFor('table', 10)
                 ->assertSee('Users')
                 ->assertPresent('table')
@@ -73,12 +73,12 @@ class UsersResourceTest extends DuskTestCase
         $this->browse(function (Browser $browser) {
             $this->loginAsAdmin($browser);
 
-            $browser->visit('/admin/users')
+            $browser->visit('/admin/user-management/users')
                 ->waitFor('table', 10)
                 ->assertSee('New user')
                 ->clickLink('New user')
-                ->waitForLocation('/admin/users/create')
-                ->assertPathIs('/admin/users/create')
+                ->waitForLocation('/admin/user-management/users/create')
+                ->assertPathIs('/admin/user-management/users/create')
                 ->assertPresent('input[name="name"]')
                 ->assertPresent('input[name="email"]')
                 ->assertPresent('input[name="password"]');
@@ -92,14 +92,14 @@ class UsersResourceTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($uniqueEmail) {
             $this->loginAsAdmin($browser);
 
-            $browser->visit('/admin/users/create')
+            $browser->visit('/admin/user-management/users/create')
                 ->waitFor('input[name="name"]', 10)
                 ->type('input[name="name"]', 'Dusk Test User')
                 ->type('input[name="email"]', $uniqueEmail)
                 ->type('input[name="password"]', 'SecurePass123!')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/admin/users')
-                ->assertPathIs('/admin/users')
+                ->waitForLocation('/admin/user-management/users')
+                ->assertPathIs('/admin/user-management/users')
                 ->assertSee('Dusk Test User')
                 ->assertSee($uniqueEmail);
         });
@@ -115,12 +115,12 @@ class UsersResourceTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($user) {
             $this->loginAsAdmin($browser);
 
-            $browser->visit('/admin/users')
+            $browser->visit('/admin/user-management/users')
                 ->waitFor('table', 10)
                 ->assertSee('Original Name')
                 ->clickLink('Original Name')
-                ->waitForLocation('/admin/users/'.$user->id.'/edit')
-                ->assertPathIs('/admin/users/'.$user->id.'/edit')
+                ->waitForLocation('/admin/user-management/users/'.$user->id.'/edit')
+                ->assertPathIs('/admin/user-management/users/'.$user->id.'/edit')
                 ->assertInputValue('input[name="name"]', 'Original Name')
                 ->assertInputValue('input[name="email"]', $user->email);
         });
@@ -136,13 +136,13 @@ class UsersResourceTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($user) {
             $this->loginAsAdmin($browser);
 
-            $browser->visit('/admin/users/'.$user->id.'/edit')
+            $browser->visit('/admin/user-management/users/'.$user->id.'/edit')
                 ->waitFor('input[name="name"]', 10)
                 ->assertInputValue('input[name="name"]', 'Before Edit')
                 ->type('input[name="name"]', 'After Edit')
                 ->press('button[type="submit"]')
-                ->waitForLocation('/admin/users')
-                ->assertPathIs('/admin/users')
+                ->waitForLocation('/admin/user-management/users')
+                ->assertPathIs('/admin/user-management/users')
                 ->assertSee('After Edit');
         });
     }
@@ -157,7 +157,7 @@ class UsersResourceTest extends DuskTestCase
         $this->browse(function (Browser $browser) use ($user) {
             $this->loginAsAdmin($browser);
 
-            $browser->visit('/admin/users/'.$user->id.'/edit')
+            $browser->visit('/admin/user-management/users/'.$user->id.'/edit')
                 ->waitFor('input[name="name"]', 10)
                 ->assertSee('API Tokens');
         });

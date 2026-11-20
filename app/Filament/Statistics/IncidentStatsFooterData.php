@@ -10,11 +10,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\App;
 
 /**
- * Summary statistics for the Incidents list page.
+ * Summary statistics builder for the Incidents list page and exports.
  *
- * Rendered by the IncidentListSummary header widget (owner 2026-11-17: moved
- * out of the table's contentFooter, which lived inside the table's horizontal
- * scroll container). Exports share the builder for their stats sheets.
+ * Was rendered by the IncidentListSummary header widget (deleted in main,
+ * owner 2026-11-20 — the list-page Summary strip is gone). Exports and the
+ * stats API still share this builder for their numbers.
  */
 class IncidentStatsFooterData
 {

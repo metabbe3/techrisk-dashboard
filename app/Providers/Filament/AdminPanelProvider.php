@@ -7,7 +7,6 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\CustomProfilePage;
 use App\Filament\Pages\Dashboard;
-use App\Filament\Pages\WeeklyReport;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -106,27 +105,25 @@ class AdminPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            // Same-meaning pages/resources share one sidebar item via clusters
+            // (AI / Reports / Notifications / Settings / User Management / Logs);
+            // each member renders as a top tab. Operations stays a flat group.
+            ->discoverClusters(in: app_path('Filament/Clusters'), for: 'App\\Filament\\Clusters')
+            // WeeklyReport + AnalyticsPage are NOT listed here: they are
+            // ReportsCluster members, and a second registration here renders
+            // their cluster tabs twice.
             ->pages([
                 Dashboard::class,
-                WeeklyReport::class,
-                \App\Filament\Pages\AnalyticsPage::class,
             ])
             // Owner 2026-11-18: fixed group order — Dashboard (ungrouped
-            // home) sits above all groups, then these. NavigationManager
-            // sorts groups by their index HERE (array_search), so the
-            // registration order IS the sidebar order; a group left out
-            // would render after every listed one. Every group starts
-            // COLLAPSED except Operations (PROJ-025) — Filament seeds
-            // localStorage 'collapsedGroups' on first visit from
-            // NavigationGroup::isCollapsed().
+            // home) sits above all groups. NavigationManager sorts groups
+            // by their index HERE (array_search), so the registration order
+            // IS the sidebar order. 2026-11-20 merge: the other groups
+            // became CLUSTERS (their sort constants own the order now —
+            // AI 10, Reports 11, Notifications 12, Settings 13, User
+            // Management 14, Logs 15); only Operations stays a plain group.
             ->navigationGroups([
                 NavigationGroup::make()->label('Operations'),
-                NavigationGroup::make()->label('Reports')->collapsed(),
-                NavigationGroup::make()->label('AI')->collapsed(),
-                NavigationGroup::make()->label('Notifications')->collapsed(),
-                NavigationGroup::make()->label('User Management')->collapsed(),
-                NavigationGroup::make()->label('Settings')->collapsed(),
-                NavigationGroup::make()->label('System')->collapsed(),
             ])
             ->middleware([
                 EncryptCookies::class,
@@ -145,6 +142,18 @@ class AdminPanelProvider extends PanelProvider
             ->renderHook(
                 PanelsRenderHook::SIDEBAR_NAV_START,
                 fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.search-trigger'),
+            )
+            ->renderHook(
+                // Cluster tab strips wrap instead of scrolling when the window is
+                // narrow (owner: 9 AI tabs "overload" on overflow). Higher
+                // specificity beats Filament's own .fi-tabs rule at any order.
+                // ⚠ main's SIDEBAR_FOOTER + notifications-modal hooks are NOT
+                // carried: this branch keeps account + notifications in the
+                // TOPBAR (owner 2026-11-20) and those views are deleted here.
+                PanelsRenderHook::BODY_END,
+                fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(
+                    '<style>.fi-page-sub-navigation-tabs.fi-tabs{flex-wrap:wrap}</style>'
+                ),
             )
             ->renderHook(
                 'panels::head.end',

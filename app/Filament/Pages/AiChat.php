@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
@@ -8,13 +9,15 @@ use Illuminate\Support\Facades\Auth;
 
 class AiChat extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-sparkles';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'TechRisk AI';
 
     protected static ?string $title = 'TechRisk AI';
 
-    protected static ?string $navigationGroup = 'AI';
+    protected static ?string $cluster = \App\Filament\Clusters\AiCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     protected static ?int $navigationSort = 1;
 

@@ -59,7 +59,7 @@ class WeeklyReportTest extends DuskTestCase
                 ->press('button[type="submit"]')
                 ->pause(2000)->assertPathBeginsWith('/admin')
 
-                ->visit('/admin/weekly-report')
+                ->visit('/admin/reports/weekly-report')
                 ->pause(2000) // Wait for page to load
                 ->assertSee('Weekly Incident Report')
                 ->assertSee('Total Open')
@@ -80,7 +80,7 @@ class WeeklyReportTest extends DuskTestCase
                 ->type('[wire\\:model="data.password"]', 'password')
                 ->press('button[type="submit"]')
                 ->pause(2000)->assertPathBeginsWith('/admin')
-                ->visit('/admin/weekly-report')
+                ->visit('/admin/reports/weekly-report')
                 ->pause(2000) // Wait for initial page load
 
                 // Test selecting current year
@@ -104,7 +104,7 @@ class WeeklyReportTest extends DuskTestCase
                 ->type('[wire\\:model="data.password"]', 'password')
                 ->press('button[type="submit"]')
                 ->pause(2000)->assertPathBeginsWith('/admin')
-                ->visit('/admin/weekly-report')
+                ->visit('/admin/reports/weekly-report')
                 ->pause(2000) // Wait for page to load
 
                 // Check that table has data rows (should have W1, W2, etc.)

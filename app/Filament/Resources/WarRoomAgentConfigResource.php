@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\WarRoomAgentConfigResource\Pages;
@@ -18,7 +19,7 @@ class WarRoomAgentConfigResource extends Resource
 {
     protected static ?string $model = WarRoomAgentConfig::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-chat-bubble-left-right';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Retrospective Agents';
 
@@ -26,9 +27,11 @@ class WarRoomAgentConfigResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Retrospective Agents';
 
-    protected static ?int $navigationSort = 5;
+    protected static ?int $navigationSort = 6;
 
-    protected static ?string $navigationGroup = 'AI';
+    protected static ?string $cluster = \App\Filament\Clusters\AiCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     public static function canAccess(): bool
     {

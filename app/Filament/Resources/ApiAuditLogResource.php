@@ -23,11 +23,15 @@ class ApiAuditLogResource extends Resource
 
     protected static ?string $model = ApiAuditLog::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-document-text';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
-    protected static ?string $navigationGroup = 'System';
+    protected static ?string $cluster = \App\Filament\Clusters\LogsCluster::class;
 
-    protected static ?int $navigationSort = 100;
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
+
+    protected static ?string $navigationLabel = 'API Audit Logs';
+
+    protected static ?int $navigationSort = 2;
 
     public static function canViewAny(): bool
     {

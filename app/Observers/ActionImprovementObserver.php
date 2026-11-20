@@ -60,6 +60,12 @@ class ActionImprovementObserver
      */
     private function notifyAssignees(ActionImprovement $actionImprovement): void
     {
+        // Assignment mail is for open work only — rows created or PIC-edited
+        // as done/draft/cancelled/tbd never chase (owner 2026-11-19).
+        if (! $actionImprovement->isOpenWork()) {
+            return;
+        }
+
         if (! $actionImprovement->pic_email || ! is_array($actionImprovement->pic_email)) {
             return;
         }

@@ -13,13 +13,15 @@ use Filament\Pages\Page;
  */
 class GovernancePage extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-shield-check';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Governance';
 
     protected static ?string $title = 'Governance Scorecard';
 
-    protected static ?string $navigationGroup = 'Reports';
+    protected static ?string $cluster = \App\Filament\Clusters\ReportsCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     protected static ?int $navigationSort = 3;
 
