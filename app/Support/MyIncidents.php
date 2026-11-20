@@ -64,12 +64,26 @@ class MyIncidents
      * 2 monitoring > 3 done; owner: "warna sesuai prioritas status yang
      * paling tinggi"). Tier 0 = in-window day with no incidents.
      *
-     * @return array{weeks: list<array{month: string|null, days: list<array{date: string, tier: int, count: int, tooltip: string}|null>}>}
+     * @return array{weeks: list<array{month: string|null, days: list<array{date: string, tier: int, count: int, tooltip: string}|null>}>, total: int}
      */
-    public static function contributionGraph(User $user): array
+    public static function contributionGraph(User $user, ?int $year = null): array
     {
-        $end = now()->endOfDay();
-        $start = now()->subMonths(12)->startOfWeek(Carbon::MONDAY);
+        if ($year !== null) {
+            // Year mode (owner 2026-11-20): the full calendar year, Jan–Dec;
+            // days after today are future empty cells.
+            $realStart = Carbon::create($year, 1, 1);
+            $end = Carbon::create($year, 12, 31)->endOfDay();
+        } else {
+            // Default: rolling 12 months ending today.
+            $realStart = now()->subMonths(12);
+            $end = now()->endOfDay();
+        }
+        // The grid runs in whole Monday-first weeks; the leading column may
+        // belong to the PREVIOUS month/year (e.g. a year view starting Mon
+        // Dec 30). Its label must name the window's first real month, or the
+        // first month of the year silently loses its label.
+        $start = $realStart->copy()->startOfWeek(Carbon::MONDAY);
+        $leadingMonth = $realStart->isoFormat('MMM');
 
         $incidents = self::query($user)
             ->whereBetween('incident_date', [$start, $end])
@@ -89,12 +103,20 @@ class MyIncidents
 
         $weeks = [];
         $week = null;
+        $today = now()->endOfDay();
         for ($cursor = $start->copy(); $cursor <= $end; $cursor->addDay()) {
             $key = $cursor->format('Y-m-d');
             $tier = $byDay[$key]['tier'] ?? 0;
             $count = $byDay[$key]['count'] ?? 0;
             $label = $cursor->isoFormat('MMM D, YYYY');
-            $day = [
+            // Rolling mode ends today; year mode keeps future days as plain
+            // empty cells (nothing in the future can have an incident).
+            $day = $cursor->gt($today) ? [
+                'date' => $key,
+                'tier' => 0,
+                'count' => 0,
+                'tooltip' => "No incidents on {$label}",
+            ] : [
                 'date' => $key,
                 'tier' => $tier,
                 'count' => $count,
@@ -112,12 +134,22 @@ class MyIncidents
             ];
 
             $week ??= ['month' => null, 'days' => []];
-            // The month label sits on the week containing the 1st (the very
-            // first column is skipped — a clipped label, GitHub's own look).
-            if ($cursor->day === 1 && $week['days'] !== []) {
-                $week['month'] = $cursor->isoFormat('MMM');
-            }
+            // Month label: the week that CONTAINS a day-of-month 1 (checked
+            // after the day is pushed — the old pre-push check dropped the
+            // label whenever the 1st fell on a Monday and OPENED a week, e.g.
+            // Jun 2026), plus the leading partial week so the first month is
+            // not missing either.
             $week['days'][] = $day;
+            if ($week['month'] === null) {
+                if ($cursor->isSameDay($start)) {
+                    // Leading partial week: name the window's first real month
+                    // (JAN for a year view), never the previous month it also
+                    // contains — otherwise the year's first month is skipped.
+                    $week['month'] = $leadingMonth;
+                } elseif ($cursor->day === 1) {
+                    $week['month'] = $cursor->isoFormat('MMM');
+                }
+            }
 
             if ($cursor->isSunday()) {
                 $weeks[] = $week;
@@ -133,6 +165,11 @@ class MyIncidents
             $weeks[] = $week;
         }
 
-        return ['weeks' => $weeks];
+        // Total incident RECORDS in the window (a day with 2 incidents counts
+        // 2) — the graph title's "N incidents in the last year" (owner
+        // 2026-11-20: total in the graph, not the active-only count).
+        $total = array_sum(array_map(fn (array $bucket) => $bucket['count'], $byDay));
+
+        return ['weeks' => $weeks, 'total' => $total];
     }
 }

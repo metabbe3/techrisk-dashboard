@@ -53,12 +53,14 @@ class ProfileMenuTest extends TestCase
         $this->assertStringContainsString('Your active incident', $html);
         $this->assertStringContainsString('tr-theme-expander', $html);
         $this->assertStringContainsString('Appearance', $html);
+        $this->assertStringContainsString('Setting', $html);
         $this->assertStringNotContainsString('My Incident', $html, 'owner revisi: the count row replaces the My Incident item');
 
         $order = [
             'tr-user-menu-head',
             'Your active incident',
             'admin/profile"',   // the stock "Profile" item links here
+            'admin/setting"',   // the new Setting page (change password)
             'tr-theme-expander',
             'Sign out',
         ];
@@ -91,32 +93,30 @@ class ProfileMenuTest extends TestCase
         $this->assertStringContainsString("new CustomEvent('theme-changed'", $html);
     }
 
-    public function test_profile_page_renders_top_nav_graph_and_the_password_form(): void
+    public function test_profile_page_renders_info_graph_and_year_pills(): void
     {
         $html = (string) $this->actingAs($this->user)
             ->get('/admin/profile')
             ->assertSuccessful()
             ->getContent();
 
-        // Top nav strip (Profile only — owner revisi removed the right-side
-        // nav and the profile-land shell entirely).
-        $this->assertStringContainsString('tr-profile-tabs', $html);
-        $this->assertStringContainsString('tr-profile-tab-active', $html);
+        // Owner revisi 3: the single-item top nav strip was DROPPED; the
+        // change-password form moved to the Setting page.
+        $this->assertStringNotContainsString('tr-profile-tabs', $html);
         $this->assertStringNotContainsString('tr-profile-land', $html);
         $this->assertStringNotContainsString('My Incident', $html);
 
-        // Info block + graph.
+        // Info block + graph + year pills (rolling default selected).
         $this->assertStringContainsString('tr-profile-info-name', $html);
         $this->assertStringContainsString(e($this->user->email), $html);
         $this->assertStringContainsString('tr-contrib-cells', $html);
+        $this->assertStringContainsString('tr-contrib-years', $html);
+        $this->assertStringContainsString('12 months', $html);
+        $this->assertStringContainsString('tr-contrib-year-active', $html);
 
-        // Change password behind its button, with the owner's three fields.
-        $this->assertStringContainsString('Change password', $html);
-        $this->assertStringContainsString('wire:submit="save"', $html);
-        foreach (['data.current_password', 'data.password', 'data.password_confirmation'] as $field) {
-            $this->assertStringContainsString($field, $html, "missing form field: {$field}");
-        }
-        $this->assertStringNotContainsString('data.name', $html, 'name left the form — the info block shows it read-only');
+        // No password form on this page any more.
+        $this->assertStringNotContainsString('wire:submit="save"', $html);
+        $this->assertStringNotContainsString('data.current_password', $html);
     }
 
     public function test_source_css_carries_the_revamp_contracts(): void
@@ -124,7 +124,7 @@ class ProfileMenuTest extends TestCase
         $css = (string) file_get_contents(base_path('resources/css/app.css'));
 
         $this->assertStringContainsString('.fi-topbar .fi-user-menu .fi-dropdown-list:has(> .fi-theme-switcher)', $css, 'the stock icon switcher must be hidden while its markup stays');
-        $this->assertStringContainsString('.tr-profile-tabs {', $css, 'top navigation strip styles');
+        $this->assertStringContainsString('.fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active', $css, 'incident detail tab strips adopt the underline look');
         $this->assertStringContainsString('--tr-contrib-tier1:', $css, 'contribution graph tier tokens');
 
         // ⚠ Filament serves --gray-* as RAW RGB TRIPLETS — var() on them is

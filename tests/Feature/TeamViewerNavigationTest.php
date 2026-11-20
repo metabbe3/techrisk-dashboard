@@ -109,10 +109,14 @@ class TeamViewerNavigationTest extends TestCase
 
         $this->assertEqualsCanonicalizing([
             '/admin/profile',
+            // Owner 2026-11-20 (revisi 3): the dedicated change-password page,
+            // linked from the profile dropdown — every account may change its
+            // own password, so team-viewers see it too.
+            '/admin/setting',
             '/admin/incidents',
             '/admin/incidents/board',
             '/admin/action-improvements',
-        ], $urls, 'Restricted sidebar must be exactly the incident surfaces + profile');
+        ], $urls, 'Restricted sidebar must be exactly the incident surfaces + profile + setting');
 
         // Cluster roots: gated, not a 500.
         $this->viewer()->get('/admin/notifications')->assertForbidden();

@@ -1,18 +1,26 @@
 {{-- USER_MENU_PROFILE_AFTER hook — rendered INSIDE the profile dropdown, right
-     after the stock "Profile" item: the inline Appearance expander (3 preview
-     cards; owner 2026-11-20, GitHub reference). Owner 2026-11-20 (revisi):
-     the "My Incident" item was removed — the "Your active incidents" row
-     above already links to the same PIC-filtered list. The stock icon
-     theme-switcher below is CSS-hidden — this expander replaces it. --}}
+     after the stock "Profile" item: "Setting" (the dedicated change-password
+     page) + the inline Appearance expander (3 preview cards; owner
+     2026-11-20, GitHub reference). "My Incident" was removed — the "Your
+     active incidents" row above already links to the same PIC-filtered
+     list. The stock icon theme-switcher below is CSS-hidden — this expander
+     replaces it. --}}
+<x-filament::dropdown.list>
+    <x-filament::dropdown.list.item
+        :href="\App\Filament\Pages\ProfileSettings::getUrl()"
+        icon="heroicon-m-cog-6-tooth"
+        tag="a"
+    >
+        Setting
+    </x-filament::dropdown.list.item>
+</x-filament::dropdown.list>
+
 <x-filament::dropdown.list>
     <div
         class="tr-theme-expander"
         x-data="{
             open: false,
             theme: localStorage.getItem('theme') || 'light',
-            init() {
-                window.addEventListener('tr-open-appearance', () => { this.open = true })
-            },
             pick(next) {
                 this.theme = next
                 window.dispatchEvent(new CustomEvent('theme-changed', { detail: next }))
@@ -43,13 +51,3 @@
         </div>
     </div>
 </x-filament::dropdown.list>
-
-{{-- The profile page's right-nav Appearance row reopens this dropdown with the
-     expander pre-expanded: one guarded one-shot click on the trigger (the
-     topbar is outside every Livewire root) + the expander's tr-open-appearance
-     listener above sets open = true. --}}
-<script>if (! window.__trAppearanceBridge) { window.__trAppearanceBridge = true;
-    document.addEventListener('tr-open-appearance', () => {
-        document.querySelector('.fi-topbar .fi-user-menu .fi-dropdown-trigger')?.click();
-    });
-}</script>

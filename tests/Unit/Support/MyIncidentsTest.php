@@ -138,6 +138,52 @@ class MyIncidentsTest extends TestCase
         }
     }
 
+    public function test_graph_month_labels_are_complete_including_a_monday_first(): void
+    {
+        // Owner 2026-11-20: "keterangan bulan tidak lengkap". The old
+        // pre-push check dropped the label whenever the 1st fell on a Monday
+        // and OPENED a week (Jun 1 2026 is a Monday).
+        Carbon::setTestNow(Carbon::create(2026, 11, 20, 12));
+        $user = User::factory()->create();
+
+        $graph = MyIncidents::contributionGraph($user);
+        $months = collect($graph['weeks'])->pluck('month')->filter()->values()->all();
+
+        $this->assertContains('Jun', $months, 'a month whose 1st opens a week must keep its label');
+        $this->assertContains('Nov', $months, 'the leading partial month keeps its label too');
+        // A 12-month window spans two Novembers (leading partial + final) —
+        // so at least 12 labels, duplicates between YEARS are legitimate.
+        $this->assertGreaterThanOrEqual(12, count($months));
+
+        Carbon::setTestNow();
+    }
+
+    public function test_year_mode_covers_the_full_calendar_year(): void
+    {
+        $user = User::factory()->create();
+        $incident = Incident::factory()->create(['incident_date' => Carbon::create(2025, 3, 15, 10)]);
+        $incident->pics()->attach($user);
+
+        $graph = MyIncidents::contributionGraph($user, 2025);
+
+        $this->assertSame(1, $graph['total']);
+        // The grid runs in whole Monday-first weeks, so the leading week starts
+        // on the Monday at or before Jan 1 (Jan 1 2025 is a Wednesday).
+        $first = collect($graph['weeks'])->pluck('days')->flatten(1)->first();
+        $this->assertSame('2024-12-30', $first['date'], 'the grid starts on the Monday bounding Jan 1');
+        $marchCell = collect($graph['weeks'])->pluck('days')->flatten(1)->firstWhere('date', '2025-03-15');
+        $this->assertSame(1, $marchCell['tier']);
+        // Dec 31 exists even though it is in the future relative to a 2025 view.
+        $this->assertNotNull(collect($graph['weeks'])->pluck('days')->flatten(1)->firstWhere('date', '2025-12-31'));
+
+        // The leading partial week (Mon Dec 30, 2024) must be labelled JANUARY
+        // — its first cell belongs to 2024 but the window starts Jan 1, and
+        // labelling it "Dec" silently dropped the year's first month.
+        $months = collect($graph['weeks'])->pluck('month')->filter()->values()->all();
+        $this->assertSame('Jan', $months[0]);
+        $this->assertSame(['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], $months);
+    }
+
     public function test_graph_for_user_without_incidents_is_all_empty(): void
     {
         $user = User::factory()->create();
