@@ -23,7 +23,6 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-use pxlrbt\FilamentSpotlight\SpotlightPlugin;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -71,9 +70,15 @@ class AdminPanelProvider extends PanelProvider
             // stretch badly.
             ->maxContentWidth(MaxWidth::Full)
             ->globalSearch(true)
-            ->plugins([
-                SpotlightPlugin::make(),
-            ])
+            // Inter Variable is self-hosted through the app's Vite build
+            // (@fontsource-variable/inter imported in resources/css/app.css) —
+            // no font CDN, which matters on the VPN-only prod domain.
+            // ->font() sets the panel's --font-family CSS var.
+            ->font('Inter Variable', provider: \Filament\FontProviders\LocalFontProvider::class)
+            // Command palette (pxlrbt/filament-spotlight) deleted 2026-11-20 —
+            // owner: it let restricted roles reach page commands past their
+            // nav gates. The composer package stays until the parallel
+            // session's composer churn settles.
             ->path('admin')
             ->login(Login::class)
             ->passwordReset()
@@ -138,18 +143,17 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                \App\Http\Middleware\RedirectToPanelHome::class,
             ])
-            ->renderHook(
-                PanelsRenderHook::SIDEBAR_NAV_START,
-                fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.search-trigger'),
-            )
+            // Command palette + its sidebar search-trigger row are GONE
+            // (main 2026-11-20 — restricted roles could reach page commands
+            // past their nav gates); this branch keeps account + notifications
+            // in the TOPBAR, so main's SIDEBAR_FOOTER + notifications-modal
+            // hooks are still NOT carried here.
             ->renderHook(
                 // Cluster tab strips wrap instead of scrolling when the window is
                 // narrow (owner: 9 AI tabs "overload" on overflow). Higher
                 // specificity beats Filament's own .fi-tabs rule at any order.
-                // ⚠ main's SIDEBAR_FOOTER + notifications-modal hooks are NOT
-                // carried: this branch keeps account + notifications in the
-                // TOPBAR (owner 2026-11-20) and those views are deleted here.
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(
                     '<style>.fi-page-sub-navigation-tabs.fi-tabs{flex-wrap:wrap}</style>'

@@ -274,8 +274,15 @@ Route::get('/admin/weekly-report/export/{year}', WeeklyReportExportController::c
 // Access request form (public - Livewire component with Filament forms)
 Route::get('/request-access', RequestAccessForm::class)->name('request-access');
 
-// Investigation form intake (public no-login page, one unique token per recipient)
-Route::get('/investigation/{token}', InvestigationFormIntake::class)->name('investigation-form.intake');
+// Investigation form intake — SSO-only: guests are bounced straight to Microsoft
+// (see redirectGuestsTo in bootstrap/app.php) and return to this exact URL.
+// The token selects the request and checks validity; identity is the signed-in user.
+Route::get('/investigation/{token}', InvestigationFormIntake::class)
+    ->middleware(['auth'])
+    ->name('investigation-form.intake');
+
+// SSO landing for role-less users who signed in with no form link in hand.
+Route::get('/sso-signed-in', fn () => view('auth.sso-signed-in'))->name('sso-signed-in');
 
 // Add this line
 Route::get('/documents/{record}/download', DownloadDocumentController::class)

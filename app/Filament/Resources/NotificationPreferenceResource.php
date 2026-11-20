@@ -34,12 +34,16 @@ class NotificationPreferenceResource extends Resource
 
     public static function canAccess(): bool
     {
-        return auth()->check();
+        // Team-viewers are excluded (owner 2026-11-20) — restricted nav only
+        // shows the incident surfaces.
+        $user = auth()->user();
+
+        return $user !== null && ! $user->isTeamViewer();
     }
 
     public static function canViewAny(): bool
     {
-        return auth()->check();
+        return self::canAccess();
     }
 
     public static function canEdit(Model $record): bool

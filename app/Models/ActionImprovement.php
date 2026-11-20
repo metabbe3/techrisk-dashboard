@@ -110,6 +110,20 @@ class ActionImprovement extends Model implements Auditable
     }
 
     /**
+     * Worker-submitted proof awaiting a trusted approval (owner 2026-11-20).
+     * The ONE pending-proof definition — the Approve action's visibility,
+     * its server-side guard and its bulk-stamp query all read this shape
+     * (submitted_by set, approved_at null). Admin-tab uploads never count.
+     */
+    public function hasPendingProof(): bool
+    {
+        return $this->evidence()
+            ->whereNotNull('submitted_by')
+            ->whereNull('approved_at')
+            ->exists();
+    }
+
+    /**
      * Record that a reminder email actually went out (mail-eligible
      * recipients > 0). The per-user in-app halves already persist as
      * `notifications` rows — this tracks the combined email itself, and

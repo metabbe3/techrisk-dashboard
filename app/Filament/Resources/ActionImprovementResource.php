@@ -99,9 +99,7 @@ class ActionImprovementResource extends Resource
                     ->badge()
                     ->color('primary')
                     ->searchable()
-                    ->url(fn ($record): ?string => $record->incident
-                        ? IncidentResource\Pages\EditIncident::getUrl(['record' => $record->incident])
-                        : null),
+                    ->url(fn ($record): ?string => self::incidentUrl($record)),
                 TextColumn::make('title')
                     ->searchable()
                     ->limit(35)
@@ -109,9 +107,7 @@ class ActionImprovementResource extends Resource
                 TextColumn::make('incident.title')
                     ->label('Incident Title')
                     ->searchable()
-                    ->url(fn ($record): ?string => $record->incident
-                        ? IncidentResource\Pages\EditIncident::getUrl(['record' => $record->incident])
-                        : null)
+                    ->url(fn ($record): ?string => self::incidentUrl($record))
                     ->color('primary')
                     ->limit(25)
                     ->description(fn ($record): ?string => $record->incident
@@ -202,13 +198,28 @@ class ActionImprovementResource extends Resource
                     ->label('Open Incident')
                     ->icon('heroicon-o-arrow-top-right-on-square')
                     ->color('gray')
-                    ->url(fn ($record): ?string => $record->incident
-                        ? IncidentResource\Pages\EditIncident::getUrl(['record' => $record->incident])
-                        : null),
+                    ->url(fn ($record): ?string => self::incidentUrl($record)),
                 ActionImprovementFormSchema::rewordAction(),
+                ActionImprovementFormSchema::submitProofAction(),
+                ActionImprovementFormSchema::approveProofAction(),
+                ActionImprovementFormSchema::addAssigneeAction(),
                 Tables\Actions\EditAction::make(),
             ])
             ->bulkActions([]);
+    }
+
+    /**
+     * Incident link: managers edit, everyone else views — the view page's
+     * record gate (IncidentResource::canView) decides what a restricted
+     * user may actually open (team-viewers today).
+     */
+    private static function incidentUrl($record): ?string
+    {
+        return $record->incident
+            ? (auth()->user()?->can('manage incidents')
+                ? IncidentResource\Pages\EditIncident::getUrl(['record' => $record->incident])
+                : IncidentResource\Pages\ViewIncident::getUrl(['record' => $record->incident]))
+            : null;
     }
 
     public static function getRelations(): array

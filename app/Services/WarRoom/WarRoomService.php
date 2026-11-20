@@ -4,11 +4,6 @@ declare(strict_types=1);
 
 namespace App\Services\WarRoom;
 
-use App\Events\WarRoomAgentStreaming;
-use App\Events\WarRoomMessageUpdated;
-use App\Events\WarRoomReportStreaming;
-use App\Events\WarRoomRoundCompleted;
-use App\Events\WarRoomSessionCompleted;
 use App\Jobs\WarRoom\ProcessWarRoomAgent;
 use App\Jobs\WarRoom\RunPreAnalysis;
 use App\Jobs\WarRoom\StartWarRoomSession;
@@ -225,12 +220,8 @@ class WarRoomService
                 if ($completedCount === 0) {
                     $session->markFailed('All agents failed in round '.$message->round);
 
-                    broadcast(new WarRoomSessionCompleted($session->fresh()));
-
                     return;
                 }
-
-                broadcast(new WarRoomRoundCompleted($session->fresh(), $message->round));
 
                 if ($message->round < $session->max_rounds) {
                     $session->advanceRound();
@@ -274,8 +265,6 @@ class WarRoomService
         }
 
         $message->markRunning();
-
-        broadcast(new WarRoomMessageUpdated($session, $message));
 
         $config = WarRoomAgentConfig::findByRole($agentRole);
         $model = app(ModelRouter::class)->pick('reasoning', $config?->model_override ?? $session->model);
@@ -333,48 +322,13 @@ class WarRoomService
                         'attempt' => $attempt,
                     ]);
 
-                    // Throttled streaming callback
-                    $lastBroadcastTime = microtime(true);
-                    $accumulatedDelta = '';
-
                     $streamResult = $this->streamingService->streamCompletion(
                         model: $model,
                         messages: $messages,
                         maxTokens: $maxTokens,
                         tools: $tools,
-                        onDelta: function (string $delta, int $contentLength) use (
-                            &$lastBroadcastTime, &$accumulatedDelta,
-                            $session, $message, $agentRole
-                        ) {
-                            $accumulatedDelta .= $delta;
-                            $elapsed = (microtime(true) - $lastBroadcastTime) * 1000;
-
-                            if (strlen($accumulatedDelta) >= 100 || $elapsed >= 500) {
-                                $message->appendContent($accumulatedDelta);
-                                broadcast(new WarRoomAgentStreaming(
-                                    sessionId: (string) $session->id,
-                                    messageId: (string) $message->id,
-                                    agentRole: $agentRole,
-                                    delta: $accumulatedDelta,
-                                    contentLength: $contentLength,
-                                ));
-                                $accumulatedDelta = '';
-                                $lastBroadcastTime = microtime(true);
-                            }
-                        },
+                        onDelta: fn (string $delta, int $contentLength) => $message->appendContent($delta),
                     );
-
-                    // Flush remaining delta
-                    if (! blank($accumulatedDelta)) {
-                        $message->appendContent($accumulatedDelta);
-                        broadcast(new WarRoomAgentStreaming(
-                            sessionId: (string) $session->id,
-                            messageId: (string) $message->id,
-                            agentRole: $agentRole,
-                            delta: $accumulatedDelta,
-                            contentLength: strlen($streamResult['content']),
-                        ));
-                    }
 
                     $finishReason = $streamResult['finish_reason'];
                     $finalFinishReason = $finishReason;
@@ -555,8 +509,6 @@ class WarRoomService
             $this->logUsage('war_room_agent', $model, false, [], $responseTimeMs, $session, $agentRole, $round, $e->getMessage());
         }
 
-        broadcast(new WarRoomMessageUpdated($session->fresh(), $message->fresh()));
-
         try {
             $this->onAgentCompleted($session->fresh(), $message->fresh());
         } catch (\Throwable $e) {
@@ -592,39 +544,11 @@ class WarRoomService
             $modReasoningTokens = null;
 
             for ($attempt = 0; $attempt <= $maxContinuations; $attempt++) {
-                $lastBroadcastTime = microtime(true);
-                $accumulatedDelta = '';
-
                 $streamResult = $this->streamingService->streamCompletion(
                     model: $model,
                     messages: $messages,
                     maxTokens: $maxTokens,
-                    onDelta: function (string $delta, int $contentLength) use (
-                        &$lastBroadcastTime, &$accumulatedDelta, $session
-                    ) {
-                        $accumulatedDelta .= $delta;
-                        $elapsed = (microtime(true) - $lastBroadcastTime) * 1000;
-
-                        if (strlen($accumulatedDelta) >= 100 || $elapsed >= 500) {
-                            broadcast(new WarRoomReportStreaming(
-                                sessionId: (string) $session->id,
-                                delta: $accumulatedDelta,
-                                contentLength: $contentLength,
-                            ));
-                            $accumulatedDelta = '';
-                            $lastBroadcastTime = microtime(true);
-                        }
-                    },
                 );
-
-                // Flush remaining delta
-                if (! blank($accumulatedDelta)) {
-                    broadcast(new WarRoomReportStreaming(
-                        sessionId: (string) $session->id,
-                        delta: $accumulatedDelta,
-                        contentLength: strlen($streamResult['content']),
-                    ));
-                }
 
                 $usage = $streamResult['usage'] ?? [];
                 $finishReason = $streamResult['finish_reason'] ?? 'unknown';
@@ -643,7 +567,6 @@ class WarRoomService
                     $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
                     $session->markFailed('Report synthesis failed: '.$streamResult['error']);
                     $this->logUsage('war_room_moderator', $model, false, $totalUsage, $responseTimeMs, $session, 'moderator', 0, $streamResult['error']);
-                    broadcast(new WarRoomSessionCompleted($session->fresh()));
 
                     return;
                 }
@@ -652,7 +575,6 @@ class WarRoomService
                     $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
                     $session->markFailed('Report synthesis returned empty response');
                     $this->logUsage('war_room_moderator', $model, false, $totalUsage, $responseTimeMs, $session, 'moderator', 0, 'Empty response');
-                    broadcast(new WarRoomSessionCompleted($session->fresh()));
 
                     return;
                 }
@@ -688,7 +610,6 @@ class WarRoomService
 
             if (blank($fullContent)) {
                 $session->markFailed('Report synthesis returned empty content');
-                broadcast(new WarRoomSessionCompleted($session->fresh()));
 
                 return;
             }
@@ -706,15 +627,11 @@ class WarRoomService
                 'completed_at' => now(),
             ]);
 
-            broadcast(new WarRoomSessionCompleted($session->fresh()));
-
             $this->logUsage('war_room_moderator', $model, true, $totalUsage, $responseTimeMs, $session, 'moderator', 0);
         } catch (\Throwable $e) {
             $responseTimeMs = (int) ((microtime(true) - $startTime) * 1000);
             $session->markFailed('Report synthesis error: '.$e->getMessage());
             $this->logUsage('war_room_moderator', $model, false, [], $responseTimeMs, $session, 'moderator', 0, $e->getMessage());
-
-            broadcast(new WarRoomSessionCompleted($session->fresh()));
         }
     }
 
@@ -836,7 +753,6 @@ class WarRoomService
 
         foreach ($stuckRunning as $message) {
             $message->markFailed("Agent timed out after {$runningTimeout} seconds");
-            broadcast(new WarRoomMessageUpdated($session, $message));
         }
 
         $allStuck = $stuckPending->merge($stuckRunning);
@@ -1168,11 +1084,9 @@ class WarRoomService
             ->whereIn('status', ['pending', 'running'])
             ->each(function (WarRoomMessage $msg) {
                 $msg->markFailed('Session token budget exceeded');
-                broadcast(new WarRoomMessageUpdated($session->fresh(), $msg->fresh()));
             });
 
         $session->markFailed('Session token budget exceeded ('.number_format($maxTokens).' tokens).');
-        broadcast(new WarRoomSessionCompleted($session->fresh()));
     }
 
     private function buildIncidentContext(Collection $incidents, bool $deepAnalysis): array

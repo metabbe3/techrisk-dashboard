@@ -1,0 +1,131 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Console\Commands;
+
+use App\Models\Category;
+use App\Models\User;
+use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Cache;
+
+/**
+ * Team-viewer role (owner 2026-11-20): map users.department → responsible
+ * team categories (config/team-map.php) onto the category_user pivot. The
+ * follow-up to users:sync-directory (which refreshes departments) — not
+ * scheduled, run it by hand after each directory sync.
+ *
+ * Semantics: FULL REPLACE per mapped user (stale teams from a department
+ * move are corrected on the next run). Admins who mapped a user by hand in
+ * User Management set teams_manual — those are skipped (--force re-maps).
+ * Every unmapped non-empty department is REPORTED with user counts so HR
+ * renames are never silently dropped.
+ */
+class SyncUserTeams extends Command
+{
+    protected $signature = 'users:sync-teams
+        {--dry-run : Report mapping coverage without writing}
+        {--force : Re-map users whose team mapping is flagged manual}
+        {--as-departments : Skip the map — every user gets a category named after their raw department (no unification)}';
+
+    protected $description = 'Map users to responsible teams from their Entra department via config/team-map.php (full replace per user; reports unmapped departments)';
+
+    public function handle(): int
+    {
+        $asDepartments = (bool) $this->option('as-departments');
+        $map = [];
+
+        if (! $asDepartments) {
+            $map = config('team-map');
+
+            if (! is_array($map) || $map === []) {
+                $this->error('config/team-map.php is empty — nothing to map.');
+
+                return self::FAILURE;
+            }
+        }
+
+        // Case-insensitive lookup: Entra departments drift in casing
+        // ("Security" vs "it security") — same team either way.
+        $map = array_change_key_case($map, CASE_LOWER);
+
+        $users = User::query()
+            ->whereNotNull('department')
+            ->where('department', '!=', '')
+            ->orderBy('email')
+            ->get(['id', 'department', 'teams_manual']);
+
+        $mapped = 0;
+        $changed = 0;
+        $skippedManual = 0;
+        $unmapped = []; // department => user count
+        $dryRun = (bool) $this->option('dry-run');
+
+        foreach ($users as $user) {
+            // --as-departments: the department string IS the team (1:1, no
+            // map) — every distinct department becomes a category.
+            $teamName = $asDepartments
+                ? trim((string) $user->department)
+                : ($map[strtolower(trim((string) $user->department))] ?? null);
+
+            if ($teamName === null || $teamName === '') {
+                $unmapped[trim((string) $user->department)] = ($unmapped[trim((string) $user->department)] ?? 0) + 1;
+
+                continue;
+            }
+
+            // Dry-run reports coverage only — it must not create categories
+            // or touch pivots.
+            $categoryId = $dryRun
+                ? Category::where('type', Category::TYPE_RESPONSIBLE_TEAM)->where('name', $teamName)->value('id')
+                : Category::firstOrCreate([
+                    'type' => Category::TYPE_RESPONSIBLE_TEAM,
+                    'name' => $teamName,
+                ])->id;
+
+            if ($user->teams_manual && ! $this->option('force')) {
+                $skippedManual++;
+
+                continue;
+            }
+
+            $mapped++;
+
+            if ($dryRun) {
+                continue;
+            }
+
+            if ($user->teams()->allRelatedIds()->all() === [$categoryId]) {
+                continue; // already correct — sync() would still churn the pivot
+            }
+
+            $user->teams()->sync([$categoryId]);
+            $changed++;
+        }
+
+        // firstOrCreate may have created new options — the cached
+        // name→name map (form selects, filters) must not serve stale teams.
+        Cache::forget('categories:'.Category::TYPE_RESPONSIBLE_TEAM);
+
+        if ($unmapped !== []) {
+            arsort($unmapped);
+            $this->warn('Unmapped departments (add them to config/team-map.php, then re-run):');
+            foreach ($unmapped as $department => $count) {
+                $this->line(sprintf('  %-60s %4d user(s)', $department, $count));
+            }
+        }
+
+        $this->info(sprintf(
+            '%s%d users matched a team: %d mapped%s, %d manual-mapping skipped%s, %d distinct department(s) unmapped.',
+            $this->option('dry-run') ? 'DRY RUN — ' : '',
+            count($users),
+            $mapped,
+            $changed > 0 ? " ({$changed} pivot rows written)" : '',
+            $skippedManual,
+            $this->option('force') ? ' (--force re-mapped them)' : '',
+            count($unmapped),
+        ));
+
+        return self::SUCCESS;
+    }
+}

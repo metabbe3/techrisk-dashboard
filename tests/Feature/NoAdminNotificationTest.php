@@ -25,7 +25,6 @@ class NoAdminNotificationTest extends TestCase
     {
         parent::setUp();
 
-        config(['broadcasting.default' => 'log']);
     }
 
     public function test_pic_assignment_never_notifies_admins(): void

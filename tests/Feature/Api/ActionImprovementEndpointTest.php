@@ -23,9 +23,7 @@ class ActionImprovementEndpointTest extends TestCase
     {
         parent::setUp();
 
-        // PIC emails now upsert as directory users, so creations notify them
-        // (database + broadcast) — keep broadcast off the network in tests.
-        config(['broadcasting.default' => 'log']);
+        // PIC emails now upsert as directory users, so creations notify them.
 
         $this->user = User::factory()->create();
         Permission::firstOrCreate(['name' => 'access api']);

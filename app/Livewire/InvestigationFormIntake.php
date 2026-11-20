@@ -8,6 +8,7 @@ use App\Actions\StoreInvestigationDocument;
 use App\Jobs\ExtractInvestigationFormSource;
 use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
+use App\Models\User;
 use App\Services\InvestigationForm\InvestigationFormDraftMerge;
 use App\Services\InvestigationForm\InvestigationFormRenderer;
 use App\Services\InvestigationForm\InvestigationFormSchema;
@@ -25,8 +26,10 @@ use Livewire\Component;
 use Livewire\Features\SupportFileUploads\TemporaryUploadedFile;
 
 /**
- * The no-login public intake page: /investigation/{token}.
- * A link is one recipient's personal key into the team's shared draft.
+ * The SSO-only intake page: /investigation/{token} (route middleware('auth')).
+ * The token selects the request and checks validity — it does NOT authorize by
+ * recipient email (links get forwarded: a lead's peer fills under their own
+ * identity). Identity is always the signed-in user.
  * Steps: source (notion/file/paste) → AI extract → edit + verify → consent.
  * AI source text is DATA only; the AI suggests, never auto-submits.
  */
@@ -55,10 +58,6 @@ class InvestigationFormIntake extends Component implements HasForms
 
     /** Uploaded source file (Livewire temp upload, pdf/docx/md/txt ≤10MB). */
     public $sourceFile;
-
-    public string $name = '';
-
-    public string $email = '';
 
     public string $jobRole = '';
 
@@ -89,8 +88,6 @@ class InvestigationFormIntake extends Component implements HasForms
 
     public bool $invalidLink = false;
 
-    public string $consentEmail = '';
-
     public bool $consentAccepted = false;
 
     public string $honeypot = '';
@@ -117,9 +114,10 @@ class InvestigationFormIntake extends Component implements HasForms
         $this->formRequest = $recipient->request;
         $this->recipient->update(['last_opened_at' => now()]);
 
-        $this->email = $recipient->email;
-        $this->name = (string) ($this->formRequest->answers['header']['name'] ?? '');
-        $this->jobRole = (string) ($this->formRequest->answers['header']['job_role'] ?? '');
+        // Job role: the draft's own answer (AI may have filled it) beats the
+        // directory-synced title; OAuth login scopes don't return a title.
+        $this->jobRole = trim((string) ($this->formRequest->answers['header']['job_role'] ?? ''))
+            ?: trim((string) ($this->submitter()->job_title ?? ''));
 
         $this->loadDraft();
 
@@ -197,7 +195,7 @@ class InvestigationFormIntake extends Component implements HasForms
             mb_substr($this->pasteText, 0, 48000),
             $hasFile ? $this->sourceFile->getRealPath() : '',
             $hasFile ? $this->sourceFile->getClientOriginalName() : '',
-            mb_strtolower(trim($this->email)),
+            mb_strtolower($this->submitter()->email),
         );
 
         $this->extractionRunning = true;
@@ -329,6 +327,8 @@ class InvestigationFormIntake extends Component implements HasForms
             throw ValidationException::withMessages(['consent' => 'Validation failed.']);
         }
 
+        $user = $this->submitter();
+
         $missingRequired = $this->missingRequiredFields();
 
         if ($missingRequired !== []) {
@@ -366,12 +366,8 @@ class InvestigationFormIntake extends Component implements HasForms
             throw ValidationException::withMessages(['consent' => 'You must accept the Statement of Truth.']);
         }
 
-        if (mb_strtolower(trim($this->consentEmail)) !== mb_strtolower(trim($this->email))) {
-            throw ValidationException::withMessages(['consent' => 'The confirmation email does not match your email address.']);
-        }
-
         // Render before the transaction — a render failure changes nothing.
-        $draft = $this->finalDraftArray();
+        $draft = $this->finalDraftArray($user);
 
         /** @var InvestigationFormRenderer $renderer */
         $renderer = app(InvestigationFormRenderer::class);
@@ -390,20 +386,20 @@ class InvestigationFormIntake extends Component implements HasForms
         $description = 'Investigation Form – '.$this->formRequest->team.' – '.now()->format('Y-m-d');
 
         try {
-            DB::transaction(function () use ($draft, $docx, $pdf, $storeDocument, $incident, $description) {
+            DB::transaction(function () use ($draft, $docx, $pdf, $storeDocument, $incident, $description, $user) {
                 $docxDoc = $storeDocument->handle($incident, $docx, $description.'.docx', $description.' (DOCX)');
                 $pdfDoc = $storeDocument->handle($incident, $pdf, $description.'.pdf', $description.' (PDF)');
 
                 $this->formRequest->update([
                     'answers' => $draft,
                     'status' => InvestigationFormRequest::STATUS_SUBMITTED,
-                    'submitter_email' => mb_strtolower(trim($this->email)),
-                    'submitter_name' => trim($this->name),
+                    'submitter_email' => mb_strtolower($user->email),
+                    'submitter_name' => $user->name,
                     'consented_at' => now(),
                     'submitter_ip' => request()->ip(),
                     'submitted_at' => now(),
                     'draft_updated_at' => now(),
-                    'draft_updated_by_email' => mb_strtolower(trim($this->email)),
+                    'draft_updated_by_email' => mb_strtolower($user->email),
                     'docx_document_id' => $docxDoc->id,
                     'pdf_document_id' => $pdfDoc->id,
                 ]);
@@ -429,6 +425,18 @@ class InvestigationFormIntake extends Component implements HasForms
         }
     }
 
+    /** Identity = the signed-in user. A poll-aged page can outlive the session. */
+    private function submitter(): User
+    {
+        $user = auth()->user();
+
+        if ($user === null) {
+            throw ValidationException::withMessages(['consent' => 'Your session expired — reload the page and sign in again.']);
+        }
+
+        return $user;
+    }
+
     private function checkDraftConcurrency(): void
     {
         $fresh = $this->formRequest->fresh();
@@ -447,7 +455,7 @@ class InvestigationFormIntake extends Component implements HasForms
 
         $this->formRequest->update([
             'answers' => $draft,
-            'draft_updated_by_email' => mb_strtolower(trim($this->email)),
+            'draft_updated_by_email' => mb_strtolower($this->submitter()->email),
             'draft_updated_at' => now(),
         ]);
 
@@ -496,19 +504,21 @@ class InvestigationFormIntake extends Component implements HasForms
         return $answers;
     }
 
-    private function finalDraftArray(): array
+    private function finalDraftArray(User $user): array
     {
         $draft = $this->draftArray();
 
         // Identity fields ride the form's own header — but step 2 renders
         // them editable (the AI may have filled them from the source), so a
-        // non-blank answer wins over the step-1 input, not the other way.
-        foreach (['name' => $this->name, 'job_role' => $this->jobRole] as $key => $fallback) {
+        // non-blank answer wins over the signed-in fallback, not the other
+        // way. The $user->name fallback is load-bearing: header.name is
+        // required by default, and a blank AI name must not block submit.
+        foreach (['name' => $user->name, 'job_role' => $this->jobRole] as $key => $fallback) {
             $draft['header'][$key] = trim((string) ($draft['header'][$key] ?? '')) !== ''
                 ? trim((string) $draft['header'][$key])
                 : trim($fallback);
         }
-        $draft['submitter_name'] = trim($this->name);
+        $draft['submitter_name'] = $user->name;
 
         return $draft;
     }

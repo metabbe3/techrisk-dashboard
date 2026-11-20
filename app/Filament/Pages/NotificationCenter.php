@@ -34,7 +34,12 @@ class NotificationCenter extends Page implements HasTable
 
     public static function canAccess(): bool
     {
-        return Auth::check();
+        // Team-viewers are excluded (owner 2026-11-20): the notifications
+        // BELL in the sidebar footer still delivers their assignments, but
+        // the management page stays off the restricted nav.
+        $user = Auth::user();
+
+        return $user !== null && ! $user->isTeamViewer();
     }
 
     public function table(Table $table): Table

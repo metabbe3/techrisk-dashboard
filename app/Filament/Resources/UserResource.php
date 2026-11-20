@@ -64,6 +64,19 @@ class UserResource extends Resource
                     ->label('Team / department')
                     ->maxLength(255)
                     ->helperText('Filled by the Entra directory sync'),
+                Select::make('teams')
+                    ->label('Responsible teams')
+                    ->relationship('teams', 'name', fn ($query) => $query->where('type', \App\Models\Category::TYPE_RESPONSIBLE_TEAM))
+                    ->multiple()
+                    ->preload()
+                    ->searchable()
+                    // Editing by hand flags the mapping manual — users:sync-teams
+                    // skips flagged users (clear the checkbox to re-sync).
+                    ->live()
+                    ->afterStateUpdated(fn (callable $set) => $set('teams_manual', true))
+                    ->helperText('Auto-mapped from Department by users:sync-teams. Feeds the team-viewer incident slice.'),
+                Forms\Components\Checkbox::make('teams_manual')
+                    ->label('Manual team mapping (skip auto-sync)'),
                 Forms\Components\Section::make('Access Settings')
                     ->description('Configure user access and expiry')
                     ->schema([
@@ -137,7 +150,7 @@ class UserResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->modifyQueryUsing(fn ($query) => $query->with(['roles', 'manager']))
+            ->modifyQueryUsing(fn ($query) => $query->with(['roles', 'manager', 'teams']))
             ->columns([
                 Tables\Columns\TextColumn::make('name')
                     ->searchable(),
@@ -158,6 +171,10 @@ class UserResource extends Resource
                 Tables\Columns\TextColumn::make('department')
                     ->label('Team')
                     ->searchable()
+                    ->toggleable(),
+                Tables\Columns\TextColumn::make('teams.name')
+                    ->label('Responsible teams')
+                    ->badge()
                     ->toggleable(),
                 Tables\Columns\TextColumn::make('roles.name')
                     ->searchable(),

@@ -20,6 +20,12 @@ class DownloadActionEvidenceController extends Controller
             abort(403, 'You do not have permission to download this file.');
         }
 
+        // Link proof (chat / Notion) — nothing to decrypt; the gate ran
+        // FIRST so unauthorized users can't ride the redirect.
+        if ($record->isLink()) {
+            return redirect()->away($record->link_url);
+        }
+
         // 1. Check if file exists
         if (! $record->file_path || ! Storage::disk('public')->exists($record->file_path)) {
             abort(404, 'File not found on server.');

@@ -20,7 +20,7 @@ use Tests\TestCase;
 
 /**
  * The admin surface: per-incident, per-team requests, each recipient with
- * their OWN token link auto-emailed; resend rotates, revoke person vs whole
+ * their OWN token link auto-emailed; resend re-emails the same link, revoke person vs whole
  * request, reissue re-opens, download buttons after submit.
  */
 class InvestigationFormAdminTest extends TestCase
@@ -96,7 +96,7 @@ class InvestigationFormAdminTest extends TestCase
         $this->assertNotSame($before['a@x.com'], null);
     }
 
-    public function test_resend_rotates_token_and_old_link_dies(): void
+    public function test_resend_reemails_the_same_link(): void
     {
         $incident = Incident::factory()->create();
         $request = $this->requestViaAction($incident, ['a@x.com']);
@@ -112,7 +112,8 @@ class InvestigationFormAdminTest extends TestCase
             ->callTableAction('resend', $recipient);
 
         $recipient->refresh();
-        $this->assertNotSame($oldHash, $recipient->token_hash);
+        $this->assertSame($oldHash, $recipient->token_hash, 'tokens are derived — resend never rotates');
+        $this->assertTrue($recipient->linkIsValid());
         $this->assertNotNull($recipient->emailed_at);
         Mail::assertQueued(InvestigationFormRequestMail::class, 1);
     }
@@ -177,7 +178,7 @@ class InvestigationFormAdminTest extends TestCase
         $this->assertSame(InvestigationFormRequest::STATUS_PENDING, $request->status);
         $this->assertTrue($request->expires_at->isFuture());
         $this->assertNull($recipient->fresh()->revoked_at);
-        $this->assertNotSame($oldHash, $recipient->fresh()->token_hash);
+        $this->assertSame($oldHash, $recipient->fresh()->token_hash, 'tokens are derived — reissue never rotates');
         Mail::assertQueued(InvestigationFormRequestMail::class, 1);
     }
 

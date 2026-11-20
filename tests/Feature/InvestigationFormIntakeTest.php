@@ -26,13 +26,18 @@ use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
- * The no-login intake page: token guard (hash-only, generic invalid page),
+ * The SSO-only intake page: token guard (hash-only, generic invalid page),
  * the shared team draft, the AI steps (faked at the Go brain HTTP edge),
  * submit guards and the successful submit (DOCX + PDF on the incident).
+ * Identity is the signed-in user — every test acts as a signer whose email
+ * differs from the recipient's, pinning the forwarded-link semantics
+ * (the lead was invited, a peer fills under their own identity).
  */
 class InvestigationFormIntakeTest extends TestCase
 {
     use RefreshDatabase;
+
+    private User $signer;
 
     protected function setUp(): void
     {
@@ -42,6 +47,14 @@ class InvestigationFormIntakeTest extends TestCase
         config()->set('ai.go_agent.base_url', 'http://brain.test');
         Storage::fake('public');
         Queue::fake();
+
+        // NOT the recipient (a@x.com) on purpose — see the class docblock.
+        $this->signer = User::factory()->create([
+            'name' => 'Alice Submitter',
+            'email' => 'alice@x.com',
+            'job_title' => 'Backend engineer',
+        ]);
+        $this->actingAs($this->signer);
     }
 
     private function makeLink(?InvestigationFormRequest $request = null, string $team = 'Payments'): array
@@ -54,12 +67,14 @@ class InvestigationFormIntakeTest extends TestCase
             'expires_at' => now()->addDays(14),
             'created_by' => User::factory()->create()->id,
         ]);
-        $plain = InvestigationFormRecipient::newToken();
+        // Tokens are derived from the row id (never rotated) — linkToken()
+        // writes the hash itself.
         $recipient = $request->recipients()->create([
             'email' => 'a@x.com',
-            'token_hash' => InvestigationFormRecipient::hashToken($plain),
+            'token_hash' => '',
             'emailed_at' => now(),
         ]);
+        $plain = $recipient->linkToken();
 
         return [$request, $recipient, $plain];
     }
@@ -101,13 +116,13 @@ class InvestigationFormIntakeTest extends TestCase
                 'expires_at' => $expires,
                 'created_by' => User::factory()->create()->id,
             ]);
-            $plain = InvestigationFormRecipient::newToken();
-            $request->recipients()->create([
+            $recipient = $request->recipients()->create([
                 'email' => 'x@x.com',
-                'token_hash' => InvestigationFormRecipient::hashToken($plain),
+                'token_hash' => '',
                 'emailed_at' => now(),
                 'revoked_at' => $revoked,
             ]);
+            $plain = $recipient->linkToken();
 
             return $plain;
         };
@@ -125,12 +140,12 @@ class InvestigationFormIntakeTest extends TestCase
     public function test_concurrent_edit_warns_when_a_teammate_saved_first(): void
     {
         [$request, , $plainA] = $this->makeLink();
-        $plainB = InvestigationFormRecipient::newToken();
-        $request->recipients()->create([
+        $b = $request->recipients()->create([
             'email' => 'b@x.com',
-            'token_hash' => InvestigationFormRecipient::hashToken($plainB),
+            'token_hash' => '',
             'emailed_at' => now(),
         ]);
+        $plainB = $b->linkToken();
 
         // A saves once so the draft has a timestamp.
         Livewire::test(InvestigationFormIntake::class, ['token' => $plainA])
@@ -165,12 +180,12 @@ class InvestigationFormIntakeTest extends TestCase
     public function test_shared_draft_a_saves_b_loads_b_submits_then_a_is_dead(): void
     {
         [$request, $recipientA, $plainA] = $this->makeLink();
-        $plainB = InvestigationFormRecipient::newToken();
         $recipientB = $request->recipients()->create([
             'email' => 'b@x.com',
-            'token_hash' => InvestigationFormRecipient::hashToken($plainB),
+            'token_hash' => '',
             'emailed_at' => now(),
         ]);
+        $plainB = $recipientB->linkToken();
 
         Livewire::test(InvestigationFormIntake::class, ['token' => $plainA])
             ->set('answers.header.incident_name', 'The outage')
@@ -183,7 +198,6 @@ class InvestigationFormIntakeTest extends TestCase
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plainB]);
         $this->fillRequired($component);
         $component->set('consentAccepted', true)
-            ->set('consentEmail', 'b@x.com')
             ->call('submit')
             ->assertHasNoErrors();
 
@@ -214,7 +228,6 @@ class InvestigationFormIntakeTest extends TestCase
         ]);
 
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
-            ->set('name', 'Alice')
             ->set('pasteText', 'timeline: alert at 10:00')
             ->call('extractFromSource')
             ->assertHasNoErrors();
@@ -346,12 +359,12 @@ class InvestigationFormIntakeTest extends TestCase
             'created_by' => User::factory()->create()->id,
             'answers' => ['header' => ['incident_date' => '2026-11-01T08:31']], // teammate already picked
         ]);
-        $plain = InvestigationFormRecipient::newToken();
-        $request->recipients()->create([
+        $recipient = $request->recipients()->create([
             'email' => 'a@x.com',
-            'token_hash' => InvestigationFormRecipient::hashToken($plain),
+            'token_hash' => '',
             'emailed_at' => now(),
         ]);
+        $plain = $recipient->linkToken();
 
         Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
             ->assertSet('answers.header.incident_date', '2026-11-01T08:31') // a saved draft value is never overwritten
@@ -370,7 +383,6 @@ class InvestigationFormIntakeTest extends TestCase
         // An old free-text draft (pre-picker) can't be printed or compared.
         $component->set('answers.header.incident_date', '2026.11.01 10:00')
             ->set('consentAccepted', true)
-            ->set('consentEmail', 'a@x.com')
             ->call('submit')
             ->assertHasErrors(['consent']);
 
@@ -429,7 +441,7 @@ class InvestigationFormIntakeTest extends TestCase
         }
     }
 
-    public function test_submit_is_blocked_without_consent_or_mismatched_email(): void
+    public function test_submit_is_blocked_without_consent(): void
     {
         [, , $plain] = $this->makeLink();
 
@@ -437,12 +449,6 @@ class InvestigationFormIntakeTest extends TestCase
         $this->fillRequired($component);
 
         $component->set('consentAccepted', false)
-            ->set('consentEmail', 'a@x.com')
-            ->call('submit')
-            ->assertHasErrors(['consent']);
-
-        $component->set('consentAccepted', true)
-            ->set('consentEmail', 'wrong@x.com')
             ->call('submit')
             ->assertHasErrors(['consent']);
 
@@ -455,7 +461,6 @@ class InvestigationFormIntakeTest extends TestCase
 
         Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
             ->set('consentAccepted', true)
-            ->set('consentEmail', 'a@x.com')
             ->call('submit')
             ->assertHasErrors(['consent']);
 
@@ -468,16 +473,16 @@ class InvestigationFormIntakeTest extends TestCase
 
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain]);
         $this->fillRequired($component);
-        $component->set('name', 'Alice Submitter')
-            ->set('consentAccepted', true)
-            ->set('consentEmail', 'a@x.com')
+        $component->set('consentAccepted', true)
             ->call('submit')
             ->assertHasNoErrors()
             ->assertSee('submitted');
 
         $request->refresh();
         $this->assertSame(InvestigationFormRequest::STATUS_SUBMITTED, $request->status);
-        $this->assertSame('a@x.com', $request->submitter_email);
+        // Forwarded-link semantics: the SUBMITTER is the signed-in user, not
+        // the invited recipient (a@x.com).
+        $this->assertSame('alice@x.com', $request->submitter_email);
         $this->assertSame('Alice Submitter', $request->submitter_name);
         $this->assertNotNull($request->consented_at);
         $this->assertNotNull($request->submitted_at);
@@ -604,7 +609,6 @@ class InvestigationFormIntakeTest extends TestCase
         ])]);
 
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
-            ->set('email', 'a@x.com')
             ->set('pasteText', 'timeline')
             ->call('extractFromSource')
             ->assertHasNoErrors();
@@ -613,50 +617,47 @@ class InvestigationFormIntakeTest extends TestCase
 
         $request->refresh();
         $this->assertSame('DB timeout', $request->answers['header']['incident_name'] ?? null);
-        $this->assertSame('a@x.com', $request->draft_updated_by_email);
+        $this->assertSame('alice@x.com', $request->draft_updated_by_email, 'draft attribution is the signed-in user');
         $this->assertNotNull($request->draft_updated_at, 'extraction persists the draft so a teammate continues it');
     }
 
-    public function test_a_filled_answer_wins_over_the_step1_identity_fields(): void
+    public function test_a_filled_answer_wins_over_the_signed_in_identity_fallback(): void
     {
         [$request, , $plain] = $this->makeLink();
 
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain]);
         $this->fillRequired($component); // fills header.name + header.job_role
 
-        $component->set('name', 'Alice Submitter')
-            ->set('consentAccepted', true)
-            ->set('consentEmail', 'a@x.com')
+        $component->set('consentAccepted', true)
             ->call('submit')
             ->assertHasNoErrors();
 
         $request->refresh();
         $this->assertSame('Alice Submitter', $request->submitter_name);
-        $this->assertSame('value for header.name', $request->answers['header']['name'], 'a filled answer beats the step-1 name');
+        $this->assertSame('value for header.name', $request->answers['header']['name'], 'a filled answer beats the signed-in fallback');
         $this->assertSame('value for header.job_role', $request->answers['header']['job_role']);
 
-        // The reverse: a BLANK answer falls back to the step-1 input. name /
-        // job_role must not be required for this case, or the blank blocks
-        // the submit itself.
+        // The reverse: a BLANK answer falls back to the signed-in identity
+        // (mount prefills jobRole from the user's directory-synced title).
+        // name / job_role must not be required for this case, or the blank
+        // blocks the submit itself.
         \App\Models\Setting::set(InvestigationFormSettings::KEY_REQUIRED_FIELDS, ['header.incident_name', 'chronology']);
         [, $recipient2, $plain2] = $this->makeLink();
-        $component2 = Livewire::test(InvestigationFormIntake::class, ['token' => $plain2]);
+        $component2 = Livewire::test(InvestigationFormIntake::class, ['token' => $plain2])
+            ->assertSet('jobRole', 'Backend engineer', 'mount prefills the user job title');
         $this->fillRequired($component2);
         foreach (['header.name', 'header.job_role'] as $key) {
             [$section, $field] = explode('.', $key, 2);
             $component2->set("answers.{$section}.{$field}", '');
         }
 
-        $component2->set('name', 'Alice Submitter')
-            ->set('jobRole', 'Backend engineer')
-            ->set('consentAccepted', true)
-            ->set('consentEmail', mb_strtolower(trim((string) $recipient2->email)))
+        $component2->set('consentAccepted', true)
             ->call('submit')
             ->assertHasNoErrors();
 
         $request2 = $recipient2->request;
         $request2->refresh();
-        $this->assertSame('Alice Submitter', $request2->answers['header']['name'], 'blank answer falls back to step-1 name');
+        $this->assertSame('Alice Submitter', $request2->answers['header']['name'], 'blank answer falls back to the signed-in name');
         $this->assertSame('Backend engineer', $request2->answers['header']['job_role']);
     }
 
@@ -667,7 +668,6 @@ class InvestigationFormIntakeTest extends TestCase
         // No brain fake on purpose: if the extraction ran inline the test
         // would fail (unrouted connection) — the whole point is it must not.
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
-            ->set('email', 'a@x.com')
             ->set('pasteText', 'timeline')
             ->call('extractFromSource')
             ->assertHasNoErrors()
@@ -772,7 +772,6 @@ class InvestigationFormIntakeTest extends TestCase
         }]);
 
         $component = Livewire::test(InvestigationFormIntake::class, ['token' => $plain])
-            ->set('email', 'a@x.com')
             ->set('pasteText', 'timeline')
             ->call('extractFromSource');
 
@@ -784,7 +783,6 @@ class InvestigationFormIntakeTest extends TestCase
         [$request2, , $plain2] = $this->makeLink();
 
         $component2 = Livewire::test(InvestigationFormIntake::class, ['token' => $plain2])
-            ->set('email', 'b@x.com')
             ->set('pasteText', 'timeline')
             ->call('extractFromSource');
 

@@ -216,7 +216,6 @@ MD;
 
     public function test_row_action_ai_extractor_creates_drafts_with_model_and_due_date(): void
     {
-        config(['broadcasting.default' => 'log']); // matched owner fires the assigned notification
         $this->actingAs($this->manager());
         $steven = User::factory()->create(['name' => 'Steven Tan']);
         $incident = $this->incident();

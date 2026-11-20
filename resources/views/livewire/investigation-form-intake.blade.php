@@ -72,21 +72,13 @@
                     <form wire:submit="extractFromSource" class="space-y-4">
                         <input type="text" wire:model="honeypot" class="hidden" tabindex="-1" autocomplete="off" aria-hidden="true">
 
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Your name <span class="text-red-500">*</span></label>
-                                <input type="text" wire:model="name" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="Full name" />
-                                @error('name')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Your email <span class="text-red-500">*</span></label>
-                                <input type="email" wire:model="email" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="you@company.com" />
-                                @error('email')<p class="mt-1 text-xs text-red-600">{{ $message }}</p>@enderror
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job role</label>
-                                <input type="text" wire:model="jobRole" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="e.g. Backend engineer" />
-                            </div>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Signed in as <span class="font-medium text-gray-700 dark:text-gray-300">{{ auth()->user()?->name }}</span> ({{ auth()->user()?->email }})
+                        </p>
+
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Job role</label>
+                            <input type="text" wire:model="jobRole" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="e.g. Backend engineer" />
                         </div>
 
                         @if ($prepareList)
@@ -299,11 +291,6 @@
                             <span>I confirm the answers above are true and complete, and I accept the Statement of Truth.</span>
                         </label>
                         @error('consentAccepted')<p class="text-xs text-red-600">{{ $message }}</p>@enderror
-
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type your email ({{ $email }}) to confirm</label>
-                            <input type="email" wire:model="consentEmail" class="block w-full rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2 px-3 text-sm text-gray-900 dark:text-gray-100 focus:border-dana-500 focus:outline-none" placeholder="{{ $email }}" />
-                        </div>
 
                         @error('consent')<div class="rounded-xl bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-300">{{ $message }}</div>@enderror
 

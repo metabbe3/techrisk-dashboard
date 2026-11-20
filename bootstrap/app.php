@@ -10,7 +10,6 @@ return Application::configure(basePath: dirname(__DIR__))
         api: __DIR__.'/../routes/api.php',
         apiPrefix: 'api',
         commands: __DIR__.'/../routes/console.php',
-        channels: __DIR__.'/../routes/channels.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
@@ -47,6 +46,13 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectGuestsTo(function ($request) {
             if ($request->expectsJson() || str_starts_with($request->path(), 'api/')) {
                 return null;
+            }
+
+            // The investigation form intake is SSO-only: guests go straight to
+            // Microsoft and come back to the exact link (Redirector::guest()
+            // stores url.intended for us). Everything else keeps the login page.
+            if ($request->routeIs('investigation-form.intake')) {
+                return route('microsoft.redirect');
             }
 
             return route('filament.admin.auth.login');

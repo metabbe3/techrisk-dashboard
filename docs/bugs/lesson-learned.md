@@ -1160,6 +1160,8 @@ Console on https://techrisk.paas.dana.id: `WebSocket connection to 'wss://localh
 - [x] `.env.example` documents the production `VITE_REVERB_*` values
 - [ ] (optional future) stop committing `public/build`; build in the server deploy step instead
 
+**Superseded 2026-11-20:** Reverb + Laravel Echo + pusher-js were removed entirely (owner decision). No `VITE_REVERB_*` is baked into any bundle, no WS connection is attempted anywhere, and the War Room runs on its built-in 15s HTTP poll (`public/js/war-room/session.js`). This entry's fix (origin-guarding Echo) and the "enable realtime later" path are both moot.
+
 ---
 
 ### [BUG-021] - strict_types + MySQL DECIMAL aggregates: string into number_format/round killed dashboard & incidents pages in prod

@@ -245,10 +245,34 @@ class Incident extends Model implements Auditable
      * Restrict to the viewing user's allowed years (UserAuditLogSetting).
      * Shared by Incident and Issue resources so year-based access control
      * cannot drift between the two classification views.
+     *
+     * Restricted SSO role (owner 2026-11-20): team-viewers see only incidents
+     * where they are a PIC or the incident's responsible_team JSON contains
+     * one of their mapped teams (User::teams()). The team/PIC match IS the
+     * grant — the branch RETURNS, skipping the year filter entirely. ONE
+     * home: every caller of this scope (Incidents table/board/global search,
+     * Issue + Action Improvement resources, Reporting, stats footer, API
+     * stats) scopes at once.
      */
     public function scopeApplyUserYearAccess($query, ?\App\Models\User $user): void
     {
         if (! $user || $user->hasRole('admin')) {
+            return;
+        }
+
+        if ($user->isTeamViewer()) {
+            $query->where(function ($w) use ($user) {
+                $w->whereHas('pics', fn ($p) => $p->where('users.id', $user->id));
+                foreach ($user->teams()->pluck('name')->all() as $teamName) {
+                    $w->orWhereJsonContains('responsible_team', $teamName);
+                }
+                // Re-assignment (owner 2026-11-20): a team-viewer assigned to
+                // an action improvement sees that incident even without a
+                // PIC/team match — ONE grant here, so the list, record gate,
+                // Action Improvements page and proofAllowed all follow.
+                $w->orWhereHas('actionImprovements', fn ($a) => $a->whereJsonContains('pic_email', $user->email));
+            });
+
             return;
         }
 

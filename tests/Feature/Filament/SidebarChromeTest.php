@@ -64,9 +64,10 @@ class SidebarChromeTest extends TestCase
 
         $html = $response->getContent();
 
-        // Search row (palette trigger) stays in the sidebar.
-        $this->assertStringContainsString('toggle-spotlight', $html);
-        $this->assertStringContainsString('sidebar-search-row', $html);
+        // Command palette deleted (owner 2026-11-20): no trigger row, no
+        // spotlight component anywhere on the page.
+        $this->assertStringNotContainsString('toggle-spotlight', $html);
+        $this->assertStringNotContainsString('LivewireUISpotlight', $html);
 
         // Topbar bell: Filament's default DatabaseNotifications component
         // mounts in the topbar (Filament's own topbar/index.blade.php renders
@@ -92,8 +93,9 @@ class SidebarChromeTest extends TestCase
         $this->assertStringNotContainsString('sidebar-notification-bell', $html);
         $this->assertStringNotContainsString('sidebar-account-trigger', $html);
 
-        // Command palette mounted (plugin renders it at panels::scripts.after).
-        $this->assertStringContainsString('LivewireUISpotlight', $html);
+        // Notifications modal mounted at body level — the modal id must be on
+        // the page for the bell's open-modal dispatch to open anything.
+        $this->assertStringContainsString('data-fi-modal-id="database-notifications"', $html);
 
         // The incident is navigable — record search has something to find.
         $this->assertStringContainsString(e($incident->no), $html);

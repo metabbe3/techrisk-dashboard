@@ -2,36 +2,8 @@
 
 return [
 
-    /*
-    |--------------------------------------------------------------------------
-    | Broadcasting
-    |--------------------------------------------------------------------------
-    |
-    | By uncommenting the Laravel Echo configuration, you may connect Filament
-    | to any Pusher-compatible websockets server.
-    |
-    | This will allow your users to receive real-time notifications.
-    |
-    */
-
-    // NOTE: Broadcasting is disabled. Filament will use polling for notifications instead.
-    // 'broadcasting' => [
-    //
-    //     'echo' => [
-    //         'broadcaster' => 'reverb',
-    //         'key' => env('VITE_REVERB_APP_KEY'),
-    //         'cluster' => null,
-    //         'wsHost' => env('VITE_REVERB_HOST', '127.0.0.1'),
-    //         'wsPort' => env('VITE_REVERB_PORT', 8081),
-    //         'wssPort' => env('VITE_REVERB_PORT', 8081),
-    //         'authEndpoint' => '/broadcasting/auth',
-    //         'disableStats' => true,
-    //         'encrypted' => false,
-    //         'forceTLS' => false,
-    //         'enabledTransports' => ['ws', 'wss'],
-    //     ],
-    //
-    // ],
+    // NOTE: Broadcasting is disabled (Reverb removed 2026-11-20). Filament polls
+    // for notifications instead.
 
     /*
     |--------------------------------------------------------------------------

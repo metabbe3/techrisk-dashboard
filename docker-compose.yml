@@ -129,28 +129,6 @@ services:
       - techrisk-network
     entrypoint: ["/bin/sh", "-c", "mkdir -p /var/www/html/storage/app/temp && chmod 755 /var/www/html/storage/app/temp && exec docker-php-entrypoint php artisan schedule:work"]
 
-  # Reverb WebSocket Service
-  reverb:
-    build:
-      context: .
-      dockerfile: Dockerfile.php
-    container_name: techrisk-reverb
-    restart: unless-stopped
-    command: php artisan reverb:start --host=0.0.0.0 --port=8080
-    volumes:
-      - ./:/var/www/html
-      - ./storage/app:/var/www/html/storage/app
-      - ./storage/framework:/var/www/html/storage/framework
-      - ./storage/logs:/var/www/html/storage/logs
-    depends_on:
-      - app
-    env_file:
-      - .env
-    ports:
-      - "${REVERB_HOST_PORT:-8081}:8080"
-    networks:
-      - techrisk-network
-
   # Database Backup Service (daily mysqldump at 2 AM, 7-day retention)
   backup:
     build:

@@ -28,7 +28,6 @@ class ActionImprovementTbdTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['broadcasting.default' => 'log']);
     }
 
     private function manager(): User

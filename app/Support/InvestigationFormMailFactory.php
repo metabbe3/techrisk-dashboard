@@ -12,8 +12,9 @@ use App\Services\InvestigationForm\InvestigationFormSettings;
 /**
  * Builds the intake emails (request + reminder) from the editable templates.
  * One place so the admin action and the reminder command stay in sync.
- * The plain token is never stored — it is passed in by whoever just rotated
- * it and consumed only by this mail (plus the admin's one-time copy link).
+ * The plain token is never stored — callers pass in the derived token
+ * (InvestigationFormRecipient::linkToken(), never rotated) and it is
+ * consumed only by this mail (plus the admin's one-time copy link).
  */
 class InvestigationFormMailFactory
 {

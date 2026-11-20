@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace App\Console\Commands;
 
-use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
 use App\Services\InvestigationForm\InvestigationFormSettings;
 use App\Support\InvestigationFormMailFactory;
@@ -13,24 +12,23 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
 
 /**
- * Daily auto-reminder for pending investigation form requests. Each send
- * ROTATES the recipient's token (plain tokens are never stored) and emails
- * the fresh link — the previous link stops working. One bad address never
- * blocks the rest.
+ * Daily auto-reminder for pending investigation form requests. Tokens are
+ * derived (linkToken()) and never rotated — every send emails the SAME
+ * evergreen link. One bad address never blocks the rest.
  */
 class SendInvestigationFormReminders extends Command
 {
     protected $signature = 'investigation-forms:send-reminders';
 
-    protected $description = 'Send due reminders for pending investigation form requests (rotates each recipient link)';
+    protected $description = 'Send due reminders for pending investigation form requests (same evergreen link, no rotation)';
 
     public function handle(): int
     {
-        // Email kill-switch: every send rotates the token, so a suppressed
-        // email would KILL the recipient's working link without a new one
-        // arriving. Skip the whole lane, token untouched.
+        // Email kill-switch: the lane cannot deliver, so no reminders go out.
+        // (Tokens are derived and never rotated — skipping no longer risks
+        // orphaning a link; the early return keeps OFF cheap and explicit.)
         if (! MailSettings::enabled()) {
-            $this->info('Email suppressed (netcore_enabled=false) — links left untouched.');
+            $this->info('Email suppressed (netcore_enabled=false) — no reminders sent.');
 
             return self::SUCCESS;
         }
@@ -67,9 +65,8 @@ class SendInvestigationFormReminders extends Command
                     continue;
                 }
 
-                $plain = InvestigationFormRecipient::newToken();
+                $plain = $recipient->linkToken();
                 $recipient->update([
-                    'token_hash' => InvestigationFormRecipient::hashToken($plain),
                     'last_reminded_at' => $now,
                     'reminder_count' => $recipient->reminder_count + 1,
                 ]);

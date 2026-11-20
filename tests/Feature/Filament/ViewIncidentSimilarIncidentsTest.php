@@ -154,7 +154,6 @@ class ViewIncidentSimilarIncidentsTest extends TestCase
     {
         // Final-review fix: TextEntry::make('pic.name') silently rendered
         // blank after the multi-PIC cutover (relation gone, data_get null).
-        config(['broadcasting.default' => 'log']); // attach notifies admins → broadcast
         $source = $this->makeIncident();
         $pic1 = \App\Models\User::factory()->create(['name' => 'Rina Wijaya']);
         $pic2 = \App\Models\User::factory()->create(['name' => 'Budi Hartono']);

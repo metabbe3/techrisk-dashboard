@@ -13,7 +13,6 @@
         "iamgerwin/php-pdf-to-markdown-parser": "^0.0.1",
         "laravel/framework": "^12.0",
         "laravel/mcp": "^1.1",
-        "laravel/reverb": "^1.7",
         "laravel/sanctum": "^4.2",
         "laravel/socialite": "^5.31",
         "laravel/tinker": "^2.10.1",

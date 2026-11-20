@@ -15,7 +15,8 @@ use Tests\TestCase;
 
 /**
  * investigation-forms:send-reminders — interval + final-reminder due rules,
- * the excluded states, token rotation per reminder and the off switch.
+ * the excluded states, the evergreen link (tokens are derived, never
+ * rotated) and the off switch.
  */
 class InvestigationFormReminderTest extends TestCase
 {
@@ -31,19 +32,19 @@ class InvestigationFormReminderTest extends TestCase
             'expires_at' => $overrides['expires_at'] ?? now()->addDays(14),
             'created_by' => User::factory()->create()->id,
         ]);
-        $plain = InvestigationFormRecipient::newToken();
         $recipient = $request->recipients()->create([
             'email' => 'a@x.com',
-            'token_hash' => InvestigationFormRecipient::hashToken($plain),
+            'token_hash' => '',
             'emailed_at' => $overrides['emailed_at'] ?? now()->subDays(8),
             'last_reminded_at' => $overrides['last_reminded_at'] ?? null,
             'revoked_at' => $overrides['revoked_at'] ?? null,
         ]);
+        $plain = $recipient->linkToken();
 
         return [$request, $recipient, $plain];
     }
 
-    public function test_reminder_fires_after_interval_and_rotates_the_token(): void
+    public function test_reminder_fires_after_interval_and_never_rotates_the_link(): void
     {
         [, $recipient, $plain] = $this->makeRequest();
         Mail::fake();
@@ -53,11 +54,11 @@ class InvestigationFormReminderTest extends TestCase
         Mail::assertQueued(\App\Mail\InvestigationFormRequestMail::class, 1);
 
         $recipient->refresh();
-        $this->assertNotSame(InvestigationFormRecipient::hashToken($plain), $recipient->token_hash, 'reminder must rotate the token');
+        $this->assertSame(InvestigationFormRecipient::hashToken($plain), $recipient->token_hash, 'reminders must NOT rotate — the link stays evergreen');
         $this->assertNotNull($recipient->last_reminded_at);
         $this->assertSame(1, $recipient->reminder_count);
 
-        // The rotated link works; the old one is dead.
+        // The same link still works after the reminder.
         $this->assertTrue($recipient->linkIsValid());
     }
 

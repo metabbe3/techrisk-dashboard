@@ -430,8 +430,6 @@ class WarRoomServiceTest extends TestCase
         $session->refresh();
         $this->assertSame('failed', $session->status);
         $this->assertStringContainsString('All agents failed', $session->error_message);
-
-        Event::assertDispatched(\App\Events\WarRoomSessionCompleted::class);
     }
 
     // -----------------------------------------------------------------------
