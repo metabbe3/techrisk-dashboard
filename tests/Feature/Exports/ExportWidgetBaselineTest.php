@@ -131,6 +131,7 @@ class ExportWidgetBaselineTest extends TestCase
             'All Cases' => 2,
             'Completed Cases' => 2,
             'Recovered Cases' => 1,        // B (recovered_fund > 0)
+            'Recovered This Year' => 0,    // current-year only — fixtures live in 2033
             'P4 Incidents' => 0,
             'Non-Tech Incidents' => 0,
             'Fund Loss' => 2,              // A + C (Confirmed loss)
