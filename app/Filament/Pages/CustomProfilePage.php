@@ -14,6 +14,23 @@ use Illuminate\Validation\Rules\Password;
 
 class CustomProfilePage extends BaseEditProfile
 {
+    // Owner 2026-11-20: the page's working function is the password change —
+    // the bare "Profile" title never said so.
+    public function getTitle(): string
+    {
+        return __('Change Password');
+    }
+
+    public function getHeading(): string
+    {
+        return __('Change Password');
+    }
+
+    public function getSubheading(): ?string
+    {
+        return __('Update your display name or change your password.');
+    }
+
     public function form(Form $form): Form
     {
         return $form

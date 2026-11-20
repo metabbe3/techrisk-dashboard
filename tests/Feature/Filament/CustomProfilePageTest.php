@@ -123,6 +123,22 @@ class CustomProfilePageTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
+    public function test_page_title_and_heading_say_change_password(): void
+    {
+        // Owner 2026-11-20: the page's working function is the password
+        // change — a bare "Profile" title never said so.
+        $user = User::factory()->create();
+
+        $page = app(CustomProfilePage::class);
+        $this->assertSame('Change Password', $page->getTitle());
+        $this->assertSame('Change Password', $page->getHeading());
+
+        Livewire::actingAs($user)
+            ->test(CustomProfilePage::class)
+            ->assertSee('Change Password')
+            ->assertSee('Update your display name or change your password.');
+    }
+
     public function test_name_only_save_does_not_touch_password(): void
     {
         $user = User::factory()->create();

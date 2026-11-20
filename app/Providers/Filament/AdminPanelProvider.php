@@ -150,12 +150,13 @@ class AdminPanelProvider extends PanelProvider
             // in the TOPBAR, so main's SIDEBAR_FOOTER + notifications-modal
             // hooks are still NOT carried here.
             ->renderHook(
-                // Cluster tab strips wrap instead of scrolling when the window is
-                // narrow (owner: 9 AI tabs "overload" on overflow). Higher
-                // specificity beats Filament's own .fi-tabs rule at any order.
+                // Tab strips WRAP instead of scrolling (owner 2026-11-20: the
+                // incident record pages' strips "masih ada scrollnya, harusnya
+                // tidak ada" — same call as the cluster tabs above). Covers the
+                // relation-manager strip and the form's own tab strip.
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(
-                    '<style>.fi-page-sub-navigation-tabs.fi-tabs{flex-wrap:wrap}</style>'
+                    '<style>.fi-page-sub-navigation-tabs.fi-tabs,.fi-resource-relation-managers>.fi-tabs,.fi-fo-tabs>.fi-tabs{flex-wrap:wrap}</style>'
                 ),
             )
             ->renderHook(
@@ -221,16 +222,23 @@ class AdminPanelProvider extends PanelProvider
             )
             // Owner 2026-11-18 (RISE reference): the account control shows
             // the user's NAME beside the avatar — owner 2026-11-19: the name
-            // sits to the RIGHT of the avatar (USER_MENU_AFTER). Clicking the
-            // name opens the same menu (it clicks the dropdown's trigger
-            // button, the dropdown wrapper's PREVIOUS sibling). Hidden on
-            // <768px: the mobile topbar is cramped.
+            // sits to the RIGHT of the avatar (USER_MENU_AFTER). Owner
+            // 2026-11-20: avatar + name are ONE control — the name is moved
+            // INTO the dropdown trigger wrapper below, so the menu panel
+            // (placement bottom-end) right-aligns to the name's edge instead
+            // of hanging off the avatar only. Hidden on <768px: the mobile
+            // topbar is cramped. The topbar is outside every Livewire root,
+            // so the one-time move survives morphs.
             ->renderHook(
                 PanelsRenderHook::USER_MENU_AFTER,
                 fn (): string => auth()->check()
-                    ? '<span class="fi-tr-user-name" x-data x-on:click="$el.previousElementSibling?.querySelector(\'button\')?.click()" title="'.e(filament()->getUserName(auth()->user())).'">'
+                    ? '<span class="fi-tr-user-name" title="'.e(filament()->getUserName(auth()->user())).'">'
                         .e(filament()->getUserName(auth()->user()))
                         .'</span>'
+                    .'<script>if (! window.__trUserNameInTrigger) { window.__trUserNameInTrigger = true;'
+                    .' var trName = document.querySelector(\'.fi-topbar .fi-tr-user-name\');'
+                    .' var trTrigger = document.querySelector(\'.fi-topbar .fi-user-menu .fi-dropdown-trigger\');'
+                    .' if (trName && trTrigger) trTrigger.appendChild(trName); }</script>'
                     : '',
             )
             // Owner 2026-11-17 (DANA HR reference): one control button, three

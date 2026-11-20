@@ -108,9 +108,13 @@ class TopbarWidgetsTest extends TestCase
             $css,
             'the desktop topbar hide rule must be gone — the owner wants the topbar back',
         );
+        // 2026-11-20: narrowed from a bare '.fi-topbar .fi-user-menu' substring
+        // ban — the owner's avatar+name-as-one-control work now legitimately
+        // STYLES that trigger (hover/open highlight), so the assertion pins the
+        // hide declaration itself, not any mention of the selector.
         $this->assertStringNotContainsString(
-            '.fi-topbar .fi-user-menu',
-            $css,
+            '.fi-user-menu{display:none',
+            str_replace(' ', '', $css),
             'the topbar user menu must not be hidden — the name-beside-avatar control lives there',
         );
         $this->assertStringContainsString(
