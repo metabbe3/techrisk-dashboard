@@ -94,7 +94,8 @@ class SidebarBehaviorTest extends TestCase
      * with its rounded hover fill visible, the button box (starting at
      * 15rem - 2.75rem = 196px) cut into "TechRisk Portal" (ends ≈198.6px
      * at 15rem: 0.75rem logo inset + 32px logo + 0.625rem gap + ~145px
-     * nowrap text). The button must start CLEAR of the text tail.
+     * nowrap text). The button must start CLEAR of the text tail — now at
+     * the round-3 sidebar width 16.5rem (owner: widen so nothing truncates).
      * Source-CSS contract (the pattern is SectionHeaderCornerRadiusTest).
      */
     public function test_the_temp_open_pin_button_sits_clear_of_the_brand_text(): void
@@ -102,44 +103,68 @@ class SidebarBehaviorTest extends TestCase
         $css = (string) file_get_contents(base_path('resources/css/app.css'));
 
         $this->assertStringContainsString(
-            'left: calc(15rem - 2.375rem);',
+            'left: calc(16.5rem - 2.375rem);',
             $css,
-            'the pin button must start at 202px — 196px overlaps the ≈198.6px text tail',
+            'the pin button must start clear of the ≈198.6px text tail at the 16.5rem width',
         );
         $this->assertStringNotContainsString(
-            'left: calc(15rem - 2.75rem);',
+            'left: calc(15rem - 2.375rem);',
             $css,
-            'the old 196px offset must be gone',
+            'the 15rem-era offset must be gone',
         );
     }
 
     /**
      * Owner 2026-11-19: "font di side bar bisa lebih besar" restored the
-     * pre-main sizes (label 1rem/1.4rem, icons 1.2rem, group 0.78rem) from
-     * the redesign's (0.8rem/1.1rem, 0.875rem, 0.65rem) — then "ubah size
-     * menjadi di tengah-tengah kedua value": split the difference on every
-     * raised value. Label 0.9rem/1.25rem, icons 1.04rem (midpoint 1.0375,
-     * rounded 2dp), group label 0.715rem.
+     * pre-main sizes, "ubah size menjadi di tengah-tengah" midpointed them
+     * (label 0.9rem/1.25rem, icons 1.04rem, group 0.715rem), then "perbesar
+     * sedikit lagi, yang sekarang 0.9rem jadi 0.95rem, dan sesuaikan yang
+     * lainnya": the label goes to 0.95rem (line-height scaled to 1.3rem) and
+     * the sibling sidebar type scales with it — icons 1.04 → 1.1rem, group
+     * label 0.715 → 0.75rem. AND the open sidebar widens 15rem → 16.5rem so
+     * nothing ellipsizes at the bigger label — the pin button (fixed over
+     * the header's right edge, offset tied to the width) and the
+     * temp-expand overlay follow the same constant.
      * Source-CSS contract (the pattern is SectionHeaderCornerRadiusTest).
      */
-    public function test_sidebar_nav_typography_sits_between_the_old_and_pre_main_sizes(): void
+    public function test_sidebar_nav_typography_and_width(): void
     {
         $css = (string) file_get_contents(base_path('resources/css/app.css'));
 
         $this->assertStringContainsString(
-            ".fi-sidebar-item-label {\n    font-size: 0.9rem !important;\n    line-height: 1.25rem !important;",
+            ".fi-sidebar-item-label {\n    font-size: 0.95rem !important;\n    line-height: 1.3rem !important;",
             $css,
-            'nav item labels: midpoint of 0.8/1rem = 0.9rem (line-height 1.1/1.4 = 1.25rem)',
+            'nav item labels: owner bump 0.9 → 0.95rem (line-height scaled 1.25 → 1.3rem)',
         );
         $this->assertStringContainsString(
-            ".fi-sidebar-item .fi-icon,\n.fi-sidebar-item-icon {\n    width: 1.04rem !important;\n    height: 1.04rem !important;",
+            ".fi-sidebar-item .fi-icon,\n.fi-sidebar-item-icon {\n    width: 1.1rem !important;\n    height: 1.1rem !important;",
             $css,
-            'nav icons: midpoint of 0.875/1.2rem = 1.0375 ≈ 1.04rem',
+            'nav icons scale with the label: 1.04 → 1.1rem',
         );
         $this->assertStringContainsString(
-            ".fi-sidebar-group-label {\n    font-size: 0.715rem !important;",
+            ".fi-sidebar-group-label {\n    font-size: 0.75rem !important;",
             $css,
-            'group section markers: midpoint of 0.65/0.78rem = 0.715rem',
+            'group section markers scale with the label: 0.715 → 0.75rem',
+        );
+
+        // Width: open sidebar 15rem → 16.5rem (264px) so the bigger labels
+        // never ellipsize; every 15rem-dependent constant moves together.
+        $this->assertStringContainsString(
+            ".fi-sidebar.fi-sidebar-open {\n    width: 16.5rem !important;\n}",
+            $css,
+            'open sidebar width: 16.5rem, wider than the old 15rem',
+        );
+        $this->assertStringNotContainsString('width: 15rem !important;', $css, 'the old 15rem open width must be gone');
+        $this->assertStringContainsString(
+            'left: calc(16.5rem - 2.375rem);',
+            $css,
+            'the pin button offset follows the new width — must start clear of the brand text tail',
+        );
+        $this->assertStringNotContainsString('left: calc(15rem - 2.375rem);', $css, 'the old pin offset must be gone');
+        $this->assertStringContainsString(
+            'margin-inline-end: calc(4.5rem - 16.5rem);',
+            $css,
+            'the temp-expand overlay margin follows the new width (page content never moves)',
         );
     }
 
