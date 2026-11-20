@@ -3663,7 +3663,15 @@ tr.fi-ta-row.sub-incident-row {
 }
 .fi-tr-burger:hover { background: rgba(255, 255, 255, 0.14); }
 .fi-tr-brand-logo { align-items: center; }
-.fi-tr-brand-logo img { height: 1.5rem; width: auto; border-radius: 0.25rem; }
+/* The DANA logo is BLUE — on the DANA-blue topbar (light mode) it vanished.
+   A white chip behind it keeps it readable on both themes. */
+.fi-tr-brand-logo img {
+    height: 1.5rem;
+    width: auto;
+    padding: 0.125rem;
+    border-radius: 0.375rem;
+    background: #fff;
+}
 
 body:has(.tr-profile-land) .fi-tr-burger,
 body:has(.tr-profile-land) .fi-tr-brand-logo { display: inline-flex; }
@@ -3678,9 +3686,16 @@ body:has(.tr-profile-land) .fi-sidebar:not(.fi-sidebar-open) {
     margin-inline-end: 0 !important;
     box-shadow: none !important;
 }
-/* Filament's close-overlay backdrop ships lg:hidden — force it on desktop:
-   it stays x-show-gated on $store.sidebar.isOpen, so it only paints when open. */
-body:has(.tr-profile-land) .fi-sidebar-close-overlay { display: block !important; }
+/* Filament's close-overlay backdrop ships lg:hidden — force it visible on
+   desktop ONLY while the overlay sidebar is actually open. ⚠ A bare
+   `display: block !important` beats x-show's inline display:none too — it
+   dimmed every profile page 50% (owner's "mengapa page profile seperti
+   ini"); gate on the sidebar's own open class instead. */
+/* (The overlay renders BEFORE the <aside> in the layout, so :has() on the
+   layout — not a sibling combinator — is what reaches it.) */
+body:has(.tr-profile-land) .fi-layout:has(.fi-sidebar.fi-sidebar-open) .fi-sidebar-close-overlay {
+    display: block !important;
+}
 /* The rail/header chevrons are dead in profile-land — the ✕ owns the corner. */
 body:has(.tr-profile-land) .fi-sidebar-header .fi-icon-btn { display: none !important; }
 
