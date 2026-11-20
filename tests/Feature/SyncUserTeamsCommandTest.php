@@ -11,10 +11,11 @@ use Illuminate\Support\Facades\Cache;
 use Tests\TestCase;
 
 /**
- * users:sync-teams (team-viewer role, owner 2026-11-20): maps users.department
- * → responsible-team categories via config/team-map.php (exact match), full
- * replace per user, skips teams_manual users (--force re-maps), and REPORTS
- * every unmapped non-empty department — HR renames are never silently dropped.
+ * users:sync-teams (team-viewer role, owner 2026-11-20): DEFAULT mode — the
+ * raw department string IS the team ("i want to put all of it not grouped"):
+ * every distinct department becomes its own responsible_team category, 1:1,
+ * full replace per user. --use-map switches to the unified config grouping.
+ * Manual mapping (teams_manual) is skipped unless --force.
  */
 class SyncUserTeamsCommandTest extends TestCase
 {
@@ -30,17 +31,27 @@ class SyncUserTeamsCommandTest extends TestCase
         ]]);
     }
 
-    public function test_maps_departments_onto_teams_and_creates_missing_categories(): void
+    public function test_department_mode_maps_each_department_to_its_own_team(): void
     {
         $sec = User::factory()->create(['department' => 'Security']);
         $data = User::factory()->create(['department' => 'Data']);
 
         $this->artisan('users:sync-teams')->assertSuccessful();
 
-        $this->assertSame(['IT Sec'], $sec->fresh()->teams()->pluck('name')->all());
+        $this->assertSame(['Security'], $sec->fresh()->teams()->pluck('name')->all(),
+            'Default mode: the department string IS the team — no folding');
         $this->assertSame(['Data'], $data->fresh()->teams()->pluck('name')->all());
-        $this->assertNotNull(Category::where('type', 'responsible_team')->where('name', 'IT Sec')->first(),
-            'Missing team categories are auto-created');
+        $this->assertNotNull(Category::where('type', 'responsible_team')->where('name', 'Security')->first(),
+            'Every distinct department becomes a category');
+    }
+
+    public function test_map_mode_folds_departments_via_config(): void
+    {
+        $sec = User::factory()->create(['department' => 'Security']);
+
+        $this->artisan('users:sync-teams', ['--use-map' => true])->assertSuccessful();
+
+        $this->assertSame(['IT Sec'], $sec->fresh()->teams()->pluck('name')->all());
     }
 
     public function test_dry_run_writes_nothing(): void
@@ -53,11 +64,11 @@ class SyncUserTeamsCommandTest extends TestCase
         $this->assertSame(0, User::first()->teams()->count());
     }
 
-    public function test_unmapped_departments_are_reported_not_guessed(): void
+    public function test_map_mode_reports_unmapped_departments_not_guesses(): void
     {
         User::factory()->create(['department' => 'Mystery Department']);
 
-        $this->artisan('users:sync-teams')
+        $this->artisan('users:sync-teams', ['--use-map' => true])
             ->expectsOutputToContain('Mystery Department')
             ->assertSuccessful();
 
@@ -79,7 +90,7 @@ class SyncUserTeamsCommandTest extends TestCase
     {
         $user = User::factory()->create(['department' => 'Security']);
         $this->artisan('users:sync-teams')->assertSuccessful();
-        $this->assertSame(['IT Sec'], $user->fresh()->teams()->pluck('name')->all());
+        $this->assertSame(['Security'], $user->fresh()->teams()->pluck('name')->all());
 
         $user->update(['department' => 'Data']);
         $this->artisan('users:sync-teams')->assertSuccessful();
@@ -96,7 +107,7 @@ class SyncUserTeamsCommandTest extends TestCase
         $this->assertSame([], $user->fresh()->teams()->pluck('name')->all(), 'Manual mapping is skipped');
 
         $this->artisan('users:sync-teams', ['--force' => true])->assertSuccessful();
-        $this->assertSame(['IT Sec'], $user->fresh()->teams()->pluck('name')->all(), '--force re-maps');
+        $this->assertSame(['Security'], $user->fresh()->teams()->pluck('name')->all(), '--force re-maps');
     }
 
     public function test_options_cache_is_flushed_after_new_categories(): void
