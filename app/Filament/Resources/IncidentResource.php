@@ -11,6 +11,7 @@ use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
+use App\Filament\Actions\FinancialImpactFormSchema;
 use App\Filament\Actions\SubIncidentLinkAction;
 use App\Filament\Forms\Components\AiTextarea;
 use App\Filament\Resources\IncidentResource\Pages;
@@ -332,9 +333,10 @@ class IncidentResource extends Resource
                                 ->icon('heroicon-o-currency-dollar')
                                 ->schema([
                                     Select::make('fund_status')->options(FundStatus::options()),
-                                    TextInput::make('potential_fund_loss')->numeric()->minValue(0)->prefix('Rp')->default(0),
-                                    TextInput::make('recovered_fund')->numeric()->minValue(0)->prefix('Rp')->default(0)->required(),
-                                    TextInput::make('fund_loss')->numeric()->minValue(0)->prefix('Rp')->default(0)->required(),
+                                    // Money fields (format/parse = id-ID, see
+                                    // FinancialImpactFormSchema) live in the
+                                    // shared schema class.
+                                    ...FinancialImpactFormSchema::fields(),
                                     TextInput::make('loss_taken_by')->label('Loss Taken By'),
                                 ])->columns(['default' => 1, 'sm' => 2, 'xl' => 5]),
                         ]),

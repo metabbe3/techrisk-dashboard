@@ -31,8 +31,9 @@ class TopbarWidgetsTest extends TestCase
             ->assertSeeHtml('fi-tr-date-btn', false)
             ->assertSeeHtml($today, false);
 
-        // The calendar panel: weekday headers run Monday → Sunday, and the
-        // weekend columns (Sat, Sun) are marked red.
+        // The calendar panel: weekday headers run Monday → Sunday. Owner
+        // 2026-11-20: only SUNDAY is the red weekend column (Sat is a working
+        // day here), and out-of-month Sundays fade with the dim dates.
         preg_match('/fi-tr-cal-weekdays.*?<\/div>/s', (string) $response->getContent(), $m);
         $this->assertNotEmpty($m, 'the calendar weekday strip must render');
         preg_match_all('/<span(?:\s+class="([^"]*)")?>([^<]*)<\/span>/', $m[0], $spans, PREG_SET_ORDER);
@@ -44,12 +45,20 @@ class TopbarWidgetsTest extends TestCase
         );
         foreach ($headers as $header) {
             $this->assertSame(
-                in_array($header['day'], ['Sat', 'Sun'], true),
+                $header['day'] === 'Sun',
                 str_contains($header['class'], 'weekend'),
-                "the {$header['day']} header must ".(in_array($header['day'], ['Sat', 'Sun'], true) ? '' : 'not ').'be marked weekend',
+                "the {$header['day']} header must ".($header['day'] === 'Sun' ? '' : 'not ').'be marked weekend',
             );
         }
-        $this->assertStringContainsString('weekend\': cell.weekend', (string) $response->getContent(), 'day cells must carry the weekend flag');
+        $page = (string) $response->getContent();
+        $this->assertStringContainsString('weekend\': cell.weekend', $page, 'day cells must carry the weekend flag');
+        $this->assertStringContainsString('weekend: d.getDay() === 0', $page, 'weekend = SUNDAY only (getDay 0) — not Saturday');
+        $this->assertStringNotContainsString('d.getDay() === 6', $page, 'Saturday must not be counted as weekend');
+
+        // Out-of-month (dim) Sundays: red fades to match how the dim weekdays
+        // fade — CSS contract in app.css.
+        $css = (string) file_get_contents(base_path('resources/css/app.css'));
+        $this->assertStringContainsString('.fi-tr-cal-days .dim.weekend { color: #fca5a5;', $css, 'dim Sundays fade red like the dim weekdays fade gray');
     }
 
     /**
