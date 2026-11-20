@@ -690,6 +690,17 @@ class IncidentResource extends Resource
                     ->label('Type')
                     ->options(IncidentType::options())
                     ->multiple(),
+                SelectFilter::make('pic')
+                    ->label('PIC')
+                    ->multiple()
+                    ->searchable()
+                    ->options(fn () => \App\Models\User::orderBy('name')->pluck('name', 'id')->toArray())
+                    ->query(fn (Builder $query, array $data) => filled($data['values'] ?? null)
+                        ? $query->whereHas('pics', fn (Builder $q) => $q->whereIn('users.id', $data['values']))
+                        : $query),
+                SelectFilter::make('fund_status')
+                    ->label('Fund Status')
+                    ->options(FundStatus::filterOptions()),
                 SelectFilter::make('classification')
                     ->label('Classification')
                     ->options(IncidentClassification::options())
@@ -706,10 +717,6 @@ class IncidentResource extends Resource
                 \App\Filament\Filters\QuickPeriodFilter::make(),
                 \App\Filament\Filters\QuickPeriodFilter::dateRange(),
 
-                SelectFilter::make('fund_status')
-                    ->label('Fund Status')
-                    ->options(FundStatus::filterOptions()),
-
                 SelectFilter::make('labels')
                     ->label('Labels')
                     ->multiple()
@@ -721,15 +728,6 @@ class IncidentResource extends Resource
 
                         return $query->whereHas('labels', fn (Builder $q) => $q->whereIn('name', $data['values']));
                     }),
-
-                SelectFilter::make('pic')
-                    ->label('PIC')
-                    ->multiple()
-                    ->searchable()
-                    ->options(fn () => \App\Models\User::orderBy('name')->pluck('name', 'id')->toArray())
-                    ->query(fn (Builder $query, array $data) => filled($data['values'] ?? null)
-                        ? $query->whereHas('pics', fn (Builder $q) => $q->whereIn('users.id', $data['values']))
-                        : $query),
 
                 SelectFilter::make('incident_source')
                     ->label('Source')
