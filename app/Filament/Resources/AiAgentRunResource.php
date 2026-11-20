@@ -24,7 +24,7 @@ class AiAgentRunResource extends Resource
 
     protected static ?string $model = AiAgentRun::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-rectangle-stack';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Agent Runs';
 
@@ -34,7 +34,12 @@ class AiAgentRunResource extends Resource
 
     protected static ?int $navigationSort = 4;
 
-    protected static ?string $navigationGroup = 'AI';
+    protected static ?string $cluster = \App\Filament\Clusters\AiCluster::class;
+
+    // Sub-nav group: renders the 9 AI tabs as 3 compact dropdowns
+    protected static ?string $navigationGroup = 'Agents';
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     public static function canViewAny(): bool
     {

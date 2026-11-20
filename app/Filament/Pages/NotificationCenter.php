@@ -20,11 +20,13 @@ class NotificationCenter extends Page implements HasTable
 
     protected static bool $shouldRegisterNavigation = true;
 
-    protected static ?string $navigationIcon = 'heroicon-o-bell';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'All Notifications';
 
-    protected static ?string $navigationGroup = 'Notifications';
+    protected static ?string $cluster = \App\Filament\Clusters\NotificationsCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     protected static string $view = 'filament.pages.notification-center';
 

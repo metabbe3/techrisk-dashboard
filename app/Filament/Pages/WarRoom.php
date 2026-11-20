@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use Filament\Pages\Page;
@@ -8,13 +9,18 @@ use Illuminate\Support\Facades\Auth;
 
 class WarRoom extends Page
 {
-    protected static ?string $navigationIcon = 'heroicon-o-users';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'AI Retrospective';
 
     protected static ?string $title = 'AI Retrospective';
 
-    protected static ?string $navigationGroup = 'AI';
+    protected static ?string $cluster = \App\Filament\Clusters\AiCluster::class;
+
+    // Sub-nav group: renders the 9 AI tabs as 3 compact dropdowns
+    protected static ?string $navigationGroup = 'Assistants';
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     protected static ?int $navigationSort = 2;
 

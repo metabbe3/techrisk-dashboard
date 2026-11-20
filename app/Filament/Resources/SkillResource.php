@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\SkillResource\Pages;
@@ -15,7 +16,7 @@ class SkillResource extends Resource
 {
     protected static ?string $model = Skill::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-academic-cap';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Skills Library';
 
@@ -23,9 +24,14 @@ class SkillResource extends Resource
 
     protected static ?string $pluralModelLabel = 'Skills Library';
 
-    protected static ?int $navigationSort = 6;
+    protected static ?int $navigationSort = 8;
 
-    protected static ?string $navigationGroup = 'Settings';
+    protected static ?string $cluster = \App\Filament\Clusters\AiCluster::class;
+
+    // Sub-nav group: renders the 9 AI tabs as 3 compact dropdowns
+    protected static ?string $navigationGroup = 'Automation & Tools';
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     public static function canAccess(): bool
     {

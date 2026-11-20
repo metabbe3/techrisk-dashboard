@@ -75,7 +75,7 @@ class NotificationPreferenceTest extends TestCase
         $this->user->assignRole('admin');
 
         $response = $this->actingAs($this->user)
-            ->get('/admin/notification-center');
+            ->get('/admin/notifications/notification-center');
 
         $response->assertSuccessful();
     }
@@ -85,7 +85,7 @@ class NotificationPreferenceTest extends TestCase
         $this->user->assignRole('admin');
 
         $response = $this->actingAs($this->user)
-            ->get('/admin/notification-preferences');
+            ->get('/admin/notifications/notification-preferences');
 
         $response->assertSuccessful();
     }

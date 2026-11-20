@@ -22,11 +22,13 @@ class NotificationPreferenceResource extends Resource
 
     protected static bool $shouldRegisterNavigation = true;
 
-    protected static ?string $navigationIcon = 'heroicon-o-bell-alert';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Notification Settings';
 
-    protected static ?string $navigationGroup = 'Notifications';
+    protected static ?string $cluster = \App\Filament\Clusters\NotificationsCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     protected static ?int $navigationSort = 2;
 

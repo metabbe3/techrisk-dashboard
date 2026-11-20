@@ -7,7 +7,6 @@ namespace App\Providers\Filament;
 use App\Filament\Pages\Auth\Login;
 use App\Filament\Pages\CustomProfilePage;
 use App\Filament\Pages\Dashboard;
-use App\Filament\Pages\WeeklyReport;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
@@ -82,23 +81,18 @@ class AdminPanelProvider extends PanelProvider
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            // Same-meaning pages/resources share one sidebar item via clusters
+            // (AI / Reports / Notifications / Settings / User Management / Logs);
+            // each member renders as a top tab. Operations stays a flat group.
+            ->discoverClusters(in: app_path('Filament/Clusters'), for: 'App\\Filament\\Clusters')
+            // WeeklyReport + AnalyticsPage are NOT listed here: they are
+            // ReportsCluster members, and a second registration here renders
+            // their cluster tabs twice.
             ->pages([
                 Dashboard::class,
-                WeeklyReport::class,
-                \App\Filament\Pages\AnalyticsPage::class,
             ])
-            // PROJ-025: every group starts collapsed except Operations —
-            // Filament seeds localStorage 'collapsedGroups' on first visit
-            // from NavigationGroup::isCollapsed().
             ->navigationGroups([
                 NavigationGroup::make()->label('Operations'),
-                NavigationGroup::make()->label('Reports')->collapsed(),
-                NavigationGroup::make()->label('Notifications')->collapsed(),
-                NavigationGroup::make()->label('User Management')->collapsed(),
-                NavigationGroup::make()->label('Settings')->collapsed(),
-                NavigationGroup::make()->label('AI')->collapsed(),
-                NavigationGroup::make()->label('Logs')->collapsed(),
-                NavigationGroup::make()->label('System')->collapsed(),
             ])
             ->middleware([
                 EncryptCookies::class,

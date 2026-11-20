@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Pages;
 
 use App\Services\WeeklyDataService;
@@ -18,11 +19,13 @@ class WeeklyReport extends Page implements HasForms
 {
     use InteractsWithForms;
 
-    protected static ?string $navigationIcon = 'heroicon-o-calendar';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
     protected static ?string $navigationLabel = 'Weekly Report';
 
-    protected static ?string $navigationGroup = 'Reports';
+    protected static ?string $cluster = \App\Filament\Clusters\ReportsCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     protected static ?int $navigationSort = 2;
 

@@ -24,11 +24,13 @@ class AiUsageLogResource extends Resource
 
     protected static ?string $model = AiUsageLog::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-sparkles';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
-    protected static ?string $navigationGroup = 'Logs';
+    protected static ?string $cluster = \App\Filament\Clusters\LogsCluster::class;
 
-    protected static ?int $navigationSort = 8;
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
+
+    protected static ?int $navigationSort = 1;
 
     protected static ?string $navigationLabel = 'AI Usage Logs';
 

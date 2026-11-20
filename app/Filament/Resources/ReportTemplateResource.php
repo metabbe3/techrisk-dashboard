@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\ReportTemplateResource\Pages;
@@ -20,9 +21,13 @@ class ReportTemplateResource extends Resource
 {
     protected static ?string $model = ReportTemplate::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-bookmark';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
-    protected static ?string $navigationGroup = 'Settings';
+    protected static ?string $cluster = \App\Filament\Clusters\SettingsCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
+
+    protected static ?int $navigationSort = 4;
 
     public static function shouldRegisterNavigation(): bool
     {

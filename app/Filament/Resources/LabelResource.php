@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Filament\Resources;
 
 use App\Filament\Resources\LabelResource\Pages;
@@ -17,9 +18,13 @@ class LabelResource extends Resource
 {
     protected static ?string $model = Label::class;
 
-    protected static ?string $navigationIcon = 'heroicon-o-tag';
+    protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
-    protected static ?string $navigationGroup = 'Settings';
+    protected static ?string $cluster = \App\Filament\Clusters\SettingsCluster::class;
+
+    protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
+
+    protected static ?int $navigationSort = 3;
 
     public static function form(Form $form): Form
     {
