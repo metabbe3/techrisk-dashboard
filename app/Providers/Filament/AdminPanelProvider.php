@@ -107,6 +107,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             ->authMiddleware([
                 Authenticate::class,
+                \App\Http\Middleware\RedirectToPanelHome::class,
             ])
             ->renderHook(
                 PanelsRenderHook::SIDEBAR_NAV_START,

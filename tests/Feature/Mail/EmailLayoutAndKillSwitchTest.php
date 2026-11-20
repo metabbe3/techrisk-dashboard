@@ -38,7 +38,6 @@ class EmailLayoutAndKillSwitchTest extends TestCase
     {
         parent::setUp();
 
-        config(['broadcasting.default' => 'log']);
     }
 
     /** The array-transport mailer — a REAL send records here; suppression does not. */

@@ -30,7 +30,6 @@ class UserDirectoryEscalationTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['broadcasting.default' => 'log']);
     }
 
     public function test_upsert_normalizes_tags_and_creates_login_disabled_users(): void

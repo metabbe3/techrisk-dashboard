@@ -21,9 +21,6 @@ class PicPickerSearchTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // Creating an ActionImprovement notifies PICs — reverb is unresolvable
-        // from host (same as ActionImprovementSearchApiTest).
-        config(['broadcasting.default' => 'log']);
         $this->seed(RolesAndPermissionsSeeder::class);
     }
 

@@ -9,6 +9,7 @@ use App\Notifications\ChannelFilteredNotification;
 use Filament\Models\Contracts\FilamentUser;
 use Filament\Panel;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -60,6 +61,29 @@ class User extends Authenticatable implements Auditable, FilamentUser
     public function canViewDashboardWidgets(): bool
     {
         return $this->can('manage incidents') || $this->can('view dashboard widgets');
+    }
+
+    /**
+     * The user's responsible teams (categories of type 'responsible_team').
+     * Filled by users:sync-teams from users.department (config/team-map.php)
+     * or by hand in User Management (which sets teams_manual, so the next
+     * sync skips them). Feeds the team-viewer incident scope.
+     */
+    public function teams(): BelongsToMany
+    {
+        return $this->belongsToMany(Category::class, 'category_user', 'user_id', 'category_id');
+    }
+
+    /**
+     * Restricted SSO role (owner 2026-11-20): single source — the incident
+     * scope and every navigation gate call THIS, never hasRole('team-viewer')
+     * inline. Restricted ONLY while team-viewer is the user's SOLE role:
+     * granting a normal role (user/admin) restores full visibility ("if i
+     * give them role like manager / user they can see all incident").
+     */
+    public function isTeamViewer(): bool
+    {
+        return $this->roles->count() === 1 && $this->hasRole('team-viewer');
     }
 
     /**
@@ -182,6 +206,8 @@ class User extends Authenticatable implements Auditable, FilamentUser
             \App\Notifications\ActionImprovementEscalated::class => 'action_improvement_escalated',
             \App\Notifications\ActionImprovementsSuggested::class => 'action_improvement_suggested',
             \App\Notifications\ActionImprovementAssigned::class => 'action_improvement_assigned',
+            \App\Notifications\ActionImprovementProofSubmitted::class => 'action_improvement_proof_submitted',
+            \App\Notifications\ActionImprovementProofApproved::class => 'action_improvement_proof_approved',
             \App\Notifications\AdminAnnouncement::class => 'admin_announcement',
             \App\Notifications\IncidentNotDoneReminder::class => 'incident_not_done_reminder',
             \App\Notifications\FundLossUnsettledReminder::class => 'fund_loss_unsettled_reminder',
@@ -216,6 +242,7 @@ class User extends Authenticatable implements Auditable, FilamentUser
         'access_expiry',
         'is_service_account',
         'can_login',
+        'teams_manual',
         'manager_id',
         'job_title',
         'department',
@@ -244,6 +271,7 @@ class User extends Authenticatable implements Auditable, FilamentUser
             'password' => 'hashed',
             'is_service_account' => 'boolean',
             'can_login' => 'boolean',
+            'teams_manual' => 'boolean',
         ];
     }
 

@@ -136,7 +136,10 @@ class ActionImprovementsRelationManager extends RelationManager
                     ->color('info')
                     ->requiresConfirmation()
                     ->modalDescription('Send a reminder email to the assigned PIC email(s) via Netcore.')
-                    ->visible(fn ($record) => $record->isOpenWork())
+                    // Team-viewers never send reminders — they are the
+                    // recipients' side (proof), not the chase side.
+                    ->visible(fn ($record) => $record->isOpenWork()
+                        && ! (bool) auth()->user()?->isTeamViewer())
                     ->action(function ($record) {
                         $recipients = collect($record->pic_email ?? [])
                             ->map(fn ($email) => User::where('email', $email)->first())
@@ -160,6 +163,8 @@ class ActionImprovementsRelationManager extends RelationManager
                             ->send();
                     }),
                 ActionImprovementFormSchema::rewordAction(),
+                ActionImprovementFormSchema::submitProofAction(),
+                ActionImprovementFormSchema::approveProofAction(),
                 // Evidence files live on the global EditActionImprovement
                 // page — Filament 3 cannot nest a relation manager inside
                 // this one, so this jumps straight to its Evidence tab.

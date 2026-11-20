@@ -36,7 +36,6 @@ class ActionImprovementLifecycleTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['broadcasting.default' => 'log']);
         $this->closer = User::factory()->create();
     }
 

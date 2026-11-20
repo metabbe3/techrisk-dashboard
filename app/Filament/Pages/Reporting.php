@@ -42,9 +42,13 @@ class Reporting extends Page implements HasForms
 
     // Hidden from nav but reachable by URL — gates the full report + export
     // to the same permission that guards the incident table itself.
+    // Team-viewers are excluded: the report aggregates org-wide, past the
+    // restricted role's own slice.
     public static function canAccess(): bool
     {
-        return auth()->user()?->can('view incidents') ?? false;
+        $user = auth()->user();
+
+        return $user !== null && $user->can('view incidents') && ! $user->isTeamViewer();
     }
 
     public ?array $data = [];

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Services\WeeklyDataService;
@@ -20,8 +21,10 @@ class WeeklyReportExportController extends Controller
      */
     public function __invoke(Request $request, int $year): StreamedResponse
     {
-        // Check if user can access dashboard
-        if (! Auth::check() || ! Auth::user()->can('access dashboard')) {
+        // Check if user can access dashboard — team-viewers excluded: the
+        // weekly report aggregates org-wide, past the restricted role's own
+        // slice.
+        if (! Auth::check() || ! Auth::user()->can('access dashboard') || Auth::user()->isTeamViewer()) {
             abort(403);
         }
 

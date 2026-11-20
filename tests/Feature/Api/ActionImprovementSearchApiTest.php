@@ -25,8 +25,7 @@ class ActionImprovementSearchApiTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        // PIC-email upserts notify (database + broadcast) — keep broadcast off the network.
-        config(['broadcasting.default' => 'log']);
+        // PIC-email upserts notify the PIC.
     }
 
     private function tokenWith(array $endpoints): string

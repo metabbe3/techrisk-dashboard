@@ -56,16 +56,6 @@ window.WarRoomSession = function(routes, routeFor) {
             if (!this.activeSession) return;
             if (this.activeSession.status !== 'running' && this.activeSession.status !== 'pending') return;
 
-            if (window.Echo) {
-                window.Echo.private('war-room.' + this.activeSession.id)
-                    .listen('.message.updated', (e) => this.onMessageUpdated(e))
-                    .listen('.agent.streaming', (e) => this.onAgentStreaming(e))
-                    .listen('.round.completed', (e) => this.onRoundCompleted(e))
-                    .listen('.session.completed', (e) => this.onSessionCompleted(e))
-                    .listen('.report.streaming', (e) => this.onReportStreaming(e))
-                    .listen('.pre-analysis.completed', (e) => this.onPreAnalysisCompleted(e));
-            }
-
             this.pollInterval = setInterval(() => this.poll(), 15000);
 
             // Request notification permission when watching a running session
@@ -78,9 +68,6 @@ window.WarRoomSession = function(routes, routeFor) {
             if (this.pollInterval) {
                 clearInterval(this.pollInterval);
                 this.pollInterval = null;
-            }
-            if (window.Echo && this.activeSession) {
-                window.Echo.leave('war-room.' + this.activeSession.id);
             }
             clearTimeout(this._reloadTimer);
         },

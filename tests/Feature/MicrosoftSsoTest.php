@@ -12,9 +12,11 @@ use Livewire\Livewire;
 use Tests\TestCase;
 
 /**
- * Microsoft (Entra ID) SSO: JIT-creates role-less users on first login (the
- * canAccessPanel() gate keeps them out until an admin grants a role), while
- * email-matched existing users keep their current access untouched.
+ * Microsoft (Entra ID) SSO: JIT-creates users on first login — ANY tenant
+ * identity may sign in (owner 2026-11-20: role-less sessions get the
+ * restricted team-viewer role and land on their incident slice; the panel
+ * is still denied to can_login=false directory rows). Email-matched existing
+ * users keep their current access untouched.
  */
 class MicrosoftSsoTest extends TestCase
 {
@@ -30,6 +32,9 @@ class MicrosoftSsoTest extends TestCase
             'redirect' => 'http://localhost:8000/auth/microsoft/callback',
             'tenant' => 'test-tenant',
         ]);
+
+        // The JIT path assignRole('team-viewer') — the role must exist.
+        $this->seed(RolesAndPermissionsSeeder::class);
     }
 
     private function mockMicrosoftUser(string $email, string $name = 'New User'): void
@@ -71,22 +76,49 @@ class MicrosoftSsoTest extends TestCase
         );
     }
 
-    public function test_callback_creates_role_less_user_for_new_email(): void
+    public function test_callback_jit_assigns_team_viewer_and_lands_on_the_incidents_list(): void
     {
         $this->mockMicrosoftUser('New.User@Dana.id');
 
+        // Deliberate behavior change (owner 2026-11-20): a fresh SSO identity
+        // gets team-viewer — their incident slice, not the sso-signed-in page.
         $this->get(route('microsoft.callback'))
-            ->assertRedirect(route('filament.admin.auth.login'));
+            ->assertRedirect(route('filament.admin.resources.incidents.index'));
 
         $user = User::where('email', 'new.user@dana.id')->first();
         $this->assertNotNull($user, 'User should be JIT-created with a lowercased email');
         $this->assertNotNull($user->email_verified_at);
-        $this->assertCount(0, $user->roles, 'New SSO user must have no role until an admin grants one');
-        $this->assertGuest();
-        $this->assertEquals(
-            'Your account has been created — an admin must grant you access before you can sign in.',
-            session('microsoft_error')
-        );
+        $this->assertTrue($user->fresh()->hasRole('team-viewer'), 'JIT must assign the restricted role');
+        // Revocation survival is pinned by test_can_login_false_user_... — the
+        // callback itself never writes can_login (it only defaults true on
+        // fresh rows via the column).
+        $this->assertAuthenticatedAs($user);
+    }
+
+    public function test_callback_sends_role_less_user_back_to_the_intended_form_url(): void
+    {
+        $this->mockMicrosoftUser('Peer@Dana.id', 'Forwarded Peer');
+
+        $intended = '/investigation/abc123';
+        session(['url.intended' => $intended]);
+
+        $this->get(route('microsoft.callback'))
+            ->assertRedirect($intended);
+
+        $this->assertAuthenticatedAs(User::where('email', 'peer@dana.id')->first());
+    }
+
+    public function test_callback_sends_panel_user_to_the_intended_url_over_panel_home(): void
+    {
+        $this->seed(RolesAndPermissionsSeeder::class);
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+
+        $this->mockMicrosoftUser($admin->email, 'Admin');
+        session(['url.intended' => '/investigation/abc123']);
+
+        $this->get(route('microsoft.callback'))
+            ->assertRedirect('/investigation/abc123');
     }
 
     public function test_callback_matches_existing_user_by_email_case_insensitively(): void
@@ -105,20 +137,20 @@ class MicrosoftSsoTest extends TestCase
         $this->assertEquals(1, User::count(), 'No duplicate row for a mixed-case email');
     }
 
-    public function test_callback_locks_out_can_login_false_user(): void
+    public function test_can_login_false_user_signs_in_but_never_reaches_the_panel(): void
     {
         $user = User::factory()->create(['email' => 'locked@dana.id', 'can_login' => false]);
 
         $this->mockMicrosoftUser('locked@dana.id');
 
+        // Directory-synced contacts (can_login=false) can now fill a forwarded
+        // investigation form — but the panel gate still denies them (the
+        // JIT team-viewer assignment never fires for them either).
         $this->get(route('microsoft.callback'))
-            ->assertRedirect(route('filament.admin.auth.login'));
+            ->assertRedirect(route('sso-signed-in'));
 
-        $this->assertGuest();
-        $this->assertEquals(
-            'Your account does not have access to the portal. Please contact an admin.',
-            session('microsoft_error')
-        );
+        $this->assertAuthenticatedAs($user->fresh());
+        $this->assertFalse($user->fresh()->canAccessPanel(\Filament\Facades\Filament::getPanel('admin')));
     }
 
     public function test_authenticated_user_cannot_reach_redirect_route(): void

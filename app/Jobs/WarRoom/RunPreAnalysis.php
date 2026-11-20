@@ -3,7 +3,6 @@
 declare(strict_types=1);
 namespace App\Jobs\WarRoom;
 
-use App\Events\WarRoomPreAnalysisCompleted;
 use App\Models\WarRoomSession;
 use App\Services\Ai\Concerns\InteractsWithAiApi;
 use App\Services\WarRoom\WarRoomService;
@@ -78,8 +77,6 @@ class RunPreAnalysis implements ShouldQueue
             if ($tokens > 0) {
                 $session->addTokens($tokens);
             }
-
-            broadcast(new WarRoomPreAnalysisCompleted($session, $preAnalysis));
 
             Log::info('[WarRoom] Pre-analysis completed', [
                 'session_id' => $session->id,

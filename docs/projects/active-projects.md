@@ -45,6 +45,39 @@
 
 ## Active Projects
 
+### [PROJ-028] Remove Reverb entirely (decommission websockets)
+
+**Status:** Done (2026-11-20)
+**Priority:** P3
+
+#### Description
+Owner verdict: Reverb's only live benefit was instant War Room agent-streaming in dev — prod browsers never connected since the BUG-020 origin guard (2026-09-29), so prod ran poll-only while the reverb container broadcast into the void and every notification enqueued a dead `broadcast` channel job (the documented "7 known reverb env errors"). Deleted: `laravel/reverb`, the docker service, Echo + pusher-js, the 6 WarRoom broadcast events and their `broadcast()` calls, the `broadcast` channel in `BaseNotification::via()`, `routes/channels.php`, both broadcast configs, `setup-reverb.sh`, all REVERB_*/BROADCAST env vars, and the 18 `config(['broadcasting.default' => 'log'])` test band-aids. War Room keeps its built-in 15s poll (already its prod behavior); suite runs green with no reverb exclusions.
+
+### [PROJ-027] Team-viewer role: restricted SSO access to your own incident slice
+
+**Status:** In Progress
+**Priority:** P1
+**Start Date:** 2026-11-20
+
+#### Description
+Owner request 2026-11-20: "every SSO user can login; if their team / division or themselves isn't assigned on an incident they can't view it — their access is only the incident tab, empty if nothing is assigned. Giving them a normal role (manager/user) restores full visibility, so it's a new role." Teams auto-map from the Entra directory (`users.department`) so nobody is assigned manually one-by-one; the owner also asked for a script to unlock the 2,558 existing `can_login=false` directory rows.
+
+#### Design
+- Role `team-viewer` = `view incidents` + `access dashboard` (panel entry only — Dashboard stays hidden, `PanelHome` routes to the incidents list) + new `submit action proof`.
+- The grant lives in ONE place: the team-viewer branch in `Incident::scopeApplyYearAccess` (PIC match OR `responsible_team` JSON ∩ `User::teams()`; year filter bypassed — the match IS the grant). Record gate: `IncidentResource::canView`. Restricted only while team-viewer is the SOLE role.
+- Teams = `categories type='responsible_team'` (prod's team registry — not the labels table). User mapping: `category_user` pivot + `config/team-map.php` + `users:sync-teams` (exact department match, full replace, unmapped departments REPORTED, `teams_manual` skips).
+- JIT: SSO callback assigns team-viewer to role-less accounts; NEVER flips `can_login` (revocation survives). Bulk unlock: `users:enable-sso-login` (owner-only, `--all` needs `--confirm`).
+- Proof: shared `submitProofAction` (encrypted file via extracted `ActionEvidenceStore` + optional mark-Done); `guardSubmitProof` re-checks the scope server-side. Team-viewers never send reminders.
+- Leak fixes: Reporting page + weekly-report export exclude team-viewers (org-wide aggregates).
+
+#### Tasks
+- [x] Migration (`category_user` + `users.teams_manual`), seeder role/permission, `config/team-map.php`, `User::teams()/isTeamViewer()`, UserResource teams UI.
+- [x] Scope branch + record gate; proof action + `ActionEvidenceStore` extraction; leak fixes (Reporting, weekly export, reminder visibility, incident links).
+- [x] Commands `users:sync-teams` + `users:enable-sso-login`; JIT assignment.
+- [x] Tests: scope/role/navigation/proof + 2 command tests + JIT updates in `MicrosoftSsoTest`.
+- [ ] Full-suite run + Pint + baseline entry (blocked: parallel session mid-composer).
+- [ ] Prod rollout: migrate + seed → `users:sync-teams --dry-run` → fix map → run → `users:enable-sso-login --all --confirm` (owner-only) → smoke test.
+
 ### [PROJ-023] Agent unification: dashboard control plane + Go engine
 
 **Status:** In Progress

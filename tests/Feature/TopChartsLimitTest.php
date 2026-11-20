@@ -56,7 +56,7 @@ class TopChartsLimitTest extends TestCase
     public function test_pic_chart_shows_top_five_pics_only(): void
     {
         Cache::flush();
-        Notification::fake(); // pivot hooks notify PIC + admins over reverb — unreachable in tests
+        Notification::fake(); // pivot hooks notify PIC + admins
 
         foreach ($this->names as $rank => $name) {
             $user = User::factory()->create(['name' => $name]);

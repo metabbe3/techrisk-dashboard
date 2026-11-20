@@ -97,7 +97,22 @@ class IncidentResource extends Resource
 
     public static function canView(Model $record): bool
     {
-        return (bool) auth()->user()?->can('view incidents');
+        $user = auth()->user();
+
+        if (! $user?->can('view incidents')) {
+            return false;
+        }
+
+        // Team-viewers may open only records the shared scope grants — same
+        // logic as the table, so a deep link can never show more than the
+        // list did.
+        if ($user->isTeamViewer()) {
+            return (bool) static::applyAccessControl(
+                Incident::query()->whereKey($record->getKey())
+            )->exists();
+        }
+
+        return true;
     }
 
     public static function canCreate(): bool

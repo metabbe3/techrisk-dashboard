@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace App\Filament\Resources\ActionImprovementResource\RelationManagers;
 
-use App\Models\Incident;
-use App\Services\EncryptionService;
+use App\Models\ActionImprovementEvidence;
+use App\Services\ActionEvidenceStore;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Form;
 use Filament\Notifications\Notification;
@@ -13,26 +13,21 @@ use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 
 /**
  * Evidence files on an action improvement — encrypt-on-upload clone of the
  * supporting-documents flow (InvestigationDocumentsRelationManager), minus
  * markdown conversion, AI actions and edit/replace: evidence is immutable,
- * delete + re-upload instead. File events audit on the parent Incident so
- * they surface in the incident's audit trail.
+ * delete + re-upload instead. The encrypt/store/audit flow lives in
+ * ActionEvidenceStore so this page and the shared Submit Proof action
+ * (team-viewers) cannot drift.
  */
 class EvidenceRelationManager extends RelationManager
 {
     protected static string $relationship = 'evidence';
 
     protected static ?string $title = 'Evidence';
-
-    private array $encryptionData = [];
 
     public function form(Form $form): Form
     {
@@ -53,44 +48,31 @@ class EvidenceRelationManager extends RelationManager
             ->recordTitleAttribute('original_filename')
             ->columns([
                 Tables\Columns\TextColumn::make('original_filename')
-                    ->label('File'),
+                    ->label('File')
+                    ->placeholder('—'),
+                Tables\Columns\TextColumn::make('link_url')
+                    ->label('Link')
+                    ->limit(50)
+                    ->placeholder('—'),
+                Tables\Columns\TextColumn::make('approved_at')
+                    ->label('Approved')
+                    ->dateTime()
+                    ->placeholder('Awaiting approval'),
                 Tables\Columns\TextColumn::make('created_at')
                     ->label('Uploaded')
                     ->dateTime(),
             ])
             ->headerActions([
                 Tables\Actions\CreateAction::make()
-                    ->mutateFormDataUsing(function (array $data, EncryptionService $encryptionService): array {
+                    ->using(function (array $data): Model {
+                        $fileInput = $data['file_path'] ?? null;
+
+                        if (is_array($fileInput)) {
+                            $fileInput = reset($fileInput);
+                        }
+
                         try {
-                            $fileInput = $data['file_path'] ?? null;
-
-                            if (is_array($fileInput)) {
-                                $fileInput = reset($fileInput);
-                            }
-
-                            if ($fileInput instanceof UploadedFile) {
-                                $key = $encryptionService->generateKey();
-                                $salt = $encryptionService->generateSalt();
-                                $method = 'method'.rand(1, 3);
-                                $finalKey = $encryptionService->getFinalKey($key, $salt, $method);
-
-                                $this->encryptionData = [
-                                    'key' => $key,
-                                    'salt' => $salt,
-                                    'method' => $method,
-                                    'original_filename' => $fileInput->getClientOriginalName(),
-                                ];
-
-                                $encryptedContent = $encryptionService->encrypt($fileInput->get(), $finalKey);
-                                $directory = 'action-evidence';
-                                $newFileName = $directory.'/'.Str::uuid().'.encrypted';
-
-                                Storage::disk('public')->makeDirectory($directory);
-                                Storage::disk('public')->put($newFileName, $encryptedContent);
-
-                                $data['file_path'] = $newFileName;
-                                $data['original_filename'] = $fileInput->getClientOriginalName();
-                            }
+                            $evidence = app(ActionEvidenceStore::class)->store($this->ownerRecord, $fileInput, auth()->id());
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->title('File upload failed')
@@ -102,41 +84,28 @@ class EvidenceRelationManager extends RelationManager
                             ]);
                         }
 
-                        return $data;
+                        return $evidence;
                     })
-                    ->after(function (Model $record) {
-                        if (! empty($this->encryptionData)) {
-                            $record->evidenceKey()->create($this->encryptionData);
-
-                            try {
-                                $this->ownerRecord->incident->audits()->create([
-                                    'user_id' => Auth::id(),
-                                    'event' => 'file_uploaded',
-                                    'auditable_type' => Incident::class,
-                                    'auditable_id' => $this->ownerRecord->incident->id,
-                                    'new_values' => [
-                                        'filename' => (string) Str::of($this->encryptionData['original_filename'])->ascii(),
-                                    ],
-                                ]);
-                            } catch (\Exception $e) {
-                                Log::error('Error creating audit log: '.$e->getMessage());
-                            }
-
-                            $this->encryptionData = [];
-                            Notification::make()
-                                ->title('Evidence uploaded successfully')
-                                ->success()
-                                ->send();
-                        }
-                    }),
+                    ->successNotification(
+                        Notification::make()
+                            ->title('Evidence uploaded successfully')
+                            ->success(),
+                    ),
             ])
             ->actions([
                 Tables\Actions\Action::make('download')
                     ->icon('heroicon-o-arrow-down-tray')
                     ->label('Download')
+                    // Link rows have no file behind them — "Open link" below.
+                    ->visible(fn (ActionImprovementEvidence $record): bool => filled($record->file_path))
                     ->action(fn ($record) => redirect()->route('action-evidence.download', $record)),
+                Tables\Actions\Action::make('open_link')
+                    ->label('Open link')
+                    ->icon('heroicon-o-arrow-top-right-on-square')
+                    ->visible(fn (ActionImprovementEvidence $record): bool => filled($record->link_url))
+                    ->url(fn (ActionImprovementEvidence $record): ?string => $record->link_url, shouldOpenInNewTab: true),
                 Tables\Actions\DeleteAction::make()
-                    ->after(function ($record) {
+                    ->after(function (ActionImprovementEvidence $record) {
                         if ($record->file_path && Storage::disk('public')->exists($record->file_path)) {
                             Storage::disk('public')->delete($record->file_path);
                         }
@@ -144,16 +113,16 @@ class EvidenceRelationManager extends RelationManager
 
                         try {
                             $this->ownerRecord->incident->audits()->create([
-                                'user_id' => Auth::id(),
-                                'event' => 'file_deleted',
-                                'auditable_type' => Incident::class,
+                                'user_id' => auth()->id(),
+                                'event' => $record->file_path ? 'file_deleted' : 'link_deleted',
+                                'auditable_type' => \App\Models\Incident::class,
                                 'auditable_id' => $this->ownerRecord->incident->id,
                                 'old_values' => [
-                                    'filename' => (string) Str::of($record->original_filename)->ascii(),
+                                    'filename' => (string) \Illuminate\Support\Str::of($record->original_filename ?? $record->link_url)->ascii(),
                                 ],
                             ]);
                         } catch (\Exception $e) {
-                            Log::error('Error creating audit log: '.$e->getMessage());
+                            \Illuminate\Support\Facades\Log::error('Error creating audit log: '.$e->getMessage());
                         }
                     }),
             ]);

@@ -30,7 +30,6 @@ class ActionImprovementReminderTrackingTest extends TestCase
     {
         parent::setUp();
 
-        config(['broadcasting.default' => 'log']);
         $this->pic = User::factory()->create();
     }
 

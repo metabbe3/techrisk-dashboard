@@ -24,7 +24,6 @@ class RefreshIncidentSearchTest extends TestCase
     public function test_attaching_a_pic_dispatches_the_refresh_job(): void
     {
         Queue::fake();
-        config(['broadcasting.default' => 'log']);
 
         $incident = Incident::factory()->create();
         $pic = User::factory()->create();
