@@ -58,10 +58,10 @@ class BladeTemplatesCompileTest extends TestCase
             $output = [];
         }
 
-        // Floor tracks the template count (48 after the 2026-11-19 removal of
-        // the incident-list "Summary" stats strip deleted its blade); a sudden
-        // drop means templates vanished unexpectedly.
-        $this->assertGreaterThan(47, $checked, 'Blade sweep checked suspiciously few templates.');
+        // Floor tracks the template count (47 after the 2026-11-20 command-
+        // palette deletion removed the sidebar search-trigger blade); a
+        // sudden drop means templates vanished unexpectedly.
+        $this->assertGreaterThan(46, $checked, 'Blade sweep checked suspiciously few templates.');
         $this->assertSame([], $failures, "Templates that do not compile to valid PHP:\n".implode("\n", $failures));
     }
 }

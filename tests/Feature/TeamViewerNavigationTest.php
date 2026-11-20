@@ -94,24 +94,64 @@ class TeamViewerNavigationTest extends TestCase
             ->assertRedirect(route('filament.admin.resources.incidents.index'));
     }
 
-    public function test_action_improvements_page_lists_only_the_own_slice(): void
+    public function test_sidebar_renders_only_incident_surfaces_and_profile(): void
+    {
+        // Full nav audit (owner 2026-11-20: "double check all menu /
+        // features has its own view read role") — the sidebar shows exactly
+        // the incident surfaces + the account chrome; the Notifications and
+        // Settings clusters stay out (their cluster roots are gated).
+        $html = $this->viewer()->get('/admin/incidents')->getContent();
+        preg_match_all('/href="([^"]*\/admin\/[^"]*)"/', $html, $m);
+        $urls = array_values(array_unique(array_filter(
+            array_map(fn ($u) => (string) parse_url($u, PHP_URL_PATH), $m[1]),
+            fn ($u) => ! preg_match('#^/admin/incidents/\d+$#', $u), // row View links
+        )));
+
+        $this->assertEqualsCanonicalizing([
+            '/admin/profile',
+            '/admin/incidents',
+            '/admin/incidents/board',
+            '/admin/action-improvements',
+        ], $urls, 'Restricted sidebar must be exactly the incident surfaces + profile');
+
+        // Cluster roots: gated, not a 500.
+        $this->viewer()->get('/admin/notifications')->assertForbidden();
+        $this->viewer()->get('/admin/settings')->assertForbidden();
+    }
+
+    public function test_action_improvements_page_lists_the_own_slice_plus_assigned_action_incidents(): void
     {
         ActionImprovement::factory()->create([
             'incident_id' => $this->ownTeamIncident->id,
             'title' => 'Viewer proof action',
             'pic_email' => [$this->viewer->email],
         ]);
+        // Assigned to an action on a foreign incident — the re-assignment
+        // grant (owner 2026-11-20) pulls that incident into the slice, so
+        // its sibling actions show too (the grant is incident-level, same
+        // as a team match). An ungranted incident stays out entirely.
         ActionImprovement::factory()->create([
             'incident_id' => $this->foreignIncident->id,
             'title' => 'Foreign action',
             'pic_email' => [$this->viewer->email],
         ]);
+        ActionImprovement::factory()->create([
+            'incident_id' => $this->foreignIncident->id,
+            'title' => 'Foreign sibling action',
+            'pic_email' => ['someone-else@example.com'],
+        ]);
+        $thirdIncident = Incident::factory()->create(['responsible_team' => ['Data Platform']]);
+        ActionImprovement::factory()->create([
+            'incident_id' => $thirdIncident->id,
+            'title' => 'Untouchable action',
+            'pic_email' => ['someone-else@example.com'],
+        ]);
 
         $this->viewer()
             ->get('/admin/action-improvements')
             ->assertOk()
-            ->assertSee('Viewer proof action')
-            ->assertDontSee('Foreign action');
+            ->assertSee(['Viewer proof action', 'Foreign action', 'Foreign sibling action'])
+            ->assertDontSee('Untouchable action');
     }
 
     public function test_incident_and_action_edit_pages_are_denied(): void

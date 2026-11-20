@@ -22,7 +22,6 @@ use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\View\Middleware\ShareErrorsFromSession;
-use pxlrbt\FilamentSpotlight\SpotlightPlugin;
 
 class AdminPanelProvider extends PanelProvider
 {
@@ -47,9 +46,10 @@ class AdminPanelProvider extends PanelProvider
             // no font CDN, which matters on the VPN-only prod domain.
             // ->font() sets the panel's --font-family CSS var.
             ->font('Inter Variable', provider: \Filament\FontProviders\LocalFontProvider::class)
-            ->plugins([
-                SpotlightPlugin::make(),
-            ])
+            // Command palette (pxlrbt/filament-spotlight) deleted 2026-11-20 —
+            // owner: it let restricted roles reach page commands past their
+            // nav gates. The composer package stays until the parallel
+            // session's composer churn settles.
             ->path('admin')
             ->login(Login::class)
             ->passwordReset()
@@ -109,10 +109,6 @@ class AdminPanelProvider extends PanelProvider
                 Authenticate::class,
                 \App\Http\Middleware\RedirectToPanelHome::class,
             ])
-            ->renderHook(
-                PanelsRenderHook::SIDEBAR_NAV_START,
-                fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.search-trigger'),
-            )
             ->renderHook(
                 PanelsRenderHook::SIDEBAR_FOOTER,
                 fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.footer'),

@@ -61,9 +61,10 @@ class SidebarChromeTest extends TestCase
 
         $html = $response->getContent();
 
-        // Search row (palette trigger).
-        $this->assertStringContainsString('toggle-spotlight', $html);
-        $this->assertStringContainsString('sidebar-search-row', $html);
+        // Command palette deleted (owner 2026-11-20): no trigger row, no
+        // spotlight component anywhere on the page.
+        $this->assertStringNotContainsString('toggle-spotlight', $html);
+        $this->assertStringNotContainsString('LivewireUISpotlight', $html);
 
         // Account row: name + email from the authenticated user.
         $this->assertStringContainsString('sidebar-account-user', $html);
@@ -72,9 +73,6 @@ class SidebarChromeTest extends TestCase
 
         // Bell row mounted (Livewire renders the component name in its snapshot).
         $this->assertStringContainsString('sidebar-notification-bell', $html);
-
-        // Command palette mounted (plugin renders it at panels::scripts.after).
-        $this->assertStringContainsString('LivewireUISpotlight', $html);
 
         // Notifications modal mounted at body level — the modal id must be on
         // the page for the bell's open-modal dispatch to open anything.
