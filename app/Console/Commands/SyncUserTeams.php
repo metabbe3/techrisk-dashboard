@@ -10,32 +10,38 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Cache;
 
 /**
- * Team-viewer role (owner 2026-11-20): map users.department → responsible
- * team categories (config/team-map.php) onto the category_user pivot. The
- * follow-up to users:sync-directory (which refreshes departments) — not
- * scheduled, run it by hand after each directory sync.
+ * Team-viewer role (owner 2026-11-20): map users.department onto the
+ * category_user pivot. DEFAULT (owner decision 2026-11-20, "i want to put
+ * all of it not grouped"): the raw department string IS the team — every
+ * distinct department becomes its own responsible_team category, 1:1, no
+ * merging. --use-map switches to the unified mapping in
+ * config/team-map.php if the grouping model is ever wanted back.
+ *
+ * The follow-up to users:sync-directory (which refreshes departments) —
+ * not scheduled, run it by hand after each directory sync.
  *
  * Semantics: FULL REPLACE per mapped user (stale teams from a department
  * move are corrected on the next run). Admins who mapped a user by hand in
  * User Management set teams_manual — those are skipped (--force re-maps).
- * Every unmapped non-empty department is REPORTED with user counts so HR
- * renames are never silently dropped.
+ * In map mode every unmapped non-empty department is REPORTED with user
+ * counts so HR renames are never silently dropped (departments mode cannot
+ * be unmapped — the department itself is the team).
  */
 class SyncUserTeams extends Command
 {
     protected $signature = 'users:sync-teams
         {--dry-run : Report mapping coverage without writing}
         {--force : Re-map users whose team mapping is flagged manual}
-        {--as-departments : Skip the map — every user gets a category named after their raw department (no unification)}';
+        {--use-map : Map via config/team-map.php (unified teams) instead of the default 1:1 department = team}';
 
-    protected $description = 'Map users to responsible teams from their Entra department via config/team-map.php (full replace per user; reports unmapped departments)';
+    protected $description = 'Map users to responsible-team categories from their Entra department — default: each department IS a team (1:1); --use-map for the unified config grouping';
 
     public function handle(): int
     {
-        $asDepartments = (bool) $this->option('as-departments');
+        $useMap = (bool) $this->option('use-map');
         $map = [];
 
-        if (! $asDepartments) {
+        if ($useMap) {
             $map = config('team-map');
 
             if (! is_array($map) || $map === []) {
@@ -43,11 +49,11 @@ class SyncUserTeams extends Command
 
                 return self::FAILURE;
             }
-        }
 
-        // Case-insensitive lookup: Entra departments drift in casing
-        // ("Security" vs "it security") — same team either way.
-        $map = array_change_key_case($map, CASE_LOWER);
+            // Case-insensitive lookup: Entra departments drift in casing
+            // ("Security" vs "it security") — same team either way.
+            $map = array_change_key_case($map, CASE_LOWER);
+        }
 
         $users = User::query()
             ->whereNotNull('department')
@@ -62,11 +68,11 @@ class SyncUserTeams extends Command
         $dryRun = (bool) $this->option('dry-run');
 
         foreach ($users as $user) {
-            // --as-departments: the department string IS the team (1:1, no
-            // map) — every distinct department becomes a category.
-            $teamName = $asDepartments
-                ? trim((string) $user->department)
-                : ($map[strtolower(trim((string) $user->department))] ?? null);
+            // Default: the department string IS the team (1:1) — every
+            // distinct department becomes a category. --use-map: unified.
+            $teamName = $useMap
+                ? ($map[strtolower(trim((string) $user->department))] ?? null)
+                : trim((string) $user->department);
 
             if ($teamName === null || $teamName === '') {
                 $unmapped[trim((string) $user->department)] = ($unmapped[trim((string) $user->department)] ?? 0) + 1;
