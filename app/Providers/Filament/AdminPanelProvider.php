@@ -124,6 +124,15 @@ class AdminPanelProvider extends PanelProvider
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Contracts\View\View => view('filament.sidebar.notifications-modal'),
             )
+            // Cluster tab strips wrap instead of scrolling when the window is
+            // narrow (owner: 9 AI tabs "overload" on overflow). Higher
+            // specificity beats Filament's own .fi-tabs rule at any order.
+            ->renderHook(
+                PanelsRenderHook::BODY_END,
+                fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(
+                    '<style>.fi-page-sub-navigation-tabs.fi-tabs{flex-wrap:wrap}</style>'
+                ),
+            )
             ->renderHook(
                 'panels::head.end',
                 fn () => '<link rel="stylesheet" href="'.Vite::asset('resources/css/app.css').'">'

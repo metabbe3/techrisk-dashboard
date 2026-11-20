@@ -28,9 +28,6 @@ class SkillResource extends Resource
 
     protected static ?string $cluster = \App\Filament\Clusters\AiCluster::class;
 
-    // Sub-nav group: renders the 9 AI tabs as 3 compact dropdowns
-    protected static ?string $navigationGroup = 'Automation & Tools';
-
     protected static \Filament\Pages\SubNavigationPosition $subNavigationPosition = \Filament\Pages\SubNavigationPosition::Top;
 
     public static function canAccess(): bool
