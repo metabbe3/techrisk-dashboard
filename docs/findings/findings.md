@@ -287,14 +287,22 @@ Three-angle audit (unified API response, DRY, OOP/architecture). Each finding ha
 - **Recommended Action (Phase 6):** Validate `$dim`/`$agg` against an enum/const set; bind via `selectRaw('... as dim', [...])` where feasible; add a test that a bogus dimension is rejected.
 
 ### [S-2] `Incident::generateNo` non-transactional retry-loop (race)
-- **Category:** Security · **Severity:** Low · **Status:** Open
-- **Location:** `app/Models/Incident.php:232-244`.
-- **Recommended Action (Phase 6):** DB unique constraint + catch, or wrap in a transaction.
+- **Category:** Security · **Severity:** Low · **Status:** Resolved 2026-11-21
+- **Location:** `app/Models/Incident.php:359-371` + `IncidentObserver::creating()`.
+- **Resolution:** the `no` unique index turns a lost generateNo race into a
+  duplicate-key QueryException; the observer's new `creating()` hook
+  regenerates `no` when it already exists — the one point every write routes
+  through, no user-visible 500. Test: `IncidentObserverCacheTest::test_a_creating_row_with_a_duplicate_no_is_regenerated_not_a_500`.
 
 ### [S-3] Untagged `Cache::remember` (violates CLAUDE.md)
-- **Category:** Technical Debt · **Severity:** Low · **Status:** Open
-- **Location:** `app/Http/Controllers/Api/IncidentController.php:180,212`.
-- **Recommended Action (Phase 2):** `Cache::tags(['incidents','labels'])->remember(...)` per CLAUDE.md tag-based caching.
+- **Category:** Technical Debt · **Severity:** Low · **Status:** Resolved 2026-11-21 (the flagged surface)
+- **Location:** `app/Http/Controllers/Api/IncidentController.php` (`labels`, `incident_types`).
+- **Resolution:** the two API endpoints cached the shared `labels` key for 60
+  SECONDS (docblock said 60 minutes) while the metrics job flushes `labels` and
+  other writers cache it 3600s — the API was downgrading a warm cache every
+  minute. Now 3600 on both, docblock truthful, `labels` deliberately SHARES the
+  job-flushed key (one-logic). The broader untagged-cache surface (settings/
+  ai_setting/api_setting/chat_* keys) remains open as a cleanup, tracked here.
 
 ### [A-1] Dual status vocabulary in `status_updates.status` (from 2026-09 audit)
 - **Category:** Architecture · **Severity:** Medium · **Status:** Open
@@ -314,10 +322,15 @@ Three-angle audit (unified API response, DRY, OOP/architecture). Each finding ha
 - **Recommended Action:** Large refactor without a test net — deferred deliberately; extract the shared phase pipeline when plan-mode tests exist.
 
 ### [A-4] `DetectSimilarController` has no cache or rate limit
-- **Category:** Code Quality · **Severity:** Low · **Status:** Open
-- **Location:** `app/Http/Controllers/Ai/DetectSimilarController.php`.
-- **Impact:** Every hit runs the similarity pipeline (multiple AI calls).
-- **Recommended Action:** Rate limit per user + short-TTL result cache keyed by incident id + content hash.
+- **Category:** Code Quality · **Severity:** Low · **Status:** Open — scope widened 2026-11-21
+- **Location:** `app/Http/Controllers/Ai/DetectSimilarController.php`; wider: SEVEN AI POST routes on
+  `routes/web.php:84-118` (`analyze-root-cause`, `generate-post-mortem`, `weekly-summary`, `analyze-trends`,
+  `search`, `suggest-labels`, `detect-similar`) carry NO throttle while every sibling AI endpoint does —
+  runaway token spend available to any `manage incidents` user.
+- **Impact:** Every hit runs the similarity pipeline (multiple AI calls); the others are 8k-token RCA calls.
+- **Recommended Action:** `throttle:` middleware over the seven routes (a `RateLimiter::for('ai', ...)`
+  registered beside the API limiters in AppServiceProvider) + short-TTL result cache for detect-similar.
+  Deferred 2026-11-21: routes/web.php was mid-edit in the parallel red-team session — do not pile on.
 
 ### [A-5] Recurrence candidate set intentionally includes Issues (kept behavior)
 - **Category:** Code Quality · **Severity:** Low · **Status:** Won't Fix
@@ -399,7 +412,7 @@ The "Root cause — register design works against reliability" block in `detecti
 - **RD-2 → closed:** closure gate in `IncidentObserver::saving()` — a row cannot move INTO Completed (create or update) without RCA (root_cause, 'N/A' passes as deliberate override, or root_cause_category) and stop_bleeding_at. One guard covers edit form, `update_status`, API, imports. Pre-gate Completed rows stay editable.
 - **RD-4 → closed:** `detection_delay_days` + `start_time_known` columns (`2026_10_13_000001`, prod migrate = owner-only guardrail) + `Incident::startTimeKnown()`/`effectiveDetectionLagHours()` — the placeholder-time problem has a structured escape hatch: book the date, record the estimated gap, flag whether the time is real. Governance KPIs consume it: placeholder rows yield no derived lag unless delay-days exist.
 - RD-5 mitigated, not fixed: day-granularity MTTR stays (legacy encoding), but the detection-lag KPIs measure timing from `discovered_at`/delay-days instead of MTTR.
-- RD-1 unchanged (API/import validation bypass remains latent — no imports in active use).
+- RD-1 CLOSED as latent-by-design (verified 2026-11-21): the incident write API routes are deliberately disabled read-only (`routes/api.php` "Write operations - DISABLED for security", commit c0f88ee; business-rules.md "the form is the only write path"), so the StoreIncidentRequest/UpdateIncidentRequest rule gaps (no future-date cap, no min:0 funds, recovered_fund absent, client-supplied `no`) are unreachable. Revisit this section BEFORE ever re-enabling API writes.
 
 **KPI conflict:** `techops-pdr-action-plan-2026-v1.pdf` Panel 5 sets "Negative MTTR: green=0 / red=>0" — unachievable as written while negative = days encoding (it tracks Confirmed-loss count, not data quality). **Resolved 2026-10-13:** the Governance page implements the replacement KPI — "FL usable timing %" (share of Confirmed-loss rows with real timing), plus "FL Unknown Channel %" (PDR red >5%) once `detected_via` is backfilled.
 
@@ -419,9 +432,13 @@ DEFER. Recorded here so the next sweep starts from it, not from zero:
    returns error content) so direct callers (tests, future seams) can't
    crash the process either. Original fix sketch — named returns + defer
    recover → error string — is exactly what shipped.
-2. **Agent panic on the card path kills the bot** — the only `recover` in
-   `stream.go` lives in `processPlain`; `processStreaming` (card path),
-   `processFile` goroutine and `go b.fireWatch` have none.
+2. ~~**Agent panic on the card path kills the bot**~~ — **RESOLVED 2026-11-21**:
+   `processFile`/`processPicture`/`processPlain`/`processStreaming` all run
+   synchronously inside `runBatch`'s recover, and `go b.fireWatch` moved to
+   `util.Go("watch-fire", ...)` (recover + stack log) in the 2026-11-21 sweep —
+   same wrapper now covers `learnProfile`, `summarizeNotionReads`,
+   `mergeKnowledgeDigest`, kb ingest and the mesh sweeper/heartbeat/subgoal
+   goroutines.
 3. **`memory.Store` marshals the live map after unlocking** — `SaveHistory` /
    `LearnProfile` snapshot aliasing; two concurrent turns → fatal concurrent-map
    iteration (unrecoverable; nothing to catch).
@@ -433,9 +450,12 @@ DEFER. Recorded here so the next sweep starts from it, not from zero:
    the early-return path; chat turns run on bare `context.Background()`.
 7. **File branch blocks the SDK handler goroutine**; `file.go` download uses
    `http.DefaultClient` (no timeout).
-8. **`stripMention` byte slicing** — `ToLower` length-change + `0xA0` byte edge
-   (fixed as part of Wave 2's rune-safe `util.Cut` work — re-check remaining
-   raw-slice sites).
+8. ~~**`stripMention` byte slicing**~~ — **RESOLVED 2026-11-21**: the two
+   remaining raw-slice sites in `stream.go` fixed (name cut now by RUNE count —
+   the ToLower-space match can shrink a name like 'İ'; the NBSP trim cuts after
+   the whole rune instead of `idx+1`, which split the 2-byte U+00A0 and left a
+   stray `0xA0` in the prompt). `TestStripMentionRuneSafe` +
+   `TestStripMentionNbspTrim` pin it.
 9. **kb nil-interface** — `stream.go` passes `b.llm` (typed-nil) where an
    interface is checked with `== nil`.
 10. **Unbounded body reads** — `llm/client.go` `io.ReadAll` without limit on the
@@ -498,3 +518,37 @@ repo-side timeout can fix it. The recommended action was implemented the same da
   off the user).
 - **`runVerify` stays synchronous**: its input is the small answers JSON — no Notion
   fan-out, no 96k source. Follow-up only if it ever trips opsproxy.
+
+---
+
+### Bug/optimization sweep — 2026-11-21 (verified findings; fixes shipped same day unless noted)
+
+Ten-agent adversarial verification pass over the register + a fresh hunt of the newest features. Refuted claims are recorded so they are not re-chased.
+
+**Shipped:**
+
+| ID | Finding | Where |
+|----|---------|-------|
+| SW-1 | `IncidentResource::canView` returned `true` for everyone but team-viewers — year-restricted users could deep-link out-of-year records. Now the ONE `applyAccessControl` scope gates every `view incidents` holder. | `IncidentResource.php:98-116` |
+| SW-2 | `/api/v1/stats` `by_dimension` skipped `applyUserYearAccess` (its summary branch applied it) — restricted tokens got org-wide breakdowns. `buildSingleDataset` takes an optional user; Analytics-page contract unchanged. | `StatsController.php`, `AnalyticsQueryService.php` |
+| SW-3 | `discovered_at` fed governance lag KPIs but was in neither observer trigger list — stale until TTL. Added to `$needsCacheBump`. | `IncidentObserver.php` |
+| SW-4 | `users:sync-teams` firstOrCreate'd categories BEFORE the `teams_manual` skip (permanent orphan categories) and flushed the options cache on `--dry-run`. Reordered; dry-run no longer flushes. | `SyncUserTeams.php` |
+| SW-5 | Global-search details read `$record->status` (no such column — always "—"). → `incident_status`. | `IncidentResource.php:85` |
+| SW-6 | Reminder day math truncated (`(int) diffInDays`: due-in-7 reported 6, due-yesterday reported 0 overdue) and disagreed with the notification's `round()`. ONE `ActionImprovement::daysUntilDue()` (round) now feeds the command, notifications and escalation rungs. | `ActionImprovement.php`, `SendActionImprovementReminders.php`, `ActionImprovementReminder.php` |
+| SW-7 | Incident hover-preview component was dead on EVERY row: `this.\$refs` literal backslash = Alpine SyntaxError. | `incident-hover-preview.blade.php:22` |
+| SW-8 | `AiTextService` rate limit read a nonexistent config key → pinned to 10; the admin's `AiSetting rate_limit` was display-only. Now reads the setting. | `AiTextService.php` |
+| SW-9 | `ApiAuditLogger` hardcoded skip-endpoints/max-body-size/response-body opt-out — the `config/api-audit.php` + env knobs were dead. Wired to config. | `ApiAuditLogger.php` |
+| SW-10 | `CheckApiTokenAccess` meta set missed `api/logout` — endpoint-restricted tokens could not log themselves out. | `CheckApiTokenAccess.php` |
+| SW-11 | Dead `app/Imports/IssuesImport.php` (unreferenced, unbounded `do{random_int}while` loop) deleted. | deleted |
+| SW-12 | `IncidentMarkdownCorpusService` hand-typed `'Incident'` literal → enum value (Edit-Safety rule 1). | `IncidentMarkdownCorpusService.php` |
+| SW-13 | Action Improvements tables ran per-row `hasPendingProof`/lazy `incident` queries inside `visible()`; eager-load `incident.pics` + `evidence` + collection-based `hasPendingProof()`. | `ActionImprovement.php`, `ActionImprovementResource.php`, `ActionImprovementsRelationManager.php` |
+| SW-14 | Go: `Vision()` uncapped `io.ReadAll` → 8 MiB; typed-nil `embed` guard; stripMention rune-safe cuts; `util.Go` recover wrapper on all fire-and-forget goroutines (see FD items above). | `dingtalk-agent/` |
+
+**Deferred (deliberate, with ceilings):**
+
+- **AI-route throttling** (widened A-4 above) — `routes/web.php` was mid-edit in the parallel red-team session.
+- **Approve-proof re-notify** — `ActionImprovementFormSchema::approveProofAction` notifies all-time submitters, not just the stamped batch (L-severity noise; the file was owned by the red-team session).
+- **Alpine scope bugs** (finder-verified, not fixed): `ai-chat.blade.php:856` Escape handler assigns `showModelPicker`/`showPersonaPicker` that live in CHILD x-data scopes (dead writes — pickers never close on Escape); `ai-trend-insights.blade.php:7` declares two sibling `x-data` scopes so the loading skeleton can never show. Both are real but need browser verification.
+- **CheckApiAccess 5-min permission-revoke lag** — `user_{id}_api_access` cached with no invalidation; TTL is the deliberate ceiling. If instant revoke is wanted, flush the key in the role-revocation path.
+- **Chat-turn context deadline** (Go FD item 6 remainder) — turns run on the undated root ctx; a wedged turn is bounded only by shutdown. Behavior change, needs its own session.
+- **Observation on the red-team session's W3 fix** (their file, not edited here): the AI chat incident-search closure chains `applyUserYearAccess(...)->where('no'...)->orWhere('title'...)->orWhere('summary'...)` — the top-level `orWhere`s escape the scope's grouped constraints (`(scope AND no) OR title OR summary`). Their own W3 PoC test should catch this when they run the suite.

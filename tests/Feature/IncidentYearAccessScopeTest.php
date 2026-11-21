@@ -71,4 +71,26 @@ class IncidentYearAccessScopeTest extends TestCase
             ->all();
         $this->assertSame(['2025', '2026'], $years);
     }
+
+    public function test_can_view_gate_applies_the_year_scope_to_every_view_incidents_holder(): void
+    {
+        // 2026-11-21 sweep: the record gate used to return true for everyone
+        // but team-viewers — a year-restricted user could deep-link an
+        // out-of-year record the list hides.
+        \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'view incidents']);
+        $restricted = User::factory()->create();
+        $restricted->givePermissionTo('view incidents');
+        UserAuditLogSetting::create([
+            'user_id' => $restricted->id,
+            'allowed_years' => ['2026'],
+            'can_view_all_logs' => false,
+        ]);
+
+        $inYear = Incident::factory()->create(['classification' => 'Incident', 'incident_date' => '2026-05-01 10:00:00']);
+        $outOfYear = Incident::factory()->create(['classification' => 'Incident', 'incident_date' => '2024-05-01 10:00:00']);
+
+        $this->actingAs($restricted);
+        $this->assertTrue(\App\Filament\Resources\IncidentResource::canView($inYear));
+        $this->assertFalse(\App\Filament\Resources\IncidentResource::canView($outOfYear), 'A deep link must never exceed the list');
+    }
 }

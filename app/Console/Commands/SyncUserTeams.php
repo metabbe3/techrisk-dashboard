@@ -80,6 +80,15 @@ class SyncUserTeams extends Command
                 continue;
             }
 
+            // Manual-mapped users are skipped BEFORE any category is created —
+            // firstOrCreate-ing their department first would leave a permanent
+            // orphan category their pivots never use (--force re-maps them).
+            if ($user->teams_manual && ! $this->option('force')) {
+                $skippedManual++;
+
+                continue;
+            }
+
             // Dry-run reports coverage only — it must not create categories
             // or touch pivots.
             $categoryId = $dryRun
@@ -88,12 +97,6 @@ class SyncUserTeams extends Command
                     'type' => Category::TYPE_RESPONSIBLE_TEAM,
                     'name' => $teamName,
                 ])->id;
-
-            if ($user->teams_manual && ! $this->option('force')) {
-                $skippedManual++;
-
-                continue;
-            }
 
             $mapped++;
 
@@ -111,7 +114,10 @@ class SyncUserTeams extends Command
 
         // firstOrCreate may have created new options — the cached
         // name→name map (form selects, filters) must not serve stale teams.
-        Cache::forget('categories:'.Category::TYPE_RESPONSIBLE_TEAM);
+        // Dry-run created nothing, so it must not flush either.
+        if (! $dryRun) {
+            Cache::forget('categories:'.Category::TYPE_RESPONSIBLE_TEAM);
+        }
 
         if ($unmapped !== []) {
             arsort($unmapped);

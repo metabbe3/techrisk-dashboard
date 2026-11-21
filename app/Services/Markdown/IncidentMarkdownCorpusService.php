@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Markdown;
 
+use App\Enums\IncidentClassification;
 use App\Filament\Actions\ExportActionSchema;
 use App\Models\Incident;
 use Illuminate\Database\Eloquent\Builder;
@@ -37,7 +38,7 @@ class IncidentMarkdownCorpusService
     public static function scopedQuery(): Builder
     {
         return ExportActionSchema::baseExportScope(
-            Incident::query()->where('classification', 'Incident')
+            Incident::query()->where('classification', IncidentClassification::Incident->value)
         );
     }
 

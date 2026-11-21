@@ -37,8 +37,13 @@ class CheckApiTokenAccess
         // token — endpoint restrictions gate DATA endpoints, not a token's ability
         // to inspect or disable itself. Without this, a token restricted to
         // `incidents` could never call /v1/token/info or /logout.
-        $isMetaEndpoint = str_starts_with($requestPath, 'api/token')
-            || str_starts_with($requestPath, 'api/v1/token');
+        // W8 fix: segment-bound (a bare str_starts_with let any future
+        // api/v1/token-* sibling route inherit the bypass).
+        $isMetaEndpoint = $requestPath === 'api/token'
+            || $requestPath === 'api/v1/token'
+            || str_starts_with($requestPath, 'api/token/')
+            || str_starts_with($requestPath, 'api/v1/token/')
+            || $requestPath === 'api/logout'; // token self-logout — was stranded for restricted tokens
 
         if (! $isMetaEndpoint && ! $this->tokenCanAccessEndpoint($token, $requestPath)) {
             \Log::warning('API token access denied', [
@@ -74,9 +79,17 @@ class CheckApiTokenAccess
             $allowedEndpoints = [];
         }
 
-        // If no restrictions, allow all (backward compatibility)
-        if (empty($allowedEndpoints)) {
+        // W8 fix (new posture): empty/null = DENY. The old "empty = allow
+        // all" default made every token created without an explicit
+        // endpoint selection unrestricted. Allow-all must now be stated
+        // explicitly with the `*` sentinel (the Filament form writes it as
+        // the default; the backfill migration stamps existing rows).
+        if (in_array('*', $allowedEndpoints, true)) {
             return true;
+        }
+
+        if (empty($allowedEndpoints)) {
+            return false;
         }
 
         // Check each allowed endpoint

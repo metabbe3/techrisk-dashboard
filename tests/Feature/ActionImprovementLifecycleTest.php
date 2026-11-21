@@ -377,4 +377,61 @@ class ActionImprovementLifecycleTest extends TestCase
         $this->assertSame(1, $rows);
         $this->assertSame(1, ActionImprovement::where('status', 'draft')->count());
     }
+
+    public function test_days_until_due_rounds_instead_of_truncating(): void
+    {
+        // ONE due-day definition (2026-11-21 sweep): round, not int-cast —
+        // "due in exactly 7 days" reported 6 and "due yesterday" reported 0
+        // overdue under the old truncating command math; the reminder
+        // notification already rounded. The command, DueSoon/Overdue
+        // notifications and the escalation rungs all read this helper now.
+        \Illuminate\Support\Carbon::setTestNow('2026-01-15 09:00:00');
+
+        $incident = Incident::factory()->create(['classification' => 'Incident']);
+        $dueInExactly7 = ActionImprovement::factory()->create([
+            'incident_id' => $incident->id,
+            'due_date' => '2026-01-22 09:00:00',
+            'status' => ActionImprovement::STATUS_PENDING,
+        ]);
+        $dueYesterday = ActionImprovement::factory()->create([
+            'incident_id' => $incident->id,
+            'due_date' => '2026-01-14 09:00:00',
+            'status' => ActionImprovement::STATUS_PENDING,
+        ]);
+        $tbd = ActionImprovement::factory()->create([
+            'incident_id' => $incident->id,
+            'due_date' => null,
+            'status' => ActionImprovement::STATUS_PENDING,
+        ]);
+
+        $this->assertSame(7, $dueInExactly7->daysUntilDue());
+        $this->assertSame(-1, $dueYesterday->daysUntilDue());
+        $this->assertNull($tbd->daysUntilDue());
+
+        \Illuminate\Support\Carbon::setTestNow();
+    }
+
+    public function test_has_pending_proof_reads_the_loaded_evidence_relation(): void
+    {
+        // Eager-loaded surface (Action Improvements tables) must answer from
+        // the collection — same ONE definition (submitted_by set, approved_at
+        // null) as the query path.
+        $incident = Incident::factory()->create(['classification' => 'Incident']);
+        $action = ActionImprovement::factory()->create([
+            'incident_id' => $incident->id,
+            'status' => ActionImprovement::STATUS_PENDING,
+        ]);
+
+        $this->assertFalse($action->hasPendingProof());
+
+        $action->evidence()->create([
+            'file_path' => 'proofs/test.pdf',
+            'original_filename' => 'test.pdf',
+            'submitted_by' => 1,
+        ]);
+
+        $loaded = $action->refresh()->loadMissing('evidence');
+        $this->assertTrue($loaded->hasPendingProof(), 'Loaded relation must see pending proof');
+        $this->assertTrue($action->refresh()->hasPendingProof(), 'Query path must agree');
+    }
 }

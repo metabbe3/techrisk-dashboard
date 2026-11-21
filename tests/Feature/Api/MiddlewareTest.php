@@ -485,4 +485,38 @@ class MiddlewareTest extends TestCase
         $this->assertContains('labels', $all);
         $this->assertContains('incident-types', $all);
     }
+
+
+    public function test_logout_is_a_meta_endpoint_reachable_by_restricted_tokens(): void
+    {
+        // A token restricted to `incidents` must still be able to disable
+        // itself — the meta-endpoint set used to list only api/token*.
+        $token = $this->userWithAccess->createToken('test', ['*']);
+        PersonalAccessToken::find($token->accessToken->id)->forceFill([
+            'allowed_endpoints' => json_encode(['incidents']),
+        ])->save();
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
+            ->postJson('/api/logout');
+
+        $this->assertNotEquals(403, $response->getStatusCode(), 'logout must be reachable for endpoint-restricted tokens');
+        $this->assertNotNull(PersonalAccessToken::find($token->accessToken->id)->fresh()->disabled_at);
+    }
+
+    public function test_audit_body_respects_the_configured_max_body_size(): void
+    {
+        // The middleware used to hardcode 10KB — API_AUDIT_MAX_BODY_SIZE was dead.
+        config(['api-audit.max_body_size' => 10]);
+
+        $token = $this->userWithAccess->createToken('test', ['*']);
+
+        // Incident write routes are disabled (read-only API) — agent-schedules
+        // is a live POST route; its 422 still dispatches the audit entry.
+        $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
+            ->postJson('/api/v1/agent-schedules', ['name' => 'a body far larger than ten bytes']);
+
+        $entry = \App\Models\ApiAuditLog::where('method', 'POST')->latest('id')->first();
+        $this->assertNotNull($entry, 'POST should be audited');
+        $this->assertTrue((bool) ($entry->request_body['_truncated'] ?? false), 'Oversized body must be truncated, not stored');
+    }
 }

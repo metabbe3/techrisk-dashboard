@@ -169,7 +169,6 @@ class IncidentController extends Controller
             // The agent's watch sweep pages by offset — that is only meaningful
             // against a stable order. `sort` is whitelisted in ListIncidentsRequest.
 
-
             // The agent's watch sweep pages by offset — that is only meaningful
             // against a stable order. `sort` is whitelisted in ListIncidentsRequest.
             if ($request->filled('sort')) {
@@ -220,7 +219,7 @@ class IncidentController extends Controller
     public function getLabels()
     {
         try {
-            $labels = Cache::remember('labels', 60, function () {
+            $labels = Cache::remember('labels', 3600, function () {
                 return Label::pluck('name');
             });
 
@@ -252,7 +251,7 @@ class IncidentController extends Controller
     public function getIncidentTypes()
     {
         try {
-            $incidentTypes = Cache::remember('incident_types', 60, function () {
+            $incidentTypes = Cache::remember('incident_types', 3600, function () {
                 return IncidentType::pluck('name');
             });
 

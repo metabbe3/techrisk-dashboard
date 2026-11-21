@@ -45,6 +45,11 @@ class ActionImprovementsRelationManager extends RelationManager
     {
         return $table
             ->recordTitleAttribute('title')
+            // Per-row action visibility (FormSchema helpers) touches
+            // $record->incident and evidence — eager-load so Filament's
+            // visible() evaluations don't lazy-load per row (profiler flagged
+            // App\Models\ActionImprovement::incident here).
+            ->modifyQueryUsing(fn ($query) => $query->with(['incident.pics', 'evidence']))
             ->columns([
                 Tables\Columns\TextColumn::make('title'),
                 Tables\Columns\TextColumn::make('priority')

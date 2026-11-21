@@ -82,7 +82,7 @@ class IncidentResource extends Resource
     public static function getGlobalSearchResultDetails(Model $record): array
     {
         return [
-            'Status' => $record->status?->value ?? '—',
+            'Status' => $record->incident_status?->value ?? '—',
             'Incident date' => $record->incident_date?->format('d M Y') ?? '—',
         ];
     }
@@ -103,16 +103,13 @@ class IncidentResource extends Resource
             return false;
         }
 
-        // Team-viewers may open only records the shared scope grants — same
-        // logic as the table, so a deep link can never show more than the
-        // list did.
-        if ($user->isTeamViewer()) {
-            return (bool) static::applyAccessControl(
-                Incident::query()->whereKey($record->getKey())
-            )->exists();
-        }
-
-        return true;
+        // Record gate — the ONE scope for EVERYONE (not just team-viewers):
+        // a deep link can never show more than the list did. Admins pass
+        // unscoped, team-viewers need a slice match, year-restricted users
+        // get the allowed-years filter.
+        return (bool) static::applyAccessControl(
+            Incident::query()->whereKey($record->getKey())
+        )->exists();
     }
 
     public static function canCreate(): bool

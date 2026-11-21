@@ -2,10 +2,10 @@ package dingtalk
 
 import (
 	"context"
-	"time"
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/memory"
@@ -40,7 +40,9 @@ func (b *Bot) rememberKnowledge(e memory.KnowledgeEntry) {
 		return
 	}
 	if b.cfg.KnowledgeDigest && b.llm != nil {
-		go b.mergeKnowledgeDigest()
+		util.Go("merge-knowledge-digest", func() {
+			b.mergeKnowledgeDigest()
+		})
 	}
 }
 

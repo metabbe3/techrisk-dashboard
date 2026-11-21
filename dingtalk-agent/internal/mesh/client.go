@@ -14,6 +14,7 @@ import (
 
 	"techrisk-dashboard/dingtalk-agent/internal/agent"
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // RunFunc is the callback that executes a task locally.
@@ -85,7 +86,7 @@ func (c *Client) Start(ctx context.Context) error {
 
 	sessCtx, cancel := context.WithCancel(ctx)
 	defer cancel() // heartbeat goroutine mati saat pollLoop keluar
-	go c.heartbeatLoop(sessCtx)
+	util.Go("mesh-heartbeat", func() { c.heartbeatLoop(sessCtx) })
 	err := c.pollLoop(sessCtx)
 	cancel()
 	return err
@@ -433,7 +434,8 @@ func (c *Client) runTaskWithFanout(ctx context.Context, task *Task, allowFanout 
 
 	for i, subGoal := range subGoals {
 		wg.Add(1)
-		go func(idx int, goal string) {
+		idx, goal := i, subGoal
+		util.Go("mesh-subgoal", func() {
 			defer wg.Done()
 
 			var subCtx context.Context
@@ -453,7 +455,7 @@ func (c *Client) runTaskWithFanout(ctx context.Context, task *Task, allowFanout 
 				result: res,
 				err:    err,
 			}
-		}(i, subGoal)
+		})
 	}
 
 	wg.Wait()

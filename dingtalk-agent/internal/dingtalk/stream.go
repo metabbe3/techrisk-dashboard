@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 
@@ -140,7 +141,10 @@ func NewBot(cfg *config.Config, loop *agent.Loop, llmClient *llm.Client) *Bot {
 	// to keyword inside kb anyway, so documents always land.
 	if cfg.KBToolsEnabled {
 		var embed kb.Embedder
-		if cfg.EmbeddingModel != "" && cfg.EmbeddingModel != "none" {
+		// Typed-nil guard: b.llm is a concrete *llm.Client, so a nil client
+		// assigned here would be a NON-nil typed-nil interface — kb's == nil
+		// checks would pass and Embed would nil-deref inside the ingest goroutine.
+		if cfg.EmbeddingModel != "" && cfg.EmbeddingModel != "none" && b.llm != nil {
 			embed = b.llm
 		}
 		b.know = kb.NewIndex(cfg.DataDir, cfg.EmbeddingModel, embed)
@@ -774,7 +778,9 @@ func (b *Bot) learnLater(m *chatbot.BotCallbackDataModel) {
 	if len(history) == 0 {
 		return
 	}
-	go b.learnProfile(context.Background(), m.SenderStaffId, m.SenderNick, history)
+	util.Go("learn-profile", func() {
+		b.learnProfile(context.Background(), m.SenderStaffId, m.SenderNick, history)
+	})
 }
 
 // learnProfile asks the LLM to merge what the recent conversation reveals about
@@ -842,7 +848,9 @@ func (b *Bot) learnNotion(ctx context.Context, m *chatbot.BotCallbackDataModel) 
 	if len(reads) == 0 {
 		return
 	}
-	go b.summarizeNotionReads(context.Background(), m.SenderNick, reads)
+	util.Go("summarize-notion-reads", func() {
+		b.summarizeNotionReads(context.Background(), m.SenderNick, reads)
+	})
 }
 
 // summarizeNotionReads asks the LLM for a compact per-page summary and appends
@@ -1279,7 +1287,12 @@ func stripMention(text string, botNames []string) string {
 			}
 		}
 		if matched != "" {
-			text = rest[len(matched):]
+			// Cut by RUNE count, not byte length: the match ran in ToLower space
+			// (unicode.ToLower is 1:1 per rune, so rune counts survive), but the
+			// old byte-length cut broke on names whose ToLower shrinks (e.g. 'İ'
+			// U+0130) — wrong bytes or a slice-bounds panic in the SDK callback
+			// goroutine.
+			text = string([]rune(rest)[utf8.RuneCountInString(matched):])
 			continue
 		}
 
@@ -1287,7 +1300,10 @@ func stripMention(text string, botNames []string) string {
 		if idx < 0 {
 			return "" // mention with nothing after it
 		}
-		text = rest[idx+1:]
+		// IndexAny returns a BYTE index; +1 split the 2-byte NBSP (U+00A0) and
+		// left a stray 0xA0 in the prompt text. Cut after the whole rune.
+		_, size := utf8.DecodeRuneInString(rest[idx:])
+		text = rest[idx+size:]
 	}
 }
 
@@ -1296,7 +1312,6 @@ func plainText(s string) string {
 	r := strings.NewReplacer("*", "", "_", "", "`", "", "#", "", "[", "", "]", "")
 	return r.Replace(s)
 }
-
 
 // helpFastPath answers the canned capability blurb for help asks — no LLM
 // turn is spent (B6, audit round 5). Matched on the whole message so a real

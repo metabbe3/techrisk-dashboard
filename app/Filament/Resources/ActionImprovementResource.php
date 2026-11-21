@@ -43,7 +43,10 @@ class ActionImprovementResource extends Resource
     public static function getEloquentQuery(): Builder
     {
         return parent::getEloquentQuery()
-            ->with(['incident', 'completedBy'])
+            // incident.pics + evidence feed the per-row action visibility
+            // checks (isTrustedApprover / hasPendingProof) — load them once
+            // here instead of per visible() evaluation.
+            ->with(['incident.pics', 'evidence', 'completedBy'])
             // Year access on the incident half — same scope as IssueResource.
             ->whereHas('incident', fn (Builder $query) => $query->applyUserYearAccess(auth()->user()))
             // TBD rows sort last under the default due_date sort (NULLs

@@ -25,6 +25,16 @@ class AiTextService
         private CircuitBreaker $circuitBreaker,
     ) {}
 
+    /**
+     * The ONE per-minute limit: the admin-editable AiSetting 'rate_limit'
+     * (System Settings page) — the old config('ai.rate_limit_per_minute')
+     * key does not exist in config/ai.php, so the setting was display-only.
+     */
+    private function rateLimitPerMinute(): int
+    {
+        return (int) AiSetting::get('rate_limit', config('ai.rate_limit_per_minute', 10));
+    }
+
     public function suggestSkills(string $userMessage, ?string $model = null): array
     {
         $prompt = config('ai.prompts.agent_skill_suggest');
@@ -81,7 +91,7 @@ class AiTextService
         $userId = auth()->id() ?? 'guest';
         $rateLimitKey = "ai-enhance:{$userId}";
 
-        if (! RateLimiter::attempt($rateLimitKey, config('ai.rate_limit_per_minute', 10), fn () => true)) {
+        if (! RateLimiter::attempt($rateLimitKey, $this->rateLimitPerMinute(), fn () => true)) {
             return AiTextResult::failure('Rate limit exceeded. Please wait a moment before trying again.');
         }
 
@@ -988,7 +998,7 @@ class AiTextService
         $resolvedModel = $model ?? AiSetting::get('default_model', config('ai.default_model'));
 
         $userId = auth()->id() ?? 'guest';
-        if (! RateLimiter::attempt("ai-summarize:{$userId}", config('ai.rate_limit_per_minute', 10), fn () => true)) {
+        if (! RateLimiter::attempt("ai-summarize:{$userId}", $this->rateLimitPerMinute(), fn () => true)) {
             return AiTextResult::failure('Rate limit exceeded. Please wait a moment.');
         }
 

@@ -83,9 +83,13 @@ class AnalyticsQueryService
         return $result;
     }
 
-    public function buildSingleDataset(string $metric, string $dimension, array $filters): array
+    public function buildSingleDataset(string $metric, string $dimension, array $filters, ?\App\Models\User $user = null): array
     {
-        $query = $this->baseQuery($filters);
+        // Optional user scope (stats-API parity, 2026-11-21): the API's
+        // by_dimension mode must apply the same applyUserYearAccess slice its
+        // summary branch does. build() (Filament Analytics page) passes no
+        // user — its org-wide contract is unchanged.
+        $query = $this->baseQuery($filters, $user);
 
         // MTTR/MTBF only count metric-eligible severities (P1-P4, X1-X4) —
         // Non Incident / G rows carry mttr/mtbf values for per-row display
@@ -109,10 +113,14 @@ class AnalyticsQueryService
         };
     }
 
-    private function baseQuery(array $filters): \Illuminate\Database\Eloquent\Builder
+    private function baseQuery(array $filters, ?\App\Models\User $user = null): \Illuminate\Database\Eloquent\Builder
     {
         $query = Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value);
+
+        if ($user) {
+            $query->applyUserYearAccess($user);
+        }
 
         if (! empty($filters['start_date'])) {
             $query->where('incident_date', '>=', Carbon::parse($filters['start_date'])->startOfDay());

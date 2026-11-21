@@ -57,6 +57,20 @@ class ActionImprovement extends Model implements Auditable
         return in_array($this->status, self::openStatuses(), true);
     }
 
+    /**
+     * The ONE due-day definition (reminder command + notifications): signed
+     * whole days until due_date — positive = remaining, negative = overdue,
+     * null = TBD. `round()` (not truncating int-cast): a row due exactly 7
+     * days out reports 7, and "due yesterday" reports 1 day overdue — the
+     * truncating cast reported 6 and 0.
+     */
+    public function daysUntilDue(): ?int
+    {
+        return $this->due_date === null
+            ? null
+            : (int) round(now()->diffInDays($this->due_date, false));
+    }
+
     /** Priority — optional everywhere, default low (owner rule 2026-10-14). */
     public const PRIORITIES = ['low', 'medium', 'high', 'critical'];
 
@@ -117,6 +131,16 @@ class ActionImprovement extends Model implements Auditable
      */
     public function hasPendingProof(): bool
     {
+        // Same ONE pending-proof definition either way (submitted_by set,
+        // approved_at null). When the evidence relation is eager-loaded
+        // (Action Improvements tables) this is a collection check, not a
+        // per-row EXISTS query — the tables evaluate it inside visible().
+        if ($this->relationLoaded('evidence')) {
+            return $this->evidence->contains(
+                fn (ActionImprovementEvidence $e) => filled($e->submitted_by) && $e->approved_at === null
+            );
+        }
+
         return $this->evidence()
             ->whereNotNull('submitted_by')
             ->whereNull('approved_at')

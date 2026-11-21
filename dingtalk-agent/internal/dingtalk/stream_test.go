@@ -22,6 +22,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/config"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 func TestStripMentionInternal(t *testing.T) {
@@ -1119,4 +1120,50 @@ func (l *lockedBuffer) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.buf.String()
+}
+
+// Rune-safe cut regression tests (2026-11-21 sweep): the old code matched in
+// ToLower space but cut by the ORIGINAL name's byte length — a name whose
+// ToLower shrinks (İ U+0130 → 'i') cut wrong bytes or panicked on slice
+// bounds; and the IndexAny +1 cut split the 2-byte NBSP, leaving a stray
+// 0xA0 in the prompt.
+func TestStripMentionRuneSafe(t *testing.T) {
+	names := []string{"İncident Bot"}
+	cases := map[string]struct{ in, want string }{
+		"shrinking lowercase name": {"@İncident Bot status?", "status?"},
+		"shrinking name no space":  {"@İncident Botstatus?", "status?"},
+	}
+	for name, tc := range cases {
+		if got := stripMention(tc.in, names); got != tc.want {
+			t.Errorf("%s: stripMention(%q) = %q, want %q", name, tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestStripMentionNbspTrim(t *testing.T) {
+	got := stripMention("@bob hello there", nil)
+	want := "hello there"
+	if got != want {
+		t.Errorf("NBSP after mention: stripMention = %q, want %q (no stray 0xA0)", got, want)
+	}
+	for _, r := range got {
+		if r == 0xA0 {
+			t.Errorf("stray NBSP byte remained in %q", got)
+		}
+	}
+}
+
+func TestGoRecoversPanics(t *testing.T) {
+	done := make(chan struct{})
+	util.Go("test-panic", func() {
+		defer close(done)
+		panic("boom")
+	})
+	select {
+	case <-done:
+		// fn's own defer ran; util.Go's recover kept the test process alive —
+		// without the recover this test crashes the whole binary.
+	case <-time.After(2 * time.Second):
+		t.Fatal("goroutine did not run")
+	}
 }

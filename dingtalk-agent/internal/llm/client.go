@@ -504,7 +504,9 @@ func (c *Client) Vision(ctx context.Context, prompt string, image []byte, mimeTy
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	// 8 MiB cap, same ceiling as doCompletion/embeddings — a runaway
+	// gateway body must not OOM the bot.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}

@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 )
 
 // Server coordinates the GoMesh cluster as a leader.
@@ -61,7 +63,7 @@ func (s *Server) Start() error {
 	}
 
 	// Start liveness sweeper: runs every 15s to check 90s heartbeat timeouts & mission timeouts
-	go s.sweeperLoop()
+	util.Go("mesh-sweeper", s.sweeperLoop)
 
 	log.Printf("[mesh] leader listening on %s (proto: %s)", ln.Addr().String(), MeshProtocol)
 	go func() {

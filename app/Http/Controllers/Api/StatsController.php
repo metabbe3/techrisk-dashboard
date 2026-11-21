@@ -36,7 +36,9 @@ class StatsController extends Controller
      *   footer-parity scope (non-Issue rows within the token user's year
      *   access) — the exact numbers the dashboard footer shows.
      * - mode=by_dimension: AnalyticsQueryService::buildSingleDataset() —
-     *   metric × dimension breakdowns ({labels[], values[], raw_data[]}).
+     *   metric × dimension breakdowns ({labels[], values[], raw_data[]}),
+     *   scoped to the token user's year access (parity with the summary
+     *   branch, 2026-11-21).
      *
      * @authenticated
      *
@@ -77,7 +79,8 @@ class StatsController extends Controller
                     app(AnalyticsQueryService::class)->buildSingleDataset(
                         $request->validated('metric'),
                         $request->validated('dimension'),
-                        $filters
+                        $filters,
+                        $request->user() // same slice the summary branch applies — parity by construction
                     ),
                     'Stats retrieved successfully.'
                 );

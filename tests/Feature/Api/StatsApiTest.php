@@ -232,4 +232,37 @@ class StatsApiTest extends TestCase
             ->getJson('/api/v1/stats?mode=everything')
             ->assertStatus(422);
     }
+
+    public function test_by_dimension_applies_the_token_users_year_access(): void
+    {
+        // Parity (2026-11-21 sweep): the summary branch scoped by
+        // applyUserYearAccess while by_dimension returned org-wide breakdowns
+        // from the same route. Both must obey the same slice.
+        \Spatie\Permission\Models\Permission::firstOrCreate(['name' => 'access api']);
+        $restricted = User::factory()->create();
+        $restricted->givePermissionTo('access api');
+        \App\Models\UserAuditLogSetting::create([
+            'user_id' => $restricted->id,
+            'allowed_years' => [now()->year],
+            'can_view_all_logs' => false,
+        ]);
+        $token = $restricted->createToken('restricted', ['*'])->plainTextToken;
+
+        $y = now()->year;
+        Incident::factory()->create([
+            'severity' => 'P1', 'classification' => 'Incident',
+            'incident_date' => "{$y}-03-01 10:00:00",
+        ]);
+        Incident::factory()->create([
+            'severity' => 'P2', 'classification' => 'Incident',
+            'incident_date' => '2024-03-01 10:00:00', // outside the allowed year
+        ]);
+
+        $this->withHeaders(['Authorization' => "Bearer {$token}"])
+            ->getJson('/api/v1/stats?'.http_build_query(['mode' => 'by_dimension', 'metric' => 'count', 'dimension' => 'severity']))
+            ->assertStatus(200)
+            ->assertJsonPath('data.labels.0', 'P1')
+            ->assertJsonPath('data.values.0', 1)
+            ->assertJsonCount(1, 'data.labels', 'Out-of-year rows must not reach a restricted token breakdown');
+    }
 }
