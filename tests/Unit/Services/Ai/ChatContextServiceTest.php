@@ -136,4 +136,31 @@ class ChatContextServiceTest extends TestCase
         $this->assertStringContainsString('Avg MTTR: 60.0 minutes', $stats);
         $this->assertStringContainsString('Total Incidents ('.now()->year.'): 2', $stats);
     }
+
+    public function test_quick_stats_fund_loss_keeps_sub_incidents(): void
+    {
+        Cache::forget('chat_quick_stats_v2');
+
+        $super = Incident::factory()->create([
+            'classification' => 'Incident',
+            'fund_status' => 'Confirmed loss',
+            'severity' => 'P2',
+            'fund_loss' => 5000000,
+            'incident_date' => now()->startOfDay(),
+        ]);
+
+        // Review I2: money stays with subs — the AI quick-stats sum must
+        // count the sub's fund loss even though the sub leaves the COUNTS.
+        Incident::factory()->subOf($super)->create([
+            'classification' => 'Incident',
+            'fund_status' => 'Confirmed loss',
+            'severity' => 'P2',
+            'fund_loss' => 2000000,
+            'incident_date' => now()->startOfDay(),
+        ]);
+
+        $stats = $this->service->getQuickStats();
+
+        $this->assertStringContainsString('Total Fund Loss: Rp 7.000.000', $stats);
+    }
 }

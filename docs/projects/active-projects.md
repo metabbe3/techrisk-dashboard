@@ -65,6 +65,40 @@ The bot could not answer "how did we do week by week" or post a scheduled weekly
 1. Filament → API Tokens → `dingtalk-agent` → tick the new `weekly-report` endpoint.
 2. `docker compose up -d --build dingtalk-agent app worker`.
 
+### [PROJ-022] Sub-incident hierarchy (super-incident / sub-incident)
+
+**Status:** In Progress (design approved; plan phase)
+**Priority:** P2
+**PM:** Tomy (self-approved per autonomy rule)
+**Assigned Agents:** backend-architect-engineer, frontend-engineer, QA agents
+**Start Date:** 2026-11-11
+**Target Completion:** TBD
+
+#### Description
+Owner PRD 2026-11-11: incidents can cause multiple related impacts, each its own investigation. One-level hierarchy — a super-incident links many full sub-incident records (own ID/status/follow-ups). Owner-clarified semantics: incident-count metrics ROLL UP (subs excluded from counts/severity/MTTR/MTBF everywhere — the super is the counted row); fund-loss MONEY keeps counting subs on money surfaces (Fund Loss tile, sums, trends, root-cause Pareto); Incidents only (Issues untouched except one classification-change guard); one level deep; list hides subs unless expanded (filters surface them); Excel exports exclude subs entirely; Reporting/SendReport mirror the dashboard (listings+counts exclude subs, money columns keep them). Design: `docs/superpowers/specs/2026-11-11-sub-incident-hierarchy-design.md`.
+
+#### Technical Approach
+- Nullable `parent_incident_id` FK on incidents (nullOnDelete, indexed); no join table.
+- Exclusion once at the counting funnel (`countEligible()`/`aiCounts()`) + MTTR/MTBF average/chain queries composed like `withoutOutliers()`; money scopes untouched; NOT inside `baseExportScope()` (the AI corpus shares it — subs stay in the knowledge base).
+- `parent_incident_id` joins the IncidentObserver dirty-field trigger list → `CalculateIncidentMetrics` → `flushIncidentCache()` bumps `dashboard_cache_version` (single flush path).
+- List expand/collapse in IncidentResource; "Sub of" chips + sub-count badge; classification guard in both resources' forms.
+
+#### Tasks
+- [x] Implementation plan (writing-plans) — `docs/superpowers/plans/2026-11-11-sub-incident-hierarchy.md` (11 tasks, TDD)
+- [ ] Migration + model relations/scopes (backend)
+- [ ] Counting-funnel + metric + export + Reporting exclusions (backend, dependency-map walk)
+- [ ] List expand/collapse + create/link/unlink actions (frontend)
+- [ ] View-page sections + board chips (frontend)
+- [ ] Tests + docs (dependency map, business-rules, exports, testing-standards baseline) + Pint
+
+#### Dependencies
+- None blocking. Overlaps in ViewIncident with PROJ-018 (code done, merge pending) — sequence merge before this feature's view-page work to avoid churn.
+
+#### Blockers
+- None
+
+#### Progress Updates
+- 2026-11-11: PRD analyzed, owner clarified all ambiguity (roll-up + money-stays + Reporting mirror), design written + builder-checked, PM gate passed (conflict check: PROJ-018 view-page overlap noted).
 ### [PROJ-028] Remove Reverb entirely (decommission websockets)
 
 **Status:** Done (2026-11-20)
@@ -226,7 +260,6 @@ Owner 2026-11-16: teams currently fill the Word "Incident Investigation Form –
 
 #### Progress Updates
 - 2026-11-16: Implementation complete; full suite green (see CLAUDE.md baseline); `InvestigationFormIntakeTest` pins the concurrency guard end-to-end.
-
 
 ### [PROJ-020] Incident list: one Export dropdown
 

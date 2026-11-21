@@ -110,6 +110,7 @@ class DashboardStatsOverview extends BaseWidget
         $mttrNonFundLoss = Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutSubIncidents() // PROJ-022: subs carry computed mttr — they must leave the average
             ->tap($incidentDateFilter)
             ->where('fund_status', FundStatus::NonFundLoss->value)
             ->where('mttr', '>=', 0)
@@ -120,6 +121,7 @@ class DashboardStatsOverview extends BaseWidget
         $mttrFundLoss = abs((float) (Incident::query()
             ->where('classification', '!=', IncidentClassification::Issue->value)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutSubIncidents() // PROJ-022: same exclusion as above
             ->tap($incidentDateFilter)
             ->where('fund_status', FundStatus::ConfirmedLoss->value)
             ->where('mttr', '<', 0)

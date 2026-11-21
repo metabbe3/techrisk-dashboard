@@ -99,6 +99,24 @@ class IncidentObserver
     }
 
     /**
+     * Handle the Incident "deleting" event (BEFORE the DB delete — the FK
+     * nullOnDelete nulls the subs as part of the DELETE statement, so by
+     * "deleted" no rows point at the super any more).
+     */
+    public function deleting(Incident $incident): void
+    {
+        // Review I1 (PROJ-022): the FK nullOnDelete happens at the database —
+        // no Eloquent events fire on the orphaned subs, so this handler is
+        // the ONLY chance to recalc them (each rejoins the count surfaces and
+        // its MTBF chain) and bump dashboard_cache_version (via the job).
+        // Deleting a record without subs changes nothing structural — the
+        // 15-min TTL covers the plain count drop (pre-existing behavior).
+        Incident::where('parent_incident_id', $incident->getKey())
+            ->get()
+            ->each(fn (Incident $sub) => dispatch(new CalculateIncidentMetrics($sub)));
+    }
+
+    /**
      * Handle the Incident "updated" event.
      */
     public function updated(Incident $incident): void
@@ -155,7 +173,11 @@ class IncidentObserver
         $needsCategoryRecalculation = $incident->isDirty('incident_status') || $incident->isDirty('severity') ||
             $incident->isDirty('incident_type') || $incident->isDirty('fund_status') ||
             $incident->isDirty('recovered_fund') || $incident->isDirty('fund_loss') ||
-            $incident->isDirty('potential_fund_loss') || $incident->isDirty('classification');
+            $incident->isDirty('potential_fund_loss') || $incident->isDirty('classification') ||
+            // Linking/unlinking a sub changes what its super counts (PROJ-022
+            // roll-up) — must recalc or caches serve stale totals until TTL
+            // (Edit-Safety rule 2).
+            $incident->isDirty('parent_incident_id');
         // Detection fields feed the governance KPI caches (keyed on
         // dashboard_cache_version) — a change must bump it or they serve
         // stale numbers until TTL (Edit-Safety rule 2). discovered_at feeds

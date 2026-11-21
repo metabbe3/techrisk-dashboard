@@ -23,6 +23,7 @@ class WeeklyDataService
         $allIncidents = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+            ->withoutSubIncidents() // weekly counts roll up into the super (PROJ-022)
             ->excludedFromCounts();
         // API parity (stats endpoint precedent): a non-null user scopes rows to
         // their year access — the team-viewer grant lives ONLY in

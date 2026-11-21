@@ -32,9 +32,42 @@ window.dispatchEvent(new Event('marked-ready'));
 // (longer IDs, checkbox padding) can't drift the offset out of sync.
 const syncStickyIdWidths = () => {
     document.querySelectorAll('.fi-ta-table:has(.sticky-col-id)').forEach((table) => {
+        // This branch's PROJ-022 expand chevron is the FIRST sticky cell —
+        // its width pays into the ID and title offsets. Tables without the
+        // expand column (Issues, …) keep --sticky-expand-w at 0.
+        const expand = table.querySelector('td.sticky-col-expand') ?? table.querySelector('th.sticky-col-expand');
+        if (expand) table.style.setProperty('--sticky-expand-w', `${expand.offsetWidth}px`);
         const cell = table.querySelector('td.sticky-col-id') ?? table.querySelector('th.sticky-col-id');
         if (cell) table.style.setProperty('--sticky-col-id-w', `${cell.offsetWidth}px`);
     });
 };
 ['load', 'resize'].forEach((e) => window.addEventListener(e, syncStickyIdWidths));
 ['livewire:navigated', 'livewire:update'].forEach((e) => document.addEventListener(e, syncStickyIdWidths));
+
+// Financial Impact money fields (owner 2026-11-20): the browser-side twin of
+// FinancialImpactFormSchema::parse()/format() — same id-ID rules, display only.
+// The authoritative parse stays server-side (the dehydrator); this just makes
+// the pasted value LOOK right before it's ever sent.
+window.trMoneyFormat = (raw) => {
+    const s = String(raw).replace(/[^0-9.,]/g, '');
+    if (!s || !/[0-9]/.test(s)) return raw;
+
+    let int;
+    let dec = '';
+    const comma = s.lastIndexOf(',');
+    if (comma !== -1) {
+        int = s.slice(0, comma);
+        dec = s.slice(comma + 1).replace(/,/g, '');
+    } else {
+        int = s;
+        const dot = s.lastIndexOf('.');
+        if (dot !== -1 && s.slice(dot + 1).length <= 2) {
+            int = s.slice(0, dot);
+            dec = s.slice(dot + 1);
+        }
+    }
+    int = int.replace(/[.,]/g, '') || '0';
+    dec = dec.slice(0, 2).padEnd(2, '0');
+    const n = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(parseInt(int, 10) || 0);
+    return `${n},${dec}`;
+};

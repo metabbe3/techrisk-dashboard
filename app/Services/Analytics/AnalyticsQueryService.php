@@ -100,7 +100,8 @@ class AnalyticsQueryService
         // Single choke point for every dimension path below.
         if (in_array($metric, ['avg_mttr', 'avg_mttr_days', 'avg_mtbf'], true)) {
             $query->whereIn('severity', Severity::METRIC_ELIGIBLE)
-                ->withoutOutliers();
+                ->withoutOutliers()
+                ->withoutSubIncidents(); // subs carry computed mttr (outliers don't)
         }
 
         return match ($dimension) {

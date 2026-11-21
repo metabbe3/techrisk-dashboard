@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Enums\Severity;
+use App\Models\Incident;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -10,6 +11,14 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class IncidentFactory extends Factory
 {
+    /**
+     * PROJ-022: link the record as a sub-incident of the given super.
+     */
+    public function subOf(Incident $super): static
+    {
+        return $this->state(fn () => ['parent_incident_id' => $super->id]);
+    }
+
     /**
      * Define the model's default state.
      *

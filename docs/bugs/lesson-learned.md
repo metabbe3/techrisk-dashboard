@@ -1854,6 +1854,120 @@ from an empty result set.
 
 ---
 
+## [BUG-032] - The classification guard blocked EVERY edit of a linked record — the fill state holds the cast enum, the rule compared it strictly against the raw value
+
+**Date:** 2026-11-17
+**Discovered By:** Owner (changing a sub-incident's potential loss, PROJ-022)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+
+Changing a sub-incident's Potential Loss through the Edit form failed with
+`Unlink this incident from its super/sub-incidents before changing
+classification.` — classification untouched. EVERY edit of any super or sub
+through EditIncident failed the same way; standalone records edited fine,
+which is exactly why the suite stayed green.
+
+### Affected Component
+- [x] Filament Resource (`IncidentResource` form rules — classification guard + the I4 `parent_incident_id` guard)
+- [x] Model (enum cast on `classification` — the fill state's type)
+
+### Root Cause Analysis (5 Whys)
+1. Why did the guard fire? `$value !== $record->classification?->value` was true.
+2. Why? The fill state holds the cast ENUM (`EditRecord` fills from the
+   record's cast attributes — state = `IncidentClassification::Incident`),
+   while the rule compared it strictly against the string `'Incident'`.
+3. Why a strict compare? The rule was written against the create page,
+   where the select submits the raw value; nobody ran an EDIT through it.
+4. Why did no test catch it? The guard only arms on `hasIncidentLinks()` —
+   every existing edit test used an unlinked record.
+5. **Root cause:** a type-mismatched comparison (enum instance vs value
+   string) in a rule only linked records reach — the one path no test
+   exercised.
+
+A SECOND guard false-fired in the same error bag: the I4 `parent_incident_id`
+rule ran on the sub's edit page, where the hidden field prefills the record's
+own parent — and a super always fails the "sits at the top" check (it has
+subs by definition).
+
+### Impact
+- [x] User facing?
+- [x] Broken workflow?
+- [ ] Data loss/corruption? (the save was blocked, nothing written)
+
+### Fix
+- Classification guard: normalize the submitted value first
+  (`$value instanceof \BackedEnum ? $value->value : $value`), then the
+  strict compare.
+- `parent_incident_id` guard: on edit, an untouched link
+  (`(int) $value === (int) $record->parent_incident_id`) returns early; any
+  other value — including a crafted `?parent=` on a standalone's edit page —
+  is still validated.
+- `SubIncidentCreateParentGuardTest` +2: a linked record's money edit
+  passes the guard; a real classification change on a linked record is
+  still rejected.
+
+### Time-of-day flake found by the same run
+`SubIncidentClassificationGuardTest` seeded `incident_date = today 10:00` —
+future-dated whenever the suite runs before 10am (`maxDate(now())`),
+failing on date validation instead of its own subject. Helper changed to
+`now()->startOfDay()`. Five other files carry the same seed but only render
+(never submit the form) — left as-is until one submits.
+
+### Prevention Checklist
+- [x] Any form rule comparing a field against a model ENUM attribute
+      normalizes the submitted value first — a strict enum-vs-string compare
+      is always-true and reads as "changed"
+- [x] A guard that arms on record state needs a test driving the REAL form
+      path on an ARMED record, not just the guard in isolation
+- [x] Never seed form-validated dates with today-10:00 — `startOfDay()` is
+      future-safe at every hour the suite can run
+
+---
+
+## [BUG-033] - Board view 500'd since the multi-PIC cutover: a `@php(expr)` one-liner swallowed the next `@endphp` block
+
+**Date:** 2026-11-17
+**Discovered By:** Owner (clicking Board view; ParseError at incident-kanban-board.blade.php:284)
+**Severity:** High
+**Status:** Resolved
+
+### Description
+
+The incident Board view button returned `ParseError: syntax error, unexpected
+token "@"` — on EVERY render, in prod and local alike. Present on `main`
+since 52f20d0 (PROJ-010 multi-PIC cutover, which introduced the one-liners);
+PROJ-022 only shifted the reported line by one.
+
+### Root Cause
+
+Laravel's Blade pre-pass `storePhpBlocks()` runs BEFORE the one-liner
+directive compilation, with a dotall regex pairing `@php` with the NEXT
+`@endphp` in the file. A `@php(expr)` one-liner (no `@endphp` of its own)
+therefore swallows everything up to the next BLOCK `@php…@endphp` (here
+lines 283→311 and 468→439-side), storing the span — raw `@if`/`{{ }}`
+directives included — as one `<?php{...}?>` blob. The raw directives landed
+inside an open PHP tag → parse error. The same line in isolation compiles
+fine, so the trap only shows when a later block `@endphp` exists in the
+file — a scan across the codebase found exactly ONE file affected.
+
+### Fix
+- `incident-kanban-board.blade.php` 283/468: one-liners → inline-block form
+  (`@php $firstPic = ...; @endphp` — the shape line 271 already used).
+- `UserFacingCrashersTest::test_the_kanban_board_view_compiles_to_valid_php`
+  pins the compile shape: no raw `@if(`/`@php`/php-open-paren artifact may
+  survive compilation. (Board still cannot RENDER under SQLite — FIELD() —
+  but now compiles and renders under MySQL.)
+
+### Prevention Checklist
+- [x] NEVER use the `@php(expr)` one-liner in a Blade file that also has a
+      block `@php … @endphp` AFTER it — use `@php expr; @endphp` inline
+- [x] Views that only render under MySQL get a COMPILE pin in
+      UserFacingCrashersTest — compilation is DB-free and catches these
+
+---
+
 ### [BUG-029] - DingTalk agent sweep — stale system prompt, dead card streaming, ticket tokens never matched
 
 **Date:** 2026-11-12

@@ -33,7 +33,7 @@ class AnnouncementTest extends TestCase
         return DB::table('notifications')
             ->where('notifiable_id', $user->id)
             ->where('notifiable_type', User::class)
-            ->where('data', 'like', '%"type":"' . $type . '"%')
+            ->where('data', 'like', '%"type":"'.$type.'"%')
             ->count();
     }
 

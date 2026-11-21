@@ -18,6 +18,7 @@ class IncidentApiResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'parent_incident_id' => $this->parent_incident_id, // PROJ-022: set on sub-incidents
             'incident_no' => $this->no,
             'incident_name' => $this->title,
             'summary' => $this->summary,

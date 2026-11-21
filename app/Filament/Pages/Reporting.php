@@ -246,7 +246,10 @@ class Reporting extends Page implements HasForms
             return;
         }
 
+        // Listing mirrors the dashboard (spec decision 9): sub-incidents are
+        // hidden — their numbers roll up into the super (PROJ-022).
         $query = Incident::query()->where('classification', '!=', IncidentClassification::Issue->value)
+            ->withoutSubIncidents()
             // Year access matches what the Incidents table shows — without it
             // a year-restricted user saw every year's rows here.
             ->applyUserYearAccess(auth()->user());

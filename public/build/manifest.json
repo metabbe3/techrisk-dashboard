@@ -166,34 +166,6 @@
       "_init-Gi6I4Gst.js"
     ]
   },
-  "node_modules/@fontsource-variable/inter/files/inter-cyrillic-ext-wght-normal.woff2": {
-    "file": "assets/inter-cyrillic-ext-wght-normal-BOeWTOD4.woff2",
-    "src": "node_modules/@fontsource-variable/inter/files/inter-cyrillic-ext-wght-normal.woff2"
-  },
-  "node_modules/@fontsource-variable/inter/files/inter-cyrillic-wght-normal.woff2": {
-    "file": "assets/inter-cyrillic-wght-normal-DqGufNeO.woff2",
-    "src": "node_modules/@fontsource-variable/inter/files/inter-cyrillic-wght-normal.woff2"
-  },
-  "node_modules/@fontsource-variable/inter/files/inter-greek-ext-wght-normal.woff2": {
-    "file": "assets/inter-greek-ext-wght-normal-DlzME5K_.woff2",
-    "src": "node_modules/@fontsource-variable/inter/files/inter-greek-ext-wght-normal.woff2"
-  },
-  "node_modules/@fontsource-variable/inter/files/inter-greek-wght-normal.woff2": {
-    "file": "assets/inter-greek-wght-normal-CkhJZR-_.woff2",
-    "src": "node_modules/@fontsource-variable/inter/files/inter-greek-wght-normal.woff2"
-  },
-  "node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2": {
-    "file": "assets/inter-latin-ext-wght-normal-DO1Apj_S.woff2",
-    "src": "node_modules/@fontsource-variable/inter/files/inter-latin-ext-wght-normal.woff2"
-  },
-  "node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2": {
-    "file": "assets/inter-latin-wght-normal-Dx4kXJAl.woff2",
-    "src": "node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2"
-  },
-  "node_modules/@fontsource-variable/inter/files/inter-vietnamese-wght-normal.woff2": {
-    "file": "assets/inter-vietnamese-wght-normal-CBcvBZtf.woff2",
-    "src": "node_modules/@fontsource-variable/inter/files/inter-vietnamese-wght-normal.woff2"
-  },
   "node_modules/katex/dist/katex.mjs": {
     "file": "assets/katex-HP8lGamR.js",
     "name": "katex",
@@ -702,7 +674,7 @@
     ]
   },
   "resources/css/app.css": {
-    "file": "assets/app-CL2qP0Tp.css",
+    "file": "assets/app-DW9Qui6I.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "names": [
@@ -716,7 +688,7 @@
     "isEntry": true
   },
   "resources/js/app.js": {
-    "file": "assets/app-Bs_MQQPY.js",
+    "file": "assets/app-DlbeUVsW.js",
     "name": "app",
     "src": "resources/js/app.js",
     "isEntry": true,

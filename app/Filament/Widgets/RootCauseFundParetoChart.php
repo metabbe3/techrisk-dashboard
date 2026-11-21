@@ -82,7 +82,8 @@ class RootCauseFundParetoChart extends ChartWidget
     private function pareto(): array
     {
         $rows = Incident::query()
-            ->aiCounts()
+            // Money surface (PROJ-022): sub fund loss still counts.
+            ->aiCounts(withSubIncidents: true)
             ->where('incident_status', IncidentStatus::Completed->value)
             ->whereYear('incident_date', now()->year)
             ->get(['fund_loss', 'root_cause_category']);

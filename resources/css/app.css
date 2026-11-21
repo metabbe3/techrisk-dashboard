@@ -1,5 +1,4 @@
 @import 'tailwindcss';
-@import '@fontsource-variable/inter';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
@@ -13,7 +12,7 @@
 @source '../../vendor/wire-elements/spotlight/resources/views/**/*.blade.php';
 
 @theme {
-    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    --font-sans: 'Instrument Sans', ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
         'Segoe UI Symbol', 'Noto Color Emoji';
 
     /* DANA brand blue (owner 2026-11-19: no purple anywhere — email, login,
@@ -521,26 +520,36 @@
 :root.dark .fi-ta-table-container::-webkit-scrollbar-thumb { background: var(--tr-slate-700, #334155); }
 
 /* Incidents list — freeze ID and name columns on horizontal scroll.
-   Scoped via :has(.sticky-col-id). The bulk-select checkbox renders INSIDE
-   the ID cell (no separate cell), so the ID column is the first cell and
-   sticks at left:0; the title offset is the ID column's real width, measured
-   at runtime into --sticky-col-id-w (see app.js syncStickyIdWidths). */
+   Scoped via :has(.sticky-col-id). This branch's PROJ-022 expand chevron
+   is the FIRST cell — it sticks too (sticky-col-expand, 20px wide), the
+   ID sticks after it, and the title offset pays for both, measured at
+   runtime: --sticky-expand-w from the expand cell, --sticky-col-id-w from
+   the ID cell (see app.js syncStickyIdWidths). On tables without the
+   expand column (Issues, others), --sticky-expand-w stays 0. */
+.fi-ta-table:has(.sticky-col-id) th.sticky-col-expand,
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-expand:not([colspan]) {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff;
+}
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
     position: sticky;
-    left: 0;
+    left: var(--sticky-expand-w, 0px);
     z-index: 2;
     background: #fff;
 }
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
     position: sticky;
-    left: var(--sticky-col-id-w, 80px);
+    left: calc(var(--sticky-expand-w, 0px) + var(--sticky-col-id-w, 80px));
     z-index: 2;
     background: #fff;
     box-shadow: 6px 0 8px -6px rgba(15, 23, 42, .18);
 }
 /* row-hover tint must be replicated on the opaque pinned cells (the tr bg is hidden beneath them) */
+.fi-ta-table tbody tr:hover td.sticky-col-expand,
 .fi-ta-table tbody tr:hover td.sticky-col-id,
 .fi-ta-table tbody tr:hover td.sticky-col-title {
     background: #fafcff;
@@ -548,28 +557,37 @@
 /* header + summary rows sit on bg-gray-50 (dark: white/5 over gray-900) — pinned
    cells there must match or they read as a different color. :has() is required
    here to out-specify the white base rule (its :has() counts as a class). */
+.fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-expand,
 .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-title,
+.fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-expand,
 .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-title,
+.fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-expand,
 .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-title {
     background: #f9fafb;
 }
+:root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-expand,
+:root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-expand:not([colspan]),
 :root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
 :root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]),
 :root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
 :root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
     background: #111827;
 }
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-expand,
 :root.dark .fi-ta-table tbody tr:hover td.sticky-col-id,
 :root.dark .fi-ta-table tbody tr:hover td.sticky-col-title {
     background: #131c2b;
 }
+:root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-expand,
 :root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-id,
 :root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-title,
+:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-expand,
 :root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-id,
 :root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-title,
+:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-expand,
 :root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-id,
 :root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-title {
     background: #1d2432;
@@ -608,6 +626,11 @@
     background: #f8fafc;
     border-bottom: 1px solid #eef0f4;
     padding: 12px 20px;
+    /* Round 1249: the header band's square corners overlap the card's 12px
+       rounded corners (the card keeps `overflow: visible` for dropdowns, so
+       nothing clips the header) — round the header to the card's inner
+       radius (12px − 1px border). */
+    border-radius: 11px 11px 0 0;
 }
 :root.dark .fi-resource-edit-record-page .fi-section-header,
 :root.dark .fi-resource-create-record-page .fi-section-header {
@@ -2785,30 +2808,24 @@
 :root.dark .analytics-chart-container:hover { border-color: var(--tr-slate-500, #64748b); }
 
 /* --- Sidebar redesign (2026-11-19) -----------------------------------------
-   Account + notifications live in the sidebar now (SIDEBAR_FOOTER hook), the
-   desktop top bar is hidden, and the palette replaced the topbar search.
-   Colors go through the --tr-* semantic tokens (DANA brand since 2026-11-19) —
-   no raw brand hexes here. Unlayered + !important beats Filament's unlayered
-   Tailwind v3 build where they collide (same preflight-vs-unlayered story as
-   the Notion panel classes — see testing-standards.md). --- */
+   Account + notifications live in the sidebar now (SIDEBAR_FOOTER hook) and
+   the palette replaced the topbar search. The topbar itself is BACK on
+   desktop (owner 2026-11-19 five-point design pass — it carries the
+   date/calendar + name-beside-avatar widgets); the global-search slot stays
+   hidden. Colors go through the --tr-* semantic tokens (DANA brand since
+   2026-11-19) — no raw brand hexes here. Unlayered + !important beats
+   Filament's unlayered Tailwind v3 build where they collide (same
+   preflight-vs-unlayered story as the Notion panel classes — see
+   testing-standards.md). --- */
 
-/* Top bar: desktop hides it entirely (notifications + account moved into the
-   sidebar, search moved into the palette). Mobile keeps it as the drawer's
-   hamburger + brand bar, minus the pieces the sidebar/palette own. */
-@media (min-width: 1024px) {
-    .fi-topbar {
-        display: none !important;
-    }
-}
-
-.fi-topbar .fi-user-menu,
 .fi-topbar .fi-global-search {
     display: none !important;
 }
 
-/* Open sidebar (expanded) — 15rem for the account rows' breathing room. */
+/* Open sidebar (expanded) — 16.5rem (owner 2026-11-19: widened from 15rem so
+   the 0.95rem labels never ellipsize; account rows keep their breathing room). */
 .fi-sidebar.fi-sidebar-open {
-    width: 15rem !important;
+    width: 16.5rem !important;
 }
 
 /* Rail (collapsed on desktop): scoped to >=lg — the mobile drawer's closed
@@ -2831,14 +2848,14 @@
 }
 
 .fi-sidebar-item-label {
-    font-size: 0.8rem !important;
-    line-height: 1.1rem !important;
+    font-size: 0.95rem !important;
+    line-height: 1.3rem !important;
 }
 
 .fi-sidebar-item .fi-icon,
 .fi-sidebar-item-icon {
-    width: 0.875rem !important;
-    height: 0.875rem !important;
+    width: 1.1rem !important;
+    height: 1.1rem !important;
 }
 
 /* Active item: quiet brand-tinted pill. */
@@ -2849,7 +2866,7 @@
 
 /* Group labels: quiet uppercase section markers. */
 .fi-sidebar-group-label {
-    font-size: 0.65rem !important;
+    font-size: 0.75rem !important;
     font-weight: 600 !important;
     text-transform: uppercase !important;
     letter-spacing: 0.06em !important;
@@ -2899,53 +2916,15 @@
     color: #94a3b8;
 }
 
-/* --- Sidebar footer (SIDEBAR_FOOTER → filament.sidebar.footer) --- */
-.fi-sidebar-footer {
-    border-top: 1px solid #e2e8f0;
-    padding: 0.625rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-}
-
-:root.dark .fi-sidebar-footer {
-    border-top-color: #334155;
-}
-
-/* Bell + account rows share one row anatomy. */
-.sidebar-account-row {
-    display: flex;
-    width: 100%;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.45rem 0.6rem;
-    border-radius: 0.5rem;
-    font-size: 0.8rem;
-    color: #334155;
-    transition: background-color .15s ease, color .15s ease;
-}
-
-.sidebar-account-row:hover {
-    background: #f1f5f9;
-    color: var(--tr-indigo-600, #0f7bd1);
-}
-
-:root.dark .sidebar-account-row {
-    color: #cbd5e1;
-}
-
-:root.dark .sidebar-account-row:hover {
-    background: rgba(51, 65, 85, .5);
-}
+/* (Profile + notifications moved back to the TOPBAR, owner 2026-11-19 —
+   the .fi-sidebar-footer/.sidebar-account-* blocks died with the footer
+   hook. .sidebar-account-icon/.sidebar-account-label stay: the search row
+   reuses them.) */
 
 .sidebar-account-icon {
     width: 1.25rem;
     flex-shrink: 0;
     color: #64748b;
-}
-
-.sidebar-account-row:hover .sidebar-account-icon {
-    color: var(--tr-indigo-600, #0f7bd1);
 }
 
 .sidebar-account-icon > svg {
@@ -2954,85 +2933,6 @@
 }
 
 .sidebar-account-label {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-/* Unread badge on the bell icon. */
-.sidebar-account-badge {
-    position: absolute;
-    top: -0.25rem;
-    right: -0.375rem;
-    min-width: 1rem;
-    height: 1rem;
-    padding: 0 0.2rem;
-    border-radius: 9999px;
-    background: #ef4444;
-    color: #fff;
-    font-size: 0.6rem;
-    font-weight: 700;
-    line-height: 1rem;
-    text-align: center;
-}
-
-/* Account block: the dropdown trigger rendered as ONE row (avatar | name +
-   email | ⋮). Target the button by its own class — Filament wraps the
-   trigger slot in a .fi-dropdown-trigger div, so `.fi-user-menu > button`
-   never matched and the avatar/name/email stacked vertically. */
-.sidebar-account-user .fi-user-menu,
-.sidebar-account-user .fi-dropdown-trigger {
-    width: 100%;
-    min-width: 0;
-}
-
-.sidebar-account-trigger {
-    width: 100%;
-    min-width: 0;
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center;
-    gap: 0.625rem;
-    padding: 0.45rem 0.6rem;
-    border-radius: 0.5rem;
-    text-align: start;
-    transition: background-color .15s ease;
-}
-
-.sidebar-account-trigger:hover {
-    background: #f1f5f9;
-}
-
-:root.dark .sidebar-account-trigger:hover {
-    background: rgba(51, 65, 85, .5);
-}
-
-.sidebar-account-trigger .fi-avatar,
-.sidebar-account-trigger img {
-    width: 1.75rem !important;
-    height: 1.75rem !important;
-    flex-shrink: 0;
-    border-radius: 9999px;
-}
-
-.sidebar-account-trigger > .sidebar-account-icon {
-    margin-inline-start: auto;
-    width: 1rem;
-    height: 1rem;
-}
-
-.sidebar-account-meta {
-    flex: 1 1 auto;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    line-height: 1.15;
-    overflow: hidden;
-}
-
-.sidebar-account-name {
-    max-width: 100%;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3049,36 +2949,14 @@
     }
 }
 
-.sidebar-account-name {
-    font-size: 0.78rem;
-    font-weight: 600;
-    color: #1e293b;
-}
-
-.sidebar-account-email {
-    max-width: 100%;
-    font-size: 0.68rem;
-    color: #64748b;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-:root.dark .sidebar-account-name { color: #e2e8f0; }
-:root.dark .sidebar-account-email { color: #94a3b8; }
-
-/* Rail: only icons remain in the footer + search row. */
+/* Rail: only icons remain in the search row. */
 @media (min-width: 1024px) {
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-label,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-meta,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-trigger > .sidebar-account-icon,
     .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-kbd {
         display: none !important;
     }
 
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-row,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-row,
-    .fi-sidebar:not(.fi-sidebar-open) .sidebar-account-trigger {
+    .fi-sidebar:not(.fi-sidebar-open) .sidebar-search-row {
         justify-content: center !important;
         padding: 0.45rem 0 !important;
     }
@@ -3111,4 +2989,315 @@
 .fi-ta-cell .fi-badge {
     font-size: 0.65rem !important;
     padding: 0.1rem 0.4rem !important;
+}
+
+/* --- From feature/sub-incident-hierarchy (merge round 6) — additions main's
+   redesign doesn't carry. Order: appended AFTER main's rules, so anything
+   here wins a tie at equal specificity. --- */
+
+/* Topbar brand bar (mobile keeps a topbar — desktop hides it entirely, see
+   main's redesign block above). */
+.fi-topbar nav {
+    background-color: var(--color-dana-600);
+    color: #fff;
+    box-shadow: none;
+    --tw-ring-shadow: 0 0 #0000;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+:root.dark .fi-topbar nav {
+    background-color: #0f172a;
+    border-bottom-color: rgba(0, 0, 0, 0.4);
+}
+.fi-topbar nav .fi-icon-btn,
+.fi-topbar nav .fi-icon-btn .fi-icon { color: rgba(255, 255, 255, 0.92); }
+.fi-topbar nav .fi-topbar-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 1.2rem;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    color: #fff;
+    white-space: nowrap;
+}
+
+/* --- Topbar date + calendar + user name (RISE reference, owner 2026-11-18).
+   The topbar renders on mobile; on desktop main's redesign hides the bar —
+   owner decision pending whether the date widget moves into the sidebar. --- */
+.fi-tr-date { position: relative; }
+.fi-tr-date-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background-color: transparent;
+    color: #fff;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.fi-tr-date-btn:hover { background-color: rgba(255, 255, 255, 0.14); }
+.fi-tr-cal {
+    position: absolute;
+    top: calc(100% + 0.5rem);
+    inset-inline-end: 0;
+    z-index: 50;
+    width: 16rem;
+    padding: 0.75rem;
+    background-color: #fff;
+    border-radius: 0.75rem;
+    box-shadow: 0 12px 32px rgba(2, 32, 71, 0.25);
+    color: #0f172a;
+}
+.fi-tr-cal-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+.fi-tr-cal-head button {
+    border: 0;
+    background-color: transparent;
+    cursor: pointer;
+    font-size: 1.125rem;
+    line-height: 1;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    color: #334155;
+}
+.fi-tr-cal-head button:hover { background-color: #f1f5f9; }
+.fi-tr-cal-weekdays,
+.fi-tr-cal-days {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 0.125rem;
+    text-align: center;
+}
+.fi-tr-cal-weekdays {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    margin-bottom: 0.25rem;
+}
+.fi-tr-cal-weekdays .weekend { color: #dc2626; }
+.fi-tr-cal-days { font-size: 0.8125rem; }
+.fi-tr-cal-days span { padding: 0.25rem 0; border-radius: 0.375rem; }
+.fi-tr-cal-days .dim { color: #cbd5e1; }
+.fi-tr-cal-days .weekend { color: #dc2626; font-weight: 600; }
+/* Owner 2026-11-20: only Sunday is the red weekend column — and an
+   out-of-month Sunday fades its red just like the dim weekdays fade gray
+   (2-class selector beats .weekend, no cascade-order trickery). */
+.fi-tr-cal-days .dim.weekend { color: #fca5a5; font-weight: 400; }
+.fi-tr-cal-days .today { background-color: #108ee9; color: #fff; font-weight: 700; }
+.fi-tr-user-name {
+    display: none;
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 600;
+    cursor: pointer;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@media (min-width: 768px) { .fi-tr-user-name { display: inline; } }
+
+/* --- Sidebar hover temp-expand + pin (DANA HR reference, owner 2026-11-17) ---
+   Hovering the collapsed rail temporarily expands it as an OVERLAY: the aside
+   widens to the open width while a negative end margin pays the difference
+   back to the layout, so the page content never moves. Leaving collapses it
+   again (script in AdminPanelProvider SIDEBAR_NAV_END); the pin control (fixed
+   over the header's right edge, visible only in the temporary state) makes the
+   expand permanent. $store.sidebar.isOpen is Alpine-persisted, so the pinned /
+   collapsed choice survives reloads. Desktop only. Geometry follows main's
+   redesign: rail = 4.5rem, open = 16.5rem (ponytail: hardcoded to mirror those
+   two !important rules above — update together). --- */
+@media (min-width: 1024px) {
+    .fi-sidebar {
+        transition: width 0.2s ease, margin-inline-end 0.2s ease;
+    }
+    .fi-sidebar.tr-sidebar-temp-open {
+        width: 16.5rem;
+        margin-inline-end: calc(4.5rem - 16.5rem);
+        z-index: 30;
+        box-shadow: 0 12px 32px rgba(2, 32, 71, 0.18);
+    }
+    /* In the temporary state the header shows the PIN (click = keep it open)
+       instead of Filament's chevrons. */
+    .fi-sidebar.tr-sidebar-temp-open .fi-sidebar-header .fi-icon-btn {
+        display: none !important;
+    }
+}
+.fi-tr-pin-btn {
+    display: none;
+    position: fixed;
+    top: 0.875rem;
+    /* 16.5rem - 2.375rem = 238px: the brand text tail ends ≈198.6px
+       (0.75rem inset + 32px logo + 0.625rem gap + ~145px nowrap text —
+       header geometry is width-independent) — the button box must start
+       CLEAR of it or its rounded hover fill cuts into "TechRisk Portal"
+       (owner temp-expand bug). */
+    left: calc(16.5rem - 2.375rem);
+    z-index: 40;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 0;
+    border-radius: 0.5rem;
+    background-color: transparent;
+    color: #64748b;
+    cursor: pointer;
+}
+.fi-tr-pin-btn:hover {
+    background-color: #f1f5f9;
+    color: #0f172a;
+}
+.fi-sidebar.tr-sidebar-temp-open .fi-tr-pin-btn {
+    display: inline-flex;
+}
+:root.dark .fi-tr-pin-btn { color: #94a3b8; }
+:root.dark .fi-tr-pin-btn:hover {
+    background-color: #1e293b;
+    color: #f1f5f9;
+}
+
+/* The nav scrollbar only appears while the cursor is over the sidebar.
+   In the RAIL the gutter is the enemy: Filament's inline
+   `scrollbar-gutter: stable` on .fi-sidebar-nav reserves 8px on the RIGHT
+   only, shifting every rail icon 8px left of center (Playwright-probed).
+   scrollbar-width: none zeroes the gutter; the closed rail never scrolls
+   visually. Collapsed-rail centering, owner 2026-11-19. */
+.fi-sidebar .fi-sidebar-nav { scrollbar-color: transparent transparent; }
+.fi-sidebar:hover .fi-sidebar-nav { scrollbar-color: rgba(148, 163, 184, 0.55) transparent; }
+.fi-sidebar .fi-sidebar-nav::-webkit-scrollbar { width: 8px; }
+.fi-sidebar .fi-sidebar-nav::-webkit-scrollbar-thumb { border-radius: 9999px; background-color: transparent; }
+.fi-sidebar:hover .fi-sidebar-nav::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.55); }
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-item > a {
+        padding-left: 0.5rem !important;
+        padding-right: 0.5rem !important;
+    }
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav {
+        scrollbar-gutter: auto;
+        scrollbar-width: none;
+    }
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-nav::-webkit-scrollbar { display: none; }
+}
+
+/* --- PROJ-022: a super and its subs render as ONE highlighted group ---
+   (owner 2026-11-16: "satu row dengan super incident", shared highlighted
+   background; owner round 3: NO extra indent on sub rows). The head carries
+   .sub-incident-family-head, each sub .sub-incident-row, both via
+   ->recordClasses(). The tbody's divide-y draws separators as border-TOP on
+   the lower row, so zeroing it on sub rows merges the family into one
+   continuous band while the borders above the head and below the last sub
+   stay. Unlayered rules beat Filament's layered utilities. */
+tr.fi-ta-row.sub-incident-family-head > td,
+tr.fi-ta-row.sub-incident-row > td {
+    background-color: #eef7fe; /* dana-50 — the family band */
+}
+
+:root.dark tr.fi-ta-row.sub-incident-family-head > td,
+:root.dark tr.fi-ta-row.sub-incident-row > td {
+    background-color: rgba(16, 142, 233, 0.08);
+}
+
+tr.fi-ta-row.sub-incident-row {
+    border-top-width: 0; /* no separator inside the family */
+}
+
+/* --- Owner 2026-11-19: five-point sidebar/topbar design pass ---------------
+   (1) expanded header brand row: real gap + main's bold brandName text;
+   (2) collapsed rail header: the DANA logo replaces the expand chevron;
+   (3) brand text bold like main's default brandName;
+   (4) the sidebar gets its own surface (was lg:bg-transparent — it blended
+       into the page);
+   (5) the desktop topbar returns (hide rule deleted above the redesign
+       block). Sits at the END of the file so it wins cascade ties with the
+       redesign block. --- */
+
+/* 1+3. Filament's .fi-logo renders the logo img and the brand span FLUSH
+   (zero gap) and the span unstyled (16px/400). Real gap, optically centered,
+   and the brand text carries main's default brandName look (text-xl bold
+   tracking-tight, gray-950 / white). The header's px-6 becomes a nav-aligned
+   0.75rem — at the old 15rem width the 24px inset + the 32px logo left
+   ~150px for the text and "TechRisk Portal" wrapped to two lines. */
+.fi-sidebar-header .fi-logo {
+    gap: 0.625rem;
+    align-items: center;
+}
+
+.fi-sidebar-header .fi-logo span {
+    font-size: 1.25rem;
+    line-height: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: #030712;
+    white-space: nowrap;
+}
+
+@media (min-width: 1024px) {
+    .fi-sidebar.fi-sidebar-open .fi-sidebar-header {
+        padding-left: 0.75rem !important;
+        padding-right: 0.5rem !important;
+    }
+}
+
+:root.dark .fi-sidebar-header .fi-logo span {
+    color: #fff;
+}
+
+/* 2. Collapsed rail: the DANA logo replaces the expand chevron in the rail
+   header — the topbar shows the text-only brand copy meanwhile (the
+   fi-topbar-brand hook is x-show="! $store.sidebar.isOpen"). x-show hides
+   the logo wrapper with an INLINE display:none, so the promotion needs
+   !important; the 32px logo centers in the 4.5rem rail — the header's px-6
+   (24px < 32px) must go. */
+@media (min-width: 1024px) {
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header > div {
+        display: flex !important;
+        justify-content: center;
+    }
+
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header {
+        justify-content: center !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+    }
+
+    .fi-sidebar:not(.fi-sidebar-open) .fi-logo span {
+        display: none !important;
+    }
+
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-header .fi-icon-btn {
+        display: none !important;
+    }
+}
+
+/* 4. The sidebar's own surface — white over the gray-50 page in light,
+   slate-900 over near-black in dark — with a hairline end border (was
+   main's lg:bg-transparent blend). Covers EVERY desktop aside INCLUDING
+   the temp-open overlay: scoped off .tr-sidebar-temp-open the overlay kept
+   the transparent background and the z-20 topbar strip showed THROUGH the
+   z-30 overlay behind the brand row (owner screenshot). box-shadow:none
+   stays pinned-only — the overlay's own rule paints its elevation shadow. */
+@media (min-width: 1024px) {
+    .fi-sidebar {
+        background: #fff !important;
+        border-inline-end: 1px solid #e2e8f0;
+    }
+
+    .fi-sidebar:not(.tr-sidebar-temp-open) {
+        box-shadow: none !important;
+    }
+
+    :root.dark .fi-sidebar {
+        background: #0f172a !important;
+        border-inline-end-color: #1e293b;
+    }
 }

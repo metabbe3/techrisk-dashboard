@@ -10,10 +10,11 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\App;
 
 /**
- * Footer statistics for the Incidents table.
+ * Summary statistics builder for the Incidents list page and exports.
  *
- * Lifted from ListIncidents::getTableContentFooter() so the resource table()
- * itself can own the stats declaratively via ->contentFooter().
+ * Was rendered by the IncidentListSummary header widget (deleted in main,
+ * owner 2026-11-20 — the list-page Summary strip is gone). Exports and the
+ * stats API still share this builder for their numbers.
  */
 class IncidentStatsFooterData
 {
@@ -33,7 +34,10 @@ class IncidentStatsFooterData
 
         $query = $query->clone();
 
-        $totalCases = $query->count();
+        // Review I3 (PROJ-022): a count — subs roll up into their super, so
+        // "Total Cases" counts families, matching every other count surface
+        // (money columns below keep the sub's fund loss).
+        $totalCases = $query->clone()->withoutSubIncidents()->count();
 
         $avgMtbf = round(self::avgMtbf($query), 3);
 
@@ -41,8 +45,10 @@ class IncidentStatsFooterData
         // native decimal type) — cast before round/abs or strict_types fatals.
         return [
             'totalCases' => $totalCases,
-            'avgMttrMins' => round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
-            'avgMttrDays' => round(abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->where('mttr', '<', 0)->avg('mttr') ?? 0)), 2),
+            // MTTR averages exclude subs too (PROJ-022): subs carry COMPUTED
+            // mttr (outliers carry null, so they never needed the scope).
+            'avgMttrMins' => round((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '>=', 0)->avg('mttr') ?? 0), 2),
+            'avgMttrDays' => round(abs((float) ($query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)->withoutSubIncidents()->where('mttr', '<', 0)->avg('mttr') ?? 0)), 2),
             'avgMtbf' => $avgMtbf,
             'totalPotentialFundLoss' => (float) $query->sum('potential_fund_loss'),
             'totalFundLoss' => (float) $query->sum('fund_loss'),
@@ -63,7 +69,8 @@ class IncidentStatsFooterData
     public static function avgMtbf(Builder $query): float
     {
         $mtbfQuery = $query->clone()->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->withoutOutliers();
+            ->withoutOutliers()
+            ->withoutSubIncidents(); // PROJ-022: subs roll up into their super — leave the metric average
 
         $mtbfCount = $mtbfQuery->count();
 

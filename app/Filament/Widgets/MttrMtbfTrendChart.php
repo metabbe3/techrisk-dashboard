@@ -58,6 +58,7 @@ class MttrMtbfTrendChart extends ChartWidget
             // rows (owner one-logic rule 2026-11-16).
             $mttrNonFundData = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+                ->withoutSubIncidents() // subs carry computed mttr (outliers don't) — they must leave the average
                 ->where('fund_status', FundStatus::NonFundLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('AVG(CASE WHEN mttr >= 0 THEN mttr ELSE NULL END) as avg_mttr'))
                 ->groupBy(DB::raw($monthExpr))
@@ -68,6 +69,7 @@ class MttrMtbfTrendChart extends ChartWidget
             // negative (days) bucket.
             $mttrFundData = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
+                ->withoutSubIncidents()
                 ->where('fund_status', FundStatus::ConfirmedLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('AVG(CASE WHEN mttr < 0 THEN ABS(mttr) ELSE NULL END) as avg_mttr'))
                 ->groupBy(DB::raw($monthExpr))
@@ -78,6 +80,7 @@ class MttrMtbfTrendChart extends ChartWidget
             $mtbfNonFundRows = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->withoutOutliers()
+                ->withoutSubIncidents()
                 ->where('fund_status', FundStatus::NonFundLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw($monthExpr))
@@ -98,6 +101,7 @@ class MttrMtbfTrendChart extends ChartWidget
             $mtbfFundRows = $baseQuery->clone()
                 ->whereIn('severity', Severity::METRIC_ELIGIBLE)
                 ->withoutOutliers()
+                ->withoutSubIncidents()
                 ->where('fund_status', FundStatus::ConfirmedLoss->value)
                 ->select(DB::raw($monthExpr.' as month'), DB::raw('MIN(incident_date) as min_date'), DB::raw('MAX(incident_date) as max_date'), DB::raw('COUNT(*) as cnt'))
                 ->groupBy(DB::raw($monthExpr))

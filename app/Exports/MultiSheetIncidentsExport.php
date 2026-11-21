@@ -10,6 +10,7 @@ use App\Enums\IncidentStatus;
 use App\Enums\IncidentType;
 use App\Enums\Severity;
 use App\Exports\Sheets\IssuesMetricSheetExport;
+use App\Exports\Sheets\RecoveredCasesSheetExport;
 use App\Exports\Sheets\SingleIncidentSheetExport;
 use App\Models\Incident;
 use Illuminate\Database\Eloquent\Builder;
@@ -63,6 +64,11 @@ class MultiSheetIncidentsExport implements WithMultipleSheets
         // 3. Recovered Cases (Incidents only)
         $recoveredQuery = $breakdownQuery->clone()->where('recovered_fund', '>', 0);
         $sheets[] = new SingleIncidentSheetExport($recoveredQuery, 'Recovered Cases', $this->headings, $this->columnNames);
+
+        // 3b. Recovered This Year (Incidents only) — compact ID | Name |
+        // Recovered dump for the current year (owner 2026-11-19).
+        $recoveredThisYearQuery = $recoveredQuery->clone()->whereYear('incident_date', now()->year);
+        $sheets[] = new RecoveredCasesSheetExport($recoveredThisYearQuery, 'Recovered This Year');
 
         // 4. P4 Incidents (Incidents only)
         $p4Query = $breakdownQuery->clone()->where('severity', Severity::P4->value);
