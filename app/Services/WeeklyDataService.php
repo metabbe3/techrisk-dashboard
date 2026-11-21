@@ -8,11 +8,12 @@ use App\Enums\IncidentClassification;
 use App\Enums\IncidentStatus;
 use App\Enums\Severity;
 use App\Models\Incident;
+use App\Models\User;
 use Carbon\Carbon;
 
 class WeeklyDataService
 {
-    public function getWeeklyData(int $year): array
+    public function getWeeklyData(int $year, ?User $user = null): array
     {
         $currentDate = now();
         $weekData = [];
@@ -22,8 +23,14 @@ class WeeklyDataService
         $allIncidents = Incident::where('classification', IncidentClassification::Incident->value)
             ->whereYear('incident_date', $year)
             ->whereIn('severity', Severity::METRIC_ELIGIBLE)
-            ->excludedFromCounts()
-            ->with(['pics', 'labels'])
+            ->excludedFromCounts();
+        // API parity (stats endpoint precedent): a non-null user scopes rows to
+        // their year access — the team-viewer grant lives ONLY in
+        // scopeApplyUserYearAccess. Filament page/export pass null (admin view).
+        if ($user !== null) {
+            $allIncidents->applyUserYearAccess($user);
+        }
+        $allIncidents = $allIncidents->with(['pics', 'labels'])
             ->orderBy('incident_date', 'desc')
             ->get();
 

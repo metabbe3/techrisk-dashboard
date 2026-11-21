@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 )
@@ -204,6 +205,9 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	r.Register(getActionItemDef(), typed(client.handleGetActionItem))
 	r.Register(getGovernanceKpisDef(), typed(client.handleGetGovernanceKpis))
 	r.Register(listReferenceDef(), typed(client.handleListReference))
+	// Weekly report: year of per-week counts + compact rows can approach the
+	// 48k allowance (client defaults to the last 8 weeks for chat payload).
+	r.RegisterCapped(getWeeklyReportDef(), typed(client.handleGetWeeklyReport), 48<<10)
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number
@@ -429,7 +433,10 @@ func (c *dashboardClient) handleGetIncident(ctx context.Context, args getInciden
 	if err != nil {
 		return "", err
 	}
-	return string(env.Data), nil
+	// W9 fix: incident fields carry externally-fed text (intake forms, AI
+	// summaries) — frame it as untrusted data like the web/Notion tools do,
+	// so injection lines in an incident body cannot pose as instructions.
+	return guardrail.FrameDocumentContent("incident "+path, string(env.Data)), nil
 }
 
 func getIncidentMarkdownDef() llm.ToolDefinition {
@@ -468,7 +475,9 @@ func (c *dashboardClient) handleGetIncidentMarkdown(ctx context.Context, args ge
 	if err != nil {
 		return "", fmt.Errorf("failed to base64-decode incident markdown: %w", err)
 	}
-	return string(markdown), nil
+	// W9 fix: same framing as get_incident — the report embeds timeline,
+	// RCA and relation content that originates outside the operator.
+	return guardrail.FrameDocumentContent("incident report "+no, string(markdown)), nil
 }
 
 // statsDef: aggregate dashboard metrics in one call — the tool the bot uses for
