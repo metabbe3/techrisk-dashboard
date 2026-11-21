@@ -207,9 +207,16 @@ Route::get('/admin/ai/chat/incident-search', function (\Illuminate\Http\Request 
         return response()->json(['incidents' => []]);
     }
 
-    $incidents = \App\Models\Incident::where('no', 'LIKE', "%{$q}%")
-        ->orWhere('title', 'LIKE', "%{$q}%")
-        ->orWhere('summary', 'LIKE', "%{$q}%")
+    // W3 fix: the ONE scope — restricted-year users must not see other
+    // years' records through the AI search either. Search terms stay
+    // BRACKETED (a bare orWhere after the scope would OR against it).
+    $incidents = \App\Models\Incident::query()
+        ->applyUserYearAccess($request->user())
+        ->where(function ($w) use ($q) {
+            $w->where('no', 'LIKE', "%{$q}%")
+                ->orWhere('title', 'LIKE', "%{$q}%")
+                ->orWhere('summary', 'LIKE', "%{$q}%");
+        })
         ->with('pics')
         ->orderBy('incident_date', 'desc')
         ->limit(10)
@@ -301,7 +308,9 @@ Route::get('/docs.openapi', function () {
     }
 
     return response()->file($path, ['Content-Type' => 'application/yaml']);
-})->name('docs.openapi');
+})
+    ->middleware(['auth'])
+    ->name('docs.openapi');
 
 Route::get('/docs.postman', function () {
     $path = storage_path('app/private/scribe/collection.json');
@@ -310,7 +319,9 @@ Route::get('/docs.postman', function () {
     }
 
     return response()->file($path, ['Content-Type' => 'application/json']);
-})->name('docs.postman');
+})
+    ->middleware(['auth'])
+    ->name('docs.postman');
 
 // Notion MCP account linking (laravel/mcp) — registers mcp.oauth.notion.{connect,callback,client-metadata}.
 // The callback stores the exchanged TokenSet as the workspace-wide connection used by the AI-chat

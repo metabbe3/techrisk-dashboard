@@ -131,9 +131,11 @@ class NotionBody
             function (array $m): string {
                 // The name is a query param inside the source URL, not a
                 // standalone attribute (`…&name=investigation_plan.md`).
+                // W1 fix: the name is Notion-controlled text — escape it
+                // before it lands in emitted HTML.
                 $name = preg_match('/[?&]name=([^&"]+)/', $m[1], $n) ? $n[1] : 'attachment';
 
-                return '<p class="text-sm text-gray-500">Attachment (in Notion): '.$name.'</p>';
+                return '<p class="text-sm text-gray-500">Attachment (in Notion): '.e(urldecode($name)).'</p>';
             },
             $markdown,
         ) ?? $markdown;

@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Services;
 
 use Illuminate\Encryption\Encrypter;
@@ -50,17 +51,25 @@ class EncryptionService
 
             // Legacy files were encrypted with encrypt() which serializes.
             // decryptString() succeeds but returns the raw serialized string.
-            if (str_starts_with($decrypted, 's:') && preg_match('/^s:\d+:"/', $decrypted)) {
-                $unserialized = @unserialize($decrypted);
-                if ($unserialized !== false || $decrypted === 'b:0;') {
-                    return $unserialized;
+            // W10 fix: extract the string with a regex instead of
+            // @unserialize() — no object injection on the decrypt path.
+            if (str_starts_with($decrypted, 's:') && preg_match('/^s:(\d+):"(.*)";$/s', $decrypted, $m)) {
+                if (strlen($m[2]) === (int) $m[1]) {
+                    return $m[2];
                 }
             }
 
+            if ($decrypted === 'b:0;') {
+                return '';
+            }
+
             return $decrypted;
-        } catch (\Exception $e) {
-            // Fall back to serialized decryption for legacy files
-            return $encrypter->decrypt($encryptedData);
+        } catch (\Throwable $e) {
+            // W10 fix: the old catch fell back to Encrypter::decrypt(),
+            // which unserializes — another object-injection sink. A payload
+            // decryptString() rejects is corrupt or key-mismatched; surface
+            // it (callers abort with a 500 either way).
+            throw new \RuntimeException('Decryption failed: the file is corrupted or the key changed.', 0, $e);
         }
     }
 }

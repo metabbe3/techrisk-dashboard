@@ -120,19 +120,24 @@ class ApiTokenResource extends Resource
 
                         Forms\Components\CheckboxList::make('allowed_endpoints')
                             ->label('Allowed Endpoints')
-                            ->helperText('If no endpoints are selected, the token will have access to all endpoints')
+                            ->helperText('No selection = the token can access NO data endpoints. Pick "*" for unrestricted, or the specific endpoints this token needs.')
                             ->options(function () {
-                                return collect(ApiEndpoint::cases())
-                                    ->mapWithKeys(fn ($endpoint) => [
-                                        $endpoint->value => $endpoint->label(),
-                                    ]);
+                                return ['*' => 'All endpoints (unrestricted)']
+                                    + collect(ApiEndpoint::cases())
+                                        ->mapWithKeys(fn ($endpoint) => [
+                                            $endpoint->value => $endpoint->label(),
+                                        ])
+                                        ->all();
                             })
                             ->descriptions(function () {
-                                return collect(ApiEndpoint::cases())
-                                    ->mapWithKeys(fn ($endpoint) => [
-                                        $endpoint->value => 'Route: '.$endpoint->routePattern(),
-                                    ]);
+                                return ['*' => 'Not recommended — grants every current and future endpoint']
+                                    + collect(ApiEndpoint::cases())
+                                        ->mapWithKeys(fn ($endpoint) => [
+                                            $endpoint->value => 'Route: '.$endpoint->routePattern(),
+                                        ])
+                                        ->all();
                             })
+                            ->default(['*'])
                             ->bulkToggleable()
                             ->searchable()
                             ->columns(1),

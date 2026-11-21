@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Http\Controllers;
 
 use App\Models\Incident;
@@ -16,6 +17,19 @@ class DownloadDocumentController extends Controller
     {
         // Authorization check - only users with permission can download
         if (! auth()->check() || (! auth()->user()->can('manage incidents') && ! auth()->user()->can('view incidents'))) {
+            abort(403, 'You do not have permission to download this file.');
+        }
+
+        // Record-level gate — the ONE scope (red-team fix W2): the permission
+        // check alone let any team-viewer download another team's decrypted
+        // document. Same semantics as IncidentResource::canView: the incident
+        // must be inside the caller's applyUserYearAccess slice (admins pass
+        // unscoped, team-viewers need a slice match, regular users get the
+        // allowed-years filter).
+        if (! Incident::query()
+            ->applyUserYearAccess(auth()->user())
+            ->whereKey($record->incident->getKey())
+            ->exists()) {
             abort(403, 'You do not have permission to download this file.');
         }
 

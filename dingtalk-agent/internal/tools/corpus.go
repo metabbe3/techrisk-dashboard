@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 
+	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 )
 
@@ -79,7 +80,9 @@ func (c *dashboardClient) handleReadCorpusPage(ctx context.Context, args struct 
 		return "", fmt.Errorf("unexpected corpus payload: %w", err)
 	}
 	if page.Truncated {
-		return page.Content + fmt.Sprintf("\n\n[truncated — %d chars shown; ask for a narrower path or topic]", page.Chars), nil
+		return guardrail.FrameDocumentContent("corpus "+p, page.Content+fmt.Sprintf("\n\n[truncated — %d chars shown; ask for a narrower path or topic]", page.Chars)), nil
 	}
-	return page.Content, nil
+	// W9 fix: corpus pages assemble incident memory/topic patterns —
+	// untrusted data, framed like the other document-carrying tools.
+	return guardrail.FrameDocumentContent("corpus "+p, page.Content), nil
 }

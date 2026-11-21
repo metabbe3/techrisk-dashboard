@@ -11,6 +11,7 @@ use Filament\Actions\Action;
 use Filament\Infolists;
 use Filament\Infolists\Infolist;
 use Filament\Resources\Pages\ViewRecord;
+use Illuminate\Support\Facades\Crypt;
 
 class ViewApiToken extends ViewRecord
 {
@@ -24,6 +25,17 @@ class ViewApiToken extends ViewRecord
 
         $this->plainTextToken = session('api_token_plain_'.$record);
         session()->forget('api_token_plain_'.$record);
+
+        // W8: stored encrypted since the red-team fix — decrypt once here.
+        // A pre-deploy plaintext value (or a rotated APP_KEY) simply fails
+        // to decrypt → the token is not shown; regenerate instead.
+        if ($this->plainTextToken !== null) {
+            try {
+                $this->plainTextToken = Crypt::decryptString($this->plainTextToken);
+            } catch (\Throwable) {
+                $this->plainTextToken = null;
+            }
+        }
     }
 
     public function infolist(Infolist $infolist): Infolist

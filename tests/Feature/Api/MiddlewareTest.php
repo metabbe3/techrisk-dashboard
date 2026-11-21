@@ -208,14 +208,31 @@ class MiddlewareTest extends TestCase
             ->assertJsonPath('message', 'This token does not have permission to access this endpoint.');
     }
 
-    public function test_token_with_empty_allowed_endpoints_passes_all(): void
+    public function test_token_with_empty_allowed_endpoints_is_denied(): void
     {
         $token = $this->userWithAccess->createToken('test', ['*']);
 
-        // Empty allowed_endpoints - backward compatible, should allow all
+        // W8 fix (was "backward compatible, allows all"): empty/null means
+        // DENY now — unrestricted access must be the explicit `*` sentinel.
         $tokenModel = PersonalAccessToken::find($token->accessToken->id);
         $tokenModel->forceFill([
             'allowed_endpoints' => null,
+        ])->save();
+
+        $response = $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
+            ->getJson('/api/v1/incidents');
+
+        $response->assertStatus(403)
+            ->assertJsonPath('message', 'This token does not have permission to access this endpoint.');
+    }
+
+    public function test_token_with_wildcard_sentinel_passes_all(): void
+    {
+        $token = $this->userWithAccess->createToken('test', ['*']);
+
+        $tokenModel = PersonalAccessToken::find($token->accessToken->id);
+        $tokenModel->forceFill([
+            'allowed_endpoints' => ['*'],
         ])->save();
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token->plainTextToken)
@@ -439,11 +456,9 @@ class MiddlewareTest extends TestCase
         );
     }
 
-
     // =========================================================================
     // Sensitive Data Filtering Tests (via ApiAuditLogger)
     // =========================================================================
-
 
     // =========================================================================
     // ApiEndpoint Enum Tests
@@ -485,7 +500,6 @@ class MiddlewareTest extends TestCase
         $this->assertContains('labels', $all);
         $this->assertContains('incident-types', $all);
     }
-
 
     public function test_logout_is_a_meta_endpoint_reachable_by_restricted_tokens(): void
     {
