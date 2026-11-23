@@ -138,7 +138,11 @@ class ProfileMenuTest extends TestCase
         $this->assertStringContainsString('.fi-resource-incidents.fi-resource-list-records-page .fi-tabs', $css, 'incident LIST tabs adopt the underline look');
         $this->assertStringContainsString('.fi-tabs:hover::-webkit-scrollbar', $css, 'the list-tab scrollbar shows only on hover');
         $this->assertStringContainsString('.fi-page-sub-navigation-tabs.fi-tabs', $css, 'cluster tabs adopt the same underline + hover-scroll model');
-        $this->assertStringContainsString('html.tr-scroll-active', $css, 'the adaptive page scrollbar thumb');
+        $this->assertStringContainsString('.tr-vscroll-thumb', $css, 'the overlay page scrollbar rail');
+        $this->assertStringContainsString('.tr-scroller', $css, 'inner scrollers share the adaptive mechanism');
+        // ⚠ the native root bar is hidden with ZERO width (no reserved gutter →
+        // no gap at the page edge); the overlay rail owns the visuals.
+        $this->assertStringContainsString("html::-webkit-scrollbar {\n    width: 0;", $css, 'native root scrollbar hidden without a gutter');
         $this->assertStringContainsString('.tr-theme-icon-btn', $css, 'appearance icon buttons');
         $this->assertStringNotContainsString('.tr-theme-preview', $css, 'appearance previews removed');
         $this->assertStringContainsString('--tr-contrib-tier1:', $css, 'contribution graph tier tokens');

@@ -519,13 +519,15 @@
     box-shadow: inset 3px 0 0 #108ee9;
 }
 
-/* Custom thin scrollbar for tables */
+/* Table horizontal scrollbar — ADAPTIVE like every other scroller (owner
+   2026-11-23): invisible at rest, visible while hovering the table area or
+   scrolling it (.tr-scroller; app.js adds the class + toggles active). */
 .fi-ta-table-container::-webkit-scrollbar { height: 6px; }
-.fi-ta-table-container::-webkit-scrollbar-track { background: var(--tr-slate-100, #f1f5f9); }
-.fi-ta-table-container::-webkit-scrollbar-thumb { background: var(--tr-slate-300, #cbd5e1); border-radius: 3px; }
-.fi-ta-table-container::-webkit-scrollbar-thumb:hover { background: var(--tr-slate-400, #94a3b8); }
-:root.dark .fi-ta-table-container::-webkit-scrollbar-track { background: var(--tr-slate-900, #0f172a); }
-:root.dark .fi-ta-table-container::-webkit-scrollbar-thumb { background: var(--tr-slate-700, #334155); }
+.fi-ta-table-container::-webkit-scrollbar-track { background: transparent; }
+.fi-ta-table-container::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.fi-ta-table-container:hover::-webkit-scrollbar-thumb,
+.fi-ta-table-container.tr-scroll-active::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.55); }
+.fi-ta-table-container::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.8); }
 
 /* Incidents list — freeze ID and name columns on horizontal scroll.
    Scoped via :has(.sticky-col-id). This branch's PROJ-022 expand chevron
@@ -550,15 +552,13 @@
    for a chevron) — pin the inner wrapper AND the button to a compact square
    so the ID column slides left (auto table layout sizes the column from its
    content basis; a full-width wrapper kept it wide). */
+/* Owner 2026-11-23: the expand column is handed ~122px by the table layout
+   and CANNOT be pinned (verified in-page: width 1px on TH+TD and a
+   max-content table still render 122 — the layout share wins). The chevron
+   therefore anchors to the cell's LEFT edge, hugging the checkbox. */
 .fi-ta-table:has(.sticky-col-id) .sticky-col-expand .fi-ta-col-wrp {
     width: 1.75rem !important;
-    /* Auto table layout hands the column a share of the leftover width —
-       it cannot be pinned narrower. Right-aligning the wrapper parks the
-       chevron flush against the ID column instead of floating mid-cell
-       (owner 2026-11-23: "button expand-collapse dan ID jaraknya terlalu
-       jauh"). */
-    margin-left: auto;
-    margin-right: 0;
+    margin-left: 0;
 }
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-expand button,
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-expand button {
@@ -3535,6 +3535,14 @@ tr.fi-ta-row.sub-incident-row {
    of the old wrap, scrollbar only while the cursor is over the strip. */
 .fi-page-sub-navigation-tabs.fi-tabs {
     flex-wrap: nowrap;
+    /* Flatten Filament's rounded white card — the strip must read exactly
+       like the incident detail strip (owner 2026-11-23: "belum sesuai"). */
+    background: transparent !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-inline: 0 !important;
     border-bottom: 1px solid #e2e8f0;
     gap: 0.25rem;
     scrollbar-width: none;
@@ -3783,29 +3791,81 @@ tr.fi-ta-row.sub-incident-row {
 .tr-contrib-legend-item { display: inline-flex; align-items: center; gap: 0.25rem; }
 
 
-/* Vertical page scrollbar — adaptive (owner 2026-11-23): hidden by default,
-   shown by app.js while the cursor is near the right edge / scrolling /
-   dragging, fading ~1.2s after inactivity. The scrollbar WIDTH never
-   changes, so toggling visibility causes zero layout shift. */
+/* Page scrollbar — a CUSTOM OVERLAY rail (owner 2026-11-23): the native root
+   bar is hidden entirely (zero width → NO reserved gutter, which is what
+   left the gap between the header and the page's right edge), and app.js
+   paints a fixed rail with a thumb. Idle = faint, active (cursor in the
+   right 32px / scrolling / dragging) = solid, fading ~1.2s after inactivity.
+   Nothing reflows: the rail floats above the content. */
 html {
-    scrollbar-color: transparent transparent;
-    scrollbar-width: thin;
+    scrollbar-width: none;
 }
-html::-webkit-scrollbar,
-html::-webkit-scrollbar-track {
+html::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+.tr-vscroll {
+    position: fixed;
+    top: 0;
+    right: 2px;
+    bottom: 0;
     width: 10px;
+    z-index: 60;
+    pointer-events: auto;
+}
+.tr-vscroll-thumb {
+    position: absolute;
+    right: 0;
+    width: 8px;
+    border-radius: 4px;
+    background: rgba(148, 163, 184, 0.45);
+    opacity: 0.35;
+    transition: opacity 0.25s ease, background-color 0.2s ease;
+    cursor: pointer;
+}
+.tr-vscroll.tr-scroll-active .tr-vscroll-thumb {
+    opacity: 1;
+    background: rgba(148, 163, 184, 0.7);
+}
+.tr-vscroll.tr-scroll-active .tr-vscroll-thumb:hover {
+    background: rgba(100, 116, 139, 0.85);
+}
+:root.dark .tr-vscroll-thumb { background: rgba(148, 163, 184, 0.4); }
+:root.dark .tr-vscroll.tr-scroll-active .tr-vscroll-thumb { background: rgba(148, 163, 184, 0.65); }
+
+/* Inner scrollers (tables, textareas, dropdown lists, …) — same mechanism:
+   the thumb is invisible at rest, shows while the cursor is over the scroller
+   or while it is being scrolled (app.js marks .tr-scroller and toggles
+   .tr-scroll-active on it). */
+.tr-scroller {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+/* ⚠ the ROOT element also ends up with .tr-scroller from app.js — its bar
+   must stay at ZERO width or the reserved gutter re-appears as a page gap. */
+html.tr-scroller {
+    scrollbar-width: none;
+}
+.tr-scroller::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.tr-scroller::-webkit-scrollbar-track {
     background: transparent;
 }
-html::-webkit-scrollbar-thumb {
+.tr-scroller::-webkit-scrollbar-thumb {
     background: transparent;
-    border-radius: 6px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
 }
-html.tr-scroll-active {
+.tr-scroller:hover,
+.tr-scroller.tr-scroll-active {
     scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
 }
-html.tr-scroll-active::-webkit-scrollbar-thumb {
+.tr-scroller:hover::-webkit-scrollbar-thumb,
+.tr-scroller.tr-scroll-active::-webkit-scrollbar-thumb {
     background: rgba(148, 163, 184, 0.6);
 }
-html.tr-scroll-active::-webkit-scrollbar-thumb:hover {
-    background: rgba(100, 116, 139, 0.8);
+.tr-scroller::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.85);
 }

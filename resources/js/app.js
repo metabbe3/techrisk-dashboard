@@ -72,56 +72,136 @@ window.trMoneyFormat = (raw) => {
     return `${n},${dec}`;
 };
 
-// Vertical page scrollbar: the thumb stays invisible until the user interacts
-// (owner 2026-11-23): the cursor enters the rightmost 32px, the user scrolls
-// (wheel / trackpad / keyboard) or drags the bar itself; it fades ~1.2s after
-// inactivity. The TRACK occupies the same width in both states, so showing it
-// never shifts the layout. Touch devices ride their native scroll indicator
-// (the scroll listener still lights it up).
+
+// ---------------------------------------------------------------------------
+// Adaptive scrollbars (owner 2026-11-23).
+//
+// 1) PAGE: the native root bar is hidden (CSS `html::-webkit-scrollbar{0}` —
+//    zero gutter, so nothing is reserved and no gap appears at the right
+//    edge). A fixed OVERLAY rail + thumb is painted instead and follows the
+//    document scroll. Idle = faint; active (cursor within the right 32px,
+//    wheel / keyboard scrolling, or dragging the thumb) = solid; it fades
+//    ~1.2s after inactivity. Dragging the thumb scrolls the page.
+//
+// 2) INNER SCROLLERS: every scrollable element gets `.tr-scroller`; scrolling
+//    or hovering it reveals its thumb (CSS owns the paint, JS the state).
+// ---------------------------------------------------------------------------
 (() => {
-    const root = document.documentElement;
-    let hideTimer = null;
-    let dragging = false;
+    const IDLE_MS = 1200;
+    let rail = null;
+    let thumb = null;
 
-    const hide = () => {
-        if (!dragging) {
-            root.classList.remove('tr-scroll-active');
+    const ensureRail = () => {
+        if (rail && document.body.contains(rail)) {
+            return;
         }
+        rail = document.createElement('div');
+        rail.className = 'tr-vscroll';
+        thumb = document.createElement('div');
+        thumb.className = 'tr-vscroll-thumb';
+        rail.appendChild(thumb);
+        document.body.appendChild(rail);
+
+        let dragging = false;
+        let startY = 0;
+        let startScroll = 0;
+        thumb.addEventListener('pointerdown', (event) => {
+            dragging = true;
+            startY = event.clientY;
+            startScroll = window.scrollY;
+            thumb.setPointerCapture(event.pointerId);
+            setActive(60000);
+        });
+        thumb.addEventListener('pointermove', (event) => {
+            if (!dragging) {
+                return;
+            }
+            const doc = document.documentElement;
+            const maxScroll = doc.scrollHeight - window.innerHeight;
+            const thumbHeight = Math.max(32, (window.innerHeight / doc.scrollHeight) * window.innerHeight);
+            const ratio = (event.clientY - startY) / Math.max(1, window.innerHeight - thumbHeight);
+            window.scrollTo({ top: Math.max(0, startScroll + ratio * maxScroll) });
+        });
+        const endDrag = () => {
+            if (dragging) {
+                dragging = false;
+                setActive();
+            }
+        };
+        thumb.addEventListener('pointerup', endDrag);
+        thumb.addEventListener('pointercancel', endDrag);
     };
 
-    const show = (holdMs = 1200) => {
-        root.classList.add('tr-scroll-active');
-        clearTimeout(hideTimer);
-        hideTimer = setTimeout(hide, holdMs);
+    const layoutRail = () => {
+        ensureRail();
+        const doc = document.documentElement;
+        const maxScroll = doc.scrollHeight - window.innerHeight;
+        if (maxScroll <= 0) {
+            rail.style.display = 'none';
+            return;
+        }
+        rail.style.display = '';
+        const trackHeight = window.innerHeight;
+        const thumbHeight = Math.max(32, (window.innerHeight / doc.scrollHeight) * trackHeight);
+        thumb.style.height = `${thumbHeight}px`;
+        const progress = window.scrollY / Math.max(1, maxScroll);
+        thumb.style.top = `${Math.min(trackHeight - thumbHeight, progress * (trackHeight - thumbHeight))}px`;
     };
+
+    let idleTimer = null;
+    const setActive = (holdMs = IDLE_MS) => {
+        ensureRail();
+        rail.classList.add('tr-scroll-active');
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => rail.classList.remove('tr-scroll-active'), holdMs);
+    };
+
+    const markScrollers = () => {
+        document.querySelectorAll('*').forEach((el) => {
+            if (el.scrollHeight > el.clientHeight + 2 || el.scrollWidth > el.clientWidth + 2) {
+                el.classList.add('tr-scroller');
+            }
+        });
+    };
+
+    document.addEventListener('scroll', (event) => {
+        const target = event.target;
+        if (target === document || target === document.documentElement || target === window) {
+            layoutRail();
+            setActive();
+            return;
+        }
+        if (target instanceof HTMLElement) {
+            target.classList.add('tr-scroller', 'tr-scroll-active');
+            clearTimeout(target.__trScrollTimer);
+            target.__trScrollTimer = setTimeout(() => target.classList.remove('tr-scroll-active'), IDLE_MS);
+        }
+    }, { capture: true, passive: true });
 
     document.addEventListener('mousemove', (event) => {
         if (window.innerWidth - event.clientX <= 32) {
-            show();
+            setActive();
         }
     }, { passive: true });
 
-    document.addEventListener('wheel', () => show(), { passive: true });
-    document.addEventListener('scroll', () => show(), { passive: true });
+    document.addEventListener('wheel', (event) => {
+        const inRail = window.innerWidth - event.clientX <= 32;
+        if (inRail || event.target === document.body || event.target === document.documentElement) {
+            setActive();
+        }
+    }, { passive: true });
 
     document.addEventListener('keydown', (event) => {
         if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(event.key)) {
-            show();
+            setActive();
+            layoutRail();
         }
     });
 
-    // Dragging the native bar itself: pointerdown on the right gutter.
-    document.addEventListener('pointerdown', (event) => {
-        if (window.innerWidth - event.clientX <= 18) {
-            dragging = true;
-            show(60000);
-        }
-    });
-
-    document.addEventListener('pointerup', () => {
-        if (dragging) {
-            dragging = false;
-            show();
-        }
-    });
+    window.addEventListener('resize', layoutRail);
+    ['load', 'livewire:navigated'].forEach((event) => window.addEventListener(event, () => {
+        layoutRail();
+        markScrollers();
+    }));
+    new MutationObserver(() => layoutRail()).observe(document.documentElement, { childList: true, subtree: true });
 })();
