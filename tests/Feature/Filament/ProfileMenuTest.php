@@ -117,7 +117,12 @@ class ProfileMenuTest extends TestCase
         $this->assertStringNotContainsString('12 months', $html);
         $this->assertStringContainsString('tr-contrib-year-active', $html);
         $this->assertStringContainsString((string) now()->year, $html);
-        $this->assertStringContainsString('0 incidents in '.now()->year, $html);
+        $this->assertStringContainsString('incidents in '.now()->year, $html);
+        // Owner 2026-11-23: per-tier breakdown next to the total.
+        $this->assertStringContainsString('In progress', $html);
+        $this->assertStringContainsString('Monitoring actions', $html);
+        $this->assertStringContainsString('Completed', $html);
+        $this->assertStringContainsString('tr-graph-stats', $html);
 
         // No password form on this page any more.
         $this->assertStringNotContainsString('wire:submit="save"', $html);
@@ -132,6 +137,8 @@ class ProfileMenuTest extends TestCase
         $this->assertStringContainsString('.fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active', $css, 'incident detail tab strips adopt the underline look');
         $this->assertStringContainsString('.fi-resource-incidents.fi-resource-list-records-page .fi-tabs', $css, 'incident LIST tabs adopt the underline look');
         $this->assertStringContainsString('.fi-tabs:hover::-webkit-scrollbar', $css, 'the list-tab scrollbar shows only on hover');
+        $this->assertStringContainsString('.fi-page-sub-navigation-tabs.fi-tabs', $css, 'cluster tabs adopt the same underline + hover-scroll model');
+        $this->assertStringContainsString('html.tr-scroll-active', $css, 'the adaptive page scrollbar thumb');
         $this->assertStringContainsString('.tr-theme-icon-btn', $css, 'appearance icon buttons');
         $this->assertStringNotContainsString('.tr-theme-preview', $css, 'appearance previews removed');
         $this->assertStringContainsString('--tr-contrib-tier1:', $css, 'contribution graph tier tokens');

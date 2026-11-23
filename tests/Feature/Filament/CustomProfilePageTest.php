@@ -71,16 +71,16 @@ class CustomProfilePageTest extends TestCase
         // current calendar year.
         $this->actingAs($user)->get('/admin/profile')
             ->assertSuccessful()
-            ->assertSee('0 incidents in '.now()->year);
+            ->assertSee('incidents in '.now()->year);
 
         $this->actingAs($user)->get('/admin/profile?year=2025')
             ->assertSuccessful()
-            ->assertSee('0 incidents in 2025');
+            ->assertSee('incidents in 2025');
 
         // Any year is honoured by the mechanism (even a future one).
         $future = now()->year + 3;
         $this->actingAs($user)->get('/admin/profile?year='.$future)
             ->assertSuccessful()
-            ->assertSee('0 incidents in '.$future);
+            ->assertSee('incidents in '.$future);
     }
 }

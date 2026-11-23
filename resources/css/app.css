@@ -540,6 +540,39 @@
     left: 0;
     z-index: 2;
     background: #fff;
+    /* Owner 2026-11-23: the expand cell rendered far wider than its chevron,
+       leaving the ID column visually detached — pin it around the button. */
+    width: 2.75rem !important;
+    max-width: 2.75rem;
+    padding-inline: 0.5rem !important;
+}
+/* The expand button itself rendered full-cell wide (the column was ~120px
+   for a chevron) — pin the inner wrapper AND the button to a compact square
+   so the ID column slides left (auto table layout sizes the column from its
+   content basis; a full-width wrapper kept it wide). */
+.fi-ta-table:has(.sticky-col-id) .sticky-col-expand .fi-ta-col-wrp {
+    width: 1.75rem !important;
+    /* Auto table layout hands the column a share of the leftover width —
+       it cannot be pinned narrower. Right-aligning the wrapper parks the
+       chevron flush against the ID column instead of floating mid-cell
+       (owner 2026-11-23: "button expand-collapse dan ID jaraknya terlalu
+       jauh"). */
+    margin-left: auto;
+    margin-right: 0;
+}
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-expand button,
+.fi-ta-table:has(.sticky-col-id) th.sticky-col-expand button {
+    width: 1.75rem !important;
+    min-width: 1.75rem;
+    padding: 0 !important;
+    margin-inline: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
+    padding-inline: 0.5rem !important;
 }
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
@@ -3497,6 +3530,47 @@ tr.fi-ta-row.sub-incident-row {
     border-bottom-color: #42adef;
 }
 
+/* Cluster tabs (AI, Notifications, Reports, Settings, User Management, Logs)
+   — the same underline model (owner 2026-11-23): ONE scrollable row instead
+   of the old wrap, scrollbar only while the cursor is over the strip. */
+.fi-page-sub-navigation-tabs.fi-tabs {
+    flex-wrap: nowrap;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 0.25rem;
+    scrollbar-width: none;
+}
+:root.dark .fi-page-sub-navigation-tabs.fi-tabs {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+.fi-page-sub-navigation-tabs.fi-tabs:hover {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+.fi-page-sub-navigation-tabs.fi-tabs::-webkit-scrollbar { height: 0; }
+.fi-page-sub-navigation-tabs.fi-tabs:hover::-webkit-scrollbar { height: 6px; }
+.fi-page-sub-navigation-tabs.fi-tabs::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.55);
+    border-radius: 3px;
+}
+.fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item {
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0.5rem 0.875rem !important;
+    font-weight: 600;
+    color: #475569;
+    background: transparent !important;
+}
+:root.dark .fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item { color: #9ca3af; }
+.fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item.fi-active {
+    border-bottom-color: #108ee9;
+    color: #108ee9;
+}
+:root.dark .fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item.fi-active {
+    color: #7fc8f4;
+    border-bottom-color: #42adef;
+}
+
 /* Incident LIST tabs (All Cases, On Going, Completed Cases, ...) — same
    underline language (owner 2026-11-21). These stay a single scrollable row:
    the horizontal scrollbar appears ONLY while the cursor is over the strip
@@ -3578,8 +3652,35 @@ tr.fi-ta-row.sub-incident-row {
     border-radius: 0.75rem;
 }
 :root.dark .tr-profile-graph { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.1); }
-.tr-profile-graph-title { margin: 0 0 0.75rem; font-size: 0.875rem; font-weight: 700; color: #0f172a; }
+.tr-profile-graph-title { margin: 0; font-size: 0.875rem; font-weight: 700; color: #0f172a; }
 :root.dark .tr-profile-graph-title { color: #f3f4f6; }
+/* Owner 2026-11-23: title row + the per-tier breakdown. */
+.tr-profile-graph-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+}
+.tr-graph-stats {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.tr-graph-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    font-size: 0.75rem;
+    color: #64748b;
+}
+:root.dark .tr-graph-stat { color: #9ca3af; }
+.tr-graph-stat strong { font-weight: 700; color: #0f172a; }
+:root.dark .tr-graph-stat strong { color: #f3f4f6; }
+.tr-graph-stat-value { font-size: 0.9375rem; font-weight: 800; color: #0f172a; }
+:root.dark .tr-graph-stat-value { color: #f9fafb; }
 
 /* Contribution graph layout: calendar + year pills (owner 2026-11-20). */
 .tr-contrib-wrap { display: flex; gap: 1rem; align-items: flex-start; }
@@ -3681,3 +3782,30 @@ tr.fi-ta-row.sub-incident-row {
 }
 .tr-contrib-legend-item { display: inline-flex; align-items: center; gap: 0.25rem; }
 
+
+/* Vertical page scrollbar — adaptive (owner 2026-11-23): hidden by default,
+   shown by app.js while the cursor is near the right edge / scrolling /
+   dragging, fading ~1.2s after inactivity. The scrollbar WIDTH never
+   changes, so toggling visibility causes zero layout shift. */
+html {
+    scrollbar-color: transparent transparent;
+    scrollbar-width: thin;
+}
+html::-webkit-scrollbar,
+html::-webkit-scrollbar-track {
+    width: 10px;
+    background: transparent;
+}
+html::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 6px;
+}
+html.tr-scroll-active {
+    scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+}
+html.tr-scroll-active::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.6);
+}
+html.tr-scroll-active::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.8);
+}

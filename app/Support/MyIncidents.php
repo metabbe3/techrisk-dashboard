@@ -81,7 +81,7 @@ class MyIncidents
      * "warna sesuai prioritas status yang paling tinggi"). Tier 0 = no
      * incidents; days after today are plain empty cells.
      *
-     * @return array{weeks: list<array{month: string|null, days: list<array{date: string, tier: int, count: int, tooltip: string}|null>}>, total: int}
+     * @return array{weeks: list<array{month: string|null, days: list<array{date: string, tier: int, count: int, tooltip: string}|null>}>, total: int, tiers: array{1: int, 2: int, 3: int}}
      */
     public static function contributionGraph(User $user, ?int $year = null): array
     {
@@ -106,6 +106,7 @@ class MyIncidents
             ->get(['id', 'incident_date', 'incident_status']);
 
         $byDay = [];
+        $tierTotals = [1 => 0, 2 => 0, 3 => 0];
         foreach ($incidents as $incident) {
             $day = $incident->incident_date->format('Y-m-d');
             $tier = $incident->isNotDone()
@@ -114,6 +115,9 @@ class MyIncidents
             // Higher priority = LOWER number: keep the day's minimum.
             $byDay[$day]['tier'] = min($byDay[$day]['tier'] ?? 99, $tier);
             $byDay[$day]['count'] = ($byDay[$day]['count'] ?? 0) + 1;
+            // Per-tier RECORD counts (owner 2026-11-23: the summary shows
+            // In progress / Monitoring actions / Completed).
+            $tierTotals[$tier]++;
         }
 
         $weeks = [];
@@ -181,10 +185,9 @@ class MyIncidents
         }
 
         // Total incident RECORDS in the window (a day with 2 incidents counts
-        // 2) — the graph title's "N incidents in the last year" (owner
-        // 2026-11-20: total in the graph, not the active-only count).
-        $total = array_sum(array_map(fn (array $bucket) => $bucket['count'], $byDay));
+        // 2). tierTotals sums to the same total — one write path.
+        $total = array_sum($tierTotals);
 
-        return ['weeks' => $weeks, 'total' => $total];
+        return ['weeks' => $weeks, 'total' => $total, 'tiers' => $tierTotals];
     }
 }

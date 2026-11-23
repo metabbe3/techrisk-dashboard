@@ -71,3 +71,57 @@ window.trMoneyFormat = (raw) => {
     const n = new Intl.NumberFormat('id-ID', { maximumFractionDigits: 0 }).format(parseInt(int, 10) || 0);
     return `${n},${dec}`;
 };
+
+// Vertical page scrollbar: the thumb stays invisible until the user interacts
+// (owner 2026-11-23): the cursor enters the rightmost 32px, the user scrolls
+// (wheel / trackpad / keyboard) or drags the bar itself; it fades ~1.2s after
+// inactivity. The TRACK occupies the same width in both states, so showing it
+// never shifts the layout. Touch devices ride their native scroll indicator
+// (the scroll listener still lights it up).
+(() => {
+    const root = document.documentElement;
+    let hideTimer = null;
+    let dragging = false;
+
+    const hide = () => {
+        if (!dragging) {
+            root.classList.remove('tr-scroll-active');
+        }
+    };
+
+    const show = (holdMs = 1200) => {
+        root.classList.add('tr-scroll-active');
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(hide, holdMs);
+    };
+
+    document.addEventListener('mousemove', (event) => {
+        if (window.innerWidth - event.clientX <= 32) {
+            show();
+        }
+    }, { passive: true });
+
+    document.addEventListener('wheel', () => show(), { passive: true });
+    document.addEventListener('scroll', () => show(), { passive: true });
+
+    document.addEventListener('keydown', (event) => {
+        if (['ArrowDown', 'ArrowUp', 'PageDown', 'PageUp', 'Home', 'End', ' '].includes(event.key)) {
+            show();
+        }
+    });
+
+    // Dragging the native bar itself: pointerdown on the right gutter.
+    document.addEventListener('pointerdown', (event) => {
+        if (window.innerWidth - event.clientX <= 18) {
+            dragging = true;
+            show(60000);
+        }
+    });
+
+    document.addEventListener('pointerup', () => {
+        if (dragging) {
+            dragging = false;
+            show();
+        }
+    });
+})();

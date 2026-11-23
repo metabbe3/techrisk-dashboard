@@ -11,7 +11,9 @@ class SettingsCluster extends Cluster
 
     protected static ?string $navigationLabel = 'Settings';
 
-    protected static ?int $navigationSort = 13;
+    // Owner 2026-11-23: Settings renders BELOW Logs in the sidebar — the
+    // sort sits last in the cluster sequence (Logs = 15).
+    protected static ?int $navigationSort = 16;
 
     protected static SubNavigationPosition $subNavigationPosition = SubNavigationPosition::Top;
 

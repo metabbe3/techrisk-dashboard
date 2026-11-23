@@ -150,13 +150,14 @@ class AdminPanelProvider extends PanelProvider
             // in the TOPBAR, so main's SIDEBAR_FOOTER + notifications-modal
             // hooks are still NOT carried here.
             ->renderHook(
-                // Tab strips WRAP instead of scrolling (owner 2026-11-20: the
-                // incident record pages' strips "masih ada scrollnya, harusnya
-                // tidak ada" — same call as the cluster tabs above). Covers the
-                // relation-manager strip and the form's own tab strip.
+                // Form/relation-manager strips WRAP instead of scrolling (owner
+                // 2026-11-20: "masih ada scrollnya, harusnya tidak ada").
+                // Owner 2026-11-23: the CLUSTER strip (fi-page-sub-navigation-tabs)
+                // LEFT this rule — it is now ONE underline row with a
+                // hover-only scrollbar, matching the tab model (app.css).
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(
-                    '<style>.fi-page-sub-navigation-tabs.fi-tabs,.fi-resource-relation-managers>.fi-tabs,.fi-fo-tabs>.fi-tabs{flex-wrap:wrap}</style>'
+                    '<style>.fi-resource-relation-managers>.fi-tabs,.fi-fo-tabs>.fi-tabs{flex-wrap:wrap}</style>'
                 ),
             )
             ->renderHook(

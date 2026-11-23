@@ -58,8 +58,9 @@ class SidebarGroupOrderTest extends TestCase
 
         asort($sorts);
 
+        // Owner 2026-11-23: Settings sits BELOW Logs.
         $this->assertSame(
-            ['AI', 'Reports', 'Notifications', 'Settings', 'User Management', 'Logs'],
+            ['AI', 'Reports', 'Notifications', 'User Management', 'Logs', 'Settings'],
             array_keys($sorts),
             'The clusters render after Operations in this order — update the cluster $navigationSort constants, not this test.',
         );

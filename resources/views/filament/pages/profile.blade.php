@@ -13,7 +13,17 @@
         </section>
 
         <section class="tr-profile-graph">
-            <h3 class="tr-profile-graph-title">{{ $contributionGraph['total'] }} {{ \Illuminate\Support\Str::plural('incident', $contributionGraph['total']) }} in {{ $activeYear }}</h3>
+            {{-- Owner 2026-11-23: the title is a breakdown, not a bare count. --}}
+            <div class="tr-profile-graph-head">
+                <h3 class="tr-profile-graph-title">
+                    <span class="tr-graph-stat"><span class="tr-graph-stat-value">{{ $contributionGraph['total'] }}</span> {{ \Illuminate\Support\Str::plural('incident', $contributionGraph['total']) }} in {{ $activeYear }}</span>
+                </h3>
+                <div class="tr-graph-stats">
+                    <span class="tr-graph-stat"><span class="tr-contrib-cell tr-contrib-t1"></span> In progress <strong>{{ $contributionGraph['tiers'][1] }}</strong></span>
+                    <span class="tr-graph-stat"><span class="tr-contrib-cell tr-contrib-t2"></span> Monitoring actions <strong>{{ $contributionGraph['tiers'][2] }}</strong></span>
+                    <span class="tr-graph-stat"><span class="tr-contrib-cell tr-contrib-t3"></span> Completed <strong>{{ $contributionGraph['tiers'][3] }}</strong></span>
+                </div>
+            </div>
             @include('filament.pages.profile-graph', ['weeks' => $contributionGraph['weeks'], 'activeYear' => $activeYear, 'years' => $years])
         </section>
     </div>

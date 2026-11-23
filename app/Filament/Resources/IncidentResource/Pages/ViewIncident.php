@@ -89,10 +89,13 @@ class ViewIncident extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
-            // Owner 2026-11-21: seven header buttons squeezed the breadcrumb
-            // and title into a narrow column. The header is now [Edit] + ONE
-            // "three lines" kebab holding everything, plus Update Status and
-            // Delete INSIDE it — the status can change without opening Edit.
+            // Owner 2026-11-23: the header is [Update Status] [Edit] [kebab].
+            // Update Status is a VISIBLE button again (shared with the
+            // incidents-list kebab — one definition: form + BUG-035 gate +
+            // write); the kebab keeps the rest, incl. Delete.
+            \App\Filament\Actions\UpdateStatusAction::header(),
+            Actions\EditAction::make()
+                ->visible(fn (): bool => auth()->user()->can('manage incidents')),
             Actions\ActionGroup::make([
                 Actions\Action::make('email_pic')
                     ->label('Email PIC')
@@ -240,9 +243,6 @@ class ViewIncident extends ViewRecord
                     ->action(function (IncidentMarkdownExporter $exporter) {
                         return $exporter->download($this->getRecord());
                     }),
-                // Shared with the incidents-list kebab — one definition
-                // (form + BUG-035 gate + write).
-                \App\Filament\Actions\UpdateStatusAction::header(),
                 Actions\DeleteAction::make()
                     ->visible(fn (): bool => auth()->user()->can('manage incidents')),
             ])
@@ -250,8 +250,6 @@ class ViewIncident extends ViewRecord
                 ->icon('heroicon-m-bars-3')
                 ->color('gray')
                 ->tooltip('More actions'),
-            Actions\EditAction::make()
-                ->visible(fn (): bool => auth()->user()->can('manage incidents')),
         ];
     }
 

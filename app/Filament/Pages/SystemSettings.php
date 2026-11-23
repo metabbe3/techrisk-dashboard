@@ -58,7 +58,9 @@ class SystemSettings extends Page implements HasForms
 
     protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
-    protected static ?string $navigationLabel = 'Settings';
+    // Owner 2026-11-23: the cluster tab reads "System Settings" (the cluster
+    // itself is Settings — two identical labels side by side were confusing).
+    protected static ?string $navigationLabel = 'System Settings';
 
     protected static ?string $cluster = \App\Filament\Clusters\SettingsCluster::class;
 
