@@ -27,16 +27,28 @@ class CustomProfilePage extends BaseEditProfile
     /** @var array<string, mixed> */
     public array $contributionGraph = [];
 
-    /** Year picked from the graph's year pills; null = rolling 12 months. */
-    public ?int $activeYear = null;
+    /** Year picked from the graph's year pills; defaults to the current year. */
+    public int $activeYear;
+
+    /**
+     * The year pills: the user's earliest incident year through the current
+     * year (owner 2026-11-21 — per-year only, no rolling mode).
+     *
+     * @var list<int>
+     */
+    public array $years = [];
 
     public function mount(): void
     {
         parent::mount();
 
-        $year = request()->integer('year');
-        $this->activeYear = $year > 0 ? $year : null;
-        $this->contributionGraph = MyIncidents::contributionGraph($this->getUser(), $this->activeYear);
+        $user = $this->getUser();
+        $this->years = MyIncidents::years($user);
+
+        $requested = request()->integer('year');
+        $this->activeYear = $requested > 0 ? $requested : (int) now()->year;
+
+        $this->contributionGraph = MyIncidents::contributionGraph($user, $this->activeYear);
     }
 
     public function getTitle(): string

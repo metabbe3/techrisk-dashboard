@@ -13,8 +13,8 @@
         </section>
 
         <section class="tr-profile-graph">
-            <h3 class="tr-profile-graph-title">{{ $contributionGraph['total'] }} {{ \Illuminate\Support\Str::plural('incident', $contributionGraph['total']) }} {{ $activeYear ? 'in '.$activeYear : 'in the last year' }}</h3>
-            @include('filament.pages.profile-graph', ['weeks' => $contributionGraph['weeks'], 'activeYear' => $activeYear])
+            <h3 class="tr-profile-graph-title">{{ $contributionGraph['total'] }} {{ \Illuminate\Support\Str::plural('incident', $contributionGraph['total']) }} in {{ $activeYear }}</h3>
+            @include('filament.pages.profile-graph', ['weeks' => $contributionGraph['weeks'], 'activeYear' => $activeYear, 'years' => $years])
         </section>
     </div>
 </x-filament-panels::page>

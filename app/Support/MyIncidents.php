@@ -58,35 +58,50 @@ class MyIncidents
     }
 
     /**
-     * GitHub-style contribution data: a rolling 12-month window ending today,
-     * Monday-first weeks as columns. Each DAY gets ONE tier — the
-     * highest-priority status among that date's incidents (1 running >
-     * 2 monitoring > 3 done; owner: "warna sesuai prioritas status yang
-     * paling tinggi"). Tier 0 = in-window day with no incidents.
+     * The years the profile graph offers: from the user's EARLIEST incident
+     * year through the current year (owner 2026-11-21: "cukup per tahun saja
+     * … dan mekanismenya bisa untuk tahun berapapun"). Empty when the user
+     * has no incidents — the caller falls back to the current year.
+     *
+     * @return list<int>
+     */
+    public static function years(User $user): array
+    {
+        $earliest = self::query($user)->min('incident_date');
+        $firstYear = $earliest !== null ? (int) Carbon::parse($earliest)->year : (int) now()->year;
+
+        return range(max($firstYear, 1900), (int) now()->year);
+    }
+
+    /**
+     * GitHub-style contribution data for ONE calendar year (owner 2026-11-21:
+     * the rolling 12-month mode is gone — "cukup per tahun saja"), Monday-first
+     * weeks as columns. Each DAY gets ONE tier — the highest-priority status
+     * among that date's incidents (1 running > 2 monitoring > 3 done; owner:
+     * "warna sesuai prioritas status yang paling tinggi"). Tier 0 = no
+     * incidents; days after today are plain empty cells.
      *
      * @return array{weeks: list<array{month: string|null, days: list<array{date: string, tier: int, count: int, tooltip: string}|null>}>, total: int}
      */
     public static function contributionGraph(User $user, ?int $year = null): array
     {
-        if ($year !== null) {
-            // Year mode (owner 2026-11-20): the full calendar year, Jan–Dec;
-            // days after today are future empty cells.
-            $realStart = Carbon::create($year, 1, 1);
-            $end = Carbon::create($year, 12, 31)->endOfDay();
-        } else {
-            // Default: rolling 12 months ending today.
-            $realStart = now()->subMonths(12);
-            $end = now()->endOfDay();
-        }
+        $year ??= (int) now()->year;
+
+        $realStart = Carbon::create($year, 1, 1);
+        $end = Carbon::create($year, 12, 31)->endOfDay();
+
         // The grid runs in whole Monday-first weeks; the leading column may
-        // belong to the PREVIOUS month/year (e.g. a year view starting Mon
-        // Dec 30). Its label must name the window's first real month, or the
-        // first month of the year silently loses its label.
+        // belong to the PREVIOUS year (e.g. a 2025 view starting Mon Dec 30).
+        // Its label must name the window's first real month, or the first
+        // month of the year silently loses its label.
         $start = $realStart->copy()->startOfWeek(Carbon::MONDAY);
         $leadingMonth = $realStart->isoFormat('MMM');
 
+        // Query the REAL window (Jan 1 – Dec 31), not the Monday-aligned grid
+        // start: the leading partial week may contain last-year days, and
+        // their incidents do not belong to this year's count.
         $incidents = self::query($user)
-            ->whereBetween('incident_date', [$start, $end])
+            ->whereBetween('incident_date', [$realStart, $end])
             ->withExists(['actionImprovements as has_open_ai' => fn (Builder $ai) => $ai->whereIn('status', ActionImprovement::openStatuses())])
             ->get(['id', 'incident_date', 'incident_status']);
 

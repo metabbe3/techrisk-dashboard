@@ -3414,91 +3414,41 @@ tr.fi-ta-row.sub-incident-row {
 .tr-theme-chevron { margin-left: auto; color: #94a3b8; transition: transform 0.15s; }
 .tr-theme-chevron.tr-rotate { transform: rotate(180deg); }
 
-.tr-theme-cards {
-    display: flex;
-    flex-direction: column;
+/* Appearance expander: three ICON buttons (owner 2026-11-21 — the preview
+   cards are gone; sun / moon / monitor, stock-switcher style). */
+.tr-theme-icons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 0.375rem;
-    padding: 0.375rem 0.5rem 0.5rem;
+    padding: 0 0.5rem 0.5rem;
 }
-.tr-theme-card {
-    display: flex;
+.tr-theme-icon-btn {
+    display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    padding: 0.375rem;
+    justify-content: center;
+    padding: 0.5rem;
     border: 1px solid #e2e8f0;
     border-radius: 0.5rem;
     background: transparent;
+    color: #94a3b8;
     cursor: pointer;
-    text-align: start;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
 }
-.tr-theme-card:hover { background: #f8fafc; }
-:root.dark .tr-theme-card { border-color: rgba(255, 255, 255, 0.1); }
-:root.dark .tr-theme-card:hover { background: rgba(255, 255, 255, 0.05); }
-.tr-theme-card-active,
-.tr-theme-card-active:hover {
+.tr-theme-icon-btn:hover { background: #f8fafc; color: #475569; }
+:root.dark .tr-theme-icon-btn { border-color: rgba(255, 255, 255, 0.12); }
+:root.dark .tr-theme-icon-btn:hover { background: rgba(255, 255, 255, 0.05); color: #d1d5db; }
+.tr-theme-icon-active,
+.tr-theme-icon-active:hover {
     border-color: #108ee9;
-    box-shadow: 0 0 0 1px #108ee9;
-}
-.tr-theme-card-label { font-size: 0.8125rem; font-weight: 600; color: #0f172a; }
-:root.dark .tr-theme-card-label { color: #f3f4f6; }
-.tr-theme-card-active-badge {
-    margin-left: auto;
-    font-size: 0.6875rem;
-    font-weight: 700;
     color: #108ee9;
-    border: 1px solid #108ee9;
-    border-radius: 9999px;
-    padding: 0.0625rem 0.4375rem;
+    background: rgba(16, 142, 233, 0.08);
 }
-.tr-theme-card-active-badge.tr-hidden,
-.tr-rotate[data-hidden="true"] { display: none; }
-.tr-hidden { display: none !important; }
-
-/* Theme preview mini-mockups (fixed colors — each depicts its own theme) */
-.tr-theme-preview {
-    position: relative;
-    display: block;
-    width: 2.75rem;
-    height: 1.75rem;
-    flex-shrink: 0;
-    border-radius: 0.25rem;
-    border: 1px solid #e2e8f0;
-    overflow: hidden;
+:root.dark .tr-theme-icon-active,
+:root.dark .tr-theme-icon-active:hover {
+    border-color: #42adef;
+    color: #7fc8f4;
+    background: rgba(66, 173, 239, 0.12);
 }
-:root.dark .tr-theme-preview { border-color: rgba(255, 255, 255, 0.15); }
-.tr-theme-preview-bar {
-    position: absolute;
-    inset: 0 0 auto 0;
-    height: 0.4375rem;
-}
-.tr-theme-preview-line,
-.tr-theme-preview-block { position: absolute; border-radius: 1px; }
-.tr-theme-preview-line {
-    left: 0.1875rem;
-    top: 0.6875rem;
-    width: 55%;
-    height: 0.1875rem;
-}
-.tr-theme-preview-block {
-    right: 0.1875rem;
-    bottom: 0.1875rem;
-    width: 1rem;
-    height: 0.5rem;
-}
-.tr-theme-preview-light { background: #f8fafc; }
-.tr-theme-preview-light .tr-theme-preview-bar { background: #cbd5e1; }
-.tr-theme-preview-light .tr-theme-preview-line { background: #108ee9; }
-.tr-theme-preview-light .tr-theme-preview-block { background: #e2e8f0; }
-.tr-theme-preview-dark { background: #0f172a; }
-.tr-theme-preview-dark .tr-theme-preview-bar { background: #1e293b; }
-.tr-theme-preview-dark .tr-theme-preview-line { background: #3b82f6; }
-.tr-theme-preview-dark .tr-theme-preview-block { background: #334155; }
-.tr-theme-preview-system {
-    background: linear-gradient(90deg, #f8fafc 50%, #0f172a 50%);
-}
-.tr-theme-preview-system .tr-theme-preview-bar { background: #94a3b8; }
-.tr-theme-preview-system .tr-theme-preview-line { background: #3b82f6; }
-.tr-theme-preview-system .tr-theme-preview-block { background: #64748b; }
 
 /* Incident detail pages — the relation-manager tab strips (Status Updates,
    Supporting Documents, ...) adopt the profile tabs' UNDERLINE look (owner
@@ -3543,6 +3493,57 @@ tr.fi-ta-row.sub-incident-row {
 }
 :root.dark .fi-resource-edit-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active,
 :root.dark .fi-resource-view-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active {
+    color: #7fc8f4;
+    border-bottom-color: #42adef;
+}
+
+/* Incident LIST tabs (All Cases, On Going, Completed Cases, ...) — same
+   underline language (owner 2026-11-21). These stay a single scrollable row:
+   the horizontal scrollbar appears ONLY while the cursor is over the strip
+   (owner: "horizontal scroll baru muncul ketika cursor pada area tab"). */
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs {
+    background: transparent !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-inline: 0 !important;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 0.25rem;
+    /* WebKit keeps its own scrollbar styling below. */
+    scrollbar-width: none;
+}
+:root.dark .fi-resource-incidents.fi-resource-list-records-page .fi-tabs {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs:hover {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs::-webkit-scrollbar { height: 0; }
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs:hover::-webkit-scrollbar { height: 6px; }
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs::-webkit-scrollbar-track { background: transparent; }
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.55);
+    border-radius: 3px;
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item {
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0.5rem 0.875rem !important;
+    font-weight: 600;
+    color: #475569;
+    background: transparent !important;
+}
+:root.dark .fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item {
+    color: #9ca3af;
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item.fi-active {
+    border-bottom-color: #108ee9;
+    color: #108ee9;
+}
+:root.dark .fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item.fi-active {
     color: #7fc8f4;
     border-bottom-color: #42adef;
 }

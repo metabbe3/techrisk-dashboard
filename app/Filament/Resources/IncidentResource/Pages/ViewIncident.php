@@ -30,6 +30,13 @@ class ViewIncident extends ViewRecord
 {
     protected static string $resource = IncidentResource::class;
 
+    // Owner 2026-11-21: the heading is the record title — the default
+    // "View {title}" prefix is gone (the breadcrumb already says View).
+    public function getTitle(): string
+    {
+        return (string) $this->getRecord()->title;
+    }
+
     public function mount(string|int $record): void
     {
         parent::mount($record);
@@ -82,135 +89,139 @@ class ViewIncident extends ViewRecord
     protected function getHeaderActions(): array
     {
         return [
-            Actions\Action::make('email_pic')
-                ->label('Email PIC')
-                ->icon('heroicon-o-envelope')
-                ->color('info')
-                ->requiresConfirmation()
-                ->modalHeading('Email PIC')
-                ->modalDescription('Send a reminder email to this incident’s PIC via Netcore.')
-                ->modalSubmitActionLabel('Send Email')
-                ->visible(fn ($record) => $record->pics->isNotEmpty() && $record->isNotDone() && auth()->user()->can('manage incidents'))
-                ->action(function () {
-                    $incident = $this->getRecord();
-                    $notification = new IncidentNotDoneReminder($incident);
-
-                    $incident->pics->each(fn ($pic) => $pic->notify($notification));
-                    // One combined email for all PICs (owner rule 2026-10-09).
-                    $mailed = ReminderMail::send($incident->pics, $notification);
-
-                    Notification::make()
-                        ->when($mailed > 0, fn ($n) => $n->success()->title('Reminder sent')->body('Email sent to '.$incident->pics->pluck('email')->implode(', ').'.'))
-                        ->when($mailed === 0, fn ($n) => $n->warning()->title('No email sent')->body(\App\Support\MailSettings::enabled()
-                            ? 'No PIC has email reminders enabled in their preferences.'
-                            : 'Email is turned off in Email Settings (global kill-switch).'))
-                        ->send();
-                }),
-            Actions\Action::make('detect_similar_incidents')
-                ->label('Detect Similar')
-                ->icon('heroicon-o-magnifying-glass-circle')
-                ->color('primary')
-                ->requiresConfirmation()
-                ->modalHeading('Detect similar incidents')
-                ->modalDescription('AI runs the full pipeline (think → find → verify → double-check). This may take up to a minute.')
-                ->modalSubmitActionLabel('Detect')
-                ->visible(fn (): bool => auth()->user()->can('manage incidents') && app(SimilarIncidentService::class)->isAvailable())
-                ->action(function () {
-                    $incident = $this->getRecord();
-                    $service = app(SimilarIncidentService::class);
-                    $result = $service->analyze($incident);
-
-                    if (! $result->success) {
-                        Notification::make()
-                            ->danger()
-                            ->title('Detection failed')
-                            ->body($result->error)
-                            ->send();
-
-                        return;
-                    }
-
-                    $service->persist($incident, $result->matches);
-
-                    Notification::make()
-                        ->success()
-                        ->title('Similar incidents detected')
-                        ->body(count($result->matches).' match(es) found — the list below is updated.')
-                        ->send();
-                }),
-            Actions\Action::make('generate_retro')
-                ->label($this->getRecord()?->retro_markdown ? 'Regenerate Retro' : 'Generate Retro')
-                ->icon('heroicon-o-document-duplicate')
-                ->color('gray')
-                ->requiresConfirmation()
-                ->modalHeading('Generate retrospective')
-                ->modalDescription('AI drafts a blameless retrospective from this incident and stores it on the record. Regenerating overwrites the stored retro.')
-                ->modalSubmitActionLabel('Generate')
-                ->visible(fn (): bool => auth()->user()->can('manage incidents'))
-                ->action(function () {
-                    $incident = $this->getRecord();
-                    $service = app(PostMortemService::class);
-                    $markdown = $service->generateAsMarkdown($incident);
-
-                    if ($markdown === null) {
-                        Notification::make()
-                            ->danger()
-                            ->title('Retro generation failed')
-                            ->body('The AI returned no usable content — nothing was stored.')
-                            ->send();
-
-                        return;
-                    }
-
-                    $incident->update([
-                        'retro_markdown' => $markdown,
-                        'retro_generated_at' => now(),
-                        'retro_model' => $service->resolvedModel(),
-                    ]);
-
-                    Notification::make()
-                        ->success()
-                        ->title('Retrospective generated')
-                        ->body('The Retrospective section below is updated.')
-                        ->send();
-                }),
-            // PROJ-022: same hierarchy actions as the list page's row kebab,
-            // for the record being viewed. Hidden on subs (one level deep).
-            Actions\Action::make('create_sub_incident')
-                ->label('Create sub-incident')
-                ->icon('heroicon-o-plus-circle')
-                ->color('success')
-                ->url(fn (Incident $record): string => IncidentResource::getUrl('create', ['parent' => $record->getKey()]))
-                ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
-                    && $record->classification === IncidentClassification::Incident
-                    && blank($record->parent_incident_id)),
-            Actions\Action::make('link_sub_incident')
-                ->label('Link sub-incident')
-                ->icon('heroicon-o-link')
-                ->color('info')
-                ->form([
-                    \Filament\Forms\Components\Select::make('sub_incident_id')
-                        ->label('Incident to link as a sub')
-                        ->searchable()
-                        ->required()
-                        ->options(fn (?Incident $record) => \App\Filament\Actions\SubIncidentLinkAction::options($record))
-                        ->rule(fn () => fn (string $attribute, $value, \Closure $fail) => \App\Filament\Actions\SubIncidentLinkAction::validatePick($value, $fail)),
-                ])
-                ->action(function (Incident $record, array $data): void {
-                    \App\Filament\Actions\SubIncidentLinkAction::link($record, (int) $data['sub_incident_id']);
-
-                    Notification::make()
-                        ->success()
-                        ->title('Sub-incident linked')
-                        ->body($this->getRecord()->subIncidents()->count().' sub-incident(s) linked to this record.')
-                        ->send();
-                })
-                ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
-                    && $record->classification === IncidentClassification::Incident
-                    && blank($record->parent_incident_id)),
-            // Owner 2026-11-04: the export pair merged behind one dropdown,
-            // the Notion pair behind a kebab — the header was one button sea.
+            // Owner 2026-11-21: seven header buttons squeezed the breadcrumb
+            // and title into a narrow column. The header is now [Edit] + ONE
+            // "three lines" kebab holding everything, plus Update Status and
+            // Delete INSIDE it — the status can change without opening Edit.
             Actions\ActionGroup::make([
+                Actions\Action::make('email_pic')
+                    ->label('Email PIC')
+                    ->icon('heroicon-o-envelope')
+                    ->color('info')
+                    ->requiresConfirmation()
+                    ->modalHeading('Email PIC')
+                    ->modalDescription('Send a reminder email to this incident’s PIC via Netcore.')
+                    ->modalSubmitActionLabel('Send Email')
+                    ->visible(fn ($record) => $record->pics->isNotEmpty() && $record->isNotDone() && auth()->user()->can('manage incidents'))
+                    ->action(function () {
+                        $incident = $this->getRecord();
+                        $notification = new IncidentNotDoneReminder($incident);
+
+                        $incident->pics->each(fn ($pic) => $pic->notify($notification));
+                        // One combined email for all PICs (owner rule 2026-10-09).
+                        $mailed = ReminderMail::send($incident->pics, $notification);
+
+                        Notification::make()
+                            ->when($mailed > 0, fn ($n) => $n->success()->title('Reminder sent')->body('Email sent to '.$incident->pics->pluck('email')->implode(', ').'.'))
+                            ->when($mailed === 0, fn ($n) => $n->warning()->title('No email sent')->body(\App\Support\MailSettings::enabled()
+                                ? 'No PIC has email reminders enabled in their preferences.'
+                                : 'Email is turned off in Email Settings (global kill-switch).'))
+                            ->send();
+                    }),
+                Actions\Action::make('detect_similar_incidents')
+                    ->label('Detect Similar')
+                    ->icon('heroicon-o-magnifying-glass-circle')
+                    ->color('primary')
+                    ->requiresConfirmation()
+                    ->modalHeading('Detect similar incidents')
+                    ->modalDescription('AI runs the full pipeline (think → find → verify → double-check). This may take up to a minute.')
+                    ->modalSubmitActionLabel('Detect')
+                    ->visible(fn (): bool => auth()->user()->can('manage incidents') && app(SimilarIncidentService::class)->isAvailable())
+                    ->action(function () {
+                        $incident = $this->getRecord();
+                        $service = app(SimilarIncidentService::class);
+                        $result = $service->analyze($incident);
+
+                        if (! $result->success) {
+                            Notification::make()
+                                ->danger()
+                                ->title('Detection failed')
+                                ->body($result->error)
+                                ->send();
+
+                            return;
+                        }
+
+                        $service->persist($incident, $result->matches);
+
+                        Notification::make()
+                            ->success()
+                            ->title('Similar incidents detected')
+                            ->body(count($result->matches).' match(es) found — the list below is updated.')
+                            ->send();
+                    }),
+                Actions\Action::make('generate_retro')
+                    ->label($this->getRecord()?->retro_markdown ? 'Regenerate Retro' : 'Generate Retro')
+                    ->icon('heroicon-o-document-duplicate')
+                    ->color('gray')
+                    ->requiresConfirmation()
+                    ->modalHeading('Generate retrospective')
+                    ->modalDescription('AI drafts a blameless retrospective from this incident and stores it on the record. Regenerating overwrites the stored retro.')
+                    ->modalSubmitActionLabel('Generate')
+                    ->visible(fn (): bool => auth()->user()->can('manage incidents'))
+                    ->action(function () {
+                        $incident = $this->getRecord();
+                        $service = app(PostMortemService::class);
+                        $markdown = $service->generateAsMarkdown($incident);
+
+                        if ($markdown === null) {
+                            Notification::make()
+                                ->danger()
+                                ->title('Retro generation failed')
+                                ->body('The AI returned no usable content — nothing was stored.')
+                                ->send();
+
+                            return;
+                        }
+
+                        $incident->update([
+                            'retro_markdown' => $markdown,
+                            'retro_generated_at' => now(),
+                            'retro_model' => $service->resolvedModel(),
+                        ]);
+
+                        Notification::make()
+                            ->success()
+                            ->title('Retrospective generated')
+                            ->body('The Retrospective section below is updated.')
+                            ->send();
+                    }),
+                // PROJ-022: same hierarchy actions as the list page's row kebab,
+                // for the record being viewed. Hidden on subs (one level deep).
+                Actions\Action::make('create_sub_incident')
+                    ->label('Create sub-incident')
+                    ->icon('heroicon-o-plus-circle')
+                    ->color('success')
+                    ->url(fn (Incident $record): string => IncidentResource::getUrl('create', ['parent' => $record->getKey()]))
+                    ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                        && $record->classification === IncidentClassification::Incident
+                        && blank($record->parent_incident_id)),
+                Actions\Action::make('link_sub_incident')
+                    ->label('Link sub-incident')
+                    ->icon('heroicon-o-link')
+                    ->color('info')
+                    ->form([
+                        \Filament\Forms\Components\Select::make('sub_incident_id')
+                            ->label('Incident to link as a sub')
+                            ->searchable()
+                            ->required()
+                            ->options(fn (?Incident $record) => \App\Filament\Actions\SubIncidentLinkAction::options($record))
+                            ->rule(fn () => fn (string $attribute, $value, \Closure $fail) => \App\Filament\Actions\SubIncidentLinkAction::validatePick($value, $fail)),
+                    ])
+                    ->action(function (Incident $record, array $data): void {
+                        \App\Filament\Actions\SubIncidentLinkAction::link($record, (int) $data['sub_incident_id']);
+
+                        Notification::make()
+                            ->success()
+                            ->title('Sub-incident linked')
+                            ->body($this->getRecord()->subIncidents()->count().' sub-incident(s) linked to this record.')
+                            ->send();
+                    })
+                    ->visible(fn (Incident $record): bool => auth()->user()->can('manage incidents')
+                        && $record->classification === IncidentClassification::Incident
+                        && blank($record->parent_incident_id)),
+                // The export pair, flattened INTO the kebab (a dropdown cannot
+                // nest inside another dropdown).
                 Actions\Action::make('generate_post_mortem')
                     ->label('Post-Mortem PDF')
                     ->icon('heroicon-o-document-text')
@@ -229,14 +240,16 @@ class ViewIncident extends ViewRecord
                     ->action(function (IncidentMarkdownExporter $exporter) {
                         return $exporter->download($this->getRecord());
                     }),
+                // Shared with the incidents-list kebab — one definition
+                // (form + BUG-035 gate + write).
+                \App\Filament\Actions\UpdateStatusAction::header(),
+                Actions\DeleteAction::make()
+                    ->visible(fn (): bool => auth()->user()->can('manage incidents')),
             ])
-                ->label('Export')
-                ->icon('heroicon-o-arrow-down-tray')
+                ->iconButton()
+                ->icon('heroicon-m-bars-3')
                 ->color('gray')
-                ->button()
-                ->visible(fn (): bool => auth()->user()->can('manage incidents')),
-            // Round 8: Refresh/Unlink moved into the Notion Investigation
-            // section footer (next to "Open in Notion") — the kebab is gone.
+                ->tooltip('More actions'),
             Actions\EditAction::make()
                 ->visible(fn (): bool => auth()->user()->can('manage incidents')),
         ];

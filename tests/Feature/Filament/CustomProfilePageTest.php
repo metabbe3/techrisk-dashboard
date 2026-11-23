@@ -67,12 +67,20 @@ class CustomProfilePageTest extends TestCase
     {
         $user = $this->adminUser();
 
+        // Owner 2026-11-21: per-year only (no rolling mode); default = the
+        // current calendar year.
         $this->actingAs($user)->get('/admin/profile')
             ->assertSuccessful()
-            ->assertSee('0 incidents in the last year');
+            ->assertSee('0 incidents in '.now()->year);
 
         $this->actingAs($user)->get('/admin/profile?year=2025')
             ->assertSuccessful()
             ->assertSee('0 incidents in 2025');
+
+        // Any year is honoured by the mechanism (even a future one).
+        $future = now()->year + 3;
+        $this->actingAs($user)->get('/admin/profile?year='.$future)
+            ->assertSuccessful()
+            ->assertSee('0 incidents in '.$future);
     }
 }

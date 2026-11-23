@@ -56,12 +56,13 @@ class ProfileMenuTest extends TestCase
         $this->assertStringContainsString('Setting', $html);
         $this->assertStringNotContainsString('My Incident', $html, 'owner revisi: the count row replaces the My Incident item');
 
+        // Owner 2026-11-21: Setting sits directly ABOVE Sign out.
         $order = [
             'tr-user-menu-head',
             'Your active incident',
             'admin/profile"',   // the stock "Profile" item links here
-            'admin/setting"',   // the new Setting page (change password)
             'tr-theme-expander',
+            'admin/setting"',   // the Setting page (change password)
             'Sign out',
         ];
         $last = -1;
@@ -82,15 +83,16 @@ class ProfileMenuTest extends TestCase
         $this->assertSame(1, substr_count($html, $expected), 'the count item is the ONE link to the pic-filtered list');
     }
 
-    public function test_appearance_expander_carries_three_cards_and_the_theme_bridge(): void
+    public function test_appearance_expander_is_three_icon_buttons(): void
     {
+        // Owner 2026-11-21: icons only — the preview cards are gone.
         $html = $this->panelHtml();
 
-        $this->assertStringContainsString('tr-theme-card', $html);
-        foreach (['tr-theme-preview-light', 'tr-theme-preview-dark', 'tr-theme-preview-system'] as $preview) {
-            $this->assertStringContainsString($preview, $html, "missing preview card: {$preview}");
-        }
+        $this->assertStringContainsString('tr-theme-icons', $html);
+        $this->assertSame(3, substr_count($html, 'tr-theme-icon-btn'), 'light, dark and system icon buttons');
         $this->assertStringContainsString("new CustomEvent('theme-changed'", $html);
+        $this->assertStringNotContainsString('tr-theme-preview', $html, 'no preview mockups any more');
+        $this->assertStringNotContainsString('tr-theme-card', $html, 'no preview cards any more');
     }
 
     public function test_profile_page_renders_info_graph_and_year_pills(): void
@@ -106,13 +108,16 @@ class ProfileMenuTest extends TestCase
         $this->assertStringNotContainsString('tr-profile-land', $html);
         $this->assertStringNotContainsString('My Incident', $html);
 
-        // Info block + graph + year pills (rolling default selected).
+        // Info block + graph + year pills (owner 2026-11-21: per-year only —
+        // no "12 months" rolling option; the current year starts selected).
         $this->assertStringContainsString('tr-profile-info-name', $html);
         $this->assertStringContainsString(e($this->user->email), $html);
         $this->assertStringContainsString('tr-contrib-cells', $html);
         $this->assertStringContainsString('tr-contrib-years', $html);
-        $this->assertStringContainsString('12 months', $html);
+        $this->assertStringNotContainsString('12 months', $html);
         $this->assertStringContainsString('tr-contrib-year-active', $html);
+        $this->assertStringContainsString((string) now()->year, $html);
+        $this->assertStringContainsString('0 incidents in '.now()->year, $html);
 
         // No password form on this page any more.
         $this->assertStringNotContainsString('wire:submit="save"', $html);
@@ -125,6 +130,10 @@ class ProfileMenuTest extends TestCase
 
         $this->assertStringContainsString('.fi-topbar .fi-user-menu .fi-dropdown-list:has(> .fi-theme-switcher)', $css, 'the stock icon switcher must be hidden while its markup stays');
         $this->assertStringContainsString('.fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active', $css, 'incident detail tab strips adopt the underline look');
+        $this->assertStringContainsString('.fi-resource-incidents.fi-resource-list-records-page .fi-tabs', $css, 'incident LIST tabs adopt the underline look');
+        $this->assertStringContainsString('.fi-tabs:hover::-webkit-scrollbar', $css, 'the list-tab scrollbar shows only on hover');
+        $this->assertStringContainsString('.tr-theme-icon-btn', $css, 'appearance icon buttons');
+        $this->assertStringNotContainsString('.tr-theme-preview', $css, 'appearance previews removed');
         $this->assertStringContainsString('--tr-contrib-tier1:', $css, 'contribution graph tier tokens');
 
         // ⚠ Filament serves --gray-* as RAW RGB TRIPLETS — var() on them is

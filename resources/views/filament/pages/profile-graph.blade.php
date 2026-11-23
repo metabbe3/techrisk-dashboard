@@ -13,7 +13,6 @@
         3 => ['label' => 'Completed', 'class' => 'tr-contrib-t3'],
     ];
     $currentYear = $activeYear ?? null;
-    $years = range((int) now()->year, (int) now()->year - 2);
 @endphp
 
 <div class="tr-contrib">
@@ -61,10 +60,6 @@
         </div>
 
         <div class="tr-contrib-years">
-            <a
-                href="{{ request()->url() }}"
-                class="tr-contrib-year {{ $currentYear === null ? 'tr-contrib-year-active' : '' }}"
-            >12 months</a>
             @foreach ($years as $year)
                 <a
                     href="{{ request()->url() }}?year={{ $year }}"

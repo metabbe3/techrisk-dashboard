@@ -112,14 +112,16 @@ class MyIncidentsTest extends TestCase
         $this->assertStringContainsString('In progress', $today['tooltip']);
     }
 
-    public function test_graph_window_is_twelve_months_ending_today(): void
+    public function test_graph_defaults_to_the_current_calendar_year(): void
     {
+        // Owner 2026-11-21: no rolling mode — the default window is the
+        // current calendar year, Jan 1 – Dec 31.
         $user = User::factory()->create();
 
-        $inWindow = Incident::factory()->create(['incident_date' => now()->subMonths(6)]);
-        $outWindow = Incident::factory()->create(['incident_date' => now()->subMonths(13)]);
+        $inYear = Incident::factory()->create(['incident_date' => now()->startOfYear()->addMonths(2)]);
+        $lastYear = Incident::factory()->create(['incident_date' => now()->startOfYear()->subDay()]);
         $today = Incident::factory()->create(['incident_date' => now()->startOfDay()->addHours(9)]);
-        foreach ([$inWindow, $outWindow, $today] as $incident) {
+        foreach ([$inYear, $lastYear, $today] as $incident) {
             $incident->pics()->attach($user);
         }
 
@@ -128,14 +130,30 @@ class MyIncidentsTest extends TestCase
         $days = collect($graph['weeks'])->pluck('days')->flatten(1)->filter()->values();
         $dates = $days->pluck('date');
 
-        $this->assertTrue($dates->contains(now()->format('Y-m-d')), 'today is the last cell');
-        $this->assertFalse($dates->contains($outWindow->incident_date->format('Y-m-d')), '13 months ago is outside the window');
-        $todayCell = $days->firstWhere('date', now()->format('Y-m-d'));
-        $this->assertSame(1, $todayCell['count']);
+        $this->assertTrue($dates->contains(now()->format('Y-m-d')), 'today is in the current-year window');
+        // The leading week still RENDERS the last-year day (a grid cell), but
+        // its incident must NOT leak into this year's data.
+        $leak = $days->firstWhere('date', $lastYear->incident_date->format('Y-m-d'));
+        $this->assertNotNull($leak, 'the leading week renders the previous-year day as a cell');
+        $this->assertSame(0, $leak['count'], 'previous-year incidents stay out of the year count');
+        $this->assertSame(2, $graph['total']);
         // Every week has exactly 7 day slots.
         foreach ($graph['weeks'] as $week) {
             $this->assertCount(7, $week['days']);
         }
+    }
+
+    public function test_years_lists_from_the_earliest_incident_year_through_now(): void
+    {
+        $user = User::factory()->create();
+        $this->assertSame([(int) now()->year], MyIncidents::years($user), 'no incidents → current year only');
+
+        $old = Incident::factory()->create(['incident_date' => now()->subYears(2)]);
+        $old->pics()->attach($user);
+
+        $years = MyIncidents::years($user);
+        $this->assertSame((int) now()->subYears(2)->year, $years[0]);
+        $this->assertSame((int) now()->year, $years[array_key_last($years)]);
     }
 
     public function test_graph_month_labels_are_complete_including_a_monday_first(): void

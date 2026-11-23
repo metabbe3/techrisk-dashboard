@@ -16,6 +16,13 @@ class ViewIssue extends ViewRecord
 {
     protected static string $resource = IssueResource::class;
 
+    // Owner 2026-11-21: the heading is the record title — the default
+    // "View {title}" prefix is gone (the breadcrumb already says View).
+    public function getTitle(): string
+    {
+        return (string) $this->getRecord()->title;
+    }
+
     public function mount(string|int $record): void
     {
         parent::mount($record);
