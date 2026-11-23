@@ -796,6 +796,24 @@ class IncidentResource extends Resource
                         return $query->where(fn (Builder $q) => $q->whereNull('root_cause')->orWhere('root_cause', '')->orWhere('root_cause', 'N/A'));
                     }),
 
+                Tables\Filters\SelectFilter::make('investigation_form_status')
+                    ->label('Investigation Form')
+                    ->options([
+                        'pending' => 'Pending (open)',
+                        'expired' => 'Expired',
+                        'submitted' => 'Submitted',
+                        'none' => 'Not Requested',
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return match ($data['value'] ?? null) {
+                            'pending' => $query->whereHas('investigationFormRequests', fn (Builder $q) => $q->open()),
+                            'expired' => $query->whereHas('investigationFormRequests', fn (Builder $q) => $q->expired()),
+                            'submitted' => $query->whereHas('investigationFormRequests', fn (Builder $q) => $q->where('status', \App\Models\InvestigationFormRequest::STATUS_SUBMITTED)),
+                            'none' => $query->whereDoesntHave('investigationFormRequests'),
+                            default => $query,
+                        };
+                    }),
+
                 \App\Filament\Filters\ContentSearchFilter::make(),
             ])
             ->actions([

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -145,6 +146,17 @@ class ActionImprovement extends Model implements Auditable
             ->whereNotNull('submitted_by')
             ->whereNull('approved_at')
             ->exists();
+    }
+
+    /**
+     * SQL twin of hasPendingProof() — the ONE pending-proof scope used by
+     * Filament tabs/filters, dashboard widgets, and the v1 API.
+     */
+    public function scopeWithPendingProof(Builder $query): Builder
+    {
+        return $query->whereHas('evidence', fn (Builder $q) => $q
+            ->whereNotNull('submitted_by')
+            ->whereNull('approved_at'));
     }
 
     /**

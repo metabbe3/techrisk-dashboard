@@ -74,6 +74,12 @@ class ActionImprovementsRelationManager extends RelationManager
                 Tables\Columns\TextColumn::make('status')
                     ->badge()
                     ->color(fn (string $state): string => ActionImprovementFormSchema::statusColor($state)),
+                Tables\Columns\TextColumn::make('pending_proof')
+                    ->label('Proof')
+                    ->badge()
+                    ->state(fn (ActionImprovement $record): ?string => $record->hasPendingProof() ? 'Pending approval' : null)
+                    ->color('warning')
+                    ->placeholder('—'),
                 Tables\Columns\TextColumn::make('escalation_level')
                     ->label('Escalation')
                     ->badge()
@@ -106,6 +112,12 @@ class ActionImprovementsRelationManager extends RelationManager
                     ),
                 // Owner 2026-10-14: TBD rows are trackable — nothing else ever
                 // surfaces them (reminders/overdue pass them by).
+                TernaryFilter::make('pending_proof')
+                    ->label('Pending proof approval')
+                    ->queries(
+                        fn ($query) => $query->withPendingProof(),
+                        fn ($query) => $query->whereDoesntHave('evidence', fn ($q) => $q->whereNotNull('submitted_by')->whereNull('approved_at')),
+                    ),
                 TernaryFilter::make('tbd')
                     ->label('TBD (no due date)')
                     ->queries(

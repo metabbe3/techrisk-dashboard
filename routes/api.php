@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\Ai\ExportController;
 use App\Http\Controllers\Api\CorpusController;
 use App\Http\Controllers\Api\GovernanceController;
 use App\Http\Controllers\Api\IncidentController;
+use App\Http\Controllers\Api\InvestigationFormController;
 use App\Http\Controllers\Api\NotionController;
 use App\Http\Controllers\Api\SkillController;
 use App\Http\Controllers\Api\StatsController;
@@ -121,6 +122,7 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     // in Admin → API Settings.
     Route::prefix('v1')->middleware('throttle:agent')->group(function () {
         Route::get('weekly-report', [WeeklyReportController::class, 'index']);
+        Route::get('investigation-forms', [InvestigationFormController::class, 'index']);
     });
 
     // Agent skill library (Filament → Skills) + War Room personas — read-only,

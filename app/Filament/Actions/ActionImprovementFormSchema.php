@@ -143,7 +143,7 @@ class ActionImprovementFormSchema
      * Directory search behind BOTH PIC pickers (the form Select and the
      * Add Assignee action) — one home so the two cannot drift.
      */
-    private static function picSearchResults(string $search): array
+    public static function picSearchResults(string $search): array
     {
         return User::humanUsers()
             ->where(fn ($q) => $q
@@ -158,7 +158,7 @@ class ActionImprovementFormSchema
             ->all();
     }
 
-    private static function picOptionLabel($value): string
+    public static function picOptionLabel($value): string
     {
         return (string) (User::where('email', $value)->value('name') ?? $value);
     }

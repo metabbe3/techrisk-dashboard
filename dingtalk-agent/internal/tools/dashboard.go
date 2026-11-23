@@ -208,6 +208,7 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	// Weekly report: year of per-week counts + compact rows can approach the
 	// 48k allowance (client defaults to the last 8 weeks for chat payload).
 	r.RegisterCapped(getWeeklyReportDef(), typed(client.handleGetWeeklyReport), 48<<10)
+	r.Register(getInvestigationStatusDef(), typed(client.handleGetInvestigationStatus))
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number
@@ -376,7 +377,7 @@ func projectIncidentList(env *apiEnvelope) (map[string]any, error) {
 		// rather than failing the turn.
 		return map[string]any{"meta": env.Meta, "data": json.RawMessage(env.Data)}, nil
 	}
-	keep := []string{"incident_no", "incident_title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id"}
+	keep := []string{"incident_no", "incident_title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id", "parent_incident_id", "parent_incident_no", "sub_incidents_count"}
 	out := make([]map[string]any, 0, len(rows))
 	for _, r := range rows {
 		m := map[string]any{}

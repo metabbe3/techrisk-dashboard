@@ -1,7 +1,7 @@
 ---
 name: dashboard-incidents
 status: shipped
-tools: [search_incidents, get_incident, get_incident_markdown, get_dashboard_stats, read_corpus_page, get_weekly_report]
+tools: [search_incidents, get_incident, get_incident_markdown, get_dashboard_stats, read_corpus_page, get_weekly_report, get_investigation_status]
 gate: always-on (core family)
 prompt: SystemPrompt "Available Tools" section (prompt.go:9) — taught in the BASE prompt, not a gated family; get_dashboard_stats adds a StatsPrompt section (prompt.go, registry.Has-gated)
 files: [internal/tools/dashboard.go]
@@ -26,6 +26,7 @@ prefer it for any MTTR/MTBF/fund-loss/per-group question.
 | `get_dashboard_stats` | mode (summary default / by_dimension), metric, dimension, start_date, end_date, severities, incident_types, statuses, fund_statuses (lists comma-separated) | summary: `totalCases, avgMttrMins, avgMttrDays, avgMtbf, totalFundLoss, totalPotentialFundLoss, totalRecoveredFund`; by_dimension: `labels[]/values[]/raw_data[]` |
 | `read_corpus_page` | `path` (required, relative e.g. `topics/index.md`) | one corpus page as Markdown: index → per-incident folders + compiled topic pattern pages (`topics/*.md`, LLM-written, cite incident numbers) |
 | `get_weekly_report` | year (int, default current), weeks (int, default 8 = last N elapsed weeks; 0 = full year) | per-week counts (open/closed/total, weeks run Friday-to-Thursday) + compact incident rows per week + summary block |
+| `get_investigation_status` | status (open default / pending / expired / submitted / revoked / all), incident_no, team, limit (1-100, default 20), offset | `{meta, data}` of investigation form intake requests (state, expires_at, has_draft, recipient/opened/reminder/action counts) |
 
 ## Guardrails & caps
 - Plain `Register` — default 8000-byte loop cap; `get_incident_markdown`,

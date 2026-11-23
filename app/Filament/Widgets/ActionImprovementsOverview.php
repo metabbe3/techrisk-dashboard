@@ -31,7 +31,7 @@ class ActionImprovementsOverview extends BaseWidget
     protected function getStats(): array
     {
         // Generate dynamic cache key based on filters
-        $cacheKey = 'action_improvements_v2_'.md5(json_encode([
+        $cacheKey = 'action_improvements_v3_'.md5(json_encode([
             'start_date' => $this->start_date,
             'end_date' => $this->end_date,
             'year' => now()->year,
@@ -83,6 +83,7 @@ class ActionImprovementsOverview extends BaseWidget
             $overdueCount = (int) ($aging->overdue ?? 0);
             $escalatedCount = (int) ($aging->escalated ?? 0);
             $tbdCount = (int) ($aging->tbd ?? 0);
+            $pendingProofCount = $scoped()->withPendingProof()->count();
 
             // Avg days-to-close over done rows (created_at → completed_at);
             // '-' until closeout data exists (pre-PROJ-14 done rows have none).
@@ -100,7 +101,9 @@ class ActionImprovementsOverview extends BaseWidget
                     // TBD riders on the pending card (owner 2026-10-14): rows
                     // with no due date never fire reminders — the count is the
                     // only thing that surfaces them ("escalated" precedent).
-                    ->description('Pending actions '.$descriptionPeriod.($tbdCount > 0 ? " · {$tbdCount} TBD (no due date)" : ''))
+                    ->description('Pending actions '.$descriptionPeriod
+                        .($tbdCount > 0 ? " · {$tbdCount} TBD (no due date)" : '')
+                        .($pendingProofCount > 0 ? " · {$pendingProofCount} awaiting proof approval" : ''))
                     ->descriptionIcon('heroicon-m-exclamation-triangle')
                     ->chart([$doneCount, $pendingCount, max(0, $pendingCount - 1), $pendingCount + 1, $pendingCount])
                     ->color('warning'),

@@ -20,14 +20,17 @@ func TestSearchActionItemsMapsFilters(t *testing.T) {
 	})
 
 	out, _ := execute(reg, "search_action_items", map[string]any{
-		"overdue": true, "pic": "kevin@dana.id", "limit": 5, "offset": 2,
+		"overdue": true, "pending_approval": true, "pic": "kevin@dana.id", "limit": 5, "offset": 2,
 	})
 
-	want := map[string]string{"overdue": "1", "pic": "kevin@dana.id", "limit": "5", "offset": "2"}
+	want := map[string]string{"overdue": "1", "pending_approval": "1", "pic": "kevin@dana.id", "limit": "5", "offset": "2"}
 	for k, v := range want {
 		if got := gotQuery.Get(k); got != v {
 			t.Errorf("query %s = %q, want %q (full: %v)", k, got, v, gotQuery)
 		}
+	}
+	if got := gotQuery.Get("status"); got != "" {
+		t.Errorf("omitted status must not be sent (server applies openStatuses), got %q", got)
 	}
 	if !strings.Contains(out, "20261116_IN_7846") || !strings.Contains(out, "Rotate credentials") {
 		t.Errorf("rows not passed through:\n%s", out)

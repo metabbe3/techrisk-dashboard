@@ -26,9 +26,10 @@ func searchActionItemsDef() llm.ToolDefinition {
 				"date (the governance definition; a null due date means TBD and is never chased).",
 			Parameters: schema(
 				map[string]any{
-					"status":      map[string]any{"type": "string", "description": "Exact status filter: draft, pending, on_progress, done, cancelled, or tbd. Omit for open work (pending + on_progress)"},
-					"overdue":     map[string]any{"type": "boolean", "description": "true = open work past its due date only"},
-					"pic":         map[string]any{"type": "string", "description": "PIC email to filter by (actions where this person is responsible)"},
+					"status":           map[string]any{"type": "string", "description": "Exact status filter: draft, pending, on_progress, done, cancelled, or tbd. Omit for open work (pending + on_progress)"},
+					"overdue":          map[string]any{"type": "boolean", "description": "true = open work past its due date only"},
+					"pending_approval": map[string]any{"type": "boolean", "description": "true = only action items with worker-submitted proof awaiting approval"},
+					"pic":              map[string]any{"type": "string", "description": "PIC email to filter by (actions where this person is responsible)"},
 					"incident_no": map[string]any{"type": "string", "description": "Scope to one incident number, e.g. 20250115_IN_1234"},
 					"limit":       map[string]any{"type": "integer", "description": "Rows to return, 1-100 (default 20). Use 1 when you only need meta.total"},
 					"offset":      map[string]any{"type": "integer", "description": "Rows to skip (paging)"},
@@ -94,12 +95,13 @@ func listReferenceDef() llm.ToolDefinition {
 }
 
 func (c *dashboardClient) handleSearchActionItems(ctx context.Context, args struct {
-	Status     string `json:"status"`
-	Overdue    bool   `json:"overdue"`
-	Pic        string `json:"pic"`
-	IncidentNo string `json:"incident_no"`
-	Limit      *int   `json:"limit"`
-	Offset     int    `json:"offset"`
+	Status          string `json:"status"`
+	Overdue         bool   `json:"overdue"`
+	PendingApproval bool   `json:"pending_approval"`
+	Pic             string `json:"pic"`
+	IncidentNo      string `json:"incident_no"`
+	Limit           *int   `json:"limit"`
+	Offset          int    `json:"offset"`
 }) (string, error) {
 	limit := searchLimitDefault
 	if args.Limit != nil {
@@ -120,16 +122,16 @@ func (c *dashboardClient) handleSearchActionItems(ctx context.Context, args stru
 	q.Set("offset", strconv.Itoa(args.Offset))
 	if args.Status != "" {
 		// One status per request is enough for an agent; the API validates the
-		// vocabulary and 422s anything hand-typed that isn't real.
+		// vocabulary and 422s anything hand-typed that isn't real. Omitting
+		// status lets the server apply ActionImprovement::openStatuses()
+		// (pending + on_progress).
 		q.Set("status", args.Status)
-	} else {
-		// Default scope = the shared open-work statuses (server re-applies its
-		// own openStatuses anyway; these params just make the intent explicit).
-		q.Set("status", "pending")
-		q.Add("status", "on_progress")
 	}
 	if args.Overdue {
 		q.Set("overdue", "1")
+	}
+	if args.PendingApproval {
+		q.Set("pending_approval", "1")
 	}
 	if args.Pic != "" {
 		q.Set("pic", args.Pic)

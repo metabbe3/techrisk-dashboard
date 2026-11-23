@@ -176,6 +176,7 @@ class IncidentController extends Controller
             }
 
             $total = $query->count();
+            $query->with(['superIncident:id,no'])->withCount('subIncidents');
             $items = $limit
                 ? $query->skip($offset)->take($limit)->get()
                 : $query->get();
@@ -406,7 +407,10 @@ class IncidentController extends Controller
     {
         try {
             return $this->successResponse(
-                new IncidentApiResource($incident->load(Incident::FULL_RELATIONS)),
+                new IncidentApiResource($incident->load(array_merge(Incident::FULL_RELATIONS, [
+                    'superIncident:id,no',
+                    'subIncidents:id,parent_incident_id,no,title,severity,incident_status,fund_loss',
+                ]))),
                 'Incident retrieved successfully.'
             );
         } catch (ModelNotFoundException $e) {
@@ -460,7 +464,10 @@ class IncidentController extends Controller
             $incident = Incident::where('no', $no)->firstOrFail();
 
             return $this->successResponse(
-                new IncidentApiResource($incident->load(Incident::FULL_RELATIONS)),
+                new IncidentApiResource($incident->load(array_merge(Incident::FULL_RELATIONS, [
+                    'superIncident:id,no',
+                    'subIncidents:id,parent_incident_id,no,title,severity,incident_status,fund_loss',
+                ]))),
                 'Incident retrieved successfully.'
             );
         } catch (ModelNotFoundException $e) {

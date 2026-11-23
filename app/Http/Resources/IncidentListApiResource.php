@@ -14,6 +14,8 @@ class IncidentListApiResource extends JsonResource
         return [
             'id' => $this->id,
             'parent_incident_id' => $this->parent_incident_id, // PROJ-022: set on sub-incidents
+            'parent_incident_no' => $this->whenLoaded('superIncident', fn () => $this->superIncident?->no),
+            'sub_incidents_count' => $this->whenCounted('subIncidents'),
             'incident_no' => $this->no,
             'incident_title' => $this->title,
             'summary' => $this->summary,
