@@ -58,7 +58,9 @@ class SystemSettings extends Page implements HasForms
 
     protected static ?string $navigationIcon = null; // icon dropped: member renders as a cluster tab
 
-    protected static ?string $navigationLabel = 'Settings';
+    // Owner 2026-11-23: the cluster tab reads "System Settings" (the cluster
+    // itself is Settings — two identical labels side by side were confusing).
+    protected static ?string $navigationLabel = 'System Settings';
 
     protected static ?string $cluster = \App\Filament\Clusters\SettingsCluster::class;
 
@@ -161,14 +163,19 @@ class SystemSettings extends Page implements HasForms
                 ->icon('heroicon-m-arrow-top-right-on-square')
                 ->color('primary')
                 ->url(route('mcp.oauth.notion.connect'))
-                ->visible(fn (): bool => request()->query('tab') === 'notion'),
+                // ⚠ The live tab URL is `?tab=-notion-tab` (Filament's
+                // persistTabInQueryString ids) — a strict `=== 'notion'`
+                // comparison hid these buttons on every real tab click
+                // (owner 2026-11-23: "ke mana perginya button connect/
+                // disconnect"). str_contains covers the legacy value too.
+                ->visible(fn (): bool => str_contains((string) request()->query('tab'), 'notion')),
 
             HeaderAction::make('disconnect')
                 ->label('Disconnect')
                 ->icon('heroicon-m-x-mark')
                 ->color('danger')
                 ->requiresConfirmation()
-                ->visible(fn (): bool => request()->query('tab') === 'notion'
+                ->visible(fn (): bool => str_contains((string) request()->query('tab'), 'notion')
                     && app(NotionMcpClient::class)->connected())
                 ->action(function (): void {
                     app(NotionMcpClient::class)->disconnect();

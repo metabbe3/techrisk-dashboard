@@ -4,53 +4,66 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
-use App\Support\PanelHome;
-use Filament\Actions\Action;
-use Filament\Forms\Components\TextInput;
+use App\Support\MyIncidents;
 use Filament\Forms\Form;
 use Filament\Pages\Auth\EditProfile as BaseEditProfile;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
 
 class CustomProfilePage extends BaseEditProfile
 {
+    // Owner 2026-11-20 (revisi 3): the profile page is info + contribution
+    // graph only. The change-password form lives on the dedicated Setting
+    // page (App\Filament\Pages\ProfileSettings) reached from the dropdown.
+    //
+    // The page still extends EditProfile: the panel's ->profile() registration
+    // and the dropdown's "Profile" link resolve through EditProfile's routes.
+    // Its form is empty on purpose — the base mount() fills it harmlessly.
+    protected static string $view = 'filament.pages.profile';
+
+    // The panel's profile page is SIMPLE by default (Filament::isProfilePageSimple)
+    // → a centered card with no topbar/sidebar. The page needs the full panel
+    // layout (owner 2026-11-20).
+    protected static string $layout = 'filament-panels::components.layout.index';
+
+    /** @var array<string, mixed> */
+    public array $contributionGraph = [];
+
+    /** Year picked from the graph's year pills; defaults to the current year. */
+    public int $activeYear;
+
+    /**
+     * The year pills: the user's earliest incident year through the current
+     * year (owner 2026-11-21 — per-year only, no rolling mode).
+     *
+     * @var list<int>
+     */
+    public array $years = [];
+
+    public function mount(): void
+    {
+        parent::mount();
+
+        $user = $this->getUser();
+        $this->years = MyIncidents::years($user);
+
+        $requested = request()->integer('year');
+        $this->activeYear = $requested > 0 ? $requested : (int) now()->year;
+
+        $this->contributionGraph = MyIncidents::contributionGraph($user, $this->activeYear);
+    }
+
+    public function getTitle(): string
+    {
+        return __('Profile');
+    }
+
+    public function getHeading(): string
+    {
+        return __('Profile');
+    }
+
     public function form(Form $form): Form
     {
-        return $form
-            ->schema([
-                TextInput::make('name')
-                    ->required()
-                    ->maxLength(255),
-                TextInput::make('email')
-                    ->email()
-                    ->required()
-                    ->maxLength(255)
-                    ->disabled(),
-                TextInput::make('password')
-                    ->password()
-                    ->rule(Password::default())
-                    ->dehydrateStateUsing(fn ($state) => Hash::make($state))
-                    ->dehydrated(fn ($state) => filled($state))
-                    ->confirmed(),
-                TextInput::make('password_confirmation')
-                    ->password()
-                    ->dehydrated(false),
-            ]);
-    }
-
-    protected function getSaveFormAction(): Action
-    {
-        return Action::make('save')
-            ->label(__('filament-panels::pages/auth/edit-profile.form.actions.save.label'))
-            ->submit('save')
-            ->keyBindings(['mod+s']);
-    }
-
-    protected function getRedirectUrl(): ?string
-    {
-        // Same rule as login: user-role accounts cannot open the Dashboard
-        // (canAccess requires `manage incidents`) — unconditional Dashboard
-        // here was a guaranteed 403 for them after saving.
-        return PanelHome::urlFor(auth()->user());
+        // Intentionally empty — see the class note above.
+        return $form->schema([]);
     }
 }

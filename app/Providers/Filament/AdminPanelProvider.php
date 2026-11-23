@@ -45,12 +45,17 @@ class AdminPanelProvider extends PanelProvider
             // (prod 2026-11-23). A root-relative path inherits the page scheme.
             ->brandLogo(new \Illuminate\Support\HtmlString('<img src="/images/favicon.png?v=3" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
             ->brandLogoHeight('2rem')
-            // Owner 2026-11-17: the browser tab showed the default icon —
-            // public/favicon.ico was an empty file. DANA logo, square-cropped
-            // from the source artwork (public/images/favicon.png); the .ico
-            // covers the browser's default /favicon.ico request (Safari).
-            // ?v=3: the same URL served the dark-fringed rebuild — bust it.
-            ->favicon('/images/favicon.png?v=3')
+            // Owner 2026-11-17 / 2026-11-23 ("bagaimana agar icon di prod jadi
+            // logo dana?"): the browser tab showed the default icon in PROD
+            // while local was fine. Root-relative reference (no asset()): the
+            // panel config bakes URLs at register() time — before
+            // URL::forceScheme('https') — so asset() produced http:// behind
+            // the TLS proxy (mixed-content block) and an absolute URL from a
+            // stale APP_URL 404'd too. A root-relative path inherits the page
+            // scheme and host. ?v=4 busts the long browser favicon cache;
+            // public/favicon.ico is a REAL multi-size ICO so the fallback
+            // also shows the DANA logo.
+            ->favicon('/images/favicon.png?v=4')
             // Sidebar geometry (open 15rem / rail 4.5rem) is owned by the
             // app.css redesign block (main a0c3e30) — no provider width
             // overrides, or the two fight at different layers.
@@ -155,12 +160,14 @@ class AdminPanelProvider extends PanelProvider
             // in the TOPBAR, so main's SIDEBAR_FOOTER + notifications-modal
             // hooks are still NOT carried here.
             ->renderHook(
-                // Cluster tab strips wrap instead of scrolling when the window is
-                // narrow (owner: 9 AI tabs "overload" on overflow). Higher
-                // specificity beats Filament's own .fi-tabs rule at any order.
+                // Form/relation-manager strips WRAP instead of scrolling (owner
+                // 2026-11-20: "masih ada scrollnya, harusnya tidak ada").
+                // Owner 2026-11-23: the CLUSTER strip (fi-page-sub-navigation-tabs)
+                // LEFT this rule — it is now ONE underline row with a
+                // hover-only scrollbar, matching the tab model (app.css).
                 PanelsRenderHook::BODY_END,
                 fn (): \Illuminate\Support\HtmlString => new \Illuminate\Support\HtmlString(
-                    '<style>.fi-page-sub-navigation-tabs.fi-tabs{flex-wrap:wrap}</style>'
+                    '<style>.fi-resource-relation-managers>.fi-tabs,.fi-fo-tabs>.fi-tabs{flex-wrap:wrap}</style>'
                 ),
             )
             ->renderHook(
@@ -174,6 +181,9 @@ class AdminPanelProvider extends PanelProvider
             // no second logo beside the rail's.
             ->renderHook(
                 PanelsRenderHook::TOPBAR_START,
+                // Owner 2026-11-20 (revisi): the profile-land hamburger + logo
+                // were dropped — the sidebar stays DEFAULT on every page,
+                // including the profile page. Brand copy only.
                 // x-cloak hides the copy until Alpine registers the sidebar
                 // store (Filament's JS) — no flash on expanded desktop loads.
                 fn (): string => '<a href="'.filament()->getHomeUrl().'" class="fi-topbar-brand" x-cloak x-show="! $store.sidebar.isOpen">'
@@ -226,16 +236,42 @@ class AdminPanelProvider extends PanelProvider
             )
             // Owner 2026-11-18 (RISE reference): the account control shows
             // the user's NAME beside the avatar — owner 2026-11-19: the name
-            // sits to the RIGHT of the avatar (USER_MENU_AFTER). Clicking the
-            // name opens the same menu (it clicks the dropdown's trigger
-            // button, the dropdown wrapper's PREVIOUS sibling). Hidden on
-            // <768px: the mobile topbar is cramped.
+            // sits to the RIGHT of the avatar (USER_MENU_AFTER). Owner
+            // 2026-11-20: avatar + name are ONE control — the name is moved
+            // INTO the dropdown trigger wrapper below, so the menu panel
+            // (placement bottom-end) right-aligns to the name's edge instead
+            // of hanging off the avatar only. Hidden on <768px: the mobile
+            // topbar is cramped. The topbar is outside every Livewire root,
+            // so the one-time move survives morphs.
             ->renderHook(
                 PanelsRenderHook::USER_MENU_AFTER,
                 fn (): string => auth()->check()
-                    ? '<span class="fi-tr-user-name" x-data x-on:click="$el.previousElementSibling?.querySelector(\'button\')?.click()" title="'.e(filament()->getUserName(auth()->user())).'">'
+                    ? '<span class="fi-tr-user-name" title="'.e(filament()->getUserName(auth()->user())).'">'
                         .e(filament()->getUserName(auth()->user()))
                         .'</span>'
+                    .'<script>if (! window.__trUserNameInTrigger) { window.__trUserNameInTrigger = true;'
+                    .' var trName = document.querySelector(\'.fi-topbar .fi-tr-user-name\');'
+                    .' var trTrigger = document.querySelector(\'.fi-topbar .fi-user-menu .fi-dropdown-trigger\');'
+                    .' if (trName && trTrigger) trTrigger.appendChild(trName); }</script>'
+                    : '',
+            )
+            // Owner 2026-11-20 (profile revamp, GitHub reference): the dropdown
+            // becomes header + count + Profile(stock) + My Incident +
+            // Appearance + Sign out(stock). PROFILE_BEFORE renders the
+            // "signed in as" header and the active-incident count; PROFILE_AFTER
+            // renders My Incident + the inline Appearance expander (which
+            // replaces the stock icon theme-switcher, CSS-hidden). Both views
+            // guard on auth() — the hook also fires for guests.
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_PROFILE_BEFORE,
+                fn (): string => auth()->check()
+                    ? view('filament.panels.user-menu.profile-before')->render()
+                    : '',
+            )
+            ->renderHook(
+                PanelsRenderHook::USER_MENU_PROFILE_AFTER,
+                fn (): string => auth()->check()
+                    ? view('filament.panels.user-menu.profile-after')->render()
                     : '',
             )
             // Owner 2026-11-17 (DANA HR reference): one control button, three

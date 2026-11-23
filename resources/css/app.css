@@ -472,12 +472,20 @@
     transition: border-color .2s, box-shadow .2s;
     background: #fff;
 }
-/* Tab panels and tabs must allow dropdown/picker overflow */
-.fi-resource-edit-record-page .fi-fo-tabs-tab,
-.fi-resource-edit-record-page .fi-fo-tabs,
-.fi-resource-create-record-page .fi-fo-tabs-tab,
-.fi-resource-create-record-page .fi-fo-tabs {
-    overflow: visible !important;
+/* DELETED 2026-11-20 (owner: "content habis, scroll harus berhenti"): the old
+   "allow picker overflow" rule (`overflow: visible !important` on tab panels)
+   also disabled Filament's `overflow-hidden` on INACTIVE tab panels
+   (`invisible absolute h-0 overflow-hidden p-0`), so their invisible content
+   kept extending the page's scroll region — up to a viewport of blank scroll
+   below short tabs. Active panels are unclipped by Filament anyway, and
+   pickers/dropdowns teleport to <body>, so nothing needed the rule. */
+/* Inactive form-tab panels must take NO layout space at all: Filament hides
+   them with `invisible absolute h-0 overflow-hidden`, but Chrome still lets
+   their anchored content extend the document's scroll region (measured 1508
+   vs 1326 flow end — hiding them via display:none lands exactly on the flow
+   end). Switching tabs swaps the class, so the panel comes back. */
+.fi-fo-tabs-tab.invisible {
+    display: none;
 }
 .fi-resource-edit-record-page .fi-section:hover,
 .fi-resource-create-record-page .fi-section:hover {
@@ -511,13 +519,15 @@
     box-shadow: inset 3px 0 0 #108ee9;
 }
 
-/* Custom thin scrollbar for tables */
+/* Table horizontal scrollbar — ADAPTIVE like every other scroller (owner
+   2026-11-23): invisible at rest, visible while hovering the table area or
+   scrolling it (.tr-scroller; app.js adds the class + toggles active). */
 .fi-ta-table-container::-webkit-scrollbar { height: 6px; }
-.fi-ta-table-container::-webkit-scrollbar-track { background: var(--tr-slate-100, #f1f5f9); }
-.fi-ta-table-container::-webkit-scrollbar-thumb { background: var(--tr-slate-300, #cbd5e1); border-radius: 3px; }
-.fi-ta-table-container::-webkit-scrollbar-thumb:hover { background: var(--tr-slate-400, #94a3b8); }
-:root.dark .fi-ta-table-container::-webkit-scrollbar-track { background: var(--tr-slate-900, #0f172a); }
-:root.dark .fi-ta-table-container::-webkit-scrollbar-thumb { background: var(--tr-slate-700, #334155); }
+.fi-ta-table-container::-webkit-scrollbar-track { background: transparent; }
+.fi-ta-table-container::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+.fi-ta-table-container:hover::-webkit-scrollbar-thumb,
+.fi-ta-table-container.tr-scroll-active::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.55); }
+.fi-ta-table-container::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.8); }
 
 /* Incidents list — freeze ID and name columns on horizontal scroll.
    Scoped via :has(.sticky-col-id). This branch's PROJ-022 expand chevron
@@ -532,6 +542,37 @@
     left: 0;
     z-index: 2;
     background: #fff;
+    /* Owner 2026-11-23: the expand cell rendered far wider than its chevron,
+       leaving the ID column visually detached — pin it around the button. */
+    width: 2.75rem !important;
+    max-width: 2.75rem;
+    padding-inline: 0.5rem !important;
+}
+/* The expand button itself rendered full-cell wide (the column was ~120px
+   for a chevron) — pin the inner wrapper AND the button to a compact square
+   so the ID column slides left (auto table layout sizes the column from its
+   content basis; a full-width wrapper kept it wide). */
+/* Owner 2026-11-23: the expand column is handed ~122px by the table layout
+   and CANNOT be pinned (verified in-page: width 1px on TH+TD and a
+   max-content table still render 122 — the layout share wins). The chevron
+   therefore anchors to the cell's LEFT edge, hugging the checkbox. */
+.fi-ta-table:has(.sticky-col-id) .sticky-col-expand .fi-ta-col-wrp {
+    width: 1.75rem !important;
+    margin-left: 0;
+}
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-expand button,
+.fi-ta-table:has(.sticky-col-id) th.sticky-col-expand button {
+    width: 1.75rem !important;
+    min-width: 1.75rem;
+    padding: 0 !important;
+    margin-inline: auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
+    padding-inline: 0.5rem !important;
 }
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
@@ -3024,6 +3065,14 @@
 /* --- Topbar date + calendar + user name (RISE reference, owner 2026-11-18).
    The topbar renders on mobile; on desktop main's redesign hides the bar —
    owner decision pending whether the date widget moves into the sidebar. --- */
+/* Tab strips never scroll vertically (owner 2026-11-20: "hilangkan scroll
+   ini, pada tab sejenis"): overflow-x:auto computes overflow-y to AUTO per
+   the CSS spec, so a 1px rounding overflow (measured scrollHeight 53 vs
+   clientHeight 52 on the sub-navigation strip) paints a vertical scrollbar.
+   A tab strip never legitimately scrolls vertically — clip it. */
+.fi-tabs {
+    overflow-y: hidden;
+}
 .fi-tr-date { position: relative; }
 .fi-tr-date-btn {
     display: inline-flex;
@@ -3093,12 +3142,35 @@
    (2-class selector beats .weekend, no cascade-order trickery). */
 .fi-tr-cal-days .dim.weekend { color: #fca5a5; font-weight: 400; }
 .fi-tr-cal-days .today { background-color: #108ee9; color: #fff; font-weight: 700; }
+/* Owner 2026-11-20: avatar + name are ONE control — the name is moved into
+   the dropdown trigger wrapper (provider hook), so both share the hover /
+   open highlight and the menu panel right-aligns to the name's edge. */
+.fi-topbar .fi-user-menu .fi-dropdown-trigger {
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.375rem 0.625rem;
+    border-radius: 0.5rem;
+    transition: background-color 0.15s;
+}
+.fi-topbar .fi-user-menu .fi-dropdown-trigger:hover,
+.fi-topbar .fi-user-menu .fi-dropdown-trigger[aria-expanded="true"] {
+    background-color: rgba(255, 255, 255, 0.14);
+}
+/* Same affordance for the notifications bell (owner 2026-11-20: bell and
+   profile highlight like the calendar button). */
+.fi-topbar nav .fi-icon-btn {
+    border-radius: 0.5rem;
+    transition: background-color 0.15s;
+}
+.fi-topbar nav .fi-icon-btn:hover,
+.fi-topbar nav .fi-icon-btn:active {
+    background-color: rgba(255, 255, 255, 0.14);
+}
 .fi-tr-user-name {
     display: none;
     color: #fff;
     font-size: 0.875rem;
     font-weight: 600;
-    cursor: pointer;
     max-width: 12rem;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -3300,4 +3372,500 @@ tr.fi-ta-row.sub-incident-row {
         background: #0f172a !important;
         border-inline-end-color: #1e293b;
     }
+}
+
+/* --- Profile revamp (owner 2026-11-20, GitHub reference) — menu, appearance
+   expander, contribution graph, profile page. Custom tr-* classes only:
+   the app build is Tailwind 4 @layer-ed, Filament's own app.css is unlayered
+   preflight — layered utilities lose to it, so NO utility classes here.
+   ⚠ NEVER use var(--gray-*) here: Filament renders those inline as RAW RGB
+   TRIPLETS ("2, 6, 23") for its own rgb(var(--x)/α) pattern — `color:
+   var(--gray-950)` is then invalid and inherits (white on the brand bar) →
+   the light-mode invisibility the owner reported. Hex only. --- */
+
+/* Dropdown: GitHub-style "signed in as" header */
+.tr-user-menu-head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+}
+.tr-user-menu-head .fi-user-avatar { flex-shrink: 0; }
+.tr-user-menu-head-text {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+.tr-user-menu-head-name {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #020617;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.tr-user-menu-head-email {
+    font-size: 0.75rem;
+    color: #64748b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+:root.dark .tr-user-menu-head-name { color: #f9fafb; }
+:root.dark .tr-user-menu-head-email { color: #9ca3af; }
+
+/* The stock icon theme-switcher is replaced by the inline Appearance expander
+   (same dropdown, per the SidebarChromeTest pin the MARKUP stays — only the
+   rendering is suppressed). :has() hides the wrapper list so no divider or
+   empty padding box remains. */
+.fi-topbar .fi-user-menu .fi-dropdown-list:has(> .fi-theme-switcher) {
+    display: none !important;
+}
+.fi-topbar .fi-user-menu .fi-dropdown-panel {
+    max-width: 16rem !important;
+}
+
+/* Appearance expander */
+.tr-theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #334155;
+    text-align: start;
+}
+.tr-theme-toggle:hover { background: #f8fafc; }
+:root.dark .tr-theme-toggle { color: #d1d5db; }
+:root.dark .tr-theme-toggle:hover { background: rgba(255, 255, 255, 0.05); }
+.tr-theme-toggle-icon { flex-shrink: 0; color: #94a3b8; }
+.tr-theme-chevron { margin-left: auto; color: #94a3b8; transition: transform 0.15s; }
+.tr-theme-chevron.tr-rotate { transform: rotate(180deg); }
+
+/* Appearance expander: three ICON buttons (owner 2026-11-21 — the preview
+   cards are gone; sun / moon / monitor, stock-switcher style). */
+.tr-theme-icons {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.375rem;
+    padding: 0 0.5rem 0.5rem;
+}
+.tr-theme-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.5rem;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+.tr-theme-icon-btn:hover { background: #f8fafc; color: #475569; }
+:root.dark .tr-theme-icon-btn { border-color: rgba(255, 255, 255, 0.12); }
+:root.dark .tr-theme-icon-btn:hover { background: rgba(255, 255, 255, 0.05); color: #d1d5db; }
+.tr-theme-icon-active,
+.tr-theme-icon-active:hover {
+    border-color: #108ee9;
+    color: #108ee9;
+    background: rgba(16, 142, 233, 0.08);
+}
+:root.dark .tr-theme-icon-active,
+:root.dark .tr-theme-icon-active:hover {
+    border-color: #42adef;
+    color: #7fc8f4;
+    background: rgba(66, 173, 239, 0.12);
+}
+
+/* Incident detail pages — the relation-manager tab strips (Status Updates,
+   Supporting Documents, ...) adopt the profile tabs' UNDERLINE look (owner
+   2026-11-20 revisi 3: "terapkan mekanismenya ke tab menu detail incident").
+   Filament's stock strip is a rounded gray pill bar; this flattens it to a
+   hairline-bottomed bar with a 2px active underline. Scoped to incident
+   record pages only (edit + view). */
+.fi-resource-edit-record-page .fi-resource-relation-managers > .fi-tabs,
+.fi-resource-view-record-page .fi-resource-relation-managers > .fi-tabs {
+    background: transparent !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-inline: 0 !important;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 0.25rem;
+}
+:root.dark .fi-resource-edit-record-page .fi-resource-relation-managers > .fi-tabs,
+:root.dark .fi-resource-view-record-page .fi-resource-relation-managers > .fi-tabs {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+.fi-resource-edit-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item,
+.fi-resource-view-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item {
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0.5rem 0.875rem !important;
+    font-weight: 600;
+    color: #475569;
+}
+:root.dark .fi-resource-edit-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item,
+:root.dark .fi-resource-view-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item {
+    color: #9ca3af;
+}
+/* The active item carries Filament's bg-gray-50 pill class — flatten it. */
+.fi-resource-edit-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active,
+.fi-resource-view-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active {
+    background: transparent !important;
+    border-bottom-color: #108ee9;
+    color: #108ee9;
+}
+:root.dark .fi-resource-edit-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active,
+:root.dark .fi-resource-view-record-page .fi-resource-relation-managers > .fi-tabs .fi-tabs-item.fi-active {
+    color: #7fc8f4;
+    border-bottom-color: #42adef;
+}
+
+/* Cluster tabs (AI, Notifications, Reports, Settings, User Management, Logs)
+   — the same underline model (owner 2026-11-23): ONE scrollable row instead
+   of the old wrap, scrollbar only while the cursor is over the strip. */
+.fi-page-sub-navigation-tabs.fi-tabs {
+    flex-wrap: nowrap;
+    /* Flatten Filament's rounded white card — the strip must read exactly
+       like the incident detail strip (owner 2026-11-23: "belum sesuai"). */
+    background: transparent !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-inline: 0 !important;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 0.25rem;
+    scrollbar-width: none;
+}
+:root.dark .fi-page-sub-navigation-tabs.fi-tabs {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+.fi-page-sub-navigation-tabs.fi-tabs:hover {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+.fi-page-sub-navigation-tabs.fi-tabs::-webkit-scrollbar { height: 0; }
+.fi-page-sub-navigation-tabs.fi-tabs:hover::-webkit-scrollbar { height: 6px; }
+.fi-page-sub-navigation-tabs.fi-tabs::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.55);
+    border-radius: 3px;
+}
+.fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item {
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0.5rem 0.875rem !important;
+    font-weight: 600;
+    color: #475569;
+    background: transparent !important;
+}
+:root.dark .fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item { color: #9ca3af; }
+.fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item.fi-active {
+    border-bottom-color: #108ee9;
+    color: #108ee9;
+}
+:root.dark .fi-page-sub-navigation-tabs.fi-tabs .fi-tabs-item.fi-active {
+    color: #7fc8f4;
+    border-bottom-color: #42adef;
+}
+
+/* Incident LIST tabs (All Cases, On Going, Completed Cases, ...) — same
+   underline language (owner 2026-11-21). These stay a single scrollable row:
+   the horizontal scrollbar appears ONLY while the cursor is over the strip
+   (owner: "horizontal scroll baru muncul ketika cursor pada area tab"). */
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs {
+    background: transparent !important;
+    box-shadow: none !important;
+    --tw-ring-shadow: 0 0 #0000 !important;
+    border-radius: 0 !important;
+    padding: 0 !important;
+    margin-inline: 0 !important;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 0.25rem;
+    /* WebKit keeps its own scrollbar styling below. */
+    scrollbar-width: none;
+}
+:root.dark .fi-resource-incidents.fi-resource-list-records-page .fi-tabs {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs:hover {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.55) transparent;
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs::-webkit-scrollbar { height: 0; }
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs:hover::-webkit-scrollbar { height: 6px; }
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs::-webkit-scrollbar-track { background: transparent; }
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs::-webkit-scrollbar-thumb {
+    background-color: rgba(148, 163, 184, 0.55);
+    border-radius: 3px;
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item {
+    border-radius: 0 !important;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    padding: 0.5rem 0.875rem !important;
+    font-weight: 600;
+    color: #475569;
+    background: transparent !important;
+}
+:root.dark .fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item {
+    color: #9ca3af;
+}
+.fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item.fi-active {
+    border-bottom-color: #108ee9;
+    color: #108ee9;
+}
+:root.dark .fi-resource-incidents.fi-resource-list-records-page .fi-tabs .fi-tabs-item.fi-active {
+    color: #7fc8f4;
+    border-bottom-color: #42adef;
+}
+
+.tr-profile-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.tr-profile-info {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem 1.25rem;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+}
+:root.dark .tr-profile-info { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.1); }
+.tr-profile-info .fi-user-avatar { width: 3rem; height: 3rem; flex-shrink: 0; }
+.tr-profile-info-text { display: flex; flex-direction: column; min-width: 0; }
+.tr-profile-info-name { font-size: 1.0625rem; font-weight: 700; color: #020617; }
+.tr-profile-info-email { font-size: 0.8125rem; color: #64748b; }
+:root.dark .tr-profile-info-name { color: #f9fafb; }
+:root.dark .tr-profile-info-email { color: #9ca3af; }
+
+.tr-profile-graph {
+    padding: 1rem 1.25rem;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.75rem;
+}
+:root.dark .tr-profile-graph { background: rgba(255, 255, 255, 0.03); border-color: rgba(255, 255, 255, 0.1); }
+.tr-profile-graph-title { margin: 0; font-size: 0.875rem; font-weight: 700; color: #0f172a; }
+:root.dark .tr-profile-graph-title { color: #f3f4f6; }
+/* Owner 2026-11-23: title row + the per-tier breakdown. */
+.tr-profile-graph-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.75rem;
+}
+.tr-graph-stats {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.tr-graph-stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    font-size: 0.75rem;
+    color: #64748b;
+}
+:root.dark .tr-graph-stat { color: #9ca3af; }
+.tr-graph-stat strong { font-weight: 700; color: #0f172a; }
+:root.dark .tr-graph-stat strong { color: #f3f4f6; }
+.tr-graph-stat-value { font-size: 0.9375rem; font-weight: 800; color: #0f172a; }
+:root.dark .tr-graph-stat-value { color: #f9fafb; }
+
+/* Contribution graph layout: calendar + year pills (owner 2026-11-20). */
+.tr-contrib-wrap { display: flex; gap: 1rem; align-items: flex-start; }
+.tr-contrib-cal { min-width: 0; }
+.tr-contrib-years {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    flex-shrink: 0;
+}
+.tr-contrib-year {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.1875rem 0.625rem;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #475569;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.tr-contrib-year:hover { background: #f1f5f9; color: #0f172a; }
+:root.dark .tr-contrib-year { color: #9ca3af; }
+:root.dark .tr-contrib-year:hover { background: rgba(255, 255, 255, 0.05); color: #f9fafb; }
+.tr-contrib-year-active,
+.tr-contrib-year-active:hover {
+    background: #108ee9;
+    color: #fff;
+}
+:root.dark .tr-contrib-year-active,
+:root.dark .tr-contrib-year-active:hover { background: #3b82f6; color: #fff; }
+
+/* Contribution graph */
+.tr-contrib { overflow-x: auto; }
+/* ⚠ Month labels use the SAME grid definition as the day cells
+   (10px columns + 3px gap) — the old 13px-no-gap grid drifted away from the
+   columns (owner: "keterangan bulan tidak sesuai posisinya"). */
+.tr-contrib-months {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 10px;
+    gap: 3px;
+    margin-left: 2.125rem;
+    font-size: 0.625rem;
+    color: #64748b;
+}
+.tr-contrib-months span { overflow: visible; white-space: nowrap; }
+.tr-contrib-body { display: flex; gap: 0.25rem; }
+.tr-contrib-weekdays {
+    display: grid;
+    grid-template-rows: repeat(7, 10px);
+    gap: 3px;
+    font-size: 0.5625rem;
+    color: #64748b;
+    width: 1.875rem;
+    flex-shrink: 0;
+}
+.tr-contrib-weekdays span { line-height: 10px; }
+.tr-contrib-cells {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(7, 10px);
+    grid-auto-columns: 10px;
+    gap: 3px;
+}
+.tr-contrib-cell {
+    display: block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+}
+.tr-contrib-null { visibility: hidden; }
+/* Tier tokens — validated (dataviz validator, all-pairs, light + dark). */
+:root {
+    --tr-contrib-tier1: #108ee9; /* running — DANA blue: "active work"; red is
+                                    reserved for severity/danger on this portal */
+    --tr-contrib-tier2: #d97706; /* completed, still monitoring open actions */
+    --tr-contrib-tier3: #10b981; /* fully completed */
+    --tr-contrib-empty: #e9edf1;
+}
+:root.dark {
+    --tr-contrib-tier1: #3b82f6;
+    --tr-contrib-tier2: #d97706;
+    --tr-contrib-tier3: #0d9488;
+    --tr-contrib-empty: #1f2937;
+}
+.tr-contrib-t1 { background: var(--tr-contrib-tier1); }
+.tr-contrib-t2 { background: var(--tr-contrib-tier2); }
+.tr-contrib-t3 { background: var(--tr-contrib-tier3); }
+.tr-contrib-empty { background: var(--tr-contrib-empty); }
+.tr-contrib-legend {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 0.75rem;
+    font-size: 0.6875rem;
+    color: #64748b;
+}
+.tr-contrib-legend-item { display: inline-flex; align-items: center; gap: 0.25rem; }
+
+
+/* Page scrollbar — a CUSTOM OVERLAY rail (owner 2026-11-23): the native root
+   bar is hidden entirely (zero width → NO reserved gutter, which is what
+   left the gap between the header and the page's right edge), and app.js
+   paints a fixed rail with a thumb. Idle = faint, active (cursor in the
+   right 32px / scrolling / dragging) = solid, fading ~1.2s after inactivity.
+   Nothing reflows: the rail floats above the content. */
+html {
+    scrollbar-width: none;
+}
+html::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+}
+.tr-vscroll {
+    position: fixed;
+    top: 0;
+    right: 2px;
+    bottom: 0;
+    width: 10px;
+    z-index: 60;
+    pointer-events: auto;
+}
+.tr-vscroll-thumb {
+    position: absolute;
+    right: 0;
+    width: 8px;
+    border-radius: 4px;
+    background: rgba(148, 163, 184, 0.45);
+    opacity: 0.35;
+    transition: opacity 0.25s ease, background-color 0.2s ease;
+    cursor: pointer;
+}
+.tr-vscroll.tr-scroll-active .tr-vscroll-thumb {
+    opacity: 1;
+    background: rgba(148, 163, 184, 0.7);
+}
+.tr-vscroll.tr-scroll-active .tr-vscroll-thumb:hover {
+    background: rgba(100, 116, 139, 0.85);
+}
+:root.dark .tr-vscroll-thumb { background: rgba(148, 163, 184, 0.4); }
+:root.dark .tr-vscroll.tr-scroll-active .tr-vscroll-thumb { background: rgba(148, 163, 184, 0.65); }
+
+/* Inner scrollers (tables, textareas, dropdown lists, …) — same mechanism:
+   the thumb is invisible at rest, shows while the cursor is over the scroller
+   or while it is being scrolled (app.js marks .tr-scroller and toggles
+   .tr-scroll-active on it). */
+.tr-scroller {
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+}
+/* ⚠ the ROOT element also ends up with .tr-scroller from app.js — its bar
+   must stay at ZERO width or the reserved gutter re-appears as a page gap. */
+html.tr-scroller {
+    scrollbar-width: none;
+}
+.tr-scroller::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+.tr-scroller::-webkit-scrollbar-track {
+    background: transparent;
+}
+.tr-scroller::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+.tr-scroller:hover,
+.tr-scroller.tr-scroll-active {
+    scrollbar-color: rgba(148, 163, 184, 0.6) transparent;
+}
+.tr-scroller:hover::-webkit-scrollbar-thumb,
+.tr-scroller.tr-scroll-active::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.6);
+}
+.tr-scroller::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 116, 139, 0.85);
 }

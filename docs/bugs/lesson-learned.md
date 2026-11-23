@@ -2356,3 +2356,27 @@ Moved the component to `App\Livewire\SidebarDatabaseNotifications` (auto-discove
 - [x] After moving/renaming a class, run `composer dump-autoload` — the optimized classmap kept pointing at the old path locally, and prod builds with `--optimize-autoloader` (prod deploy: run `composer dump-autoload -o` after the pull).
 - [x] Filament plugins that publish to `public/` need those files committed — the prod composer step is `--no-scripts`, so `filament:upgrade` never runs there.
 - [x] When replacing a vendor component (user-menu) with a custom one, diff the vendor view and carry over EVERY block, not just the visible ones.
+
+## BUG-043 — Page scrolls past the end of its content on tabbed record pages (2026-11-20)
+
+**Discovered By:** Owner ("di beberapa page, contohnya edit?tab=-timeline-tab dan edit?tab=-admin-tab, scrollnya terlalu bawah — content sudah habis tapi scroll bisa lanjut lebih bawah")
+**Severity:** Low (cosmetic scroll, every tabbed form page)
+**Status:** Resolved
+
+### Description
+On the incident edit/create pages you could keep scrolling roughly a viewport past the last visible content. The dead zone size depended on which tab was ACTIVE — the shorter the active tab, the longer the blank tail (measured 1508px scroll region vs 987px real content on the Admin tab).
+
+### Root Cause Analysis (5 Whys)
+1. Why blank scroll? The document's scrollable region extended past the flow end.
+2. Why? Filament hides INACTIVE form-tab panels with `invisible absolute h-0 overflow-hidden p-0` — an `overflow: visible !important` rule in app.css (added 2026-05-12 so pickers could overflow the panels) also disabled that `overflow-hidden`, so every inactive panel's content still laid out invisibly and anchored its full height into the document region.
+3. Why did `overflow-hidden` alone not stop it (measured after removing the `!important`)? Chrome still lets the absolutely-positioned, `h-0` hidden panels' inner content contribute to the root scroll region (verified live: `position: relative` on the tabs card changed nothing; `display: none` landed exactly on the flow end).
+4. Why did it survive so long? The rule predates the tabbed edit page's growth; each short tab (Admin) exposes more of the tallest hidden tab (Content & Analysis).
+5. Why that rule at all? A May-2026 picker-clipping fix, generalized from `:has(.smart-label-wrapper)` to ALL tab panels — unnecessary today: the ACTIVE panel is never clipped by Filament and every modern Filament dropdown teleports to `<body>`.
+
+### Fix
+Deleted the `overflow: visible !important` block and added `.fi-fo-tabs-tab.invisible { display: none; }` — inactive panels take no space at all; switching tabs swaps the class so the panel returns. Verified with a throwaway Dusk probe (scrollH == flow end on both reported tabs; strips wrap, no horizontal overflow).
+
+### Prevention Checklist
+- [x] An `overflow: visible !important` that fights a framework's own hiding mechanism turns "hidden" into "invisible but still laying out" — audit such overrides when upgrading.
+- [x] A rendered-but-hidden panel still contributes to the page's scroll region in Chrome even with `overflow-hidden` + `h-0` when it is absolutely positioned — the reliable hide is `display: none`.
+- [x] Pure-CSS bugs of this class are only checkable in a real browser: the throwaway Dusk probe (hide-and-measure loop) found the contributor in minutes; add it as a script, not a suite test, when the DB under test must survive.
