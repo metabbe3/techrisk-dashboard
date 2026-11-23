@@ -31,6 +31,23 @@ class FaviconTest extends TestCase
     }
 
     /**
+     * Owner 2026-11-23 (prod showed the DEFAULT icon while local was fine):
+     * `asset()` builds an ABSOLUTE URL from APP_URL — a stale/mismatched prod
+     * APP_URL pointed the link at the wrong host, it 404'd, and the browser
+     * fell back to /favicon.ico. The favicon reference must be ROOT-RELATIVE
+     * (no host, no scheme — immune to APP_URL), cache-busted with ?v=4.
+     */
+    public function test_the_favicon_link_is_root_relative_so_prod_app_url_cannot_break_it(): void
+    {
+        $html = (string) $this->actingAs($this->adminUser())->get('/admin')->assertSuccessful()->getContent();
+
+        $this->assertStringContainsString('href="/images/favicon.png?v=4"', $html);
+
+        $provider = (string) file_get_contents(app_path('Providers/Filament/AdminPanelProvider.php'));
+        $this->assertStringNotContainsString('->favicon(asset(', $provider, 'asset() re-introduces the APP_URL dependency that broke the prod favicon');
+    }
+
+    /**
      * Owner 2026-11-17: the DANA brand logo beside "TechRisk Portal" first
      * shipped as a plain string — Filament treats that as an image PATH and
      * dropped the whole HTML into src="", rendering the broken-image alt

@@ -40,12 +40,16 @@ class AdminPanelProvider extends PanelProvider
             // an Htmlable or the markup renders as a broken-image alt text.
             ->brandLogo(new \Illuminate\Support\HtmlString('<img src="'.asset('images/favicon.png').'?v=3" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
             ->brandLogoHeight('2rem')
-            // Owner 2026-11-17: the browser tab showed the default icon —
-            // public/favicon.ico was an empty file. DANA logo, square-cropped
-            // from the source artwork (public/images/favicon.png); the .ico
-            // covers the browser's default /favicon.ico request (Safari).
-            // ?v=3: the same URL served the dark-fringed rebuild — bust it.
-            ->favicon(asset('images/favicon.png').'?v=3')
+            // Owner 2026-11-17 / 2026-11-23 ("bagaimana agar icon di prod jadi
+            // logo dana?"): the browser tab showed the default icon in PROD
+            // while local was fine. Root cause class: `asset()` builds an
+            // ABSOLUTE URL from APP_URL — a stale/mismatched prod APP_URL
+            // points the <link rel="icon"> at the wrong host, it 404s, and the
+            // browser falls back to /favicon.ico. The reference is now
+            // ROOT-RELATIVE (no APP_URL dependency), and ?v=4 busts the long
+            // browser favicon cache. public/favicon.ico is a REAL multi-size
+            // ICO (PNG-backed) so the fallback also shows the DANA logo.
+            ->favicon('/images/favicon.png?v=4')
             // Sidebar geometry (open 15rem / rail 4.5rem) is owned by the
             // app.css redesign block (main a0c3e30) — no provider width
             // overrides, or the two fight at different layers.
