@@ -143,7 +143,7 @@ class ActionImprovementFormSchema
      * Directory search behind BOTH PIC pickers (the form Select and the
      * Add Assignee action) — one home so the two cannot drift.
      */
-    private static function picSearchResults(string $search): array
+    public static function picSearchResults(string $search): array
     {
         return User::humanUsers()
             ->where(fn ($q) => $q
@@ -158,7 +158,7 @@ class ActionImprovementFormSchema
             ->all();
     }
 
-    private static function picOptionLabel($value): string
+    public static function picOptionLabel($value): string
     {
         return (string) (User::where('email', $value)->value('name') ?? $value);
     }
@@ -287,8 +287,11 @@ class ActionImprovementFormSchema
                     ->required(fn (Forms\Get $get): bool => blank($get('link_url'))),
                 Forms\Components\TextInput::make('link_url')
                     ->label('Proof link (URL)')
-                    ->helperText('Chat message / Notion page link — required unless a file is provided.')
+                    ->helperText('HTTPS link to a chat message / Notion page — required unless a file is provided.')
                     ->url()
+                    // W4: only https links are accepted at store time; the
+                    // download route also re-checks before redirecting.
+                    ->rules(['url', 'starts_with:https://'])
                     ->maxLength(2048)
                     ->required(fn (Forms\Get $get): bool => blank($get('file_path'))),
                 Forms\Components\Textarea::make('result_note')

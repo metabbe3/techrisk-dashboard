@@ -45,6 +45,26 @@
 
 ## Active Projects
 
+### [PROJ-029] DingTalk agent: weekly-report integration (`GET /api/v1/weekly-report` + `get_weekly_report` tool)
+
+**Status:** Done (2026-11-21)
+**Priority:** P2
+**Start Date:** 2026-11-21
+
+#### Description
+The bot could not answer "how did we do week by week" or post a scheduled weekly digest. New read endpoint delegates verbatim to `WeeklyDataService::getWeeklyData()` (the Filament Weekly Report page's builder — count eligibility inherited by construction, one-logic rule), per-week rows as `IncidentListApiResource` (the one list projection), `weeks` = last-N slice, `summary` = the export header's sums. The Go agent gains `get_weekly_report` (default last 8 weeks, 48k cap, guardrail-framed) — pair with `schedule_reminder` for a Monday digest.
+
+#### Tasks
+- [x] `WeeklyDataService::getWeeklyData(year, ?user)` — optional `applyUserYearAccess` scoping; Filament call sites unchanged (null = admin view)
+- [x] `WeeklyReportController` + route (`throttle:agent` group) + `ApiEndpoint::WEEKLY_REPORT` case
+- [x] `WeeklyReportApiTest` (9 tests / 37 assertions) — eligibility, projection, slice, summary, team-viewer scoping, admin pass-through, 401/403/422
+- [x] Go `get_weekly_report` tool + `weeklyreport_test.go` (7 tests) + `dashboard/SKILL.md` doc
+- [x] Full Laravel suite 1514/6,055 green; Go suite green (incl. parallel W9 fixes: arg validation + `FrameDocumentContent` framing)
+
+#### Owner actions (prod)
+1. Filament → API Tokens → `dingtalk-agent` → tick the new `weekly-report` endpoint.
+2. `docker compose up -d --build dingtalk-agent app worker`.
+
 ### [PROJ-022] Sub-incident hierarchy (super-incident / sub-incident)
 
 **Status:** In Progress (design approved; plan phase)

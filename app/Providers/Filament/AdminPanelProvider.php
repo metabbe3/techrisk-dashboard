@@ -38,17 +38,23 @@ class AdminPanelProvider extends PanelProvider
             // .fi-logo rule in app.css centers the pair. NOTE: a plain string
             // is treated as an image PATH (dropped into src="") — it must be
             // an Htmlable or the markup renders as a broken-image alt text.
-            ->brandLogo(new \Illuminate\Support\HtmlString('<img src="'.asset('images/favicon.png').'?v=3" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
+            // Root-relative URLs (no asset()): the panel config bakes these at
+            // register() time — before AppServiceProvider::boot()'s
+            // URL::forceScheme('https') — so asset() produced http:// behind
+            // the TLS proxy and browsers blocked the favicon as mixed content
+            // (prod 2026-11-23). A root-relative path inherits the page scheme.
+            ->brandLogo(new \Illuminate\Support\HtmlString('<img src="/images/favicon.png?v=3" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
             ->brandLogoHeight('2rem')
             // Owner 2026-11-17 / 2026-11-23 ("bagaimana agar icon di prod jadi
             // logo dana?"): the browser tab showed the default icon in PROD
-            // while local was fine. Root cause class: `asset()` builds an
-            // ABSOLUTE URL from APP_URL — a stale/mismatched prod APP_URL
-            // points the <link rel="icon"> at the wrong host, it 404s, and the
-            // browser falls back to /favicon.ico. The reference is now
-            // ROOT-RELATIVE (no APP_URL dependency), and ?v=4 busts the long
-            // browser favicon cache. public/favicon.ico is a REAL multi-size
-            // ICO (PNG-backed) so the fallback also shows the DANA logo.
+            // while local was fine. Root-relative reference (no asset()): the
+            // panel config bakes URLs at register() time — before
+            // URL::forceScheme('https') — so asset() produced http:// behind
+            // the TLS proxy (mixed-content block) and an absolute URL from a
+            // stale APP_URL 404'd too. A root-relative path inherits the page
+            // scheme and host. ?v=4 busts the long browser favicon cache;
+            // public/favicon.ico is a REAL multi-size ICO so the fallback
+            // also shows the DANA logo.
             ->favicon('/images/favicon.png?v=4')
             // Sidebar geometry (open 15rem / rail 4.5rem) is owned by the
             // app.css redesign block (main a0c3e30) — no provider width
@@ -214,7 +220,7 @@ class AdminPanelProvider extends PanelProvider
                     .'</div>'
                     .'<script>'
                     .'if (! window.trCalendar) { window.trCalendar = function () { return {'
-                    .' open: false, cursor: null, today: new Date(),'
+                    .' open: false, cursor: new Date(), today: new Date(),' // cursor pre-seeded: x-show evaluates label()/cells() at mount — a null cursor throws TypeError on every page load (prod 2026-11-23)
                     .' toggle() { this.open = ! this.open; if (this.open && ! this.cursor) this.cursor = new Date() },'
                     .' label() { return this.cursor.toLocaleString("en-US", { month: "long", year: "numeric" }) },'
                     .' shift(n) { this.cursor = new Date(this.cursor.getFullYear(), this.cursor.getMonth() + n, 1) },'

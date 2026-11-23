@@ -107,14 +107,19 @@ class AccessRequest extends Model
 
         $user->save();
 
-        // Set up audit log settings (year permissions)
-        UserAuditLogSetting::updateOrCreate(
-            ['user_id' => $user->id],
-            [
-                'allowed_years' => $this->requested_years,
-                'can_view_all_logs' => false,
-            ]
-        );
+        // Year permissions: only for NEWLY-CREATED accounts (red-team fix
+        // W6). Approving a request from an email that already belongs to a
+        // user must not silently rewrite that user's audit-log years with
+        // whatever the anonymous submitter asked for.
+        if ($user->wasRecentlyCreated) {
+            UserAuditLogSetting::updateOrCreate(
+                ['user_id' => $user->id],
+                [
+                    'allowed_years' => $this->requested_years,
+                    'can_view_all_logs' => false,
+                ]
+            );
+        }
 
         // Update request status
         $this->update([

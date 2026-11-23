@@ -19,9 +19,17 @@ class WarRoomIncidentSearchController extends Controller
             return $this->successResponse(['incidents' => []]);
         }
 
-        $incidents = Incident::where('no', 'LIKE', "%{$q}%")
-            ->orWhere('title', 'LIKE', "%{$q}%")
-            ->orWhere('summary', 'LIKE', "%{$q}%")
+        // W3 fix: the ONE scope — the war-room search must not expose
+        // records outside the caller's year/team slice. The search terms
+        // stay BRACKETED: a bare orWhere after the scope would OR against
+        // the scope itself and reopen the hole.
+        $incidents = Incident::query()
+            ->applyUserYearAccess($request->user())
+            ->where(function ($w) use ($q) {
+                $w->where('no', 'LIKE', "%{$q}%")
+                    ->orWhere('title', 'LIKE', "%{$q}%")
+                    ->orWhere('summary', 'LIKE', "%{$q}%");
+            })
             ->with('pics')
             ->orderBy('incident_date', 'desc')
             ->limit(10)

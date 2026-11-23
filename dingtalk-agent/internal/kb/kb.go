@@ -161,7 +161,7 @@ func (ix *Index) rebuild() {
 // Ingest chunks and embeds one document in the background; errors only log —
 // an un-embeddable doc degrades to summary-only knowledge, it never breaks a turn.
 func (ix *Index) Ingest(doc, text string) {
-	go func() {
+	util.Go("kb-ingest", func() {
 		ix.ingest <- struct{}{} // blocking — a concurrent upload waits, never drops
 		defer func() { <-ix.ingest }()
 		ctx, cancel := context.WithTimeout(context.Background(), embedCallTimeout)
@@ -169,7 +169,7 @@ func (ix *Index) Ingest(doc, text string) {
 		if err := ix.ingestNow(ctx, doc, text); err != nil {
 			log.Printf("[kb] ingest %s failed: %v", doc, err)
 		}
-	}()
+	})
 }
 
 // Save ingests one document synchronously on the ingest slot, so callers

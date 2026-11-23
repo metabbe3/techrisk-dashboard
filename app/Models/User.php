@@ -239,6 +239,7 @@ class User extends Authenticatable implements Auditable, FilamentUser
         'email',
         'email_verified_at',
         'password',
+        'azure_id',
         'access_expiry',
         'is_service_account',
         'can_login',

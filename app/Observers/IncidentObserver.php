@@ -21,6 +21,24 @@ use Illuminate\Validation\ValidationException;
 class IncidentObserver
 {
     /**
+     * S-2 (generateNo race): `no` carries a unique index, but the
+     * exists()-check in generateNo() races against a concurrent insert —
+     * the loser dies on a duplicate-key QueryException. Regenerate once
+     * here, at the single point every write routes through: same draw odds,
+     * no user-visible 500. The form field is readOnly, so a collision can
+     * only come from this race (or a restore), never a user edit.
+     */
+    public function creating(Incident $incident): void
+    {
+        if (! filled($incident->no) || ! Incident::where('no', $incident->no)->exists()) {
+            return;
+        }
+
+        $prefix = $incident->classification === \App\Enums\IncidentClassification::Issue->value ? 'IS' : 'IN';
+        $incident->no = Incident::generateNo($prefix);
+    }
+
+    /**
      * Closure gate (PROJ-011 Wave 2, RD-2): a row cannot move INTO Completed
      * without an RCA (root_cause or root_cause_category) and a stop-bleed
      * time. One guard covers the edit form, update_status, API and imports.
@@ -162,8 +180,10 @@ class IncidentObserver
             $incident->isDirty('parent_incident_id');
         // Detection fields feed the governance KPI caches (keyed on
         // dashboard_cache_version) — a change must bump it or they serve
-        // stale numbers until TTL (Edit-Safety rule 2).
-        $needsCacheBump = $incident->isDirty(['detected_via', 'failed_control', 'detection_delay_days', 'start_time_known']);
+        // stale numbers until TTL (Edit-Safety rule 2). discovered_at feeds
+        // effectiveDetectionLagHours() → GovernanceKpiService lags, so it
+        // belongs in this list too.
+        $needsCacheBump = $incident->isDirty(['detected_via', 'failed_control', 'detection_delay_days', 'start_time_known', 'discovered_at']);
         $needsAutoLabel = $incident->isDirty('summary') || $incident->isDirty('root_cause');
 
         // Dispatch metrics calculation to queue if needed

@@ -123,11 +123,23 @@ class NotionInvestigationSectionTest extends TestCase
             ->assertNotified('Investigation refreshed from Notion.');
         $this->assertSame('fresh body from Notion', $incident->fresh()->notion_investigation_markdown);
 
+        // ViewIncident (IncidentResource) record-gates through
+        // applyAccessControl, which EXCLUDES classification=Issue rows — an
+        // Issue-classified record never mounts its infolist there (the
+        // incident-list canView sweep). The incidents half needs its own
+        // Incident-classified record on the same Notion page.
+        $incidentRecord = $this->incident([
+            'classification' => IncidentClassification::Incident,
+            'notion_investigation_page_id' => self::CREATED_ID,
+            'notion_investigation_markdown' => 'old body',
+            'notion_investigation_synced_at' => now(),
+        ]);
+
         Livewire::actingAs($this->manager('incidents'))
-            ->test(ViewIncident::class, ['record' => (string) $incident->id])
+            ->test(ViewIncident::class, ['record' => (string) $incidentRecord->id])
             ->callInfolistAction('notion_investigation', 'refresh_investigation')
             ->assertNotified('Investigation refreshed from Notion.');
-        $this->assertSame('fresh body from Notion', $incident->fresh()->notion_investigation_markdown);
+        $this->assertSame('fresh body from Notion', $incidentRecord->fresh()->notion_investigation_markdown);
     }
 
     /** Owner 2026-11-04 (round 8): the Notion pair sits NEXT to "Open in Notion" in the section footer, not in a header kebab. */

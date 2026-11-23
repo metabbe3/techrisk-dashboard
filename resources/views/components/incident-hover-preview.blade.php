@@ -19,7 +19,7 @@
 
         open() {
             clearTimeout(this.hideTimeout);
-            const rect = this.\$refs.trigger.getBoundingClientRect();
+            const rect = this.$refs.trigger.getBoundingClientRect();
             const viewportHeight = window.innerHeight;
             const estimatedHeight = 320;
 

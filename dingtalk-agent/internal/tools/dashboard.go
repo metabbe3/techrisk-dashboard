@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"techrisk-dashboard/dingtalk-agent/internal/config"
+	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/schedule"
 )
@@ -204,6 +205,10 @@ func (r *Registry) registerDashboardTools(cfg *config.Config) {
 	r.Register(getActionItemDef(), typed(client.handleGetActionItem))
 	r.Register(getGovernanceKpisDef(), typed(client.handleGetGovernanceKpis))
 	r.Register(listReferenceDef(), typed(client.handleListReference))
+	// Weekly report: year of per-week counts + compact rows can approach the
+	// 48k allowance (client defaults to the last 8 weeks for chat payload).
+	r.RegisterCapped(getWeeklyReportDef(), typed(client.handleGetWeeklyReport), 48<<10)
+	r.Register(getInvestigationStatusDef(), typed(client.handleGetInvestigationStatus))
 }
 
 // GetIncidentByNo fetches one incident's full JSON by its incident number
@@ -372,7 +377,7 @@ func projectIncidentList(env *apiEnvelope) (map[string]any, error) {
 		// rather than failing the turn.
 		return map[string]any{"meta": env.Meta, "data": json.RawMessage(env.Data)}, nil
 	}
-	keep := []string{"incident_no", "incident_title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id"}
+	keep := []string{"incident_no", "incident_title", "severity", "incident_status", "status", "classification", "fund_loss", "potential_fund_loss", "fund_status", "incident_date", "created_at", "updated_at", "id", "parent_incident_id", "parent_incident_no", "sub_incidents_count"}
 	out := make([]map[string]any, 0, len(rows))
 	for _, r := range rows {
 		m := map[string]any{}
@@ -429,7 +434,10 @@ func (c *dashboardClient) handleGetIncident(ctx context.Context, args getInciden
 	if err != nil {
 		return "", err
 	}
-	return string(env.Data), nil
+	// W9 fix: incident fields carry externally-fed text (intake forms, AI
+	// summaries) — frame it as untrusted data like the web/Notion tools do,
+	// so injection lines in an incident body cannot pose as instructions.
+	return guardrail.FrameDocumentContent("incident "+path, string(env.Data)), nil
 }
 
 func getIncidentMarkdownDef() llm.ToolDefinition {
@@ -468,7 +476,9 @@ func (c *dashboardClient) handleGetIncidentMarkdown(ctx context.Context, args ge
 	if err != nil {
 		return "", fmt.Errorf("failed to base64-decode incident markdown: %w", err)
 	}
-	return string(markdown), nil
+	// W9 fix: same framing as get_incident — the report embeds timeline,
+	// RCA and relation content that originates outside the operator.
+	return guardrail.FrameDocumentContent("incident report "+no, string(markdown)), nil
 }
 
 // statsDef: aggregate dashboard metrics in one call — the tool the bot uses for

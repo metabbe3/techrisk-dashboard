@@ -22,6 +22,8 @@ enum ApiEndpoint: string
     case AGENT_CORPUS = 'agent-corpus';
     case SKILLS = 'skills';
     case GOVERNANCE = 'governance';
+    case WEEKLY_REPORT = 'weekly-report';
+    case INVESTIGATION_FORMS = 'investigation-forms';
 
     /**
      * Get all endpoints as an array for select options
@@ -53,6 +55,8 @@ enum ApiEndpoint: string
             self::AGENT_CORPUS => 'Corpus pages (incident memory + topic patterns)',
             self::SKILLS => 'Skills (agent skill library + War Room personas)',
             self::GOVERNANCE => 'Governance KPIs (PDR metrics, verbatim service output)',
+            self::WEEKLY_REPORT => 'Weekly Report (per-week incident counts)',
+            self::INVESTIGATION_FORMS => 'Investigation Forms (Intake status)',
         };
     }
 
@@ -78,6 +82,8 @@ enum ApiEndpoint: string
             self::AGENT_CORPUS => 'api/v1/corpus',
             self::SKILLS => 'api/v1/skills',
             self::GOVERNANCE => 'api/v1/governance',
+            self::WEEKLY_REPORT => 'api/v1/weekly-report',
+            self::INVESTIGATION_FORMS => 'api/v1/investigation-forms',
         };
     }
 

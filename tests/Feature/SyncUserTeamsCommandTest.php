@@ -120,4 +120,26 @@ class SyncUserTeamsCommandTest extends TestCase
 
         $this->assertFalse(Cache::has('categories:responsible_team'), 'Stale cached options must not serve form selects');
     }
+
+    public function test_manual_mapped_users_create_no_category(): void
+    {
+        // The skip must run BEFORE firstOrCreate — otherwise every manual
+        // mapping leaves a permanent orphan category its pivots never use.
+        User::factory()->create(['department' => 'Security', 'teams_manual' => true]);
+
+        $this->artisan('users:sync-teams')->assertSuccessful();
+
+        $this->assertDatabaseMissing(Category::class, ['type' => 'responsible_team', 'name' => 'Security']);
+    }
+
+    public function test_dry_run_does_not_flush_the_options_cache(): void
+    {
+        Category::options('responsible_team'); // warm the cache
+        $this->assertTrue(Cache::has('categories:responsible_team'));
+
+        User::factory()->create(['department' => 'Security']);
+        $this->artisan('users:sync-teams', ['--dry-run' => true])->assertSuccessful();
+
+        $this->assertTrue(Cache::has('categories:responsible_team'), 'A dry run created nothing — it must not flush');
+    }
 }

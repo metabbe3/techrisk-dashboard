@@ -5,15 +5,21 @@ declare(strict_types=1);
 namespace App\Filament\Resources\IncidentResource\RelationManagers;
 
 use App\Actions\RequestInvestigationForm;
+use App\Filament\Actions\ActionImprovementFormSchema;
+use App\Models\ActionImprovement;
 use App\Models\Category;
 use App\Models\Incident;
 use App\Models\InvestigationFormRecipient;
 use App\Models\InvestigationFormRequest;
 use App\Models\User;
 use App\Services\InvestigationForm\InvestigationFormSettings;
+use App\Services\InvestigationForm\PromoteInvestigationFormActions;
 use App\Support\InvestigationFormMailFactory;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
 use Filament\Notifications\Actions\Action as NotificationAction;
 use Filament\Notifications\Notification;
 use Filament\Resources\RelationManagers\RelationManager;
@@ -141,6 +147,70 @@ class InvestigationFormsRelationManager extends RelationManager
                     ->icon('heroicon-o-eye')
                     ->visible(fn (InvestigationFormRecipient $record): bool => $record->request->status === InvestigationFormRequest::STATUS_SUBMITTED)
                     ->modalContent(fn (InvestigationFormRecipient $record) => view('filament.incident-resource.investigation-form-answers', ['request' => $record->request])),
+                Tables\Actions\Action::make('import_actions')
+                    ->label('Import actions')
+                    ->icon('heroicon-o-clipboard-document-list')
+                    ->color('primary')
+                    ->modalHeading('Import Action Improvements from Investigation Form')
+                    ->modalDescription('Review, edit, or remove items extracted from the submitted investigation form before creating Action Improvements on this incident.')
+                    ->modalWidth('4xl')
+                    ->visible(fn (InvestigationFormRecipient $record): bool => $record->request->status === InvestigationFormRequest::STATUS_SUBMITTED
+                        && (bool) auth()->user()?->can('manage incidents')
+                        && app(PromoteInvestigationFormActions::class)->draftRows($record->request) !== [])
+                    ->fillForm(fn (InvestigationFormRecipient $record): array => [
+                        'items' => app(PromoteInvestigationFormActions::class)->draftRows($record->request),
+                    ])
+                    ->form([
+                        Repeater::make('items')
+                            ->label('Action Improvements')
+                            ->schema([
+                                TextInput::make('title')
+                                    ->required()
+                                    ->maxLength(255)
+                                    ->columnSpanFull(),
+                                Textarea::make('detail')
+                                    ->required()
+                                    ->rows(2)
+                                    ->columnSpanFull(),
+                                DatePicker::make('due_date')
+                                    ->label('Due date')
+                                    ->helperText('Leave empty for TBD.'),
+                                Select::make('pic_email')
+                                    ->label('PIC')
+                                    ->multiple()
+                                    ->searchable()
+                                    ->getSearchResultsUsing(fn (string $search): array => ActionImprovementFormSchema::picSearchResults($search))
+                                    ->getOptionLabelUsing(fn ($value): string => ActionImprovementFormSchema::picOptionLabel($value)),
+                                Select::make('priority')
+                                    ->options(array_combine(ActionImprovement::PRIORITIES, array_map('ucfirst', ActionImprovement::PRIORITIES)))
+                                    ->default('medium')
+                                    ->required(),
+                                Select::make('status')
+                                    ->options([
+                                        ActionImprovement::STATUS_PENDING => 'Pending',
+                                        ActionImprovement::STATUS_ON_PROGRESS => 'On Progress',
+                                        ActionImprovement::STATUS_DRAFT => 'Draft',
+                                        ActionImprovement::STATUS_TBD => 'TBD',
+                                    ])
+                                    ->default(ActionImprovement::STATUS_PENDING)
+                                    ->required(),
+                            ])
+                            ->columns(2)
+                            ->defaultItems(0)
+                            ->addActionLabel('Add action item'),
+                    ])
+                    ->action(function (InvestigationFormRecipient $record, array $data): void {
+                        $created = app(PromoteInvestigationFormActions::class)->import(
+                            $record->request->incident,
+                            $data['items'] ?? [],
+                        );
+
+                        Notification::make()
+                            ->title($created->count().' action improvement(s) imported')
+                            ->body('They now appear under the Action Improvements tab for this incident.')
+                            ->success()
+                            ->send();
+                    }),
                 Tables\Actions\Action::make('download_docx')
                     ->label('DOCX')
                     ->icon('heroicon-o-document-arrow-down')

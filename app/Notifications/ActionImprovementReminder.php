@@ -22,13 +22,13 @@ class ActionImprovementReminder extends ActionImprovementNotification
 
     /**
      * TBD rows (null due date) return null — diffInDays(null) would parse
-     * null as now() and report "0 days remaining".
+     * null as now() and report "0 days remaining". ONE definition lives on
+     * the model; the reminder command and DueSoon/Overdue notifications
+     * share it.
      */
     private function daysUntilDue(): ?int
     {
-        return $this->actionImprovement->due_date === null
-            ? null
-            : (int) round(now()->diffInDays($this->actionImprovement->due_date, false));
+        return $this->actionImprovement->daysUntilDue();
     }
 
     public function toMail(object $notifiable): MailMessage

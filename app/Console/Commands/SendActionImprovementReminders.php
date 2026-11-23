@@ -98,7 +98,7 @@ class SendActionImprovementReminders extends Command
 
     private function sendDueSoonNotification(ActionImprovement $action): void
     {
-        $daysRemaining = (int) now()->diffInDays($action->due_date, false);
+        $daysRemaining = $action->daysUntilDue();
         $recipients = $this->recipientsFor($action);
 
         $recipients->each(fn ($user) => $user->notify(new ActionImprovementDueSoon($action, $daysRemaining)));
@@ -109,7 +109,7 @@ class SendActionImprovementReminders extends Command
 
     private function sendOverdueNotification(ActionImprovement $action): void
     {
-        $daysOverdue = (int) (now()->diffInDays($action->due_date, false) * -1);
+        $daysOverdue = -1 * $action->daysUntilDue();
         $recipients = $this->recipientsFor($action);
 
         $recipients->each(fn ($user) => $user->notify(new ActionImprovementOverdue($action, $daysOverdue)));

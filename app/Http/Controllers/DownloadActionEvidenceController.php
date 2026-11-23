@@ -20,9 +20,28 @@ class DownloadActionEvidenceController extends Controller
             abort(403, 'You do not have permission to download this file.');
         }
 
-        // Link proof (chat / Notion) — nothing to decrypt; the gate ran
-        // FIRST so unauthorized users can't ride the redirect.
+        // Record-level gate — the ONE scope (red-team fix W2): permission-only
+        // access let any team-viewer download another team's decrypted proof.
+        // Same semantics as IncidentResource::canView: the parent incident
+        // must be inside the caller's applyUserYearAccess slice.
+        $incident = $record->actionImprovement->incident;
+        if (! Incident::query()
+            ->applyUserYearAccess(auth()->user())
+            ->whereKey($incident->getKey())
+            ->exists()) {
+            abort(403, 'You do not have permission to download this file.');
+        }
+
+        // Link proof (chat / Notion) — nothing to decrypt; BOTH gates ran
+        // FIRST so unauthorized users can't ride the redirect. Only https
+        // links redirect (red-team fix W4: the route must not become an open
+        // redirect on the real domain — non-https/scheme-less URLs abort).
         if ($record->isLink()) {
+            $parsed = parse_url($record->link_url ?? '');
+            if (strtolower((string) ($parsed['scheme'] ?? '')) !== 'https' || empty($parsed['host'])) {
+                abort(404, 'This proof link is not a valid https URL.');
+            }
+
             return redirect()->away($record->link_url);
         }
 

@@ -99,4 +99,22 @@ class InvestigationFormRequest extends Model
     {
         return $query->where('status', self::STATUS_PENDING)->where('expires_at', '>', now());
     }
+
+    public function scopeExpired(Builder $query): Builder
+    {
+        return $query->where('status', self::STATUS_PENDING)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now());
+    }
+
+    /** Derived request state shared by UI and API: submitted / revoked / expired / pending. */
+    public function state(): string
+    {
+        return match (true) {
+            $this->status === self::STATUS_SUBMITTED => 'submitted',
+            $this->status === self::STATUS_REVOKED => 'revoked',
+            $this->expires_at !== null && $this->expires_at->isPast() => 'expired',
+            default => 'pending',
+        };
+    }
 }

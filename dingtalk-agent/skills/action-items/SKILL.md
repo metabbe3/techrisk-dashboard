@@ -18,7 +18,7 @@ records.
 ## Contract
 | Tool | Params | Returns |
 |---|---|---|
-| `search_action_items` | status (exact vocab), overdue (bool), pic (email), incident_no, limit (1-100, default 20), offset | `{meta: {total, limit, offset, returned, has_more}, data: rows}` — rows carry `incident_no`, link findings back to it |
+| `search_action_items` | status (exact vocab), overdue (bool), pending_approval (bool), pic (email), incident_no, limit (1-100, default 20), offset | `{meta: {total, limit, offset, returned, has_more}, data: rows}` — rows carry `incident_no`, `has_pending_proof`, `pending_proof_count` |
 | `get_action_item` | `id` (from search rows) | one full record |
 
 ## Guardrails & caps

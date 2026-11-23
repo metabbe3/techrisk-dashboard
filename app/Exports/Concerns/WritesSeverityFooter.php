@@ -103,13 +103,19 @@ trait WritesSeverityFooter
         // ponytail: reorder() is load-bearing — call sites hand us ordered
         // builders and MySQL ONLY_FULL_GROUP_BY (strict mode) rejects ORDER BY
         // on a non-grouped column (error 1055); SQLite tests can't see it.
+        // select([]) is load-bearing too: selectRaw() APPENDS, so the caller's
+        // select columns ride along (the incidents table query carries
+        // withCount/withSum sub-incident subqueries) and ONLY_FULL_GROUP_BY
+        // rejects the grouped select with error 1055 — the prod 500 behind
+        // the Recovered-This-Year deploy. The two avg() calls are safe:
+        // aggregates replace the select list.
         // MTTR split by storage sign (owner 2026-10-13 convention):
         // >= 0 = minutes bucket, < 0 = elapsed-days bucket (averaged abs).
         $daysAvg = $query->clone()->reorder()->where('mttr', '<', 0)->avg('mttr');
 
         return [
-            $query->clone()->reorder()->selectRaw('severity, COUNT(*) as count')->groupBy('severity')->pluck('count', 'severity'),
-            $query->clone()->reorder()->selectRaw('fund_status, COUNT(*) as count')->groupBy('fund_status')->pluck('count', 'fund_status'),
+            $query->clone()->reorder()->select([])->selectRaw('severity, COUNT(*) as count')->groupBy('severity')->pluck('count', 'severity'),
+            $query->clone()->reorder()->select([])->selectRaw('fund_status, COUNT(*) as count')->groupBy('fund_status')->pluck('count', 'fund_status'),
             $query->clone()->reorder()->where('mttr', '>=', 0)->avg('mttr'),
             $daysAvg === null ? null : abs((float) $daysAvg),
         ];

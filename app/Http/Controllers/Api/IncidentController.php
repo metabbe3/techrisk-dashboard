@@ -169,7 +169,6 @@ class IncidentController extends Controller
             // The agent's watch sweep pages by offset — that is only meaningful
             // against a stable order. `sort` is whitelisted in ListIncidentsRequest.
 
-
             // The agent's watch sweep pages by offset — that is only meaningful
             // against a stable order. `sort` is whitelisted in ListIncidentsRequest.
             if ($request->filled('sort')) {
@@ -177,6 +176,7 @@ class IncidentController extends Controller
             }
 
             $total = $query->count();
+            $query->with(['superIncident:id,no'])->withCount('subIncidents');
             $items = $limit
                 ? $query->skip($offset)->take($limit)->get()
                 : $query->get();
@@ -220,7 +220,7 @@ class IncidentController extends Controller
     public function getLabels()
     {
         try {
-            $labels = Cache::remember('labels', 60, function () {
+            $labels = Cache::remember('labels', 3600, function () {
                 return Label::pluck('name');
             });
 
@@ -252,7 +252,7 @@ class IncidentController extends Controller
     public function getIncidentTypes()
     {
         try {
-            $incidentTypes = Cache::remember('incident_types', 60, function () {
+            $incidentTypes = Cache::remember('incident_types', 3600, function () {
                 return IncidentType::pluck('name');
             });
 
@@ -407,7 +407,10 @@ class IncidentController extends Controller
     {
         try {
             return $this->successResponse(
-                new IncidentApiResource($incident->load(Incident::FULL_RELATIONS)),
+                new IncidentApiResource($incident->load(array_merge(Incident::FULL_RELATIONS, [
+                    'superIncident:id,no',
+                    'subIncidents:id,parent_incident_id,no,title,severity,incident_status,fund_loss',
+                ]))),
                 'Incident retrieved successfully.'
             );
         } catch (ModelNotFoundException $e) {
@@ -461,7 +464,10 @@ class IncidentController extends Controller
             $incident = Incident::where('no', $no)->firstOrFail();
 
             return $this->successResponse(
-                new IncidentApiResource($incident->load(Incident::FULL_RELATIONS)),
+                new IncidentApiResource($incident->load(array_merge(Incident::FULL_RELATIONS, [
+                    'superIncident:id,no',
+                    'subIncidents:id,parent_incident_id,no,title,severity,incident_status,fund_loss',
+                ]))),
                 'Incident retrieved successfully.'
             );
         } catch (ModelNotFoundException $e) {

@@ -58,6 +58,13 @@ class MicrosoftSsoTest extends TestCase
                     {
                         return $this->name;
                     }
+
+                    public function getId(): string
+                    {
+                        // W5: the Entra object id — the callback binds
+                        // identity on it before falling back to email.
+                        return 'azure-object-id-'.md5($this->email);
+                    }
                 };
             }
         });

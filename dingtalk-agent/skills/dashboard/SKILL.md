@@ -1,7 +1,7 @@
 ---
 name: dashboard-incidents
 status: shipped
-tools: [search_incidents, get_incident, get_incident_markdown, get_dashboard_stats, read_corpus_page]
+tools: [search_incidents, get_incident, get_incident_markdown, get_dashboard_stats, read_corpus_page, get_weekly_report, get_investigation_status]
 gate: always-on (core family)
 prompt: SystemPrompt "Available Tools" section (prompt.go:9) — taught in the BASE prompt, not a gated family; get_dashboard_stats adds a StatsPrompt section (prompt.go, registry.Has-gated)
 files: [internal/tools/dashboard.go]
@@ -25,14 +25,17 @@ prefer it for any MTTR/MTBF/fund-loss/per-group question.
 | `get_incident_markdown` | `no` (required) | complete report as Markdown (base64-decoded server-side) |
 | `get_dashboard_stats` | mode (summary default / by_dimension), metric, dimension, start_date, end_date, severities, incident_types, statuses, fund_statuses (lists comma-separated) | summary: `totalCases, avgMttrMins, avgMttrDays, avgMtbf, totalFundLoss, totalPotentialFundLoss, totalRecoveredFund`; by_dimension: `labels[]/values[]/raw_data[]` |
 | `read_corpus_page` | `path` (required, relative e.g. `topics/index.md`) | one corpus page as Markdown: index → per-incident folders + compiled topic pattern pages (`topics/*.md`, LLM-written, cite incident numbers) |
+| `get_weekly_report` | year (int, default current), weeks (int, default 8 = last N elapsed weeks; 0 = full year) | per-week counts (open/closed/total, weeks run Friday-to-Thursday) + compact incident rows per week + summary block |
+| `get_investigation_status` | status (open default / pending / expired / submitted / revoked / all), incident_no, team, limit (1-100, default 20), offset | `{meta, data}` of investigation form intake requests (state, expires_at, has_draft, recipient/opened/reminder/action counts) |
 
 ## Guardrails & caps
-- Plain `Register` — default 8000-byte loop cap; `get_incident_markdown` and
-  `read_corpus_page` ride `RegisterCapped` at 48 KiB (dashboard.go:193-196).
-- All five are GET-only reads through the dashboard API (`DASHBOARD_API_BASE`
+- Plain `Register` — default 8000-byte loop cap; `get_incident_markdown`,
+  `read_corpus_page` and `get_weekly_report` ride `RegisterCapped` at 48 KiB
+  (dashboard.go).
+- All reads are GET-only through the dashboard API (`DASHBOARD_API_BASE`
   + bearer token). No ticket claiming needed. The agent token needs the
-  `stats` / `agent-corpus` endpoints in its `allowed_endpoints`
-  (Filament → API Tokens) unless unrestricted.
+  `stats` / `agent-corpus` / `weekly-report` endpoints in its
+  `allowed_endpoints` (Filament → API Tokens) unless unrestricted.
 - `meta.total` is a RAW count (includes G / Non Incident / Issue rows) — the
   subtraction recipe lives in the system prompt; don't "fix" it here. For
   official numbers `get_dashboard_stats` is the source: the Laravel endpoint
@@ -46,7 +49,9 @@ prefer it for any MTTR/MTBF/fund-loss/per-group question.
   envelope) + `envelope()` helper; pins query-param mapping, bearer token,
   method per tool (`TestSearchIncidentsMapsParamsToQuery` et al.);
   `TestStats*` pins the stats tool's mode defaulting, bracket-array list
-  encoding, date pairing, and by_dimension validation.
+  encoding, date pairing, and by_dimension validation;
+  `weeklyreport_test.go` — weeks default (8), year/weeks plumbing,
+  real-base-path, 403 token advice, framed passthrough.
 
 ## Gotchas
 - `updated_since` filters on row updates (RFC3339 or YYYY-MM-DD) —

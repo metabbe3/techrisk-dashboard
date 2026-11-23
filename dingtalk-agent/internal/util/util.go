@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -154,4 +155,19 @@ func LoadJSON(path string, v any) error {
 		return err
 	}
 	return nil
+}
+
+// Go runs fn in a new goroutine with a panic recover. Fire-and-forget
+// goroutines (watch fires, profile learning, knowledge digests, heartbeat
+// loops) sit outside the turn/tool recover seams — a panic in any of them
+// used to kill the whole process.
+func Go(name string, fn func()) {
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Printf("[panic] %s goroutine recovered: %v\n%s", name, r, debug.Stack())
+			}
+		}()
+		fn()
+	}()
 }

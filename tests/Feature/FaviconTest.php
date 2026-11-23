@@ -57,10 +57,24 @@ class FaviconTest extends TestCase
     {
         // ?v=N cache-busts each rebuilt mark — the same URL kept serving the
         // previous bytes (owner-supplied artwork is now version 3).
+        // Root-relative (no asset()): the panel bakes the URL at register()
+        // time, before forceScheme('https') — asset() baked http:// on prod.
         $this->actingAs($this->adminUser())
             ->get('/admin')
             ->assertSuccessful()
-            ->assertSeeHtml('<img src="'.asset('images/favicon.png').'?v=3"', false);
+            ->assertSeeHtml('<img src="/images/favicon.png?v=3"', false);
+    }
+
+    public function test_the_favicon_link_is_root_relative(): void
+    {
+        // Mixed-content guard (prod 2026-11-23): the link must not bake an
+        // absolute scheme — the browser inherits the page's scheme.
+        // ?v=4 (this branch) is the newer cache-buster than main's ?v=3.
+        $this->actingAs($this->adminUser())
+            ->get('/admin')
+            ->assertSuccessful()
+            ->assertSeeHtml('<link rel="icon" href="/images/favicon.png?v=4"', false)
+            ->assertDontSeeHtml('<link rel="icon" href="http', false);
     }
 
     /**

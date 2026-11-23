@@ -1,6 +1,7 @@
 <?php
 
 declare(strict_types=1);
+
 namespace App\Console\Commands;
 
 use App\Services\Skills\SkillImportService;
@@ -58,7 +59,9 @@ class ImportSecuritySkillsCommand extends Command
 
         $this->info("Cloning {$repoUrl}...");
 
-        $exitCode = $this->execClone("git clone --depth 1 {$repoUrl} {$tempDir}");
+        // W10 fix: shell-escape every interpolated value — $repoUrl is a
+        // hand-typed CLI option and shell metacharacters in it used to run.
+        $exitCode = $this->execClone('git clone --depth 1 '.escapeshellarg($repoUrl).' '.escapeshellarg($tempDir));
 
         if ($exitCode !== 0) {
             $this->error('Failed to clone repository. Use --path to specify a local copy.');
@@ -68,7 +71,7 @@ class ImportSecuritySkillsCommand extends Command
 
         register_shutdown_function(function () use ($tempDir) {
             if (is_dir($tempDir)) {
-                exec("rm -rf {$tempDir}");
+                exec('rm -rf '.escapeshellarg($tempDir));
             }
         });
 

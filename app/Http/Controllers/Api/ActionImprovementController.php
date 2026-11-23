@@ -122,13 +122,21 @@ class ActionImprovementController extends Controller
         $data = $request->validate([
             'status' => ['nullable', 'string', 'in:'.implode(',', ActionImprovement::STATUSES)],
             'overdue' => ['nullable', 'boolean'],
+            'pending_approval' => ['nullable', 'boolean'],
             'pic' => ['nullable', 'email'],
             'incident_no' => ['nullable', 'string', 'max:40'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:100'],
             'offset' => ['nullable', 'integer', 'min:0'],
         ]);
 
-        $query = ActionImprovement::query()->with('incident:id,no,title');
+        $query = ActionImprovement::query()
+            ->with('incident:id,no,title')
+            ->withCount([
+                'evidence as pending_proof_count' => fn ($q) => $q
+                    ->whereNotNull('submitted_by')
+                    ->whereNull('approved_at'),
+            ])
+            ->whereHas('incident', fn ($q) => $q->applyUserYearAccess($request->user()));
 
         if (isset($data['status'])) {
             $query->where('status', $data['status']);
@@ -141,6 +149,10 @@ class ActionImprovementController extends Controller
             // open work with a due date before today. A null due date is TBD — never chased.
             $query->whereIn('status', ActionImprovement::openStatuses())
                 ->whereDate('due_date', '<', today());
+        }
+
+        if (! empty($data['pending_approval'])) {
+            $query->withPendingProof();
         }
 
         if (isset($data['pic'])) {

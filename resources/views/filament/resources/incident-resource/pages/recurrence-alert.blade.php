@@ -39,7 +39,10 @@
                         </div>
                     </x-slot>
                     <div class="prose prose-sm dark:prose-invert max-w-none text-sm leading-relaxed">
-                        {!! \Illuminate\Support\Str::markdown($aiAnalysis) !!}
+                        {{-- W1 fix: AI analysis carries incident-derived text — escape --}}
+                        {{-- raw HTML the same way the PDF blades do. Str::markdown --}}
+                        {{-- alone passes <img onerror> / javascript: links through. --}}
+                        {!! \App\Support\HtmlSanitizer::clean(\Illuminate\Support\Str::markdown($aiAnalysis)) !!}
                     </div>
                     <div class="flex items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
                         <x-filament::icon icon="heroicon-o-information-circle" class="w-3.5 h-3.5! text-gray-400!" />

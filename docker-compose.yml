@@ -57,7 +57,9 @@ services:
     volumes:
       - ./storage/dbdata:/var/lib/mysql
     ports:
-      - "33061:3306"
+      # W7 fix: bind to loopback only — the previous 0.0.0.0 mapping exposed
+      # MySQL (root/<DB_PASSWORD>) to the LAN on every deployment.
+      - "127.0.0.1:33061:3306"
     networks:
       - techrisk-network
     healthcheck:
@@ -75,7 +77,9 @@ services:
     container_name: techrisk-redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      # W7 fix: loopback only — Redis had NO requirepass; an open port meant
+      # unauthenticated read/write of sessions, cache and the queue.
+      - "127.0.0.1:6379:6379"
     volumes:
       - ./storage/redis:/data
     networks:
@@ -175,8 +179,9 @@ services:
     restart: unless-stopped
     depends_on:
       - nginx
-    env_file:
-      - .env
+    # W7 fix: no wholesale env_file — the whole .env (APP_KEY, DB creds) used
+    # to ride into the sidecar. Only the agent's own variables are passed,
+    # each resolved from the root .env by compose interpolation.
     environment:
       LLM_BASE_URL: ${AI_API_BASE_URL:-}
       LLM_API_KEY: ${AI_API_KEY:-}
@@ -188,6 +193,12 @@ services:
       AGENT_WEB_TOOLS: ${DINGTALK_WEB_TOOLS:-1}
       AGENT_SKILL_TOOLS: ${DINGTALK_SKILL_TOOLS:-1}
       DASHBOARD_API_BASE: http://nginx/api/v1
+      DASHBOARD_API_TOKEN: ${DASHBOARD_API_TOKEN:-}
+      DINGTALK_CLIENT_ID: ${DINGTALK_CLIENT_ID:-}
+      DINGTALK_CLIENT_SECRET: ${DINGTALK_CLIENT_SECRET:-}
+      DINGTALK_ALLOWLIST: ${DINGTALK_ALLOWLIST:-}
+      DINGTALK_BOT_NAMES: ${DINGTALK_BOT_NAMES:-}
+      DINGTALK_OPEN_API_HOST: ${DINGTALK_OPEN_API_HOST:-}
       # Internal listener (dashboard's Go engine POSTs /internal/run here) —
       # reachable only inside the compose network; empty token = disabled.
       AGENT_INTERNAL_ADDR: ":9091"

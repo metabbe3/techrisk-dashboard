@@ -8,6 +8,7 @@ use App\Filament\Resources\ApiTokenResource;
 use App\Models\User;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Crypt;
 
 class CreateApiToken extends CreateRecord
 {
@@ -37,7 +38,9 @@ class CreateApiToken extends CreateRecord
             'allowed_endpoints' => ! empty($allowedEndpoints) ? $allowedEndpoints : null,
         ])->save();
 
-        session(['api_token_plain_'.$token->id => $newToken->plainTextToken]);
+        // W8: the plaintext rides the session only until first view — store
+        // it encrypted (DB-backed sessions previously parked it plaintext).
+        session(['api_token_plain_'.$token->id => Crypt::encryptString($newToken->plainTextToken)]);
 
         return $token;
     }

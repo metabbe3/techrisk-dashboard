@@ -7,10 +7,12 @@ use App\Http\Controllers\Api\Ai\ExportController;
 use App\Http\Controllers\Api\CorpusController;
 use App\Http\Controllers\Api\GovernanceController;
 use App\Http\Controllers\Api\IncidentController;
+use App\Http\Controllers\Api\InvestigationFormController;
 use App\Http\Controllers\Api\NotionController;
 use App\Http\Controllers\Api\SkillController;
 use App\Http\Controllers\Api\StatsController;
 use App\Http\Controllers\Api\TokenController;
+use App\Http\Controllers\Api\WeeklyReportController;
 use Illuminate\Support\Facades\Route;
 
 // Health check endpoint - no auth required
@@ -112,6 +114,15 @@ Route::middleware(['auth:sanctum', 'check.api.access', 'check.api.token.access']
     // output (one-logic rule: zero new metric math on the Go side).
     Route::prefix('v1')->middleware('throttle:agent')->group(function () {
         Route::get('governance', [GovernanceController::class, 'index']);
+    });
+
+    // Weekly report for the DingTalk agent — week counts verbatim from
+    // WeeklyDataService (the Filament Weekly Report page's builder),
+    // incident rows as the one compact list projection. Rate limit editable
+    // in Admin → API Settings.
+    Route::prefix('v1')->middleware('throttle:agent')->group(function () {
+        Route::get('weekly-report', [WeeklyReportController::class, 'index']);
+        Route::get('investigation-forms', [InvestigationFormController::class, 'index']);
     });
 
     // Agent skill library (Filament → Skills) + War Room personas — read-only,

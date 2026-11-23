@@ -73,7 +73,7 @@ class ExportActionSchema
                 ->descriptions([
                     'executive' => 'Summary sheet with KPIs and native Excel charts, plus a clean data sheet.',
                     'quarterly_report' => 'All Cases / Recovered / Fund Loss / Non Fund Loss tabs plus one tab per quarter (only that quarter\'s incidents). Always the full filtered set — the name says quarterly, the scope is whatever the table filters yield.',
-                    'all_tabs' => '14 sheets mirroring the table tabs, incl. Issues metrics.',
+                    'all_tabs' => '15 sheets mirroring the table tabs, incl. Issues metrics.',
                     'group_by' => 'Pick a dimension: business category, root cause, division, PIC, severity, incident type. Each value gets its own sheet (multi-category incidents appear in each). Summary sheet has per-group MTTR/MTBF.',
                     'custom' => 'Full control: choose columns, XLSX or CSV.',
                 ]),

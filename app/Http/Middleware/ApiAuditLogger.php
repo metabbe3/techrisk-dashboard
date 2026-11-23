@@ -14,14 +14,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ApiAuditLogger
 {
-    private const SKIP_ENDPOINTS = [
-        'health',
-        'metrics',
-        'ping',
-    ];
-
-    private const MAX_BODY_SIZE = 10240; // 10KB
-
     public function __construct(
         private readonly TraceIdService $traceIdService,
         private readonly SensitiveDataFilter $dataFilter
@@ -102,9 +94,10 @@ class ApiAuditLogger
 
         $stripped = str_starts_with($path, 'api/') ? substr($path, 4) : $path;
 
-        return in_array($stripped, self::SKIP_ENDPOINTS) ||
-               str_starts_with($stripped, 'health') ||
-               str_starts_with($stripped, 'metrics');
+        // Patterns come from config/api-audit.php (wildcard globs, e.g.
+        // 'health*') — the old hardcoded list ignored the config entirely.
+        return collect(config('api-audit.skip_endpoints', ['health*', 'metrics*', 'ping*']))
+            ->contains(fn (string $pattern) => \Illuminate\Support\Str::is($pattern, $stripped));
     }
 
     private function captureRequestData(Request $request, string $traceId): ApiAuditLogEntry
@@ -141,8 +134,9 @@ class ApiAuditLogger
         // Filter sensitive data
         $filtered = $this->filterSensitiveData($body);
 
-        // Truncate if too large
-        if (strlen((string) json_encode($filtered)) > self::MAX_BODY_SIZE) {
+        // Truncate if too large (config/api-audit.php max_body_size — was
+        // hardcoded 10KB, so API_AUDIT_MAX_BODY_SIZE had no effect)
+        if (strlen((string) json_encode($filtered)) > (int) config('api-audit.max_body_size', 10240)) {
             return ['_truncated' => true, '_size' => strlen((string) json_encode($body))];
         }
 
@@ -195,6 +189,12 @@ class ApiAuditLogger
     private function captureResponseContent(?array $decoded, string $rawContent): ?array
     {
         if (empty($rawContent)) {
+            return null;
+        }
+
+        // config/api-audit.php log_response_body (was ignored — bodies were
+        // always logged even with API_AUDIT_LOG_RESPONSE_BODY=false).
+        if (! (bool) config('api-audit.log_response_body', true)) {
             return null;
         }
 

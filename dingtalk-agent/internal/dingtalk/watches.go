@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 	"log"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
@@ -15,6 +15,7 @@ import (
 	"techrisk-dashboard/dingtalk-agent/internal/guardrail"
 	"techrisk-dashboard/dingtalk-agent/internal/llm"
 	"techrisk-dashboard/dingtalk-agent/internal/tools"
+	"techrisk-dashboard/dingtalk-agent/internal/util"
 	"techrisk-dashboard/dingtalk-agent/internal/watch"
 )
 
@@ -158,15 +159,16 @@ func (b *Bot) fireSweepRows(ctx context.Context, byNo map[string][]watch.Item, r
 			if !b.acquire(ctx) {
 				return
 			}
-			go func(it watch.Item, old, new string) {
+			it, old, status := it, old, row.Status
+			util.Go("watch-fire", func() {
 				// A watch that just fired reports on a DETACHED ctx: the
 				// status is already persisted, and a deploy's SIGTERM used
 				// to cancel the turn mid-answer — notification lost. The
 				// timeout bounds a hung loop.
 				fireCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 360*time.Second)
 				defer cancel()
-				b.fireWatch(fireCtx, it, old, new)
-			}(it, old, row.Status)
+				b.fireWatch(fireCtx, it, old, status)
+			})
 		}
 	}
 }

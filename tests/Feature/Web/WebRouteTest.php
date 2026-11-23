@@ -95,16 +95,24 @@ class WebRouteTest extends TestCase
 
     public function test_docs_openapi_returns_404_when_file_missing(): void
     {
-        $response = $this->get('/docs.openapi');
+        // W8 fix: the docs routes require auth now (were anonymous).
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)->get('/docs.openapi');
 
         $response->assertStatus(404);
     }
 
+    public function test_docs_openapi_redirects_guests(): void
+    {
+        $this->get('/docs.openapi')->assertRedirect();
+    }
+
     public function test_docs_openapi_returns_yaml_when_file_exists(): void
     {
+        $user = User::factory()->create();
         $this->createFakeOpenApiFile();
 
-        $response = $this->get('/docs.openapi');
+        $response = $this->actingAs($user)->get('/docs.openapi');
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'application/yaml');
@@ -112,8 +120,9 @@ class WebRouteTest extends TestCase
 
     public function test_docs_openapi_contains_openapi_structure(): void
     {
+        $user = User::factory()->create();
         $this->createFakeOpenApiFile();
-        $this->get('/docs.openapi')->assertStatus(200);
+        $this->actingAs($user)->get('/docs.openapi')->assertStatus(200);
 
         $content = file_get_contents($this->openApiPath);
         $this->assertStringContainsString('openapi:', $content);
@@ -126,16 +135,23 @@ class WebRouteTest extends TestCase
 
     public function test_docs_postman_returns_404_when_file_missing(): void
     {
-        $response = $this->get('/docs.postman');
+        $user = User::factory()->create();
+        $response = $this->actingAs($user)->get('/docs.postman');
 
         $response->assertStatus(404);
     }
 
+    public function test_docs_postman_redirects_guests(): void
+    {
+        $this->get('/docs.postman')->assertRedirect();
+    }
+
     public function test_docs_postman_returns_json_when_file_exists(): void
     {
+        $user = User::factory()->create();
         $this->createFakePostmanFile();
 
-        $response = $this->get('/docs.postman');
+        $response = $this->actingAs($user)->get('/docs.postman');
 
         $response->assertStatus(200);
         $response->assertHeader('Content-Type', 'application/json');
@@ -143,8 +159,9 @@ class WebRouteTest extends TestCase
 
     public function test_docs_postman_contains_postman_structure(): void
     {
+        $user = User::factory()->create();
         $this->createFakePostmanFile();
-        $this->get('/docs.postman')->assertStatus(200);
+        $this->actingAs($user)->get('/docs.postman')->assertStatus(200);
 
         $content = json_decode(file_get_contents($this->postmanPath), true);
         $this->assertNotNull($content, 'Response should be valid JSON');
