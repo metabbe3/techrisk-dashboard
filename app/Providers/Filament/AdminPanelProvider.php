@@ -38,14 +38,19 @@ class AdminPanelProvider extends PanelProvider
             // .fi-logo rule in app.css centers the pair. NOTE: a plain string
             // is treated as an image PATH (dropped into src="") — it must be
             // an Htmlable or the markup renders as a broken-image alt text.
-            ->brandLogo(new \Illuminate\Support\HtmlString('<img src="'.asset('images/favicon.png').'?v=3" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
+            // Root-relative URLs (no asset()): the panel config bakes these at
+            // register() time — before AppServiceProvider::boot()'s
+            // URL::forceScheme('https') — so asset() produced http:// behind
+            // the TLS proxy and browsers blocked the favicon as mixed content
+            // (prod 2026-11-23). A root-relative path inherits the page scheme.
+            ->brandLogo(new \Illuminate\Support\HtmlString('<img src="/images/favicon.png?v=3" alt="DANA logo" class="h-8 w-8"><span>TechRisk Portal</span>'))
             ->brandLogoHeight('2rem')
             // Owner 2026-11-17: the browser tab showed the default icon —
             // public/favicon.ico was an empty file. DANA logo, square-cropped
             // from the source artwork (public/images/favicon.png); the .ico
             // covers the browser's default /favicon.ico request (Safari).
             // ?v=3: the same URL served the dark-fringed rebuild — bust it.
-            ->favicon(asset('images/favicon.png').'?v=3')
+            ->favicon('/images/favicon.png?v=3')
             // Sidebar geometry (open 15rem / rail 4.5rem) is owned by the
             // app.css redesign block (main a0c3e30) — no provider width
             // overrides, or the two fight at different layers.
@@ -205,7 +210,7 @@ class AdminPanelProvider extends PanelProvider
                     .'</div>'
                     .'<script>'
                     .'if (! window.trCalendar) { window.trCalendar = function () { return {'
-                    .' open: false, cursor: null, today: new Date(),'
+                    .' open: false, cursor: new Date(), today: new Date(),' // cursor pre-seeded: x-show evaluates label()/cells() at mount — a null cursor throws TypeError on every page load (prod 2026-11-23)
                     .' toggle() { this.open = ! this.open; if (this.open && ! this.cursor) this.cursor = new Date() },'
                     .' label() { return this.cursor.toLocaleString("en-US", { month: "long", year: "numeric" }) },'
                     .' shift(n) { this.cursor = new Date(this.cursor.getFullYear(), this.cursor.getMonth() + n, 1) },'
