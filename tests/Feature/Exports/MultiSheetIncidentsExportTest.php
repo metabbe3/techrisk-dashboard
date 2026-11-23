@@ -10,6 +10,7 @@ use App\Exports\Sheets\IssuesMetricSheetExport;
 use App\Filament\Actions\ExportActionSchema;
 use App\Models\Incident;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Maatwebsite\Excel\Facades\Excel;
 use Tests\TestCase;
 
 /**
@@ -107,5 +108,59 @@ class MultiSheetIncidentsExportTest extends TestCase
         $this->assertSame('Total Cases', $ws->getCell('A4')->getValue());
         $this->assertSame(1, $ws->getCell('B4')->getValue());
         $this->assertSame('Rp 1,500,000', $ws->getCell('B3')->getFormattedValue());
+    }
+
+    /**
+     * PROD 500 (2026-11-23): ListIncidents hands the table query (withCount +
+     * withSum sub-incident subqueries, PROJ-022) to the exports, and the
+     * footer's grouped stats selectRaw()ed ON TOP of those columns — MySQL
+     * ONLY_FULL_GROUP_BY rejects `SELECT incidents.*, (subs), severity,
+     * COUNT(*) ... GROUP BY severity` (error 1055). SQLite can't see it, so
+     * pin the SQL SHAPE: no grouped statement may inherit the caller's
+     * select columns.
+     */
+    public function test_grouped_footer_stats_do_not_inherit_the_table_select_columns(): void
+    {
+        Incident::factory()->createQuietly(['classification' => 'Incident', 'severity' => 'P1', 'incident_date' => '2026-01-10 10:00', 'recovered_fund' => 100]);
+
+        // The table query's exact PROJ-022 shape (IncidentResource::table()).
+        $query = ExportActionSchema::applyFilters(Incident::query(), [])
+            ->withCount('subIncidents')
+            ->withSum('subIncidents', 'potential_fund_loss')
+            ->withSum('subIncidents', 'recovered_fund')
+            ->withSum('subIncidents', 'fund_loss');
+
+        $export = new MultiSheetIncidentsExport(
+            $query,
+            array_values(ExportActionSchema::columnOptions()),
+            array_keys(ExportActionSchema::columnOptions())
+        );
+
+        $connection = $query->getConnection();
+        $connection->enableQueryLog();
+        try {
+            Excel::store($export, 'testing/footer-sql-shape.xlsx', 'local');
+        } finally {
+            $grouped = collect($connection->getQueryLog())
+                ->pluck('query')
+                ->filter(fn (string $sql) => str_contains(strtolower($sql), 'group by'));
+            $connection->disableQueryLog();
+        }
+
+        // The footer's severity + fund_status plucks must actually have run.
+        $this->assertNotEmpty($grouped);
+
+        foreach ($grouped as $sql) {
+            $this->assertStringNotContainsString(
+                'sub_incidents_count',
+                $sql,
+                "A grouped footer aggregate inherited the table's withCount column: {$sql}"
+            );
+            $this->assertStringNotContainsString(
+                'sub_incidents_sum',
+                $sql,
+                "A grouped footer aggregate inherited the table's withSum column: {$sql}"
+            );
+        }
     }
 }
