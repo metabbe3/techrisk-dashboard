@@ -66,6 +66,14 @@ Schedule::call(fn () => app(\App\Services\Ai\ChatAttachmentService::class)->clea
     ->dailyAt('03:10')
     ->description('Delete chat attachment files older than 24h');
 
+// DOHA fund-loss ticket mirror (read-only, owner 2026-11-23) — incremental
+// every 15 min via updatedSince watermark, weekly full re-read (drops local
+// rows DOHA no longer returns; recipe: doha_temp/DOHA API Integration Guide).
+Schedule::command('doha:sync-tickets')->everyFifteenMinutes()->withoutOverlapping()
+    ->description('Mirror DOHA fund-loss tickets (incremental, updatedSince watermark)');
+Schedule::command('doha:sync-tickets --full')->weeklyOn(0, '03:00')->withoutOverlapping()
+    ->description('Weekly DOHA full re-read — drops local tickets DOHA no longer returns');
+
 // Scheduled report templates — one schedule per template, by cadence. Wrapped
 // in a try/catch because this file loads at console-kernel boot (including the
 // `artisan test` runner boot, which happens before the testing env applies, and
