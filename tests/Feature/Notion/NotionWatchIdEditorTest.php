@@ -49,9 +49,11 @@ class NotionWatchIdEditorTest extends TestCase
         // this section's row must stay a single one. PROJ-025 merged the
         // settings pages: the AI tab's Sync-from-Gateway/Health actions row
         // also renders (hidden) in the page HTML — a watch-row split would
-        // push this to 4 and still fail.
+        // push this to 4 and still fail. PROJ-030 (2026-11-24) added the
+        // DOHA tab with its own Sync now row — 4 is the new deliberate count;
+        // a FIFTH row means some section's actions split again.
         $this->assertSame(
-            3,
+            4,
             substr_count($this->settingsPage()->html(), 'fi-fo-actions'),
         );
     }
