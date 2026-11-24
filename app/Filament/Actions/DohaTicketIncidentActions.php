@@ -15,8 +15,11 @@ use Filament\Notifications\Notification;
  * The bridge between a DOHA ticket and a portal Incident (owner 2026-11-23):
  * an admin may create an Incident pre-filled from the ticket, or link the
  * ticket to an existing one — nothing automatic, the mirror itself never
- * writes Incidents. Shared by the DOHA Tickets list rows and the ticket view
- * page so the surfaces cannot drift. Gated on 'manage incidents'.
+ * writes Incidents. View-page-header ONLY (Filament page actions are a
+ * different class than table row actions — the row variant 500'd on
+ * Action::table; keep them off the list rows). The visible() closures ARE
+ * the server-side gate (enforced on mountAction/callMountedAction — pinned
+ * by DohaBridgeActionsAuthorizationTest); they carry 'manage incidents'.
  */
 class DohaTicketIncidentActions
 {
