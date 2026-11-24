@@ -536,6 +536,17 @@
    runtime: --sticky-expand-w from the expand cell, --sticky-col-id-w from
    the ID cell (see app.js syncStickyIdWidths). On tables without the
    expand column (Issues, others), --sticky-expand-w stays 0. */
+
+/* Owner 2026-11-24: FIXED layout on the incidents table. Under the default
+   auto layout the browser hands the expand column a large share of the
+   table's leftover width (~122px for a 28px chevron) and width overrides on
+   ONE cell can never win — the dead gap between the chevron and the ID
+   column. Fixed layout HONORS explicit widths (expand 2.75rem, ID 80px) and
+   distributes leftovers to the unwidened columns, which is the intended
+   "other columns adjust" behavior. Scoped: other tables unaffected. */
+.fi-ta-table:has(.sticky-col-id) {
+    table-layout: fixed;
+}
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-expand,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-expand:not([colspan]) {
     position: sticky;

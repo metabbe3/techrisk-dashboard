@@ -19,6 +19,12 @@ class ViewDohaTicket extends ViewRecord
 {
     protected static string $resource = DohaTicketResource::class;
 
+    /** Owner 2026-11-24: the page title IS the ticket's title. */
+    public function getTitle(): string
+    {
+        return (string) $this->getRecord()->title;
+    }
+
     public function infolist(Infolist $infolist): Infolist
     {
         return $infolist->schema([
@@ -105,11 +111,19 @@ class ViewDohaTicket extends ViewRecord
 
     protected function getHeaderActions(): array
     {
+        // Owner 2026-11-24: every action lives inside the "..." kebab
+        // (three-lines ActionGroup) — the incident page's pattern.
         return [
-            DohaTicketIncidentActions::createIncidentAction(),
-            DohaTicketIncidentActions::linkAction(),
-            DohaTicketIncidentActions::unlinkAction(),
-            DohaSyncAction::make(),
+            \Filament\Actions\ActionGroup::make([
+                DohaTicketIncidentActions::createIncidentAction(),
+                DohaTicketIncidentActions::linkAction(),
+                DohaTicketIncidentActions::unlinkAction(),
+                DohaSyncAction::make(),
+            ])
+                ->iconButton()
+                ->icon('heroicon-m-bars-3')
+                ->color('gray')
+                ->tooltip('More actions'),
         ];
     }
 }

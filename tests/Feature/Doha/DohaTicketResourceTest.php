@@ -140,6 +140,18 @@ class DohaTicketResourceTest extends TestCase
             ->assertSee('2 updates');
     }
 
+    /** Owner 2026-11-24: the detail page title is the ticket's own title. */
+    public function test_view_page_title_is_the_ticket_title(): void
+    {
+        $ticket = DohaTicket::factory()->create(['title' => 'CIMB Topup VA - Unsettled']);
+
+        $component = Livewire::actingAs($this->permittedUser())
+            ->test(ViewDohaTicket::class, ['record' => $ticket->id]);
+
+        $this->assertSame('CIMB Topup VA - Unsettled', $component->instance()->getTitle());
+        $this->assertNotSame('View DOHA Ticket', $component->instance()->getTitle());
+    }
+
     /** Owner 2026-11-24: create-incident sits in the kebab right of View. */
     public function test_list_rows_offer_create_incident_for_admins_only(): void
     {
