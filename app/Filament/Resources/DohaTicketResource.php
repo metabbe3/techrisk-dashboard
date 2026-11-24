@@ -51,7 +51,9 @@ class DohaTicketResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
-            ->defaultSort('doha_updated_at', 'desc')
+            // Owner 2026-11-24: newest DOHA transaction first (the ticket's
+            // own incident date — not the sync time).
+            ->defaultSort('transaction_date', 'desc')
             ->columns([
                 TextColumn::make('ref')
                     ->searchable()
@@ -132,10 +134,13 @@ class DohaTicketResource extends Resource
                     }),
             ])
             ->actions([
-                // Bridge actions (create/link/unlink incident) live on the
-                // ticket view page header — page actions use a different
-                // Filament class than row actions, one surface avoids drift.
+                // View + the bridge kebab ("...") right of it (owner
+                // 2026-11-24). Row actions are Tables\Actions — page Actions
+                // here would 500 on Action::table.
                 Tables\Actions\ViewAction::make(),
+                Tables\Actions\ActionGroup::make([
+                    \App\Filament\Actions\DohaTicketIncidentActions::createIncidentRowAction(),
+                ]),
             ])
             ->bulkActions([])
             ->emptyStateHeading('No DOHA tickets')

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Doha;
 
 use App\Filament\Resources\DohaTicketResource;
+use App\Filament\Resources\DohaTicketResource\Pages\ListDohaTickets;
 use App\Filament\Resources\DohaTicketResource\Pages\ViewDohaTicket;
 use App\Models\DohaTicket;
 use App\Models\DohaTicketChange;
@@ -103,5 +104,38 @@ class DohaTicketResourceTest extends TestCase
             ->assertSee('INC-0042')
             ->assertSee('Ongoing')
             ->assertSee('Closed');
+    }
+
+    /** Owner 2026-11-24: the list defaults to newest DOHA transaction first. */
+    public function test_list_default_sorts_by_latest_transaction_date(): void
+    {
+        $older = DohaTicket::factory()->create([
+            'ref' => 'INC-OLDER', 'transaction_date' => '2026-11-10',
+        ]);
+        $newer = DohaTicket::factory()->create([
+            'ref' => 'INC-NEWER', 'transaction_date' => '2026-11-20',
+        ]);
+
+        Livewire::actingAs($this->permittedUser())
+            ->test(ListDohaTickets::class)
+            ->assertSeeInOrder(['INC-NEWER', 'INC-OLDER']);
+    }
+
+    /** Owner 2026-11-24: create-incident sits in the kebab right of View. */
+    public function test_list_rows_offer_create_incident_for_admins_only(): void
+    {
+        Permission::firstOrCreate(['name' => 'manage incidents']);
+        $ticket = DohaTicket::factory()->unlinked()->create();
+        $admin = $this->permittedUser();
+        $admin->givePermissionTo('manage incidents');
+
+        Livewire::actingAs($admin)
+            ->test(ListDohaTickets::class)
+            ->assertTableActionVisible('createIncident', $ticket);
+
+        $viewer = $this->permittedUser();
+        Livewire::actingAs($viewer)
+            ->test(ListDohaTickets::class)
+            ->assertTableActionHidden('createIncident', $ticket);
     }
 }

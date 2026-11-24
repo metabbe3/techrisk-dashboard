@@ -794,7 +794,7 @@ class SystemSettings extends Page implements HasForms
             ->icon('heroicon-o-banknotes')
             ->schema([
                 Section::make('Connection')
-                    ->description('Read-only mirror of DOHA fund-loss tickets (the TS ticketing tool). The sync runs every 15 minutes plus a weekly full re-read on Sunday 03:00.')
+                    ->description('Read-only mirror of DOHA fund-loss tickets (the TS ticketing tool). The sync runs daily at 08:00 (WIB) plus a weekly full re-read on Sunday 03:00.')
                     ->schema([
                         Placeholder::make('doha_status')
                             ->label('Status')
@@ -839,7 +839,7 @@ class SystemSettings extends Page implements HasForms
         $at = Setting::get(DohaSyncService::LAST_SYNC_AT_KEY);
 
         if (blank($at)) {
-            return 'Not synced yet — the scheduler runs every 15 minutes once the token is set.';
+            return 'Not synced yet — the scheduler runs daily at 08:00 (WIB) once the token is set.';
         }
 
         return sprintf('%s — %s', \Illuminate\Support\Carbon::parse($at)->format('Y-m-d H:i'), Setting::get(DohaSyncService::LAST_SYNC_STATUS_KEY, ''));

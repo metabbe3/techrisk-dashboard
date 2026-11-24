@@ -36,6 +36,7 @@ class DohaIncidentLinkTest extends TestCase
         $this->user->givePermissionTo(['access dashboard', 'view doha tickets', 'manage incidents', 'view incidents']);
 
         Category::create(['type' => Category::TYPE_RESPONSIBLE_TEAM, 'name' => 'Tech Risk']);
+        Category::create(['type' => Category::TYPE_BUSINESS_CATEGORY, 'name' => 'Internal']);
     }
 
     private function dohaTicket(): DohaTicket
@@ -48,6 +49,7 @@ class DohaIncidentLinkTest extends TestCase
             'team' => 'Tech Risk',
             'service_impact' => 'Payment channel down',
             'root_cause' => 'DB connection pool exhausted',
+            'business_type' => 'Internal',
             'recovery_action' => 'Failover to replica',
             'follow_up_action' => 'Add connection-pool alert',
             'priority' => 'Critical',
@@ -56,6 +58,11 @@ class DohaIncidentLinkTest extends TestCase
             'recovered' => 500000,
             'transaction_date' => '2026-11-20',
             'transaction_time' => '08:30',
+            'created_by' => 'doha.user1',
+            'created_by_edit' => 'doha.user2',
+            // 2026-11-20 04:00 UTC = 11:00 WIB — same day as the transaction,
+            // so discovered_at >= incident_date (the form's rule).
+            'doha_created_at' => '2026-11-20 04:00:00',
         ]);
     }
 
@@ -70,26 +77,37 @@ class DohaIncidentLinkTest extends TestCase
         $this->assertNotNull($component->instance(), 'instance null on initial render');
 
         $component->assertFormSet([
-                'title' => 'Timeout to database',
-                'summary' => "Imported from DOHA ticket INC-0042.\n\nPayment channel down",
-                'root_cause' => 'DB connection pool exhausted',
-                'remark' => 'Failover to replica',
-                'improvements' => 'Add connection-pool alert',
-                // The money fields' afterStateHydrated renders id-ID for
-                // display; parse() turns them back into numbers on save.
-                'potential_fund_loss' => '1.500.000,00',
-                'recovered_fund' => '500.000,00',
-                'severity' => 'P1',
-                'classification' => 'Incident',
-                'responsible_team' => ['Tech Risk'],
-                'incident_date' => '2026-11-20 08:30:00',
-            ]);
+            'title' => 'Timeout to database',
+            'summary' => "Imported from DOHA ticket INC-0042.\n\nPayment channel down",
+            'root_cause' => 'DB connection pool exhausted',
+            // Owner 2026-11-24: recovery + follow-up + people all land in
+            // remarks; improvements is no longer prefilled.
+            'remark' => "Recovery action:\nFailover to replica\n\nFollow-up action:\nAdd connection-pool alert\n\nCreated by doha.user1, last edited by doha.user2",
+            'improvements' => null,
+            // The money fields' afterStateHydrated renders id-ID for
+            // display; parse() turns them back into numbers on save.
+            'potential_fund_loss' => '1.500.000,00',
+            'recovered_fund' => '500.000,00',
+            'severity' => 'P1',
+            'classification' => 'Incident',
+            'responsible_team' => ['Tech Risk'],
+            'business_category' => ['Internal'],
+            'discovered_at' => '2026-11-20 11:00:00',
+            'entry_date_tech_risk' => '2026-11-20 00:00:00',
+            'incident_date' => '2026-11-20 08:30:00',
+        ]);
     }
 
     public function test_unmapped_or_free_text_values_do_not_poison_the_prefill(): void
     {
         $ticket = $this->dohaTicket();
-        $ticket->update(['priority' => 'Urgent', 'team' => 'Unknown Team']);
+        $ticket->update([
+            'priority' => 'Urgent',
+            'team' => 'Unknown Team',
+            'business_type' => 'Unknown Business',
+            'recovery_action' => null,
+            'follow_up_action' => null,
+        ]);
 
         Livewire::withQueryParams(['doha' => $ticket->doha_id])
             ->actingAs($this->user)
@@ -97,6 +115,10 @@ class DohaIncidentLinkTest extends TestCase
             ->assertFormSet([
                 'severity' => null,
                 'responsible_team' => [],
+                'business_category' => [],
+                // Only the people line remains when both action narratives
+                // are empty.
+                'remark' => 'Created by doha.user1, last edited by doha.user2',
             ]);
     }
 

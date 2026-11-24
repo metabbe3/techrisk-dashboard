@@ -66,11 +66,12 @@ Schedule::call(fn () => app(\App\Services\Ai\ChatAttachmentService::class)->clea
     ->dailyAt('03:10')
     ->description('Delete chat attachment files older than 24h');
 
-// DOHA fund-loss ticket mirror (read-only, owner 2026-11-23) — incremental
-// every 15 min via updatedSince watermark, weekly full re-read (drops local
-// rows DOHA no longer returns; recipe: doha_temp/DOHA API Integration Guide).
-Schedule::command('doha:sync-tickets')->everyFifteenMinutes()->withoutOverlapping()
-    ->description('Mirror DOHA fund-loss tickets (incremental, updatedSince watermark)');
+// DOHA fund-loss ticket mirror (read-only, owner 2026-11-23; cadence owner
+// 2026-11-24: daily 08:00 WIB incremental via updatedSince watermark, weekly
+// full re-read Sunday 03:00 — drops local rows DOHA no longer returns; recipe:
+// doha_temp/DOHA API Integration Guide).
+Schedule::command('doha:sync-tickets')->dailyAt('08:00')->withoutOverlapping()
+    ->description('Mirror DOHA fund-loss tickets (daily 08:00 WIB, updatedSince watermark)');
 Schedule::command('doha:sync-tickets --full')->weeklyOn(0, '03:00')->withoutOverlapping()
     ->description('Weekly DOHA full re-read — drops local tickets DOHA no longer returns');
 

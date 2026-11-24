@@ -15,11 +15,13 @@ use Filament\Notifications\Notification;
  * The bridge between a DOHA ticket and a portal Incident (owner 2026-11-23):
  * an admin may create an Incident pre-filled from the ticket, or link the
  * ticket to an existing one — nothing automatic, the mirror itself never
- * writes Incidents. View-page-header ONLY (Filament page actions are a
- * different class than table row actions — the row variant 500'd on
- * Action::table; keep them off the list rows). The visible() closures ARE
- * the server-side gate (enforced on mountAction/callMountedAction — pinned
- * by DohaBridgeActionsAuthorizationTest); they carry 'manage incidents'.
+ * writes Incidents. The page-header builders are View-page only; the *Row
+ * builders are the TABLE-row variants for the DOHA Tickets list kebab
+ * (rev 2026-11-24) — Filament PAGE actions ≠ TABLE actions (a page Action in
+ * ->actions() 500s on Action::table). Both families carry the same logic;
+ * the visible() closures ARE the server-side gate (enforced on
+ * mountAction/callMountedAction — pinned by
+ * DohaBridgeActionsAuthorizationTest); they carry 'manage incidents'.
  */
 class DohaTicketIncidentActions
 {
@@ -31,6 +33,20 @@ class DohaTicketIncidentActions
     public static function createIncidentAction(): Action
     {
         return Action::make('createIncident')
+            ->label('Create Incident from this ticket')
+            ->icon('heroicon-o-plus-circle')
+            ->color('primary')
+            ->visible(fn (DohaTicket $record): bool => $record->incident_id === null && self::canManage())
+            ->url(fn (DohaTicket $record): string => IncidentResource::getUrl('create', ['doha' => $record->doha_id]));
+    }
+
+    /**
+     * The TABLE-row variant for the DOHA Tickets list kebab (owner
+     * 2026-11-24: "tombol create incident ada di tombol '...'" next to View).
+     */
+    public static function createIncidentRowAction(): \Filament\Tables\Actions\Action
+    {
+        return \Filament\Tables\Actions\Action::make('createIncident')
             ->label('Create Incident from this ticket')
             ->icon('heroicon-o-plus-circle')
             ->color('primary')

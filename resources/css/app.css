@@ -577,14 +577,19 @@
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
     position: sticky;
-    left: var(--sticky-expand-w, 0px);
+    /* Owner 2026-11-24: the ID hugged the expand cell's FULL width (~122px),
+       leaving a dead gap between the chevron and the ID. The expand cell is
+       visually compact (2.75rem — CSS width above), so the ID now sticks at
+       the compact offset and PAINTS OVER the layout-assigned tail (the ID is
+       later in DOM, same z-index). The title offset below follows suit. */
+    left: 2.75rem;
     z-index: 2;
     background: #fff;
 }
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
     position: sticky;
-    left: calc(var(--sticky-expand-w, 0px) + var(--sticky-col-id-w, 80px));
+    left: calc(2.75rem + var(--sticky-col-id-w, 80px));
     z-index: 2;
     background: #fff;
     box-shadow: 6px 0 8px -6px rgba(15, 23, 42, .18);

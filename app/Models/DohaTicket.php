@@ -94,9 +94,10 @@ class DohaTicket extends Model
 
     /**
      * The admin-completed defaults for "Create Incident from this ticket"
-     * (owner 2026-11-23 mapping). fund_status / incident_type /
-     * incident_source are deliberately NOT prefilled — the DOHA values stay
-     * visible on the ticket page and the admin picks the portal ones.
+     * (owner 2026-11-24 mapping, replaces the 2026-11-23 cut). fund_status /
+     * incident_type / incident_source are deliberately NOT prefilled — the
+     * DOHA values stay visible on the ticket page and the admin picks the
+     * portal ones.
      */
     public function incidentPrefillAttributes(): array
     {
@@ -108,32 +109,58 @@ class DohaTicket extends Model
             default => null, // free text outside the usual scale — admin picks
         };
 
-        // responsible_team is an options select — never free text. Only
-        // prefill when the DOHA team ci-matches an existing option.
-        $teamOption = $this->team !== null
-            ? Category::query()
-                ->where('type', Category::TYPE_RESPONSIBLE_TEAM)
-                ->whereRaw('LOWER(name) = ?', [strtolower($this->team)])
-                ->value('name')
-            : null;
+        // Option-select fields are never filled with free text — only when
+        // the DOHA value ci-matches an existing option.
+        $teamOption = $this->matchCategory($this->team, Category::TYPE_RESPONSIBLE_TEAM);
+        $businessOption = $this->matchCategory($this->business_type, Category::TYPE_BUSINESS_CATEGORY);
 
         $incidentDate = $this->transaction_date !== null
             ? $this->transaction_date->format('Y-m-d').' '.($this->transaction_time ?? '00:00').':00'
             : null;
 
+        $createdWib = $this->doha_created_at_wib;
+
+        // Remarks collects the three provenance blocks (owner 2026-11-24).
+        $remarkParts = [];
+        if (filled($this->recovery_action)) {
+            $remarkParts[] = "Recovery action:\n".$this->recovery_action;
+        }
+        if (filled($this->follow_up_action)) {
+            $remarkParts[] = "Follow-up action:\n".$this->follow_up_action;
+        }
+        if (filled($this->created_by) || filled($this->created_by_edit)) {
+            $remarkParts[] = 'Created by '.($this->created_by ?? '—')
+                .', last edited by '.($this->created_by_edit ?? '—');
+        }
+
         return [
             'title' => $this->title,
             'summary' => trim("Imported from DOHA ticket {$this->ref}.\n\n".$this->service_impact),
             'root_cause' => $this->root_cause,
-            'remark' => $this->recovery_action,
-            'improvements' => $this->follow_up_action,
+            'remark' => $remarkParts === [] ? null : implode("\n\n", $remarkParts),
             'potential_fund_loss' => $this->potential_loss,
             'recovered_fund' => $this->recovered,
             'severity' => $severity,
             'classification' => 'Incident', // owner: all fund-loss cases are incidents
             'responsible_team' => $teamOption !== null ? [$teamOption] : [],
+            'business_category' => $businessOption !== null ? [$businessOption] : [],
+            'discovered_at' => $createdWib?->format('Y-m-d H:i:s'),
+            'entry_date_tech_risk' => $createdWib !== null
+                ? $createdWib->format('Y-m-d')
+                : now()->format('Y-m-d'),
             'incident_date' => $incidentDate,
-            'entry_date_tech_risk' => now()->format('Y-m-d H:i:s'),
         ];
+    }
+
+    private function matchCategory(?string $value, string $type): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return Category::query()
+            ->where('type', $type)
+            ->whereRaw('LOWER(name) = ?', [strtolower($value)])
+            ->value('name');
     }
 }
