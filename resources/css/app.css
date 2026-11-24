@@ -3874,3 +3874,33 @@ html.tr-scroller {
 .tr-scroller::-webkit-scrollbar-thumb:hover {
     background: rgba(100, 116, 139, 0.85);
 }
+
+
+/* DOHA service-impact table (owner 2026-11-24, item 4). Custom CSS on
+   purpose: the Tailwind candidate scan in this build does not reliably pick
+   up new blade sources, so these must exist unconditionally. Hex only. */
+.tr-doha-table-wrap {
+    overflow-x: auto;
+}
+
+.tr-doha-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.tr-doha-table th,
+.tr-doha-table td {
+    border: 1px solid #d1d5db;
+    padding: 0.25rem 0.5rem;
+}
+
+.tr-doha-table th {
+    text-align: left;
+    font-weight: 600;
+}
+
+:root.dark .tr-doha-table th,
+:root.dark .tr-doha-table td {
+    border-color: #4b5563;
+}

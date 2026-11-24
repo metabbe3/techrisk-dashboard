@@ -104,6 +104,66 @@ class DohaTicketModelTest extends TestCase
         $this->assertTrue($ticket->changes->last()->is($older));
     }
 
+    /**
+     * Owner 2026-11-24 item 4: DOHA embeds TAB-separated tables in the
+     * service impact narrative — only THOSE blocks become HTML tables;
+     * prose with inline pipes stays prose (the 281-row live sweep: 5 tables,
+     * 276 prose).
+     */
+    public function test_service_impact_tab_table_renders_as_html_table(): void
+    {
+        $ticket = DohaTicket::factory()->make([
+            'service_impact' => "Total impacted:\ndate         transactions         amount\n2026-09-23\t70\t 18.388.677 \n2026-09-24\t14\t 1.916.500 \nTotal: 496 transactions | Rp 120.231.316",
+        ]);
+
+        $html = $ticket->serviceImpactToMarkdown();
+
+        $this->assertStringContainsString('<table', $html);
+        $this->assertStringContainsString('<thead>', $html);
+        $this->assertStringContainsString('>date<', $html);
+        $this->assertStringContainsString('>transactions<', $html);
+        $this->assertStringContainsString('>amount<', $html);
+        $this->assertStringContainsString('2026-09-23', $html);
+        $this->assertStringContainsString('18.388.677', $html);
+        // Prose above and below the table stays markdown text, not table.
+        $this->assertStringNotContainsString('Total impacted:', '<table');
+        $this->assertStringContainsString('Total impacted:', $html);
+        $this->assertStringContainsString('Total: 496 transactions | Rp 120.231.316', $html);
+    }
+
+    public function test_service_impact_pipe_prose_stays_prose(): void
+    {
+        // The dominant live shape (INC-1240, INC-0038, ...) — never a table.
+        $ticket = DohaTicket::factory()->make([
+            'service_impact' => 'Total: 26 Transactions | Amount: Rp 8.818.000',
+        ]);
+
+        $this->assertStringNotContainsString('<table', $ticket->serviceImpactToMarkdown());
+    }
+
+    public function test_service_impact_table_cells_are_escaped(): void
+    {
+        // 3 cells / 2 TABs — the live INC-1218 shape.
+        $ticket = DohaTicket::factory()->make([
+            'service_impact' => "date         transactions         note\n<script>alert(1)</script>\t70\t<script>alert(2)</script>\n2026-09-23\t70\tok",
+        ]);
+
+        $html = $ticket->serviceImpactToMarkdown();
+
+        $this->assertStringNotContainsString('<script>alert', $html);
+        $this->assertStringContainsString('&lt;script&gt;', $html);
+    }
+
+    public function test_service_impact_without_a_table_header_renders_headerless_table(): void
+    {
+        // INC-1213's stray single-tab spacing must not become a table.
+        $ticket = DohaTicket::factory()->make([
+            'service_impact' => "plain text line\nanother plain line",
+        ]);
+
+        $this->assertStringNotContainsString('<table', $ticket->serviceImpactToMarkdown());
+    }
+
     public function test_view_doha_tickets_permission_comes_from_the_seeder(): void
     {
         $this->seed(RolesAndPermissionsSeeder::class);

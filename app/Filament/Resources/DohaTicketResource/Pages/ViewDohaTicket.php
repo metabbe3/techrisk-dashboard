@@ -32,7 +32,12 @@ class ViewDohaTicket extends ViewRecord
                 TextEntry::make('business_type'),
                 TextEntry::make('priority')->badge(),
                 TextEntry::make('status')->badge(),
-                TextEntry::make('service_impact')->markdown()->columnSpanFull(),
+                // Item 4 (owner 2026-11-24): DOHA embeds TAB tables in the
+                // narrative — the model converts those blocks to real HTML
+                // tables; plain prose keeps flowing as markdown.
+                TextEntry::make('service_impact')
+                    ->state(fn (DohaTicket $record): string => $record->serviceImpactToMarkdown())
+                    ->markdown()->columnSpanFull(),
             ])->columns(2)->collapsible(),
 
             Section::make('Financial impact')->schema([

@@ -163,4 +163,101 @@ class DohaTicket extends Model
             ->whereRaw('LOWER(name) = ?', [strtolower($value)])
             ->value('name');
     }
+
+    /**
+     * Service impact rendered for the infolist (owner 2026-11-24, item 4).
+     * Verified against 281 live rows: DOHA sometimes embeds a TAB-separated
+     * table (5 rows), everything else is prose with inline pipes — prose
+     * must NOT be turned into a table. A table block = two or more
+     * consecutive lines each carrying >= 2 TABs; the line immediately above
+     * is the header when it splits into the same cell count on 2+ spaces
+     * ("date        transactions        amount"). Cells are escaped; the
+     * infolist's markdown -> sanitize pipeline runs afterwards.
+     */
+    public function serviceImpactToMarkdown(): string
+    {
+        $value = (string) $this->service_impact;
+
+        if (trim($value) === '') {
+            return '';
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', $value) ?: [];
+        $out = [];
+        $buffer = [];
+
+        $flush = function () use (&$buffer, &$out): void {
+            $text = trim(implode("\n", $buffer));
+            $buffer = [];
+
+            if ($text !== '') {
+                $out[] = $text;
+            }
+        };
+
+        $count = count($lines);
+
+        for ($i = 0; $i < $count;) {
+            if (substr_count($lines[$i], "\t") < 2) {
+                $buffer[] = $lines[$i];
+                $i++;
+
+                continue;
+            }
+
+            $firstRow = $this->splitTabRow($lines[$i]);
+
+            // Header = the last buffered line IF it splits on 2+ spaces into
+            // the same number of cells as the first row.
+            $header = null;
+            if ($buffer !== []) {
+                $candidate = preg_split('/\s{2,}/', trim((string) end($buffer))) ?: [];
+                if (count($candidate) === count($firstRow)) {
+                    $header = $candidate;
+                    array_pop($buffer);
+                }
+            }
+
+            $flush();
+
+            $rows = [];
+            while ($i < $count && substr_count($lines[$i], "\t") >= 2) {
+                $rows[] = $this->splitTabRow($lines[$i]);
+                $i++;
+            }
+
+            $out[] = $this->serviceImpactTableHtml($header, $rows);
+        }
+
+        $flush();
+
+        return implode("\n\n", $out);
+    }
+
+    /** @return list<string> */
+    private function splitTabRow(string $line): array
+    {
+        $cells = array_map('trim', explode("\t", $line));
+
+        while ($cells !== [] && end($cells) === '') {
+            array_pop($cells);
+        }
+
+        return $cells;
+    }
+
+    /**
+     * @param  list<string>|null  $header
+     * @param  list<list<string>>  $rows
+     */
+    private function serviceImpactTableHtml(?array $header, array $rows): string
+    {
+        // The markup lives in a Blade partial — app.css's @source set only
+        // scans blade/js, so Tailwind utilities embedded in a PHP string
+        // would never be generated.
+        return view('filament.doha.service-impact-table', [
+            'header' => $header,
+            'rows' => $rows,
+        ])->render();
+    }
 }
