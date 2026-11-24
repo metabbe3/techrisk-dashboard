@@ -66,3 +66,6 @@ skills-lock.json
 /docker-compose.override.yml
 
 /storage/redis/
+
+# DOHA API integration guide (local reference only, never ship)
+/doha_temp/
