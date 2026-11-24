@@ -121,6 +121,25 @@ class DohaTicketResourceTest extends TestCase
             ->assertSeeInOrder(['INC-NEWER', 'INC-OLDER']);
     }
 
+    /** Owner 2026-11-24 (item 7): tickets with recorded changes show a count. */
+    public function test_list_shows_the_update_count_badge(): void
+    {
+        $changed = DohaTicket::factory()->create(['ref' => 'INC-CHANGED']);
+        DohaTicketChange::create([
+            'doha_ticket_id' => $changed->id, 'field' => 'status',
+            'old_value' => 'Ongoing', 'new_value' => 'Closed',
+        ]);
+        DohaTicketChange::create([
+            'doha_ticket_id' => $changed->id, 'field' => 'potential_loss',
+            'old_value' => '1000000.00', 'new_value' => '2000000.00',
+        ]);
+        DohaTicket::factory()->create(['ref' => 'INC-QUIET']);
+
+        Livewire::actingAs($this->permittedUser())
+            ->test(ListDohaTickets::class)
+            ->assertSee('2 updates');
+    }
+
     /** Owner 2026-11-24: create-incident sits in the kebab right of View. */
     public function test_list_rows_offer_create_incident_for_admins_only(): void
     {

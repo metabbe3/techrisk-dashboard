@@ -54,6 +54,7 @@ class DohaTicketResource extends Resource
             // Owner 2026-11-24: newest DOHA transaction first (the ticket's
             // own incident date — not the sync time).
             ->defaultSort('transaction_date', 'desc')
+            ->modifyQueryUsing(fn (Builder $query) => $query->withCount('changes'))
             ->columns([
                 TextColumn::make('ref')
                     ->searchable()
@@ -101,6 +102,17 @@ class DohaTicketResource extends Resource
                 TextColumn::make('doha_updated_at')
                     ->label('Updated in DOHA')
                     ->state(fn (DohaTicket $record): ?string => $record->doha_updated_at_wib?->format('d/m/Y H:i'))
+                    ->sortable(),
+                // Owner 2026-11-24 (item 7): a ticket with recorded updates
+                // carries a count badge; click-through is the detail timeline.
+                TextColumn::make('changes_count')
+                    ->label('Updates')
+                    ->badge()
+                    ->color('warning')
+                    ->formatStateUsing(fn (int $state): ?string => $state > 0
+                        ? $state.' update'.($state === 1 ? '' : 's')
+                        : null)
+                    ->placeholder('—')
                     ->sortable(),
             ])
             ->filters([

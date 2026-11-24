@@ -90,7 +90,9 @@ class ViewDohaTicket extends ViewRecord
                         ->columns(4)
                         ->columnSpanFull(),
                 ])
-                ->description('Field changes observed by the sync, newest first.')
+                ->description(fn (DohaTicket $record): string => $record->changes()->count() === 0
+                    ? 'No changes observed yet.'
+                    : $record->changes()->count().' change(s) observed by the sync, newest first.')
                 ->visible(fn (DohaTicket $record): bool => $record->changes()->exists())
                 ->columns(1),
         ]);
