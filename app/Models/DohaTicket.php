@@ -91,4 +91,49 @@ class DohaTicket extends Model
         return Carbon::createFromFormat('Y-m-d H:i:s', $value, 'UTC')
             ->tz(config('app.timezone', 'Asia/Jakarta'));
     }
+
+    /**
+     * The admin-completed defaults for "Create Incident from this ticket"
+     * (owner 2026-11-23 mapping). fund_status / incident_type /
+     * incident_source are deliberately NOT prefilled — the DOHA values stay
+     * visible on the ticket page and the admin picks the portal ones.
+     */
+    public function incidentPrefillAttributes(): array
+    {
+        $severity = match (strtolower((string) $this->priority)) {
+            'critical' => 'P1',
+            'high' => 'P2',
+            'medium' => 'P3',
+            'low' => 'P4',
+            default => null, // free text outside the usual scale — admin picks
+        };
+
+        // responsible_team is an options select — never free text. Only
+        // prefill when the DOHA team ci-matches an existing option.
+        $teamOption = $this->team !== null
+            ? Category::query()
+                ->where('type', Category::TYPE_RESPONSIBLE_TEAM)
+                ->whereRaw('LOWER(name) = ?', [strtolower($this->team)])
+                ->value('name')
+            : null;
+
+        $incidentDate = $this->transaction_date !== null
+            ? $this->transaction_date->format('Y-m-d').' '.($this->transaction_time ?? '00:00').':00'
+            : null;
+
+        return [
+            'title' => $this->title,
+            'summary' => trim("Imported from DOHA ticket {$this->ref}.\n\n".$this->service_impact),
+            'root_cause' => $this->root_cause,
+            'remark' => $this->recovery_action,
+            'improvements' => $this->follow_up_action,
+            'potential_fund_loss' => $this->potential_loss,
+            'recovered_fund' => $this->recovered,
+            'severity' => $severity,
+            'classification' => 'Incident', // owner: all fund-loss cases are incidents
+            'responsible_team' => $teamOption !== null ? [$teamOption] : [],
+            'incident_date' => $incidentDate,
+            'entry_date_tech_risk' => now()->format('Y-m-d H:i:s'),
+        ];
+    }
 }
