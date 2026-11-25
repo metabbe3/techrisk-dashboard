@@ -56,14 +56,24 @@ class DohaTicketResource extends Resource
             ->defaultSort('transaction_date', 'desc')
             ->modifyQueryUsing(fn (Builder $query) => $query->withCount('changes'))
             ->columns([
+                // Owner 2026-11-25: the first three columns freeze on
+                // horizontal scroll ("sampai header bank") — offsets
+                // measured at runtime by app.js syncStickyIdWidths
+                // (--doha-ref-w / --doha-title-w), rules in app.css.
                 TextColumn::make('ref')
                     ->searchable()
-                    ->sortable(),
+                    ->sortable()
+                    ->extraHeaderAttributes(['class' => 'sticky-col-doha-ref'])
+                    ->extraCellAttributes(['class' => 'sticky-col-doha-ref']),
                 TextColumn::make('title')
                     ->searchable()
-                    ->limit(40),
+                    ->limit(40)
+                    ->extraHeaderAttributes(['class' => 'sticky-col-doha-title'])
+                    ->extraCellAttributes(['class' => 'sticky-col-doha-title']),
                 TextColumn::make('bank')
-                    ->searchable(),
+                    ->searchable()
+                    ->extraHeaderAttributes(['class' => 'sticky-col-doha-bank'])
+                    ->extraCellAttributes(['class' => 'sticky-col-doha-bank']),
                 TextColumn::make('priority')
                     ->badge()
                     ->color(fn (?string $state): string => match (strtolower((string) $state)) {

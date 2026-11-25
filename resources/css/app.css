@@ -3914,3 +3914,77 @@ html.tr-scroller {
 :root.dark .tr-doha-table td {
     border-color: #4b5563;
 }
+
+/* DOHA Tickets list — freeze ref/title/bank on horizontal scroll (owner
+   2026-11-25: "freeze sampai header bank"). Same mechanics as the incidents
+   table: sticky cells with measured offsets (app.js syncStickyIdWidths). */
+.fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-ref:not([colspan]) {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff;
+}
+
+.fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-title:not([colspan]) {
+    position: sticky;
+    left: var(--doha-ref-w, 90px);
+    z-index: 2;
+    background: #fff;
+}
+
+.fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-bank,
+.fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-bank:not([colspan]) {
+    position: sticky;
+    left: calc(var(--doha-ref-w, 90px) + var(--doha-title-w, 260px));
+    z-index: 2;
+    background: #fff;
+    box-shadow: 6px 0 8px -6px rgba(15, 23, 42, .18);
+}
+
+/* hover tint + header/footer backgrounds on the pinned DOHA cells */
+.fi-ta-table tbody tr:hover td.sticky-col-doha-ref,
+.fi-ta-table tbody tr:hover td.sticky-col-doha-title,
+.fi-ta-table tbody tr:hover td.sticky-col-doha-bank {
+    background: #fafcff;
+}
+
+.fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-bank,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-bank,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-bank {
+    background: #f9fafb;
+}
+
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-ref:not([colspan]),
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-title:not([colspan]),
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-bank,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-bank:not([colspan]) {
+    background: #111827;
+}
+
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-doha-ref,
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-doha-title,
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-doha-bank {
+    background: #131c2b;
+}
+
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-bank,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-bank,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-bank {
+    background: #1d2432;
+}
