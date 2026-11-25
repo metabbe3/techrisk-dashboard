@@ -287,8 +287,13 @@ class IncidentResource extends Resource
                                             ->options(['Internal' => 'Internal', 'External' => 'External'])
                                             ->required(),
                                         Select::make('pics')
-                                            ->label('Person In Charge')
+                                            ->label('PIC Tech Risk')
                                             ->relationship('pics', 'name')
+                                            ->multiple()
+                                            ->searchable(),
+                                        Select::make('picIncident')
+                                            ->label('PIC Incident')
+                                            ->relationship('picIncident', 'name')
                                             ->multiple()
                                             ->searchable(),
                                         TextInput::make('checker'),
