@@ -529,144 +529,51 @@
 .fi-ta-table-container.tr-scroll-active::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.55); }
 .fi-ta-table-container::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.8); }
 
-/* Incidents list — freeze ID and name columns on horizontal scroll.
-   Scoped via :has(.sticky-col-id). This branch's PROJ-022 expand chevron
-   is the FIRST cell — it sticks too (sticky-col-expand, 20px wide), the
-   ID sticks after it, and the title offset pays for both, measured at
-   runtime: --sticky-expand-w from the expand cell, --sticky-col-id-w from
-   the ID cell (see app.js syncStickyIdWidths). On tables without the
-   expand column (Issues, others), --sticky-expand-w stays 0. */
+/* Incidents list — DOHA-page-style plain table (owner 2026-11-25: the
+   custom frozen/fixed column treatment caused dead gaps and cramped cells;
+   the table now renders like the DOHA Tickets table — natural Filament
+   auto-layout widths). The PROJ-022 sub-incident chevron lives INSIDE the
+   ID cell (components/incident-id-cell.blade.php), so there is no separate
+   expand column to leave a gap. */
+.tr-id-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+}
 
-/* Owner 2026-11-24: FIXED layout on the incidents table. Under the default
-   auto layout the browser hands the expand column a large share of the
-   table's leftover width (~122px for a 28px chevron) and width overrides on
-   ONE cell can never win — the dead gap between the chevron and the ID
-   column. Fixed layout HONORS explicit widths (expand 2.75rem, ID 80px) and
-   distributes leftovers to the unwidened columns, which is the intended
-   "other columns adjust" behavior. Scoped: other tables unaffected. */
-.fi-ta-table:has(.sticky-col-id) {
-    table-layout: fixed;
-}
-.fi-ta-table:has(.sticky-col-id) th.sticky-col-expand,
-.fi-ta-table:has(.sticky-col-id) td.sticky-col-expand:not([colspan]) {
-    position: sticky;
-    left: 0;
-    z-index: 2;
-    background: #fff;
-    /* Owner 2026-11-23: the expand cell rendered far wider than its chevron,
-       leaving the ID column visually detached — pin it around the button. */
-    width: 2.75rem !important;
-    max-width: 2.75rem;
-    padding-inline: 0.5rem !important;
-}
-/* The expand button itself rendered full-cell wide (the column was ~120px
-   for a chevron) — pin the inner wrapper AND the button to a compact square
-   so the ID column slides left (auto table layout sizes the column from its
-   content basis; a full-width wrapper kept it wide). */
-/* Owner 2026-11-23: the expand column is handed ~122px by the table layout
-   and CANNOT be pinned (verified in-page: width 1px on TH+TD and a
-   max-content table still render 122 — the layout share wins). The chevron
-   therefore anchors to the cell's LEFT edge, hugging the checkbox. */
-.fi-ta-table:has(.sticky-col-id) .sticky-col-expand .fi-ta-col-wrp {
-    width: 1.75rem !important;
-    margin-left: 0;
-}
-.fi-ta-table:has(.sticky-col-id) td.sticky-col-expand button,
-.fi-ta-table:has(.sticky-col-id) th.sticky-col-expand button {
-    width: 1.75rem !important;
-    min-width: 1.75rem;
-    padding: 0 !important;
-    margin-inline: auto;
+.tr-expand-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
 }
-.fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
-.fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
-    padding-inline: 0.5rem !important;
+
+.tr-expand-btn:hover {
+    color: #0f172a;
 }
-.fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
-.fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
-    position: sticky;
-    /* Owner 2026-11-24: the ID hugged the expand cell's FULL width (~122px),
-       leaving a dead gap between the chevron and the ID. The expand cell is
-       visually compact (2.75rem — CSS width above), so the ID now sticks at
-       the compact offset and PAINTS OVER the layout-assigned tail (the ID is
-       later in DOM, same z-index). The title offset below follows suit. */
-    left: 2.75rem;
-    z-index: 2;
-    background: #fff;
+
+:root.dark .tr-expand-btn {
+    color: #94a3b8;
 }
-/* Fixed layout needs explicit widths everywhere or columns balloon: the
-   bulk-select checkbox column is Filament's own (no width) — keep it
-   compact (owner 2026-11-25: proper spacing, not too far, not too tight). */
-.fi-ta-table:has(.sticky-col-id) thead th:first-child:not(.sticky-col-expand),
-.fi-ta-table:has(.sticky-col-id) tbody td:first-child:not(.sticky-col-expand) {
-    width: 2.5rem;
-    max-width: 2.5rem;
-    padding-inline: 0.375rem !important;
+
+:root.dark .tr-expand-btn:hover {
+    color: #e2e8f0;
 }
-/* Long titles clip with an ellipsis inside the fixed title column (the
-   hover-preview trigger is the inline-block anchor; the fixed-position
-   preview panel escapes the overflow). */
-.fi-ta-table:has(.sticky-col-id) td.sticky-col-title a {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+
+.tr-expand-btn svg {
+    width: 1rem;
+    height: 1rem;
 }
-.fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
-.fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
-    position: sticky;
-    left: calc(2.75rem + var(--sticky-col-id-w, 80px));
-    z-index: 2;
-    background: #fff;
-    box-shadow: 6px 0 8px -6px rgba(15, 23, 42, .18);
-}
-/* row-hover tint must be replicated on the opaque pinned cells (the tr bg is hidden beneath them) */
-.fi-ta-table tbody tr:hover td.sticky-col-expand,
-.fi-ta-table tbody tr:hover td.sticky-col-id,
-.fi-ta-table tbody tr:hover td.sticky-col-title {
-    background: #fafcff;
-}
-/* header + summary rows sit on bg-gray-50 (dark: white/5 over gray-900) — pinned
-   cells there must match or they read as a different color. :has() is required
-   here to out-specify the white base rule (its :has() counts as a class). */
-.fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-expand,
-.fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-id,
-.fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-title,
-.fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-expand,
-.fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-id,
-.fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-title,
-.fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-expand,
-.fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-id,
-.fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-title {
-    background: #f9fafb;
-}
-:root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-expand,
-:root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-expand:not([colspan]),
-:root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
-:root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]),
-:root.dark .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
-:root.dark .fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
-    background: #111827;
-}
-:root.dark .fi-ta-table tbody tr:hover td.sticky-col-expand,
-:root.dark .fi-ta-table tbody tr:hover td.sticky-col-id,
-:root.dark .fi-ta-table tbody tr:hover td.sticky-col-title {
-    background: #131c2b;
-}
-:root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-expand,
-:root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-id,
-:root.dark .fi-ta-table:has(.sticky-col-id) thead tr th.sticky-col-title,
-:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-expand,
-:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-id,
-:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr td.sticky-col-title,
-:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-expand,
-:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-id,
-:root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-title {
-    background: #1d2432;
+
+.tr-expand-spacer {
+    display: inline-block;
+    width: 1.25rem;
 }
 
 /* Severity/status badges — solid tint, no decorative gradient or text-shadow. */
