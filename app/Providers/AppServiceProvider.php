@@ -13,6 +13,7 @@ use App\Models\ApiSetting;
 use App\Models\Category;
 use App\Models\Incident;
 use App\Models\IncidentType;
+use App\Models\InvestigationDocument;
 use App\Models\Label;
 use App\Models\StatusUpdate;
 use App\Models\User;
@@ -26,6 +27,7 @@ use App\Observers\StatusUpdateObserver;
 use App\Observers\UserCacheObserver;
 use App\Policies\ActionImprovementPolicy;
 use App\Policies\IncidentPolicy;
+use App\Policies\InvestigationDocumentPolicy;
 use App\Services\Notion\NotionMcpClient;
 use App\Services\SensitiveDataFilter;
 use App\Services\TraceIdService;
@@ -233,6 +235,7 @@ class AppServiceProvider extends ServiceProvider
 
         Gate::policy(Incident::class, IncidentPolicy::class);
         Gate::policy(ActionImprovement::class, ActionImprovementPolicy::class);
+        Gate::policy(InvestigationDocument::class, InvestigationDocumentPolicy::class);
 
         FilamentView::registerRenderHook(
             'panels::body.end',
