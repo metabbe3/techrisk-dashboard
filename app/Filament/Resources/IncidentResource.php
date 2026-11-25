@@ -481,6 +481,7 @@ class IncidentResource extends Resource
                     ->label('Subs')
                     ->badge()
                     ->color('info')
+                    ->width('56px')
                     ->formatStateUsing(fn ($state) => $state > 0 ? $state : null),
                 TextColumn::make('mttr_formatted')->label('MTTR')->width('70px')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
@@ -554,6 +555,7 @@ class IncidentResource extends Resource
                 TextColumn::make('follow_up')
                     ->label('Status update')
                     ->badge()
+                    ->width('110px')
                     ->color(fn (?string $state): string => $state === Incident::FLAG_NEED_UPDATE ? 'danger' : 'warning')
                     ->state(fn (Incident $record): ?string => $record->statusUpdateFlag()),
                 TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),

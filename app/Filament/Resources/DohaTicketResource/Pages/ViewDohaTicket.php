@@ -120,9 +120,11 @@ class ViewDohaTicket extends ViewRecord
                 DohaTicketIncidentActions::unlinkAction(),
                 DohaSyncAction::make(),
             ])
-                ->iconButton()
+                // Owner 2026-11-25: styled as a BUTTON (colored) so it reads
+                // as clickable — matches the page's primary-button pattern.
+                ->button()
+                ->color('primary')
                 ->icon('heroicon-m-bars-3')
-                ->color('gray')
                 ->tooltip('More actions'),
         ];
     }

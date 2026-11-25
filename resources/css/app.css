@@ -597,6 +597,25 @@
     z-index: 2;
     background: #fff;
 }
+/* Fixed layout needs explicit widths everywhere or columns balloon: the
+   bulk-select checkbox column is Filament's own (no width) — keep it
+   compact (owner 2026-11-25: proper spacing, not too far, not too tight). */
+.fi-ta-table:has(.sticky-col-id) thead th:first-child:not(.sticky-col-expand),
+.fi-ta-table:has(.sticky-col-id) tbody td:first-child:not(.sticky-col-expand) {
+    width: 2.5rem;
+    max-width: 2.5rem;
+    padding-inline: 0.375rem !important;
+}
+/* Long titles clip with an ellipsis inside the fixed title column (the
+   hover-preview trigger is the inline-block anchor; the fixed-position
+   preview panel escapes the overflow). */
+.fi-ta-table:has(.sticky-col-id) td.sticky-col-title a {
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
     position: sticky;
