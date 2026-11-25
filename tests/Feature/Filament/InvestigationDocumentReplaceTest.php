@@ -15,6 +15,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Livewire\Livewire;
+use Spatie\Permission\Models\Permission;
 use Tests\TestCase;
 
 /**
@@ -28,9 +29,16 @@ class InvestigationDocumentReplaceTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        Permission::firstOrCreate(['name' => 'manage incidents']);
+    }
+
     public function test_replacing_file_resets_conversion_and_dispatches_reconvert(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create()->givePermissionTo('manage incidents');
         $incident = Incident::factory()->create();
         $document = InvestigationDocument::factory()
             ->for($incident)
@@ -68,7 +76,7 @@ class InvestigationDocumentReplaceTest extends TestCase
 
     public function test_edit_without_new_file_keeps_conversion(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create()->givePermissionTo('manage incidents');
         $incident = Incident::factory()->create();
         $document = InvestigationDocument::factory()
             ->for($incident)
