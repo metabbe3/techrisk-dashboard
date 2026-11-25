@@ -417,6 +417,17 @@ class Incident extends Model implements Auditable
         return $this->pics->pluck('name')->implode(', ');
     }
 
+    /** PIC Incident (2026-11-24) — display-only second role pivot. */
+    public function picIncident(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'incident_pic_incident')->withTimestamps();
+    }
+
+    public function getPicIncidentNamesAttribute(): string
+    {
+        return $this->picIncident->pluck('name')->implode(', ');
+    }
+
     public function incidentType(): BelongsTo
     {
         return $this->belongsTo(IncidentType::class);
