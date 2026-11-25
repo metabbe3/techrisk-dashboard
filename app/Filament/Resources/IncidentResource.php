@@ -443,23 +443,35 @@ class IncidentResource extends Resource
                 ->withSum('subIncidents', 'fund_loss'))
             ->defaultSort('incident_date', 'desc')
             ->columns([
-                // Owner 2026-11-25: the table renders like the DOHA Tickets
-                // table — natural Filament auto-layout, no frozen/fixed column
-                // treatment (it caused dead gaps and cramped cells). The
-                // PROJ-022 sub-incident chevron now lives INSIDE the ID cell
-                // (components/incident-id-cell.blade.php), so the old separate
-                // expand column — and its layout share — is gone.
-                TextColumn::make('no')->label('ID')->searchable()->sortable()->width('130px')
-                    ->html()
-                    ->formatStateUsing(fn (Incident $record, $livewire) => view('components.incident-id-cell', [
-                        'incident' => $record,
-                        'expanded' => in_array($record->getKey(), $livewire->expandedSubIncidents, true),
-                    ])->render())
-                    ->summarize(Count::make()->label('Total Cases')),
+                // PROJ-022: expand column + frozen ID/title (owner 2026-11-25:
+                // the collapse chevron AND the horizontal-scroll freeze are
+                // both kept). The old dead gap came from auto-layout handing
+                // this column a share of the leftover width — the table is now
+                // content-sized (width:auto, app.css), so columns render at
+                // their natural width and the chevron column stays compact.
+                IconColumn::make('expand_sub_incidents')
+                    ->label('')
+                    ->width('20px')
+                    ->extraHeaderAttributes(['class' => 'sticky-col-expand'])
+                    ->extraCellAttributes(['class' => 'sticky-col-expand'])
+                    // Review C1: a non-null state is required or the icon blade
+                    // never evaluates the closure (empty invisible button).
+                    ->state(fn (Incident $record) => $record->sub_incidents_count)
+                    ->icon(fn (Incident $record, $livewire) => $record->sub_incidents_count === 0
+                        ? null
+                        : (in_array($record->getKey(), $livewire->expandedSubIncidents) ? 'heroicon-m-chevron-down' : 'heroicon-m-chevron-right'))
+                    ->action(fn (Incident $record, $livewire) => $record->sub_incidents_count > 0
+                        ? $livewire->toggleExpandedSubIncidents((int) $record->getKey())
+                        : null),
+                TextColumn::make('no')->label('ID')->searchable()->sortable()->width('80px')->summarize(Count::make()->label('Total Cases'))
+                    ->extraHeaderAttributes(['class' => 'sticky-col-id'])
+                    ->extraCellAttributes(['class' => 'sticky-col-id']),
                 TextColumn::make('title')
                     ->searchable()
                     ->html()
                     ->width('200px')
+                    ->extraHeaderAttributes(['class' => 'sticky-col-title'])
+                    ->extraCellAttributes(['class' => 'sticky-col-title'])
                     ->formatStateUsing(fn (Incident $record) => view('components.incident-hover-preview', ['incident' => $record])->render())
                     ->description(fn (Incident $record) => $record->parent_incident_id ? "Sub of: {$record->superIncident?->no}" : null),
                 TextColumn::make('sub_incidents_count')

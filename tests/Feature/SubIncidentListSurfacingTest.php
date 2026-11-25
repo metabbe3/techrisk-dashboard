@@ -63,10 +63,9 @@ class SubIncidentListSurfacingTest extends TestCase
         // the icon closure).
         $component->assertSee('M8.22 5.22a.75.75 0 0 1 1.06 0l4.25 4.25'); // heroicon chevron path data
 
-        // Owner 2026-11-25: the chevron moved INSIDE the ID cell (no separate
-        // expand column — DOHA-page-like column layout), so the click path is
-        // the cell's wire:click → toggleExpandedSubIncidents.
-        $component->call('toggleExpandedSubIncidents', $super->id)
+        // Review C1: the real click path — the column action behind the
+        // chevron's wire:click, not the backing method directly.
+        $component->call('callTableColumnAction', 'expand_sub_incidents', (string) $super->id)
             ->assertSee('Sub ZX7 hidden child');
     }
 
