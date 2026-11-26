@@ -40,6 +40,16 @@ const syncStickyIdWidths = () => {
         const cell = table.querySelector('td.sticky-col-id') ?? table.querySelector('th.sticky-col-id');
         if (cell) table.style.setProperty('--sticky-col-id-w', `${cell.offsetWidth}px`);
     });
+
+    // DOHA Tickets list (owner 2026-11-25): ref/title/bank freeze on
+    // horizontal scroll — the bank offset pays for the measured ref+title
+    // widths.
+    document.querySelectorAll('.fi-ta-table:has(.sticky-col-doha-ref)').forEach((table) => {
+        const ref = table.querySelector('th.sticky-col-doha-ref') ?? table.querySelector('td.sticky-col-doha-ref');
+        if (ref) table.style.setProperty('--doha-ref-w', `${ref.offsetWidth}px`);
+        const title = table.querySelector('th.sticky-col-doha-title') ?? table.querySelector('td.sticky-col-doha-title');
+        if (title) table.style.setProperty('--doha-title-w', `${title.offsetWidth}px`);
+    });
 };
 ['load', 'resize'].forEach((e) => window.addEventListener(e, syncStickyIdWidths));
 ['livewire:navigated', 'livewire:update'].forEach((e) => document.addEventListener(e, syncStickyIdWidths));

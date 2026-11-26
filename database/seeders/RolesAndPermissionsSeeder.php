@@ -40,6 +40,9 @@ class RolesAndPermissionsSeeder extends Seeder
         // Restricted SSO role (owner 2026-11-20): upload proof of completion
         // on action improvements of incidents the user can see.
         Permission::firstOrCreate(['name' => 'submit action proof']);
+        // DOHA fund-loss ticket mirror (owner 2026-11-23): read-only section.
+        // Admin-only by default — user/team-viewer lists below do NOT include it.
+        Permission::firstOrCreate(['name' => 'view doha tickets']);
 
         // create roles and assign created permissions
         $role = Role::firstOrCreate(['name' => 'user']);

@@ -535,7 +535,18 @@
    ID sticks after it, and the title offset pays for both, measured at
    runtime: --sticky-expand-w from the expand cell, --sticky-col-id-w from
    the ID cell (see app.js syncStickyIdWidths). On tables without the
-   expand column (Issues, others), --sticky-expand-w stays 0. */
+   expand column (Issues, others), --sticky-expand-w stays 0.
+
+   Owner 2026-11-25: the table is CONTENT-SIZED (width:auto). Auto layout
+   only hands out leftover-width shares when the table must fill a wider
+   container — with content-sized columns the expand cell stays at its
+   compact 2.75rem and there is no dead gap before the ID. */
+.fi-ta-table:has(.sticky-col-id) {
+    width: auto;
+    min-width: 100%;
+}
+
+
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-expand,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-expand:not([colspan]) {
     position: sticky;
@@ -558,7 +569,7 @@
    therefore anchors to the cell's LEFT edge, hugging the checkbox. */
 .fi-ta-table:has(.sticky-col-id) .sticky-col-expand .fi-ta-col-wrp {
     width: 1.75rem !important;
-    margin-left: 0;
+    margin-inline: auto;
 }
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-expand button,
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-expand button {
@@ -577,14 +588,19 @@
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-id,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-id:not([colspan]) {
     position: sticky;
-    left: var(--sticky-expand-w, 0px);
+    /* Owner 2026-11-24: the ID hugged the expand cell's FULL width (~122px),
+       leaving a dead gap between the chevron and the ID. The expand cell is
+       visually compact (2.75rem — CSS width above), so the ID now sticks at
+       the compact offset and PAINTS OVER the layout-assigned tail (the ID is
+       later in DOM, same z-index). The title offset below follows suit. */
+    left: 2.75rem;
     z-index: 2;
     background: #fff;
 }
 .fi-ta-table:has(.sticky-col-id) th.sticky-col-title,
 .fi-ta-table:has(.sticky-col-id) td.sticky-col-title:not([colspan]) {
     position: sticky;
-    left: calc(var(--sticky-expand-w, 0px) + var(--sticky-col-id-w, 80px));
+    left: calc(2.75rem + var(--sticky-col-id-w, 80px));
     z-index: 2;
     background: #fff;
     box-shadow: 6px 0 8px -6px rgba(15, 23, 42, .18);
@@ -633,7 +649,6 @@
 :root.dark .fi-ta-table:has(.sticky-col-id) tfoot tr th.sticky-col-title {
     background: #1d2432;
 }
-
 /* Severity/status badges — solid tint, no decorative gradient or text-shadow. */
 .fi-badge.color-danger { background: #fee2e2 !important; color: #b91c1c !important; font-weight: 600; border: 1px solid rgba(239,68,68,.2); }
 .fi-badge.color-warning { background: #fef3c7 !important; color: #92400e !important; font-weight: 600; border: 1px solid rgba(245,158,11,.2); }
@@ -3868,4 +3883,108 @@ html.tr-scroller {
 }
 .tr-scroller::-webkit-scrollbar-thumb:hover {
     background: rgba(100, 116, 139, 0.85);
+}
+
+
+/* DOHA service-impact table (owner 2026-11-24, item 4). Custom CSS on
+   purpose: the Tailwind candidate scan in this build does not reliably pick
+   up new blade sources, so these must exist unconditionally. Hex only. */
+.tr-doha-table-wrap {
+    overflow-x: auto;
+}
+
+.tr-doha-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.tr-doha-table th,
+.tr-doha-table td {
+    border: 1px solid #d1d5db;
+    padding: 0.25rem 0.5rem;
+}
+
+.tr-doha-table th {
+    text-align: left;
+    font-weight: 600;
+}
+
+:root.dark .tr-doha-table th,
+:root.dark .tr-doha-table td {
+    border-color: #4b5563;
+}
+
+/* DOHA Tickets list — freeze ref/title/bank on horizontal scroll (owner
+   2026-11-25: "freeze sampai header bank"). Same mechanics as the incidents
+   table: sticky cells with measured offsets (app.js syncStickyIdWidths). */
+.fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-ref:not([colspan]) {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    background: #fff;
+}
+
+.fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-title:not([colspan]) {
+    position: sticky;
+    left: var(--doha-ref-w, 90px);
+    z-index: 2;
+    background: #fff;
+}
+
+.fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-bank,
+.fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-bank:not([colspan]) {
+    position: sticky;
+    left: calc(var(--doha-ref-w, 90px) + var(--doha-title-w, 260px));
+    z-index: 2;
+    background: #fff;
+    box-shadow: 6px 0 8px -6px rgba(15, 23, 42, .18);
+}
+
+/* hover tint + header/footer backgrounds on the pinned DOHA cells */
+.fi-ta-table tbody tr:hover td.sticky-col-doha-ref,
+.fi-ta-table tbody tr:hover td.sticky-col-doha-title,
+.fi-ta-table tbody tr:hover td.sticky-col-doha-bank {
+    background: #fafcff;
+}
+
+.fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-bank,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-bank,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-ref,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-title,
+.fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-bank {
+    background: #f9fafb;
+}
+
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-ref:not([colspan]),
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-title:not([colspan]),
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) th.sticky-col-doha-bank,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) td.sticky-col-doha-bank:not([colspan]) {
+    background: #111827;
+}
+
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-doha-ref,
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-doha-title,
+:root.dark .fi-ta-table tbody tr:hover td.sticky-col-doha-bank {
+    background: #131c2b;
+}
+
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) thead tr th.sticky-col-doha-bank,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr td.sticky-col-doha-bank,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-ref,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-title,
+:root.dark .fi-ta-table:has(.sticky-col-doha-ref) tfoot tr th.sticky-col-doha-bank {
+    background: #1d2432;
 }

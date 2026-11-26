@@ -448,22 +448,19 @@ class IncidentResource extends Resource
                 ->withSum('subIncidents', 'fund_loss'))
             ->defaultSort('incident_date', 'desc')
             ->columns([
-                // PROJ-022: expand column ikut sticky kiri — geometry kolom
-                // (ID left = lebar expand) diukur runtime oleh app.js
-                // syncStickyIdWidths (var --sticky-expand-w), rules CSS di
-                // app.css. Row-conditional ->hidden() is not available on
-                // columns (it is evaluated once per column set, with no
-                // record) — a null icon / null badge state renders the cell
-                // empty on sub-less rows instead.
+                // PROJ-022: expand column + frozen ID/title (owner 2026-11-25:
+                // the collapse chevron AND the horizontal-scroll freeze are
+                // both kept). The old dead gap came from auto-layout handing
+                // this column a share of the leftover width — the table is now
+                // content-sized (width:auto, app.css), so columns render at
+                // their natural width and the chevron column stays compact.
                 IconColumn::make('expand_sub_incidents')
                     ->label('')
                     ->width('20px')
                     ->extraHeaderAttributes(['class' => 'sticky-col-expand'])
                     ->extraCellAttributes(['class' => 'sticky-col-expand'])
-                    // Review C1: the column needs a non-null state or the icon
-                    // blade never evaluates the icon closure (empty invisible
-                    // button); closures in this static table() can NOT capture
-                    // $this — the component arrives by injection as $livewire.
+                    // Review C1: a non-null state is required or the icon blade
+                    // never evaluates the closure (empty invisible button).
                     ->state(fn (Incident $record) => $record->sub_incidents_count)
                     ->icon(fn (Incident $record, $livewire) => $record->sub_incidents_count === 0
                         ? null
@@ -486,6 +483,7 @@ class IncidentResource extends Resource
                     ->label('Subs')
                     ->badge()
                     ->color('info')
+                    ->width('56px')
                     ->formatStateUsing(fn ($state) => $state > 0 ? $state : null),
                 TextColumn::make('mttr_formatted')->label('MTTR')->width('70px')->sortable(query: function (Builder $query, string $direction) {
                     return $query->orderBy('mttr', $direction);
@@ -559,6 +557,7 @@ class IncidentResource extends Resource
                 TextColumn::make('follow_up')
                     ->label('Status update')
                     ->badge()
+                    ->width('110px')
                     ->color(fn (?string $state): string => $state === Incident::FLAG_NEED_UPDATE ? 'danger' : 'warning')
                     ->state(fn (Incident $record): ?string => $record->statusUpdateFlag()),
                 TextColumn::make('fund_status')->badge()->color(fn (?FundStatus $state): string => $state?->color() ?? 'gray')->sortable()->toggleable()->width('120px'),

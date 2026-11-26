@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace App\Filament\Pages;
 
+use App\Filament\Actions\DohaSyncAction;
 use App\Filament\Actions\NotionSyncAction;
 use App\Models\AiSetting;
 use App\Models\ApiSetting;
 use App\Models\Setting;
 use App\Services\Ai\AiTextService;
+use App\Services\Doha\DohaClient;
+use App\Services\Doha\DohaSyncService;
 use App\Services\InvestigationForm\InvestigationFormSchema;
 use App\Services\InvestigationForm\InvestigationFormSettings;
 use App\Services\Notion\NotionInvestigationService;
@@ -38,6 +41,7 @@ use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\HtmlString;
@@ -152,6 +156,9 @@ class SystemSettings extends Page implements HasForms
             'war_room_moderator_timeout' => AiSetting::get('war_room_moderator_timeout', config('ai.war_room.moderator_timeout', 600)),
             'rate_limit' => AiSetting::get('rate_limit', config('ai.rate_limit_per_minute', 10)),
             'models' => AiSetting::get('models', config('ai.models', [])),
+
+            // DOHA fund-loss ticket mirror
+            'doha_api_token' => app(DohaClient::class)->configured() ? '••••••••' : '',
         ]);
     }
 
@@ -216,6 +223,7 @@ class SystemSettings extends Page implements HasForms
                         $this->apiTab(),
                         $this->notionTab(),
                         $this->aiTab(),
+                        $this->dohaTab(),
                     ])
                     ->columnSpanFull(),
             ])
@@ -776,6 +784,68 @@ class SystemSettings extends Page implements HasForms
     }
 
     /**
+     * DOHA fund-loss ticket mirror (owner 2026-11-23): the service-account
+     * token (encrypted at rest, ≤90-day lifetime — rotate in DOHA and paste
+     * the new one here), the sync status, and a manual Sync now.
+     */
+    private function dohaTab(): Tab
+    {
+        return Tab::make('DOHA')
+            ->icon('heroicon-o-banknotes')
+            ->schema([
+                Section::make('Connection')
+                    ->description('Read-only mirror of DOHA fund-loss tickets (the TS ticketing tool). The sync runs daily at 08:00 (WIB) plus a weekly full re-read on Sunday 03:00.')
+                    ->schema([
+                        Placeholder::make('doha_status')
+                            ->label('Status')
+                            ->content(fn (SystemSettings $livewire): HtmlString => new HtmlString(
+                                app(DohaClient::class)->configured()
+                                    ? '<span class="font-bold text-success-600 dark:text-success-400">Active — token configured</span>'
+                                    : '<span class="font-semibold text-danger-600 dark:text-danger-400">No token set — paste the DOHA service-account token to activate the sync</span>'
+                            ))
+                            ->columnSpanFull(),
+
+                        TextInput::make('doha_api_token')
+                            ->label('DOHA API token')
+                            ->password()
+                            ->revealable()
+                            ->helperText('Service-account token from the DOHA admin, scope incidents.view, read-only, ≤90-day lifetime. Leave as-is to keep the current token — clear to remove; rotate in DOHA and update it here.')
+                            ->columnSpanFull(),
+
+                        Placeholder::make('doha_last_sync')
+                            ->label('Last DOHA sync')
+                            ->content(fn (SystemSettings $livewire): string => $livewire->dohaLastSyncStatus())
+                            ->columnSpanFull(),
+
+                        Actions::make([
+                            Action::make('doha_sync_now')
+                                ->label('Sync now')
+                                ->icon('heroicon-o-arrow-path')
+                                ->color('primary')
+                                ->action(fn () => DohaSyncAction::run()),
+                        ]),
+                    ]),
+            ]);
+    }
+
+    /** Header-less hook for tests (and keyboard-friendly re-runs). */
+    public function runDohaSync(): void
+    {
+        DohaSyncAction::run();
+    }
+
+    public function dohaLastSyncStatus(): string
+    {
+        $at = Setting::get(DohaSyncService::LAST_SYNC_AT_KEY);
+
+        if (blank($at)) {
+            return 'Not synced yet — the scheduler runs daily at 08:00 (WIB) once the token is set.';
+        }
+
+        return sprintf('%s — %s', \Illuminate\Support\Carbon::parse($at)->format('Y-m-d H:i'), Setting::get(DohaSyncService::LAST_SYNC_STATUS_KEY, ''));
+    }
+
+    /**
      * Send a one-off test email through the active mailer. Failures surface
      * the exact provider response (owner request 2026-10-01: "if error can
      * you show the error logs?").
@@ -931,6 +1001,14 @@ class SystemSettings extends Page implements HasForms
             AiSetting::set('api_key', $data['ai_api_key']);
         } elseif (($data['ai_api_key'] ?? '') === '') {
             AiSetting::set('api_key', null);
+        }
+
+        // --- DOHA fund-loss mirror (external-service credential — encrypted
+        // at rest like the Notion token; sentinel keeps the current one) ---
+        if (filled($data['doha_api_token'] ?? null) && $data['doha_api_token'] !== '••••••••') {
+            Setting::set(DohaClient::TOKEN_KEY, Crypt::encryptString($data['doha_api_token']));
+        } elseif (($data['doha_api_token'] ?? '') === '') {
+            Setting::set(DohaClient::TOKEN_KEY, null);
         }
 
         if (filled($data['timeout'] ?? null)) {

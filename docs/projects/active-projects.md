@@ -980,3 +980,38 @@ Owner request 2026-11-05: "Sign in with Microsoft" on the Filament login page, t
 ---
 
 *Last Updated: 2026-10-13*
+
+### [PROJ-030] DOHA integration: read-only mirror of the DOHA fund-loss ticketing tool
+
+**Status:** In Progress (code complete, tests green; owner token + prod migration + seeder re-run pending)
+**Priority:** P2
+**Start Date:** 2026-11-23
+
+#### Description
+Owner 2026-11-23: integrate the TechRisk portal with DOHA (the TS-built ticketing tool for incident fund-loss) so the portal can read incoming tickets, follow their updates, and see every available detail (team/PIC etc.). DOHA exposes a read-only REST API (`doha_temp/DOHA API Integration Guide.pdf`, kept untracked via .gitignore).
+
+#### Key decisions (owner-confirmed)
+- Scheduled mirror sync to local tables, 15-min incremental (`updatedSince` watermark) + weekly Sunday 03:00 full re-read — the API guide's official recipe.
+- Read-only "DOHA Tickets" section (Operations nav), gated on the NEW `view doha tickets` permission (admin role only by default).
+- Change history: every sync that changes a field writes a change row (field, old → new) shown as a timeline on the ticket detail.
+- Assessment coverage: the list's Linked/Unlinked filter = which fund-loss cases are not yet incidents (owner: "all fund loss cases are incidents").
+- Admin can "Create Incident from this ticket" (pre-filled form) or "Link to existing incident"/"Unlink", gated `manage incidents`. The mirror itself NEVER writes Incidents.
+- **Notifications DEFERRED** (owner 2026-11-24): admin-recipient notifications would violate owner rule 2026-10-09 ("no automated notification to admins"); recipients decided later under that rule.
+- Token stored Crypt-encrypted at rest (Setting `doha_api_token`, System Settings DOHA tab, sentinel keep pattern).
+
+#### Constraints
+- ZERO changes to incident metric surfaces (aiCounts/MTTR/MTBF/dashboards/exports) — `doha_tickets.incident_id` is the ONLY join to Incidents (recorded in dependency-map.md).
+
+#### Tasks
+- [x] Data layer: `doha_tickets` (raw UTC string timestamps — byte-identical watermark) + `doha_ticket_changes` migrations, models, factory, seeder permission.
+- [x] Sync engine: `DohaClient` (5xx-only retry, status-branch errors), `DohaSyncService` (watermark over succeeded rows only, poison isolation, 21-field diff, best-effort deletes, non-wiping full sweep), `doha:sync-tickets` + schedule.
+- [x] UI: `DohaTicketResource` (list filters from distinct data, coverage column), view page with change history + `DohaTicketIncidentActions`, `CreateIncident ?doha=` prefill (merged ONTO defaults) + afterCreate link.
+- [x] Settings: System Settings DOHA tab (encrypted token, status, Sync now).
+- [x] Tests: `tests/Feature/Doha/` — 5 files, 51 tests / 157 assertions.
+- [x] Docs: dependency-map rows (DohaClient/DohaSyncService/DohaTicket), testing-standards baseline.
+- [ ] Owner: obtain DOHA service-account token from the DOHA admin, paste into Settings → DOHA, Sync now.
+- [ ] Owner: prod `php artisan migrate --force` + `RolesAndPermissionsSeeder` re-run.
+- [ ] Owner: rotation reminder for the ≤90-day token.
+
+#### Progress Updates
+- 2026-11-24: Implementation complete on `feature/doha-integration`; full suite green (see testing-standards baseline entry).
