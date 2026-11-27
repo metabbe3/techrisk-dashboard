@@ -13,6 +13,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Livewire\Livewire;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Tests\TestCase;
 
 class DohaTicketResourceTest extends TestCase
@@ -52,6 +53,24 @@ class DohaTicketResourceTest extends TestCase
     public function test_can_view_any_is_guest_safe(): void
     {
         $this->assertFalse(DohaTicketResource::canViewAny());
+    }
+
+    /**
+     * Owner 2026-11-27: the admin ROLE alone opens the section — prod can
+     * deploy without waiting for the 'view doha tickets' grant
+     * (AiUsageLogResource pattern). A non-admin still needs the grant.
+     */
+    public function test_admin_role_sees_the_section_without_the_permission_grant(): void
+    {
+        Role::firstOrCreate(['name' => 'admin']);
+
+        $admin = User::factory()->create();
+        $admin->assignRole('admin');
+
+        $this->actingAs($admin);
+        $this->assertTrue(DohaTicketResource::canViewAny());
+        $this->assertFalse($admin->can('view doha tickets'),
+            'the admin passes via the ROLE, not a permission grant');
     }
 
     public function test_resource_is_read_only(): void

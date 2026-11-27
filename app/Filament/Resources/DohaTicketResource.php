@@ -45,7 +45,13 @@ class DohaTicketResource extends Resource
     {
         // Null guard: the Spotlight palette evaluates this on guest pages
         // (login) — a missing user must mean "no", never a 500.
-        return (bool) auth()->user()?->can('view doha tickets');
+        // Owner 2026-11-27: admin role OR the explicit permission (the
+        // AiUsageLogResource pattern) — admins get the section as soon as
+        // the code deploys, without waiting for the permission row to be
+        // seeded; other roles still need the 'view doha tickets' grant.
+        $user = auth()->user();
+
+        return $user !== null && ($user->hasRole('admin') || $user->can('view doha tickets'));
     }
 
     public static function table(Table $table): Table
